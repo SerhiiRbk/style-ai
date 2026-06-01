@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
+  <channel>
+    <title>Example Store — Google Merchant feed</title>
+    <link>https://example-store.com</link>
+    <item>
+      <g:id>EX-1001</g:id>
+      <title>Merino crewneck jumper</title>
+      <g:brand>Uniqlo</g:brand>
+      <description>Fine-gauge extra-fine merino crewneck.</description>
+      <g:product_type>Knitwear</g:product_type>
+      <g:color>Camel</g:color>
+      <g:gender>male</g:gender>
+      <g:price>59.90 EUR</g:price>
+      <g:image_link>https://example-store.com/img/1001.jpg</g:image_link>
+      <link>https://example-store.com/p/1001</link>
+      <g:availability>in stock</g:availability>
+    </item>
+    <item>
+      <g:id>EX-1002</g:id>
+      <title>Linen blazer</title>
+      <g:brand>Mango</g:brand>
+      <description>Unstructured linen blazer for warm-weather tailoring.</description>
+      <g:product_type>Outerwear</g:product_type>
+      <g:color>Navy</g:color>
+      <g:gender>men</g:gender>
+      <g:price>129.99 EUR</g:price>
+      <g:image_link>https://example-store.com/img/1002.jpg</g:image_link>
+      <link>https://example-store.com/p/1002</link>
+      <g:availability>in stock</g:availability>
+    </item>
+    <item>
+      <g:id>EX-1003</g:id>
+      <title>Oxford button-down shirt</title>
+      <g:brand>COS</g:brand>
+      <description>Cotton oxford shirt with a relaxed collar.</description>
+      <g:product_type>Shirts</g:product_type>
+      <g:color>White</g:color>
+      <g:gender>male</g:gender>
+      <g:sale_price>45.00 EUR</g:sale_price>
+      <g:price>59.00 EUR</g:price>
+      <g:image_link>https://example-store.com/img/1003.jpg</g:image_link>
+      <link>https://example-store.com/p/1003</link>
+      <g:availability>in stock</g:availability>
+    </item>
+  </channel>
+</rss>

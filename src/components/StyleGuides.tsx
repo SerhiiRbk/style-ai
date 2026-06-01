@@ -1,5 +1,6 @@
 import { formatMoney } from "@/lib/currency";
 import type { Currency } from "@/lib/currency";
+import { LookTryOn } from "./LookTryOn";
 import type { ShoppingItem } from "@/lib/report";
 import type {
   Archetype as ArchetypeT,
@@ -224,7 +225,13 @@ export function ShopTheLook({
 
 /* ------------------------------ capsule matrix ---------------------------- */
 
-export function CapsuleMatrix({ combos }: { combos: OutfitCombo[] }) {
+export function CapsuleMatrix({
+  combos,
+  reportId,
+}: {
+  combos: OutfitCombo[];
+  reportId?: string;
+}) {
   if (!combos.length) return null;
   const visual = combos.some((c) => c.image);
   return (
@@ -271,6 +278,16 @@ export function CapsuleMatrix({ combos }: { combos: OutfitCombo[] }) {
                   </li>
                 ))}
               </ul>
+              {reportId && (
+                <div className="mt-3 border-t hairline pt-3">
+                  <LookTryOn
+                    reportId={reportId}
+                    title={c.context}
+                    description={c.pieces.join(", ")}
+                    label="Try on me"
+                  />
+                </div>
+              )}
             </div>
           </div>
         ))}

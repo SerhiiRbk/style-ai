@@ -4,15 +4,23 @@ import { CATEGORIES } from "./schema.mjs";
  * Map a free-text merchant category (and the product title as a fallback) onto
  * our fixed category enum using keyword rules. Extend KEYWORDS as needed.
  */
+// Order matters: the first matching rule wins. Keep garments and Accessories
+// above the more specialised buckets so existing classifications stay stable;
+// the trailing buckets mostly rescue items that used to fall through to "Other".
 const KEYWORDS = [
-  ["Outerwear", ["coat", "jacket", "blazer", "overshirt", "parka", "trench", "gilet", "mantel", "jacke"]],
-  ["Knitwear", ["knit", "jumper", "sweater", "cardigan", "pullover", "hoodie", "sweatshirt", "strick"]],
-  ["Shirts", ["shirt", "tee", "t-shirt", "polo", "blouse", "top", "hemd", "oberteil"]],
-  ["Trousers", ["trouser", "pant", "chino", "jean", "denim", "short", "legging", "hose"]],
-  ["Footwear", ["shoe", "sneaker", "trainer", "boot", "loafer", "derby", "sandal", "schuh"]],
-  ["Accessories", ["watch", "belt", "bag", "scarf", "hat", "cap", "glove", "sunglass", "wallet", "tie", "jewel", "accessoire"]],
+  ["Outerwear", ["coat", "jacket", "blazer", "overshirt", "parka", "trench", "gilet", "puffer", "peacoat", "pea coat", "raincoat", "windbreaker", "anorak", "bomber", "harrington", "mantel", "jacke", "manteau", "cappotto", "abrigo", "chaqueta", "giacca"]],
+  ["Knitwear", ["knit", "jumper", "sweater", "cardigan", "pullover", "hoodie", "sweatshirt", "turtleneck", "rollneck", "roll neck", "crewneck", "fleece", "strick", "maglione", "pull"]],
+  ["Shirts", ["shirt", "tee", "t-shirt", "polo", "blouse", "henley", "top", "hemd", "oberteil", "camicia", "chemise", "camisa"]],
+  ["Swimwear", ["swim", "swimwear", "swimsuit", "board short", "boardshort", "bikini", "badehose", "maillot"]],
+  ["Activewear", ["activewear", "sportswear", "tracksuit", "gymwear", "rashguard", "base layer", "compression top"]],
+  ["Trousers", ["trouser", "pant", "chino", "jean", "denim", "short", "legging", "slacks", "cargo", "corduroy", "cords", "hose", "pantalon", "pantaloni"]],
+  ["Footwear", ["shoe", "sneaker", "trainer", "boot", "loafer", "derby", "sandal", "brogue", "chelsea", "espadrille", "mule", "slipper", "plimsoll", "chukka", "monk strap", "schuh", "scarpa", "zapato", "chaussure"]],
+  ["Accessories", ["watch", "belt", "bag", "scarf", "hat", "cap", "glove", "sunglass", "wallet", "tie", "jewel", "cufflink", "pocket square", "beanie", "umbrella", "keyring", "accessoire"]],
+  ["Bags", ["backpack", "rucksack", "tote", "holdall", "duffel", "duffle", "weekender", "briefcase", "messenger", "satchel", "crossbody"]],
+  ["Underwear", ["underwear", "boxer", "briefs", "trunks", "sock", "socks", "loungewear", "pyjama", "pajama", "undershirt", "long john"]],
+  ["Grooming", ["fragrance", "cologne", "perfume", "aftershave", "grooming", "skincare", "moisturiser", "moisturizer", "shampoo", "beard oil", "pomade", "razor"]],
   ["Dresses", ["dress", "gown", "kleid", "skirt", "rock"]],
-  ["Suits", ["suit", "tuxedo", "anzug"]],
+  ["Suits", ["suit", "tuxedo", "anzug", "completo"]],
 ];
 
 export function mapCategory(rawCategory, title = "") {

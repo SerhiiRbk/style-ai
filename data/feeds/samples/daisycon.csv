@@ -1,0 +1,4 @@
+ID;sku;brand;title;description;category;color;gender;price;currency;image;link;in_stock;program_name
+DC-6001;DC-6001;Scotch & Soda;Wool overcoat;Classic single-breasted wool overcoat;Outerwear;Camel;men;229;EUR;https://example.com/img/dc6001.jpg;https://example.com/p/dc6001;1;Scotch & Soda
+DC-6002;DC-6002;Suitsupply;Cotton chinos;Slim-fit cotton chinos;Trousers;Navy;men;99;EUR;https://example.com/img/dc6002.jpg;https://example.com/p/dc6002;1;Suitsupply
+DC-6003;DC-6003;Meermin;Leather derby shoes;Goodyear-welted leather derbies;Footwear;Brown;men;180;EUR;https://example.com/img/dc6003.jpg;https://example.com/p/dc6003;1;Meermin

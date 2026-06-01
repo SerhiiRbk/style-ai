@@ -586,7 +586,7 @@ export function itemsForLook(look: Look, shopping: ShoppingItem[]): ShoppingItem
     .slice(0, 4);
 }
 
-function capsuleMatrix(shopping: ShoppingItem[]): OutfitCombo[] {
+export function capsuleMatrix(shopping: ShoppingItem[]): OutfitCombo[] {
   const pick = (cats: string[]) =>
     shopping.filter((i) => cats.includes(i.category)).map((i) => i.title);
   const layers = pick(["Outerwear"]);

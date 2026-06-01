@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getReportById } from "@/lib/data/reports";
 import { TryOnButton } from "@/components/TryOnButton";
+import { LookTryOn } from "@/components/LookTryOn";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import type { ColorRec, HairRec, ShoppingItem } from "@/lib/report";
@@ -67,10 +68,14 @@ export default async function ReportPage({
     "/images/capsule/capsule-5.png",
     "/images/capsule/capsule-6.png",
   ];
-  const matrix =
-    report.id === "demo"
-      ? extras.matrix.map((c, i) => ({ ...c, image: CAPSULE_IMAGES[i] }))
-      : extras.matrix;
+  // Live reports (not the demo) can render outfits on the user's own photo.
+  const canTryOn = report.id !== "demo";
+
+  const capsuleImages =
+    report.id === "demo" ? CAPSULE_IMAGES : report.capsuleImages;
+  const matrix = capsuleImages
+    ? extras.matrix.map((c, i) => ({ ...c, image: capsuleImages[i] ?? undefined }))
+    : extras.matrix;
 
   return (
     <>
@@ -341,9 +346,16 @@ export default async function ReportPage({
                     items={itemsForLook(look, report.shopping)}
                     currency={profile.currency}
                   />
-                  <button className="mt-4 text-sm text-brass transition-colors hover:text-ink">
-                    Try this on →
-                  </button>
+                  {canTryOn && (
+                    <div className="mt-4">
+                      <LookTryOn
+                        reportId={report.id}
+                        title={look.title}
+                        description={look.description}
+                        palette={look.palette}
+                      />
+                    </div>
+                  )}
                 </div>
               </article>
             ))}
@@ -359,7 +371,10 @@ export default async function ReportPage({
           />
           <div className="mt-10">
             <Capsule capsule={extras.capsule} currency={profile.currency} />
-            <CapsuleMatrix combos={matrix} />
+            <CapsuleMatrix
+              combos={matrix}
+              reportId={canTryOn ? report.id : undefined}
+            />
             <div className="mt-12 border-t hairline pt-10">
               <h3 className="text-sm uppercase tracking-wider text-stone-soft">
                 Good · Better · Best — where to spend

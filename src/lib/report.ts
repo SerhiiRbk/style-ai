@@ -43,6 +43,8 @@ export type StyleReport = {
   shopping: ShoppingItem[];
   doList: string[];
   dontList: string[];
+  /** Signed URLs for the capsule "week of outfits" photos, ordered to match capsuleMatrix(). */
+  capsuleImages?: (string | null | undefined)[];
 };
 
 export const climateFor = (country: string): string => {
@@ -216,6 +218,7 @@ export function assembleReport(opts: {
   content: ReportContent;
   shopping: ShoppingItem[];
   lookImages?: (string | null | undefined)[];
+  capsuleImages?: (string | null | undefined)[];
   id?: string;
   createdAt?: string;
 }): StyleReport {
@@ -238,6 +241,7 @@ export function assembleReport(opts: {
     shopping: opts.shopping,
     doList: opts.content.doList,
     dontList: opts.content.dontList,
+    capsuleImages: opts.capsuleImages,
   };
 }
 

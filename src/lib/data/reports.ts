@@ -13,6 +13,7 @@ import {
   generateLookImage,
   type PhotoInput,
 } from "@/lib/ai/pipeline";
+import { capsuleMatrix } from "@/lib/style-extras";
 import { matchShopping } from "@/lib/data/catalog";
 import type { Intake } from "@/lib/style-profile";
 
@@ -124,6 +125,42 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
     );
 
     await admin.from("looks").insert(lookRows);
+
+    // Capsule "week of outfits" photos — one per outfit-matrix combo, on the
+    // same person. Gated to premium tiers since each combo costs an image gen.
+    if (tier === "lookbook" || tier === "premium") {
+      const colorByTitle = new Map(shopping.map((s) => [s.title, s.color]));
+      const matrix = capsuleMatrix(shopping);
+      const capsulePaths = await Promise.all(
+        matrix.map(async (combo, i) => {
+          const img = await generateLookImage({
+            profile,
+            look: {
+              title: combo.context,
+              description: combo.pieces.join(", "),
+              palette: combo.pieces
+                .map((p) => colorByTitle.get(p))
+                .filter((c): c is string => Boolean(c)),
+            },
+            referenceImageUrl,
+          });
+          if (!img) return null;
+          const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
+          const path = `${userId}/${reportId}/capsule-${i}.${ext}`;
+          const { error: upErr } = await admin.storage
+            .from("assets")
+            .upload(path, img.bytes, {
+              contentType: img.mediaType,
+              upsert: true,
+            });
+          return upErr ? null : path;
+        }),
+      );
+      await admin
+        .from("reports")
+        .update({ capsule_images: capsulePaths })
+        .eq("id", reportId);
+    }
   } catch (e) {
     await admin.from("reports").update({ status: "failed" }).eq("id", reportId);
     throw e;
@@ -158,6 +195,16 @@ export async function getReportById(id: string): Promise<StyleReport | null> {
     }),
   );
 
+  // Sign capsule "week of outfits" photos (ordered to match capsuleMatrix()).
+  const capsulePaths = (row.capsule_images as (string | null)[] | null) ?? [];
+  const capsuleImages = await Promise.all(
+    capsulePaths.map(async (p) => {
+      if (!p) return undefined;
+      const { data } = await sb.storage.from("assets").createSignedUrl(p, 600);
+      return data?.signedUrl ?? undefined;
+    }),
+  );
+
   return assembleReport({
     id: row.id,
     createdAt: row.created_at,
@@ -181,5 +228,6 @@ export async function getReportById(id: string): Promise<StyleReport | null> {
     },
     shopping: row.shopping ?? mockShopping(),
     lookImages,
+    capsuleImages,
   });
 }

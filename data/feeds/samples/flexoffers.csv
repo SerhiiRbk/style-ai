@@ -1,0 +1,4 @@
+productId,sku,manufacturer,productName,description,category,color,gender,salePrice,currency,imageUrl,linkUrl,inStock,advertiserName
+FO-3001,FO-3001,Bonobos,Stretch washed chinos,Everyday stretch washed chinos,Trousers,Khaki,men,98,USD,https://example.com/img/fo3001.jpg,https://example.com/p/fo3001,in stock,Bonobos
+FO-3002,FO-3002,Buck Mason,Pima cotton tee,Heavyweight pima cotton tee,Shirts,White,men,38,USD,https://example.com/img/fo3002.jpg,https://example.com/p/fo3002,in stock,Buck Mason
+FO-3003,FO-3003,Thursday Boots,Captain leather boots,Brown leather lace-up boots,Footwear,Brown,men,199,USD,https://example.com/img/fo3003.jpg,https://example.com/p/fo3003,in stock,Thursday Boot Co
