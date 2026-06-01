@@ -22,6 +22,7 @@ type MatchRow = {
   color: string | null;
   price_eur: number | null;
   deeplink: string | null;
+  image_url: string | null;
 };
 
 /**
@@ -63,6 +64,7 @@ export async function matchShopping(
           retailer: p.source ?? "",
           url: p.deeplink ?? "#",
           color: p.color ?? "#CCCCCC",
+          image: p.image_url ?? undefined,
           productId: p.id,
         });
       }

@@ -5,9 +5,30 @@ import { getReportById } from "@/lib/data/reports";
 import { TryOnButton } from "@/components/TryOnButton";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
-import type { ColorRec, ShoppingItem } from "@/lib/report";
+import type { ColorRec, HairRec, ShoppingItem } from "@/lib/report";
 import { formatMoney } from "@/lib/currency";
 import { BodyTypeFigure } from "@/components/BodyTypePicker";
+import { ColorWheel } from "@/components/ColorWheel";
+import { StyleDetails } from "@/components/StyleDetails";
+import {
+  ArchetypeBadge,
+  Moodboard,
+  WheelLegend,
+  PriorityMoves,
+  ColorDNAGuide,
+  MetalChips,
+  Pairings,
+  EyewearGuide,
+  GroomingGuide,
+  FitBlueprint,
+  Capsule,
+  CapsuleMatrix,
+  PriceTiers,
+  ShopTheLook,
+  FabricsGuide,
+  FinishingTouches,
+} from "@/components/StyleGuides";
+import { buildExtras, investmentLevel, itemsForLook } from "@/lib/style-extras";
 import {
   isBodyType,
   BODY_TYPE_LABELS,
@@ -33,6 +54,23 @@ export default async function ReportPage({
     },
     {},
   );
+
+  const extras = buildExtras(report);
+
+  // The demo report uses the deterministic mock catalogue, so the outfit-matrix
+  // combinations are stable and we can attach pre-rendered lookbook photos.
+  const CAPSULE_IMAGES = [
+    "/images/look-work.png",
+    "/images/capsule/capsule-2.png",
+    "/images/capsule/capsule-3.png",
+    "/images/capsule/capsule-4.png",
+    "/images/capsule/capsule-5.png",
+    "/images/capsule/capsule-6.png",
+  ];
+  const matrix =
+    report.id === "demo"
+      ? extras.matrix.map((c, i) => ({ ...c, image: CAPSULE_IMAGES[i] }))
+      : extras.matrix;
 
   return (
     <>
@@ -75,6 +113,9 @@ export default async function ReportPage({
             <p className="mt-5 max-w-xl leading-relaxed text-paper/70">
               {report.summary}
             </p>
+            <div className="mt-7 border-t border-paper/15 pt-6">
+              <ArchetypeBadge archetype={extras.archetype} />
+            </div>
           </div>
           <div className="relative hidden aspect-[4/5] overflow-hidden rounded-2xl border border-paper/15 md:block">
             <Image
@@ -109,37 +150,127 @@ export default async function ReportPage({
           </div>
         </section>
 
-        {/* Colours */}
+        {/* Start here — 3 highest-impact moves */}
         <section className="container-luxe py-20">
           <SectionHead
-            n="01"
-            title="Your colours"
-            sub="Soft, warm neutrals flatter your low-contrast colouring. Here's what to lean into — and what to leave behind."
+            title="Start here"
+            sub="If you change only three things, change these. The rest of the report builds on them."
           />
-          <div className="mt-12 grid gap-12 lg:grid-cols-2">
-            <ColorColumn title="Colours that work for you" recs={report.colors.best} />
-            <ColorColumn
-              title="Colours to avoid"
-              recs={report.colors.avoid}
-              muted
-            />
+          <div className="mt-10">
+            <PriorityMoves moves={extras.priorityMoves} />
+          </div>
+          <div className="mt-14 border-t hairline pt-12">
+            <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+              The direction — your moodboard
+            </h3>
+            <div className="mt-6">
+              <Moodboard
+                portrait="/images/hero-editorial.png"
+                look={report.looks[0]?.image ?? "/images/look-work.png"}
+                product={report.shopping.find((i) => i.image)?.image}
+                palette={report.colors.best.map((c) => c.hex)}
+                archetypeName={extras.archetype.name}
+              />
+            </div>
           </div>
         </section>
 
-        {/* Hair + silhouette */}
-        <section className="border-y hairline bg-cream/40">
-          <div className="container-luxe grid gap-14 py-20 lg:grid-cols-2">
-            <div>
-              <SectionHead n="02" title="Hair" />
-              <div className="mt-8 space-y-5">
-                {report.hair.recommend.map((h) => (
-                  <RecRow key={h.name} name={h.name} why={h.why} good />
+        {/* Colours */}
+        <section className="border-t hairline container-luxe py-20">
+          <SectionHead
+            n="01"
+            title="Your colour story"
+            sub="Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works."
+          />
+          <div className="mt-12 grid items-start gap-12 lg:grid-cols-[300px_1fr]">
+            <div className="flex flex-col items-center rounded-3xl border hairline bg-cream/40 p-8">
+              <ColorWheel best={report.colors.best} />
+              <div className="mt-6 flex flex-wrap justify-center gap-2">
+                {report.colors.best.map((c) => (
+                  <span
+                    key={c.name}
+                    className="flex items-center gap-2 rounded-full border border-line bg-paper px-3 py-1.5 text-xs"
+                  >
+                    <span
+                      className="h-3 w-3 rounded-full ring-1 ring-ink/10"
+                      style={{ background: c.hex }}
+                    />
+                    {c.name}
+                  </span>
                 ))}
-                {report.hair.avoid.map((h) => (
-                  <RecRow key={h.name} name={h.name} why={h.why} />
+              </div>
+              <WheelLegend />
+            </div>
+            <div>
+              <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                Colours that work for you
+              </h3>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                {report.colors.best.map((c) => (
+                  <ColorCard key={c.name} c={c} />
+                ))}
+              </div>
+              <h3 className="mt-10 text-sm uppercase tracking-wider text-stone-soft">
+                Colours to avoid
+              </h3>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                {report.colors.avoid.map((c) => (
+                  <ColorCard key={c.name} c={c} muted />
                 ))}
               </div>
             </div>
+          </div>
+
+          <div className="mt-12 border-t hairline pt-12">
+            <ColorDNAGuide dna={extras.colorDNA} />
+          </div>
+          <div className="mt-12 grid gap-12 lg:grid-cols-2">
+            <Pairings pairings={extras.pairings} />
+            <MetalChips metals={extras.metals} />
+          </div>
+        </section>
+
+        {/* Hair */}
+        <section className="border-y hairline bg-cream/40">
+          <div className="container-luxe py-20">
+            <SectionHead
+              n="02"
+              title="Hair, beard & eyewear"
+              sub="Cuts that flatter your face shape — with real examples to take to your barber — plus the beard and frame shapes that finish the picture."
+            />
+            <div className="mt-10 grid gap-10 lg:grid-cols-2">
+              <div>
+                <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                  Recommended
+                </h3>
+                <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                  {report.hair.recommend.map((h) => (
+                    <HairCard key={h.name} h={h} good />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                  Best avoided
+                </h3>
+                <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                  {report.hair.avoid.map((h) => (
+                    <HairCard key={h.name} h={h} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-12 grid gap-12 border-t hairline pt-12 lg:grid-cols-2">
+              <GroomingGuide items={extras.grooming} />
+              <EyewearGuide eyewear={extras.eyewear} />
+            </div>
+          </div>
+        </section>
+
+        {/* Silhouette */}
+        <section className="container-luxe py-20">
+          <div className="max-w-3xl">
             <div>
               <SectionHead n="03" title="Silhouette & fit" />
               <div className="mt-6 flex items-start gap-6">
@@ -164,6 +295,7 @@ export default async function ReportPage({
                 ) && <Measurements m={profile.physical.measurements} />}
             </div>
           </div>
+          <FitBlueprint specs={extras.fitBlueprint} />
         </section>
 
         {/* Looks */}
@@ -205,6 +337,10 @@ export default async function ReportPage({
                   <p className="mt-2 text-sm leading-relaxed text-stone">
                     {look.description}
                   </p>
+                  <ShopTheLook
+                    items={itemsForLook(look, report.shopping)}
+                    currency={profile.currency}
+                  />
                   <button className="mt-4 text-sm text-brass transition-colors hover:text-ink">
                     Try this on →
                   </button>
@@ -214,12 +350,31 @@ export default async function ReportPage({
           </div>
         </section>
 
+        {/* Capsule & buying plan */}
+        <section className="border-t hairline container-luxe py-20">
+          <SectionHead
+            n="05"
+            title="Capsule & buying plan"
+            sub="A small, deliberate set of pieces that multiply into many outfits — bought in the order that pays off fastest."
+          />
+          <div className="mt-10">
+            <Capsule capsule={extras.capsule} currency={profile.currency} />
+            <CapsuleMatrix combos={matrix} />
+            <div className="mt-12 border-t hairline pt-10">
+              <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                Good · Better · Best — where to spend
+              </h3>
+              <PriceTiers tiers={extras.priceTiers} currency={profile.currency} />
+            </div>
+          </div>
+        </section>
+
         {/* Shopping list */}
         <section className="border-y hairline bg-ink text-paper">
           <div className="container-luxe py-20">
             <div className="flex items-end justify-between">
               <div>
-                <p className="eyebrow !text-brass-soft">05</p>
+                <p className="eyebrow !text-brass-soft">06</p>
                 <h2 className="mt-3 font-display text-3xl sm:text-4xl">
                   Your shopping list
                 </h2>
@@ -249,7 +404,7 @@ export default async function ReportPage({
                     {items.map((item) => (
                       <div
                         key={item.title}
-                        className="group rounded-xl border border-paper/12 bg-ink-soft/50 p-5 transition-colors hover:border-paper/30"
+                        className="group flex flex-col overflow-hidden rounded-2xl border border-paper/12 bg-ink-soft/40 transition-colors hover:border-paper/30"
                       >
                         <a
                           href={item.url}
@@ -257,28 +412,46 @@ export default async function ReportPage({
                           rel="noopener noreferrer nofollow sponsored"
                           className="block"
                         >
-                          <div className="flex items-center justify-between">
-                            <span
-                              className="h-8 w-8 rounded-full border border-paper/20"
-                              style={{ background: item.color }}
-                            />
-                            <span className="font-display text-lg">
+                          <div className="relative aspect-[4/3] overflow-hidden bg-paper">
+                            {item.image ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={item.image}
+                                alt={item.title}
+                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                              />
+                            ) : (
+                              <div
+                                className="h-full w-full"
+                                style={{
+                                  background: `linear-gradient(140deg, ${item.color}, #1c1a17)`,
+                                }}
+                              />
+                            )}
+                            <span className="absolute right-3 top-3 rounded-full bg-ink/75 px-3 py-1 font-display text-sm text-paper backdrop-blur-sm">
                               {formatMoney(item.priceEur, profile.currency)}
                             </span>
-                          </div>
-                          <h4 className="mt-4 text-paper">{item.title}</h4>
-                          <p className="mt-1.5 text-sm leading-relaxed text-paper/55">
-                            {item.why}
-                          </p>
-                          <div className="mt-4 flex items-center justify-between text-xs text-paper/50">
-                            <span>{item.retailer}</span>
-                            <span className="text-brass-soft transition-colors group-hover:text-paper">
-                              Shop →
+                            <span className="absolute left-3 top-3 rounded-full bg-paper/90 px-2.5 py-1 text-[11px] uppercase tracking-wider text-ink">
+                              {investmentLevel(item)}
                             </span>
+                          </div>
+                          <div className="p-5">
+                            <h4 className="text-paper">{item.title}</h4>
+                            <p className="mt-1.5 text-sm leading-relaxed text-paper/55">
+                              {item.why}
+                            </p>
+                            <div className="mt-4 flex items-center justify-between text-xs text-paper/50">
+                              <span>{item.retailer}</span>
+                              <span className="text-brass-soft transition-colors group-hover:text-paper">
+                                Shop →
+                              </span>
+                            </div>
                           </div>
                         </a>
                         {item.productId && (
-                          <TryOnButton productId={item.productId} />
+                          <div className="px-5 pb-5">
+                            <TryOnButton productId={item.productId} />
+                          </div>
                         )}
                       </div>
                     ))}
@@ -289,13 +462,48 @@ export default async function ReportPage({
           </div>
         </section>
 
-        {/* Do / Don't */}
+        {/* Patterns, accessories & shoes */}
+        <section className="border-b hairline bg-cream/40">
+          <div className="container-luxe py-20">
+            <SectionHead
+              n="07"
+              title="Patterns & finishing details"
+              sub="The textures, fabrics, accessories and shoes that complete the wardrobe."
+            />
+            <div className="mt-10 border-b hairline pb-12">
+              <FabricsGuide fabrics={extras.fabrics} />
+            </div>
+            <div className="mt-12">
+              <StyleDetails />
+            </div>
+          </div>
+        </section>
+
+        {/* How to wear, care & scent */}
         <section className="container-luxe py-20">
-          <SectionHead n="06" title="Do & don't" />
+          <SectionHead
+            n="08"
+            title="How to wear it, and make it last"
+            sub="The small mechanics and habits that separate well-dressed from expensively-dressed."
+          />
+          <div className="mt-10">
+            <FinishingTouches
+              styling={extras.styling}
+              care={extras.care}
+              fragrance={extras.fragrance}
+            />
+          </div>
+        </section>
+
+        {/* Do / Don't */}
+        <section className="border-t hairline container-luxe py-20">
+          <SectionHead n="09" title="Do & don't" />
           <div className="mt-10 grid gap-8 md:grid-cols-2">
             <ListCard title="Do" items={report.doList} good />
             <ListCard title="Avoid" items={report.dontList} />
           </div>
+
+          <TipsStrip />
 
           <div className="mt-16 rounded-2xl border hairline bg-cream/40 p-10 text-center">
             <h3 className="font-display text-2xl">Want the full lookbook?</h3>
@@ -325,6 +533,61 @@ export default async function ReportPage({
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const STYLE_TIPS: { title: string; desc: string; icon: React.ReactNode }[] = [
+  {
+    title: "Clean & simple",
+    desc: "Fewer, better pieces beat a crowded wardrobe.",
+    icon: (
+      <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    ),
+  },
+  {
+    title: "Fit comes first",
+    desc: "Tailoring the shoulders and hem changes everything.",
+    icon: (
+      <path d="M7 4l5 4 5-4 3 6-4 2v8H8v-8L4 10z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+    ),
+  },
+  {
+    title: "Earthy, warm tones",
+    desc: "Let your palette lead; keep contrast soft.",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.6" />
+        <circle cx="12" cy="12" r="3" fill="currentColor" />
+      </>
+    ),
+  },
+  {
+    title: "Grooming is key",
+    desc: "A sharp cut and tidy beard finish the whole look.",
+    icon: (
+      <path d="M6 4v7a6 6 0 0012 0V4M9 20h6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    ),
+  },
+];
+
+function TipsStrip() {
+  return (
+    <div className="mt-14 rounded-3xl border hairline bg-cream/40 px-8 py-12">
+      <p className="eyebrow text-center">Style principles</p>
+      <div className="mx-auto mt-8 grid max-w-4xl gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        {STYLE_TIPS.map((t) => (
+          <div key={t.title} className="flex flex-col items-center text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-ink text-paper">
+              <svg viewBox="0 0 24 24" className="h-6 w-6">
+                {t.icon}
+              </svg>
+            </div>
+            <div className="mt-4 font-display text-lg">{t.title}</div>
+            <p className="mt-1.5 text-sm leading-relaxed text-stone">{t.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function Measurements({ m }: { m: MeasurementsT }) {
@@ -370,77 +633,74 @@ function SectionHead({
   title,
   sub,
 }: {
-  n: string;
+  n?: string;
   title: string;
   sub?: string;
 }) {
   return (
     <div className="max-w-2xl">
-      <p className="eyebrow">{n}</p>
+      {n && <p className="eyebrow">{n}</p>}
       <h2 className="mt-3 font-display text-3xl sm:text-4xl">{title}</h2>
       {sub && <p className="mt-3 leading-relaxed text-stone">{sub}</p>}
     </div>
   );
 }
 
-function ColorColumn({
-  title,
-  recs,
-  muted = false,
-}: {
-  title: string;
-  recs: ColorRec[];
-  muted?: boolean;
-}) {
+function ColorCard({ c, muted = false }: { c: ColorRec; muted?: boolean }) {
   return (
-    <div>
-      <h3 className={`text-sm ${muted ? "text-stone-soft" : "text-ink"}`}>
-        {title}
-      </h3>
-      <div className="mt-5 space-y-5">
-        {recs.map((c) => (
-          <div key={c.name} className="flex items-start gap-4">
-            <span
-              className="mt-0.5 h-12 w-12 shrink-0 rounded-xl border border-ink/10"
-              style={{ background: c.hex }}
-            />
-            <div>
-              <div className="flex items-baseline gap-2">
-                <span className="font-display text-lg">{c.name}</span>
-                <span className="text-xs text-stone-soft">{c.hex}</span>
-              </div>
-              <p className="mt-1 text-sm leading-relaxed text-stone">{c.why}</p>
-            </div>
+    <div
+      className={`rounded-2xl border hairline p-4 ${
+        muted ? "bg-cream/30" : "bg-paper"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className="h-11 w-11 shrink-0 rounded-xl ring-1 ring-ink/10"
+          style={{ background: c.hex }}
+        />
+        <div>
+          <div className="font-display text-lg leading-tight">{c.name}</div>
+          <div className="mt-0.5 text-[11px] uppercase tracking-wider text-stone-soft">
+            {c.hex}
           </div>
-        ))}
+        </div>
       </div>
+      <p className="mt-3 text-sm leading-relaxed text-stone">{c.why}</p>
     </div>
   );
 }
 
-function RecRow({
-  name,
-  why,
-  good = false,
-}: {
-  name: string;
-  why: string;
-  good?: boolean;
-}) {
+function HairCard({ h, good = false }: { h: HairRec; good?: boolean }) {
   return (
-    <div className="flex items-start gap-4">
-      <span
-        className={`mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs ${
-          good ? "bg-ink text-paper" : "border border-line text-stone-soft"
-        }`}
-      >
-        {good ? "✓" : "✕"}
-      </span>
-      <div>
-        <div className="font-display text-lg">{name}</div>
-        <p className="mt-0.5 text-sm leading-relaxed text-stone">{why}</p>
+    <article className="overflow-hidden rounded-2xl border hairline bg-paper">
+      <div className="relative aspect-[4/5] bg-sand">
+        {h.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={h.image}
+            alt={h.name}
+            className={`h-full w-full object-cover ${
+              good ? "" : "opacity-95 grayscale-[35%]"
+            }`}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center px-4 text-center font-display text-lg text-stone-soft">
+            {h.name}
+          </div>
+        )}
+        <span
+          className={`absolute left-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-sm ${
+            good ? "bg-ink text-paper" : "bg-paper/90 text-stone"
+          }`}
+        >
+          {good ? "✓" : "✕"}
+        </span>
       </div>
-    </div>
+      <div className="p-4">
+        <div className="font-display text-lg">{h.name}</div>
+        <p className="mt-1 text-sm leading-relaxed text-stone">{h.why}</p>
+      </div>
+    </article>
   );
 }
 

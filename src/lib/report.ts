@@ -8,7 +8,7 @@ import {
 export type Tier = "free" | "basic" | "lookbook" | "premium";
 
 export type ColorRec = { name: string; hex: string; why: string };
-export type HairRec = { name: string; why: string };
+export type HairRec = { name: string; why: string; image?: string };
 export type ShoppingItem = {
   category: string;
   title: string;
@@ -17,6 +17,7 @@ export type ShoppingItem = {
   retailer: string;
   url: string;
   color: string;
+  image?: string;
   productId?: string;
 };
 export type Look = {
@@ -107,11 +108,11 @@ export function mockReportContent(intake: Intake): ReportContent {
 
   const hair = {
     recommend: [
-      { name: "Textured crop", why: "Adds structure that balances an oval face and reads contemporary." },
-      { name: "Short tapered sides", why: "Clean, low-maintenance, and quietly sharpens the jawline." },
+      { name: "Textured crop", why: "Adds structure that balances an oval face and reads contemporary.", image: "/images/hair/textured-crop.png" },
+      { name: "Short tapered sides", why: "Clean, low-maintenance, and quietly sharpens the jawline.", image: "/images/hair/tapered-sides.png" },
     ],
     avoid: [
-      { name: "Heavy straight fringe", why: "Shortens the face and dates the overall look." },
+      { name: "Heavy straight fringe", why: "Shortens the face and dates the overall look.", image: "/images/hair/heavy-fringe.png" },
     ],
   };
 
@@ -138,10 +139,22 @@ export function mockReportContent(intake: Intake): ReportContent {
       palette: ["#6B6B47", "#EFE6D3", "#1F2733", "#8A6A4A"],
     },
     {
-      context: "Weekend / travel",
+      context: "Weekend",
       title: "Effortless ease",
-      description: "Camel crewneck, taupe chinos, white minimal sneakers, field watch.",
-      palette: ["#B08A5B", "#9B8C72", "#F4F1EA", "#2A2A2A"],
+      description: "Camel crewneck, taupe chinos, cream leather sneakers, field watch.",
+      palette: ["#B08A5B", "#9B8C72", "#E8E1D3", "#2A2A2A"],
+    },
+    {
+      context: "Formal / events",
+      title: "Polished formal",
+      description: "Midnight-navy suit, crisp white shirt (no tie), dark brown oxfords.",
+      palette: ["#1F2740", "#F3EEE4", "#3B2A1E", "#C9A24B"],
+    },
+    {
+      context: "Travel / transitional",
+      title: "Easy transit",
+      description: "Camel overcoat over cream crewneck, taupe trousers, cream leather sneakers.",
+      palette: ["#B08A5B", "#EFE6D3", "#9B8C72", "#E8E1D3"],
     },
   ];
 
@@ -177,18 +190,21 @@ const LOOK_IMAGES = [
   "/images/look-work.png",
   "/images/look-dinner.png",
   "/images/look-weekend.png",
+  "/images/look-formal.png",
+  "/images/look-travel.png",
 ];
 
 /** Deterministic mock shopping list — used in demo mode and as catalogue fallback. */
 export function mockShopping(): ShoppingItem[] {
   return [
-    { category: "Outerwear", title: "Unstructured navy blazer", why: "The single highest-impact piece — elevates everything it touches.", priceEur: 189, retailer: "COS", url: "https://www.cos.com", color: "#27324A" },
-    { category: "Knitwear", title: "Camel merino crewneck", why: "Warm neutral that layers over shirts and under the blazer.", priceEur: 95, retailer: "Uniqlo", url: "https://www.uniqlo.com", color: "#B08A5B" },
-    { category: "Shirts", title: "Olive overshirt", why: "Bridges casual and smart — a season-spanning workhorse.", priceEur: 79, retailer: "Arket", url: "https://www.arket.com", color: "#6B6B47" },
-    { category: "Trousers", title: "Charcoal wool-blend trousers", why: "Mid-rise, clean break — the foundation of the work looks.", priceEur: 110, retailer: "Massimo Dutti", url: "https://www.massimodutti.com", color: "#3A3A3A" },
-    { category: "Footwear", title: "Brown leather derbies", why: "Warm-toned shoes tie the palette together far better than black.", priceEur: 160, retailer: "Loake", url: "https://www.loake.com", color: "#5A3D2B" },
-    { category: "Footwear", title: "Minimal white sneakers", why: "The clean casual anchor for weekend looks.", priceEur: 120, retailer: "CQP", url: "https://www.cqp.se", color: "#F4F1EA" },
-    { category: "Accessories", title: "Field watch, cream dial", why: "Understated warmth on the wrist; avoids flash.", priceEur: 145, retailer: "Timex", url: "https://www.timex.com", color: "#EFE6D3" },
+    { category: "Outerwear", title: "Unstructured navy blazer", why: "The single highest-impact piece — elevates everything it touches.", priceEur: 189, retailer: "COS", url: "https://www.cos.com", color: "#27324A", image: "/images/products/navy-blazer.png" },
+    { category: "Knitwear", title: "Camel merino crewneck", why: "Warm neutral that layers over shirts and under the blazer.", priceEur: 95, retailer: "Uniqlo", url: "https://www.uniqlo.com", color: "#B08A5B", image: "/images/products/camel-crewneck.png" },
+    { category: "Shirts", title: "Olive overshirt", why: "Bridges casual and smart — a season-spanning workhorse.", priceEur: 79, retailer: "Arket", url: "https://www.arket.com", color: "#6B6B47", image: "/images/products/olive-overshirt.png" },
+    { category: "Trousers", title: "Charcoal wool-blend trousers", why: "Mid-rise, clean break — the foundation of the work looks.", priceEur: 110, retailer: "Massimo Dutti", url: "https://www.massimodutti.com", color: "#3A3A3A", image: "/images/products/charcoal-trousers.png" },
+    { category: "Footwear", title: "Brown leather derbies", why: "Warm-toned shoes tie the palette together far better than black.", priceEur: 160, retailer: "Loake", url: "https://www.loake.com", color: "#5A3D2B", image: "/images/products/brown-derbies.png" },
+    { category: "Footwear", title: "Cream leather sneakers", why: "A warm off-white reads dressier than bright white and stays in your palette year-round.", priceEur: 120, retailer: "CQP", url: "https://www.cqp.se", color: "#E8E1D3", image: "/images/products/cream-sneakers.png" },
+    { category: "Footwear", title: "Tan suede chelsea boots", why: "The casual anchor with more weight than a sneaker — carries the warm palette into cooler months.", priceEur: 190, retailer: "Grenson", url: "https://www.grenson.com", color: "#8A6A4A", image: "/images/products/chelsea-boots.png" },
+    { category: "Accessories", title: "Field watch, cream dial", why: "Understated warmth on the wrist; avoids flash.", priceEur: 145, retailer: "Timex", url: "https://www.timex.com", color: "#EFE6D3", image: "/images/products/field-watch.png" },
   ];
 }
 
