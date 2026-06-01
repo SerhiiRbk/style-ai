@@ -1,0 +1,47 @@
+{
+  "products": [
+    {
+      "source": "scraper:arket",
+      "externalId": "arket-overshirt-olive",
+      "brand": "Arket",
+      "title": "Cotton overshirt",
+      "description": "Boxy cotton overshirt, perfect mid-layer",
+      "category": "Outerwear",
+      "gender": "men",
+      "color": "Olive",
+      "colorHex": "#6B6B47",
+      "price": 99,
+      "currency": "EUR",
+      "imageUrl": "https://img.arket.com/overshirt-olive.jpg",
+      "deeplink": "https://www.arket.com/en/overshirt-olive.html",
+      "inStock": true
+    },
+    {
+      "source": "scraper:arket",
+      "externalId": "arket-chino-taupe",
+      "brand": "Arket",
+      "title": "Cotton chinos",
+      "category": "Trousers",
+      "gender": "men",
+      "color": "Taupe",
+      "colorHex": "#9B8C72",
+      "price": 79,
+      "currency": "EUR",
+      "imageUrl": "https://img.arket.com/chino-taupe.jpg",
+      "deeplink": "https://www.arket.com/en/chinos-taupe.html",
+      "inStock": true
+    },
+    {
+      "source": "scraper:cos",
+      "externalId": "cos-linen-shirt-sand",
+      "brand": "COS",
+      "title": "Relaxed linen shirt",
+      "category": "Shirts",
+      "color": "Sand",
+      "price": 69,
+      "currency": "EUR",
+      "imageUrl": "https://img.cos.com/linen-sand.jpg",
+      "deeplink": "https://www.cos.com/en/linen-shirt-sand.html"
+    }
+  ]
+}

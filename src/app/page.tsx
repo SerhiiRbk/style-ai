@@ -3,6 +3,8 @@ import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
+import { getGeo } from "@/lib/geo";
+import { TIER_PRICES } from "@/lib/currency";
 
 export default function Home() {
   return (
@@ -403,11 +405,13 @@ function Card({
   );
 }
 
-function Pricing() {
+async function Pricing() {
+  const { subCurrency } = await getGeo();
+  const p = TIER_PRICES[subCurrency];
   const tiers = [
     {
       name: "Free preview",
-      price: "€0",
+      price: p.free,
       cadence: "one simplified report",
       features: ["1 goal analysed", "3 key recommendations", "1 preview look (watermarked)"],
       cta: "Try it free",
@@ -416,7 +420,7 @@ function Pricing() {
     },
     {
       name: "Basic Report",
-      price: "€24",
+      price: p.basic,
       cadence: "one-time",
       features: ["Full style profile", "Colours, hair & silhouette with reasons", "Infographic + PDF", "Shopping list with real links"],
       cta: "Get Basic",
@@ -425,7 +429,7 @@ function Pricing() {
     },
     {
       name: "Lookbook",
-      price: "€44",
+      price: p.lookbook,
       cadence: "one-time",
       features: ["Everything in Basic", "8–12 photorealistic looks", "Virtual try-on", "Capsule wardrobe"],
       cta: "Get Lookbook",
@@ -434,7 +438,7 @@ function Pricing() {
     },
     {
       name: "Premium",
-      price: "€89",
+      price: p.premium,
       cadence: "one-time",
       features: ["Everything in Lookbook", "20+ looks & deeper analysis", "Priority generation", "Free regenerations"],
       cta: "Get Premium",
@@ -451,8 +455,9 @@ function Pricing() {
             Pay once, or subscribe for a wardrobe that keeps up.
           </h2>
           <p className="mt-4 text-stone">
-            Membership at €14.99/mo adds monthly refreshes, credits, the Look
-            Builder and unlimited try-on. Business white-label from €99/mo.
+            Membership at {p.membership}/mo adds monthly refreshes, credits, the
+            Look Builder and unlimited try-on. Business white-label from{" "}
+            {p.business}/mo.
           </p>
         </div>
 

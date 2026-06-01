@@ -1,4 +1,9 @@
-import type { Intake, StyleProfile, ReportContent } from "./style-profile";
+import {
+  inferBodyTypeFromMeasurements,
+  type Intake,
+  type StyleProfile,
+  type ReportContent,
+} from "./style-profile";
 
 export type Tier = "free" | "basic" | "lookbook" | "premium";
 
@@ -64,10 +69,19 @@ export function mockStyleProfile(intake: Intake): StyleProfile {
       undertone: "warm",
       contrast: "low",
       faceShape: "oval",
-      bodyType: "rectangle",
+      bodyType:
+        intake.bodyType ??
+        inferBodyTypeFromMeasurements(
+          intake.measurements,
+          intake.genderPresentation,
+        ) ??
+        "rectangle",
       heightCm: intake.heightCm,
+      weightKg: intake.weightKg,
+      measurements: intake.measurements,
     },
     colorSeason: "autumn",
+    currency: intake.currency,
     goals: intake.goals,
     boldness: intake.boldness,
     budgetEur: intake.budgetEur,
@@ -227,11 +241,19 @@ export const demoIntake: Intake = {
   genderPresentation: "male",
   city: "Berlin",
   country: "Germany",
+  currency: "EUR",
   heightCm: 182,
   occupation: "Software / IT",
   lifestyle: ["Office & remote", "Travels often"],
   goals: ["Look more professional", "Look modern but natural"],
   boldness: "moderate",
   budgetEur: { min: 400, max: 1200 },
+  measurements: {
+    shoulderCm: 112,
+    chestCm: 104,
+    waistCm: 90,
+    hipCm: 102,
+    sleeveCm: 86,
+  },
   notes: "Recently relocated, wants to look appropriate for the local scene.",
 };

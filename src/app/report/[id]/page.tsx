@@ -5,8 +5,14 @@ import { getReportById } from "@/lib/data/reports";
 import { TryOnButton } from "@/components/TryOnButton";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
-import { PrintButton } from "@/components/PrintButton";
 import type { ColorRec, ShoppingItem } from "@/lib/report";
+import { formatMoney } from "@/lib/currency";
+import { BodyTypeFigure } from "@/components/BodyTypePicker";
+import {
+  isBodyType,
+  BODY_TYPE_LABELS,
+  type Measurements as MeasurementsT,
+} from "@/lib/style-profile";
 
 export default async function ReportPage({
   params,
@@ -37,9 +43,13 @@ export default async function ReportPage({
             StyleAI
           </Link>
           <div className="flex items-center gap-3">
-            <PrintButton className="rounded-full border border-paper/25 px-5 py-2 text-sm text-paper/90 transition-colors hover:bg-paper hover:text-ink">
+            <a
+              href={`/api/reports/${report.id}/pdf`}
+              download
+              className="rounded-full border border-paper/25 px-5 py-2 text-sm text-paper/90 transition-colors hover:bg-paper hover:text-ink"
+            >
               Download PDF
-            </PrintButton>
+            </a>
             <ButtonLink
               href="/start"
               className="!bg-paper !text-ink hover:!bg-cream !px-5 !py-2"
@@ -87,7 +97,14 @@ export default async function ReportPage({
             <Snapshot label="Undertone" value={cap(profile.physical.undertone)} />
             <Snapshot label="Contrast" value={cap(profile.physical.contrast)} />
             <Snapshot label="Face shape" value={cap(profile.physical.faceShape)} />
-            <Snapshot label="Build" value={cap(profile.physical.bodyType)} />
+            <Snapshot
+              label="Build"
+              value={
+                isBodyType(profile.physical.bodyType)
+                  ? BODY_TYPE_LABELS[profile.physical.bodyType]
+                  : cap(profile.physical.bodyType)
+              }
+            />
             <Snapshot label="Boldness" value={cap(profile.boldness)} />
           </div>
         </section>
@@ -125,7 +142,14 @@ export default async function ReportPage({
             </div>
             <div>
               <SectionHead n="03" title="Silhouette & fit" />
-              <p className="mt-6 font-display text-2xl">{report.silhouette.fit}</p>
+              <div className="mt-6 flex items-start gap-6">
+                {isBodyType(profile.physical.bodyType) && (
+                  <div className="shrink-0 rounded-xl border border-line bg-paper p-3">
+                    <BodyTypeFigure id={profile.physical.bodyType} />
+                  </div>
+                )}
+                <p className="font-display text-2xl">{report.silhouette.fit}</p>
+              </div>
               <ul className="mt-5 space-y-3">
                 {report.silhouette.rules.map((r) => (
                   <li key={r} className="flex items-start gap-3 text-stone">
@@ -134,6 +158,10 @@ export default async function ReportPage({
                   </li>
                 ))}
               </ul>
+              {profile.physical.measurements &&
+                Object.values(profile.physical.measurements).some(
+                  (v) => v != null,
+                ) && <Measurements m={profile.physical.measurements} />}
             </div>
           </div>
         </section>
@@ -202,7 +230,10 @@ export default async function ReportPage({
               </div>
               <div className="hidden text-right sm:block">
                 <div className="font-display text-3xl">
-                  €{report.shopping.reduce((s, i) => s + i.priceEur, 0)}
+                  {formatMoney(
+                    report.shopping.reduce((s, i) => s + i.priceEur, 0),
+                    profile.currency,
+                  )}
                 </div>
                 <div className="text-xs text-paper/50">
                   {report.shopping.length} essential pieces
@@ -232,7 +263,7 @@ export default async function ReportPage({
                               style={{ background: item.color }}
                             />
                             <span className="font-display text-lg">
-                              €{item.priceEur}
+                              {formatMoney(item.priceEur, profile.currency)}
                             </span>
                           </div>
                           <h4 className="mt-4 text-paper">{item.title}</h4>
@@ -274,9 +305,13 @@ export default async function ReportPage({
             </p>
             <div className="mt-6 flex justify-center gap-3">
               <ButtonLink href="/#pricing">Upgrade to Lookbook</ButtonLink>
-              <PrintButton className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper">
+              <a
+                href={`/api/reports/${report.id}/pdf`}
+                download
+                className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
+              >
                 Download PDF
-              </PrintButton>
+              </a>
             </div>
           </div>
         </section>
@@ -290,6 +325,33 @@ export default async function ReportPage({
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function Measurements({ m }: { m: MeasurementsT }) {
+  const rows: [string, number | undefined][] = [
+    ["Shoulders", m.shoulderCm],
+    ["Chest", m.chestCm],
+    ["Waist", m.waistCm],
+    ["Hips", m.hipCm],
+    ["Sleeve", m.sleeveCm],
+  ];
+  return (
+    <div className="mt-7 border-t hairline pt-5">
+      <div className="text-xs uppercase tracking-wider text-stone-soft">
+        Your measurements
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 sm:grid-cols-3">
+        {rows
+          .filter(([, v]) => v != null)
+          .map(([label, v]) => (
+            <div key={label} className="flex items-baseline justify-between">
+              <dt className="text-sm text-stone">{label}</dt>
+              <dd className="font-display text-lg text-ink">{v} cm</dd>
+            </div>
+          ))}
+      </dl>
+    </div>
+  );
 }
 
 function Snapshot({ label, value }: { label: string; value: string }) {

@@ -4,6 +4,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { BodyTypePicker } from "@/components/BodyTypePicker";
+import {
+  inferBodyTypeFromMeasurements,
+  type BodyTypeId,
+} from "@/lib/style-profile";
+import { COUNTRIES, countryNameFromCode } from "@/lib/countries";
+import {
+  TIER_PRICES,
+  PROFILE_CURRENCIES,
+  type Currency,
+  type SubCurrency,
+} from "@/lib/currency";
 
 type Tier = "free" | "basic" | "lookbook" | "premium";
 
@@ -51,14 +63,14 @@ const BUDGETS: { label: string; min: number; max: number }[] = [
   { label: "€1000–3000", min: 1000, max: 3000 },
   { label: "€3000+", min: 3000, max: 8000 },
 ];
-const TIERS: { id: Tier; name: string; price: string; note: string }[] = [
-  { id: "free", name: "Free preview", price: "€0", note: "Simplified, 1 look" },
-  { id: "basic", name: "Basic Report", price: "€24", note: "Full report + PDF" },
-  { id: "lookbook", name: "Lookbook", price: "€44", note: "12 looks + try-on" },
-  { id: "premium", name: "Premium", price: "€89", note: "Everything, deeper" },
+const TIERS: { id: Tier; name: string; note: string }[] = [
+  { id: "free", name: "Free preview", note: "Simplified, 1 look" },
+  { id: "basic", name: "Basic Report", note: "Full report + PDF" },
+  { id: "lookbook", name: "Lookbook", note: "12 looks + try-on" },
+  { id: "premium", name: "Premium", note: "Everything, deeper" },
 ];
 
-const STEPS = ["Photos", "About you", "Goals", "Package"];
+const STEPS = ["About you", "Photos", "Goals", "Package"];
 
 const LIVE = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
@@ -112,13 +124,59 @@ export default function StartPage() {
   const [gender, setGender] = useState("male");
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
+  const [currency, setCurrency] = useState<Currency>("EUR");
+  const [subCurrency, setSubCurrency] = useState<SubCurrency>("EUR");
   const [height, setHeight] = useState(180);
+  const [weight, setWeight] = useState("");
+  const [bodyType, setBodyType] = useState<BodyTypeId | "">("");
+  const [bodyTypeManual, setBodyTypeManual] = useState(false);
+  const [shoulderCm, setShoulderCm] = useState("");
+  const [chestCm, setChestCm] = useState("");
+  const [waistCm, setWaistCm] = useState("");
+  const [hipCm, setHipCm] = useState("");
+  const [sleeveCm, setSleeveCm] = useState("");
   const [occupation, setOccupation] = useState(OCCUPATIONS[0]);
   const [lifestyle, setLifestyle] = useState<string[]>([]);
   const [goals, setGoals] = useState<string[]>([]);
   const [boldness, setBoldness] = useState("moderate");
   const [budget, setBudget] = useState(1);
   const [tier, setTier] = useState<Tier>("lookbook");
+
+  // Prefill country/city/currency from Vercel geolocation (best-effort).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/geo")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((g) => {
+        if (cancelled || !g) return;
+        const name = countryNameFromCode(g.country);
+        if (name) setCountry((c) => c || name);
+        if (g.city) setCity((c) => c || g.city);
+        if (g.currency) setCurrency(g.currency);
+        if (g.subCurrency) setSubCurrency(g.subCurrency);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const measurements = useMemo(
+    () => ({
+      shoulderCm: shoulderCm ? Number(shoulderCm) : undefined,
+      chestCm: chestCm ? Number(chestCm) : undefined,
+      waistCm: waistCm ? Number(waistCm) : undefined,
+      hipCm: hipCm ? Number(hipCm) : undefined,
+      sleeveCm: sleeveCm ? Number(sleeveCm) : undefined,
+    }),
+    [shoulderCm, chestCm, waistCm, hipCm, sleeveCm],
+  );
+
+  // Default body type derived from girths; a manual pick takes precedence.
+  const derivedBodyType = inferBodyTypeFromMeasurements(measurements, gender);
+  const effectiveBodyType: BodyTypeId | "" = bodyTypeManual
+    ? bodyType
+    : (derivedBodyType ?? bodyType);
 
   const toggle = (
     arr: string[],
@@ -129,7 +187,7 @@ export default function StartPage() {
   };
 
   const canNext = () => {
-    if (step === 1) return city.trim() && country.trim();
+    if (step === 0) return city.trim() && country.trim();
     if (step === 2) return goals.length > 0;
     return true;
   };
@@ -149,7 +207,13 @@ export default function StartPage() {
             genderPresentation: gender,
             city,
             country,
+            currency,
             heightCm: height,
+            weightKg: weight ? Number(weight) : undefined,
+            bodyType: effectiveBodyType || undefined,
+            measurements: Object.values(measurements).some((v) => v != null)
+              ? measurements
+              : undefined,
             occupation,
             lifestyle,
             goals,
@@ -188,9 +252,9 @@ export default function StartPage() {
         <Stepper step={step} />
 
         <div className="mt-10 min-h-[380px]">
-          {step === 0 && (
+          {step === 1 && (
             <Section
-              eyebrow="Step 1"
+              eyebrow="Step 2"
               title="Upload your photos"
               subtitle="A clear front portrait and a full-length shot work best. Profile and a current outfit are optional. Photos are processed privately and never sold."
             >
@@ -228,9 +292,9 @@ export default function StartPage() {
             </Section>
           )}
 
-          {step === 1 && (
+          {step === 0 && (
             <Section
-              eyebrow="Step 2"
+              eyebrow="Step 1"
               title="A little about you"
               subtitle="This grounds every recommendation in your real life — age, climate, profession and frame."
             >
@@ -255,6 +319,13 @@ export default function StartPage() {
                     className="w-full accent-[var(--color-ink)]"
                   />
                 </Field>
+                <Field label="Weight (kg) — optional">
+                  <Input
+                    value={weight}
+                    onChange={(v) => setWeight(v.replace(/[^0-9]/g, ""))}
+                    placeholder="e.g. 82"
+                  />
+                </Field>
                 <Field label="Gender presentation">
                   <Select
                     value={gender}
@@ -277,13 +348,83 @@ export default function StartPage() {
                   <Input value={city} onChange={setCity} placeholder="Berlin" />
                 </Field>
                 <Field label="Country">
-                  <Input
+                  <Select
                     value={country}
                     onChange={setCountry}
-                    placeholder="Germany"
+                    options={[
+                      ["", "Select country"],
+                      ...COUNTRIES.map(
+                        (c) => [c.name, c.name] as [string, string],
+                      ),
+                    ]}
+                  />
+                </Field>
+                <Field label="Preferred currency">
+                  <Select
+                    value={currency}
+                    onChange={(v) => setCurrency(v as Currency)}
+                    options={PROFILE_CURRENCIES.map((c) => [c, c])}
                   />
                 </Field>
               </div>
+
+              <Label className="mt-8">Measurements — optional</Label>
+              <p className="mt-1 text-xs text-stone-soft">
+                Girth in centimetres. Shoulder, waist and hip girth set your
+                body type automatically — you can still adjust it below.
+              </p>
+              <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                <Field label="Shoulders (cm)">
+                  <Input
+                    value={shoulderCm}
+                    onChange={(v) => setShoulderCm(v.replace(/[^0-9]/g, ""))}
+                    placeholder="e.g. 118"
+                  />
+                </Field>
+                <Field label="Chest (cm)">
+                  <Input
+                    value={chestCm}
+                    onChange={(v) => setChestCm(v.replace(/[^0-9]/g, ""))}
+                    placeholder="e.g. 102"
+                  />
+                </Field>
+                <Field label="Waist (cm)">
+                  <Input
+                    value={waistCm}
+                    onChange={(v) => setWaistCm(v.replace(/[^0-9]/g, ""))}
+                    placeholder="e.g. 90"
+                  />
+                </Field>
+                <Field label="Hips (cm)">
+                  <Input
+                    value={hipCm}
+                    onChange={(v) => setHipCm(v.replace(/[^0-9]/g, ""))}
+                    placeholder="e.g. 100"
+                  />
+                </Field>
+                <Field label="Sleeve: shoulder → thumb base (cm)">
+                  <Input
+                    value={sleeveCm}
+                    onChange={(v) => setSleeveCm(v.replace(/[^0-9]/g, ""))}
+                    placeholder="e.g. 86"
+                  />
+                </Field>
+              </div>
+
+              <Label className="mt-8">Body type — optional</Label>
+              <p className="mt-1 text-xs text-stone-soft">
+                {effectiveBodyType && !bodyTypeManual
+                  ? "Pre-selected from your measurements — tap to change."
+                  : "Pick the silhouette closest to you. It helps us recommend the most flattering fits — you can skip this."}
+              </p>
+              <BodyTypePicker
+                gender={gender}
+                value={effectiveBodyType}
+                onChange={(v) => {
+                  setBodyType(v);
+                  setBodyTypeManual(true);
+                }}
+              />
             </Section>
           )}
 
@@ -354,7 +495,9 @@ export default function StartPage() {
                       <div className="text-sm text-ink">{t.name}</div>
                       <div className="text-xs text-stone-soft">{t.note}</div>
                     </div>
-                    <div className="font-display text-2xl">{t.price}</div>
+                    <div className="font-display text-2xl">
+                      {TIER_PRICES[subCurrency][t.id]}
+                    </div>
                   </button>
                 ))}
               </div>

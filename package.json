@@ -7,16 +7,26 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "db:migrate": "node --env-file=.env.local scripts/db-migrate.mjs",
+    "db:setup": "npm run db:migrate && npm run seed:rules && npm run seed:catalog",
     "seed:rules": "node --env-file=.env.local scripts/seed-rules.mjs",
-    "seed:catalog": "node --env-file=.env.local scripts/ingest-catalog.mjs"
+    "seed:catalog": "node --env-file=.env.local scripts/ingest-catalog.mjs",
+    "import:feed": "node --env-file=.env.local scripts/import-feed.mjs",
+    "import:feed:test": "node scripts/import-feed.mjs --all-samples --dry-run"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
+    "@workflow/next": "^4.0.6",
     "ai": "^6.0.193",
+    "csv-parse": "^6.2.1",
+    "fast-xml-parser": "^5.8.0",
     "next": "16.2.6",
+    "pdf-lib": "^1.17.1",
+    "pg": "^8.21.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "workflow": "^4.2.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -27,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vercel": "^54.6.1"
   }
 }

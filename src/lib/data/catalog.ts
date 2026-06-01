@@ -3,6 +3,7 @@ import { embed } from "ai";
 import { env, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { mockShopping, type ShoppingItem } from "@/lib/report";
+import { marketForCurrency } from "@/lib/currency";
 import type { StyleProfile, ReportContent } from "@/lib/style-profile";
 
 const CATEGORIES = [
@@ -38,6 +39,7 @@ export async function matchShopping(
     const sb = createAdminSupabase();
     const palette = content.colors.best.map((c) => c.name).join(", ");
     const goal = profile.goals[0]?.toLowerCase() ?? "your goals";
+    const market = marketForCurrency(profile.currency);
     const items: ShoppingItem[] = [];
 
     for (const category of CATEGORIES) {
@@ -50,6 +52,7 @@ export async function matchShopping(
         match_count: 2,
         filter_category: category,
         max_price: profile.budgetEur.max,
+        market_filter: market,
       });
       for (const p of (data ?? []) as MatchRow[]) {
         items.push({

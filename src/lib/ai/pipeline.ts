@@ -6,6 +6,7 @@ import { createAdminSupabase } from "@/lib/supabase/server";
 import { climateFor, mockStyleProfile, mockReportContent } from "@/lib/report";
 import {
   reportContentSchema,
+  inferBodyTypeFromMeasurements,
   type Intake,
   type StyleProfile,
   type ReportContent,
@@ -64,10 +65,20 @@ export async function analyzeProfile(
       undertone: output.undertone,
       contrast: output.contrast,
       faceShape: output.faceShape,
-      bodyType: output.bodyType,
+      // Self-report / measurements take precedence over the vision estimate.
+      bodyType:
+        intake.bodyType ??
+        inferBodyTypeFromMeasurements(
+          intake.measurements,
+          intake.genderPresentation,
+        ) ??
+        output.bodyType,
       heightCm: intake.heightCm,
+      weightKg: intake.weightKg,
+      measurements: intake.measurements,
     },
     colorSeason: output.colorSeason,
+    currency: intake.currency,
     goals: intake.goals,
     boldness: intake.boldness,
     budgetEur: intake.budgetEur,
@@ -94,6 +105,25 @@ export async function retrieveRules(profile: StyleProfile): Promise<string[]> {
   }
 }
 
+/** Human-readable girth summary for the reasoning prompt (empty when absent). */
+function measurementsSummary(m?: {
+  shoulderCm?: number;
+  chestCm?: number;
+  waistCm?: number;
+  hipCm?: number;
+  sleeveCm?: number;
+}): string {
+  if (!m) return "";
+  const parts = [
+    m.shoulderCm && `shoulders ${m.shoulderCm}cm`,
+    m.chestCm && `chest ${m.chestCm}cm`,
+    m.waistCm && `waist ${m.waistCm}cm`,
+    m.hipCm && `hips ${m.hipCm}cm`,
+    m.sleeveCm && `sleeve ${m.sleeveCm}cm`,
+  ].filter(Boolean);
+  return parts.length ? ` (${parts.join(", ")})` : "";
+}
+
 /** Step 3 — Explainable report content grounded in the retrieved rules. */
 export async function recommend(
   intake: Intake,
@@ -114,12 +144,15 @@ export async function recommend(
       `Style Profile (JSON):\n${JSON.stringify(profile)}\n\n` +
       `Occupation: ${intake.occupation}. Goals: ${intake.goals.join(", ")}. ` +
       `Boldness: ${intake.boldness}. Budget: €${intake.budgetEur.min}–${intake.budgetEur.max}. ` +
-      `City climate: ${profile.demographics.climate}.\n\n` +
+      `City climate: ${profile.demographics.climate}.\n` +
+      `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
       `${grounding}\n` +
       `Produce an explainable style report. Requirements:\n` +
       `- For every colour (best AND avoid) include a hex code and a concrete "why" tied to the profile.\n` +
       `- For hair, recommend and avoid with reasons tied to face shape.\n` +
-      `- Give a silhouette "fit" line and 3 concrete rules.\n` +
+      `- Tailor the silhouette "fit" line and all 3 rules specifically to the "${profile.physical.bodyType}" body type: ` +
+      `what to emphasise, what to balance, and which cuts/proportions to avoid for this shape. Reference the body type explicitly.\n` +
+      `- Ensure the 3 looks flatter this body type.\n` +
       `- Provide exactly 3 looks for different contexts (work, smart-casual, weekend), each with a ` +
       `3–4 colour hex palette and a one-line description of the outfit.\n` +
       `- doList and dontList: 4 short, actionable items each.\n` +

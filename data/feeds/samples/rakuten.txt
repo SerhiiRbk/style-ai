@@ -1,0 +1,5 @@
+Product Name|SKU|Brand|Primary Category|Buy URL|Image URL|Retail Price|Sale Price|Currency Code|Color|In Stock|Long Description|Merchant Name
+Camel wool overcoat|RAK-OVR-CML|Reiss|Men's Coats|https://click.linksynergy.com/link?id=abc&murl=https://reiss.com/overcoat|https://img.reiss.com/overcoat-camel.jpg|395.00|350.00|GBP|Camel|yes|Tailored camel overcoat in pure wool|Reiss
+Pima cotton t-shirt|RAK-TEE-WHT|Sunspel|Men's T-Shirts|https://click.linksynergy.com/link?id=abc&murl=https://sunspel.com/tee|https://img.sunspel.com/tee-white.jpg|65.00|65.00|GBP|White|yes|Classic crew-neck pima cotton tee|Sunspel
+Pleated chinos|RAK-CHN-STN|Banana Republic|Men's Pants|https://click.linksynergy.com/link?id=abc&murl=https://bananarepublic.com/chino|https://img.br.com/chino-stone.jpg|110.00|88.00|USD|Stone|yes|Relaxed pleated cotton chinos|Banana Republic
+Minimal leather sneakers|RAK-SNK-WHT|CQP|Men's Shoes|https://click.linksynergy.com/link?id=abc&murl=https://cqp.se/sneaker|https://img.cqp.se/sneaker-white.jpg|240.00|240.00|EUR|White|no|Hand-made minimal leather sneakers|CQP

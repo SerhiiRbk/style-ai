@@ -1,0 +1,217 @@
+/**
+ * Feed registry. Adding a new affiliate network or scraper = add an entry here.
+ * `map` lists candidate column names per canonical field (first non-empty wins),
+ * so the same generic adapter handles every delimited/XML/JSON feed.
+ */
+
+const awinMap = {
+  externalId: ["aw_product_id", "merchant_product_id", "product_id"],
+  sku: ["merchant_product_id", "ean", "mpn"],
+  brand: ["brand_name", "brand"],
+  title: ["product_name", "product_short_description"],
+  description: ["description", "product_short_description"],
+  category: ["merchant_category", "category_name", "product_type"],
+  color: ["colour", "color"],
+  gender: ["gender"],
+  price: ["search_price", "store_price", "price"],
+  currency: ["currency"],
+  imageUrl: ["merchant_image_url", "aw_image_url", "large_image"],
+  deeplink: ["aw_deep_link", "merchant_deep_link"],
+  inStock: ["in_stock", "stock_status"],
+};
+
+export const SOURCES = {
+  awin: {
+    label: "Awin",
+    format: "delimited",
+    parse: { delimiter: "," },
+    urlEnv: "AWIN_FEED_URL",
+    sourcePrefix: "awin",
+    merchantField: "merchant_name",
+    market: "EU",
+    map: awinMap,
+  },
+
+  // Zalando in EU is distributed through Awin → same column layout.
+  zalando: {
+    label: "Zalando Partner Program (via Awin)",
+    format: "delimited",
+    parse: { delimiter: "," },
+    urlEnv: "ZALANDO_FEED_URL",
+    sourcePrefix: "zalando",
+    merchantField: "merchant_name",
+    market: "EU",
+    map: awinMap,
+  },
+
+  rakuten: {
+    label: "Rakuten Advertising",
+    format: "delimited",
+    parse: { delimiter: "|" },
+    urlEnv: "RAKUTEN_FEED_URL",
+    sourcePrefix: "rakuten",
+    merchantField: ["Merchant Name", "Merchant"],
+    market: "EU",
+    map: {
+      externalId: ["SKU", "Product ID", "Mpn"],
+      sku: ["SKU", "Mpn"],
+      brand: ["Brand", "Manufacturer"],
+      title: ["Product Name", "productname"],
+      description: ["Long Description", "Short Description", "Description"],
+      category: ["Primary Category", "Secondary Category", "Category"],
+      color: ["Color", "Colour"],
+      gender: ["Gender"],
+      price: ["Sale Price", "Retail Price", "price"],
+      currency: ["Currency Code", "Currency"],
+      imageUrl: ["Image URL", "Image", "Thumbnail URL"],
+      deeplink: ["Buy URL", "Product URL"],
+      inStock: ["In Stock", "Availability"],
+    },
+  },
+
+  tradedoubler: {
+    label: "Tradedoubler",
+    format: "delimited",
+    parse: { delimiter: "," },
+    urlEnv: "TRADEDOUBLER_FEED_URL",
+    sourcePrefix: "tradedoubler",
+    merchantField: ["programName", "feedName"],
+    market: "EU",
+    map: {
+      externalId: ["sku", "productId", "TDProductId"],
+      sku: ["sku", "ean"],
+      brand: ["brand", "manufacturer"],
+      title: ["name", "productName"],
+      description: ["description", "shortDescription"],
+      category: ["category", "categoryName", "merchantCategoryName"],
+      color: ["color", "colour"],
+      gender: ["gender"],
+      price: ["price", "priceValue", "currentPrice"],
+      currency: ["currency", "priceCurrency"],
+      imageUrl: ["productImage", "imageUrl", "imageUrlLarge"],
+      deeplink: ["productUrl", "deepLink"],
+      inStock: ["availability", "inStock"],
+    },
+  },
+
+  // ── US / Canada networks ───────────────────────────────────────────────────
+  // CJ Affiliate (Commission Junction) classic product datafeed (comma-delimited).
+  // US feeds frequently omit a currency column → default to USD.
+  cj: {
+    label: "CJ Affiliate (Commission Junction)",
+    format: "delimited",
+    parse: { delimiter: "," },
+    urlEnv: "CJ_FEED_URL",
+    sourcePrefix: "cj",
+    merchantField: ["ADVERTISERNAME", "PROGRAMNAME", "Program Name"],
+    defaultCurrency: "USD",
+    market: "US",
+    map: {
+      externalId: ["SKU", "THIRDPARTYID", "AD_ID"],
+      sku: ["SKU", "UPC", "ISBN"],
+      brand: ["MANUFACTURER", "MANUFACTURERNAME", "Brand"],
+      title: ["NAME", "TITLE"],
+      description: ["DESCRIPTION", "Description"],
+      category: ["ADVERTISERCATEGORY", "THIRDPARTYCATEGORY"],
+      color: ["COLOR", "Color"],
+      gender: ["GENDER", "Gender"],
+      price: ["SALEPRICE", "PRICE", "RETAILPRICE"],
+      currency: ["CURRENCY"],
+      imageUrl: ["IMAGEURL", "IMAGE"],
+      deeplink: ["BUYURL", "CLICKURL"],
+      inStock: ["INSTOCK", "AVAILABILITY"],
+    },
+  },
+
+  // Impact (impact.com) product catalog — Google-Merchant-style CSV columns.
+  impact: {
+    label: "Impact (impact.com)",
+    format: "delimited",
+    parse: { delimiter: "," },
+    urlEnv: "IMPACT_FEED_URL",
+    sourcePrefix: "impact",
+    merchantField: ["Campaign Name", "Advertiser Name"],
+    defaultCurrency: "USD",
+    market: "US",
+    map: {
+      externalId: ["Id", "Catalog Item Id", "SKU", "Item ID", "Mpn"],
+      sku: ["SKU", "Mpn", "Gtin"],
+      brand: ["Brand", "Manufacturer"],
+      title: ["Title", "Name", "Item Name"],
+      description: ["Description", "Item Description"],
+      category: ["Google Product Category", "Product Type", "Category"],
+      color: ["Color", "Colour"],
+      gender: ["Gender"],
+      price: ["Sale Price", "Current Price", "Price"],
+      currency: ["Currency", "Currency Code"],
+      imageUrl: ["Image Link", "Image Url", "Image URL"],
+      deeplink: ["Link", "Product Url", "Product URL"],
+      inStock: ["Availability", "Stock Availability", "Stock Status"],
+    },
+  },
+
+  // ShareASale product datafeed (pipe-delimited; now part of Awin, US-focused).
+  shareasale: {
+    label: "ShareASale",
+    format: "delimited",
+    parse: { delimiter: "|" },
+    urlEnv: "SHAREASALE_FEED_URL",
+    sourcePrefix: "shareasale",
+    merchantField: ["Merchant", "MerchantName"],
+    defaultCurrency: "USD",
+    market: "US",
+    map: {
+      externalId: ["ProductID", "SKU"],
+      sku: ["SKU", "PartNumber"],
+      brand: ["Brand", "Manufacturer"],
+      title: ["Name"],
+      description: ["Description", "ShortDescription"],
+      category: ["MerchantCategory", "Category", "SubCategory"],
+      color: ["Color"],
+      gender: ["Gender"],
+      price: ["Price", "RetailPrice"],
+      currency: ["Currency"],
+      imageUrl: ["BigImage", "Thumbnail", "ImageURL"],
+      deeplink: ["Link", "AddToCartURL"],
+      inStock: ["InStock", "Instock", "status"],
+    },
+  },
+
+  // Generic scraper output: near-canonical JSON. Scrapers fill these keys.
+  scraper: {
+    label: "Scraper / custom JSON",
+    format: "json",
+    urlEnv: "SCRAPER_FEED_URL",
+    sourcePrefix: "scraper",
+    sourceField: ["source"],
+    map: {
+      externalId: ["externalId", "id", "sku", "deeplink", "url"],
+      sku: ["sku"],
+      brand: ["brand"],
+      title: ["title", "name"],
+      description: ["description"],
+      category: ["category", "type"],
+      gender: ["gender"],
+      color: ["color", "colour"],
+      colorHex: ["colorHex"],
+      price: ["price", "priceEur"],
+      currency: ["currency"],
+      market: ["market"],
+      imageUrl: ["imageUrl", "image"],
+      deeplink: ["deeplink", "url", "link"],
+      inStock: ["inStock", "available"],
+    },
+  },
+};
+
+/** Sample fixtures used by `--all-samples` and as ready-to-run examples. */
+export const SAMPLES = {
+  awin: "data/feeds/samples/awin.csv",
+  zalando: "data/feeds/samples/zalando.csv",
+  rakuten: "data/feeds/samples/rakuten.txt",
+  tradedoubler: "data/feeds/samples/tradedoubler.csv",
+  cj: "data/feeds/samples/cj.csv",
+  impact: "data/feeds/samples/impact.csv",
+  shareasale: "data/feeds/samples/shareasale.txt",
+  scraper: "data/feeds/samples/scraper.json",
+};
