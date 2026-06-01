@@ -17,6 +17,7 @@ export function Footer() {
           items={[
             ["How it works", "/#how"],
             ["Sample report", "/report/demo"],
+            ["Catalog", "/catalog"],
             ["Pricing", "/#pricing"],
             ["Start", "/start"],
           ]}

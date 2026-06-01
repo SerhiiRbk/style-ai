@@ -5,6 +5,7 @@ import { AuthControls } from "./AuthControls";
 const links = [
   { href: "/#how", label: "How it works" },
   { href: "/#sample", label: "Sample report" },
+  { href: "/catalog", label: "Catalog" },
   { href: "/#pricing", label: "Pricing" },
   { href: "/#audience", label: "Who it's for" },
 ];
