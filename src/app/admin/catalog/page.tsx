@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/admin";
+import { BRAND } from "@/lib/brand";
 import { listSources, sourceConfig } from "../../../../scripts/feeds/run.mjs";
 import { CatalogRefreshPanel } from "@/components/CatalogRefreshPanel";
 
@@ -13,7 +14,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <main className="min-h-screen bg-cream/20">
       <header className="flex items-center justify-between border-b hairline px-6 py-4">
         <Link href="/" className="font-display text-lg">
-          StyleAI
+          {BRAND.name}
         </Link>
         <span className="text-sm text-stone-soft">Admin · Catalogue</span>
       </header>

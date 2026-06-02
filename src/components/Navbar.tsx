@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { ButtonLink } from "./Button";
 import { AuthControls } from "./AuthControls";
+import { BRAND } from "@/lib/brand";
 
 const links = [
+  { href: "/#stylist", label: "Your stylist" },
   { href: "/#how", label: "How it works" },
   { href: "/#sample", label: "Sample report" },
   { href: "/catalog", label: "Catalog" },
   { href: "/#pricing", label: "Pricing" },
-  { href: "/#audience", label: "Who it's for" },
 ];
 
 export function Navbar() {
@@ -15,8 +16,10 @@ export function Navbar() {
     <header className="sticky top-0 z-50 border-b hairline bg-paper/80 backdrop-blur-md">
       <nav className="container-luxe flex h-16 items-center justify-between">
         <Link href="/" className="group flex items-baseline gap-2">
-          <span className="font-display text-xl tracking-tight">StyleAI</span>
-          <span className="eyebrow hidden sm:inline">Consultant</span>
+          <span className="font-display text-xl tracking-tight">
+            {BRAND.name}
+          </span>
+          <span className="eyebrow hidden sm:inline">{BRAND.eyebrow}</span>
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">

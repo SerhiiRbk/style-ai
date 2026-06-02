@@ -277,7 +277,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   }
 
   // Cover / header
-  d.text("STYLEAI CONSULTANT", {
+  d.text("VALETTI · AI-ASSISTED PERSONAL STYLING", {
     size: 9,
     font: d.bold,
     color: STONE,
@@ -296,6 +296,11 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       `${report.profile.demographics.city}, ${report.profile.demographics.country} · ${when}`,
     { size: 9.5, color: STONE },
   );
+  d.gap(2);
+  d.text("Prepared by Carlo Valetti · Lead stylist, Valetti", {
+    size: 9.5,
+    color: STONE,
+  });
   d.gap(8);
   d.text(report.summary, { size: 11, color: STONE, lineGap: 5 });
   d.gap(6);

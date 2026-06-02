@@ -16,6 +16,7 @@ import {
   type Currency,
   type SubCurrency,
 } from "@/lib/currency";
+import { BRAND } from "@/lib/brand";
 
 type Tier = "free" | "basic" | "lookbook" | "premium";
 
@@ -240,7 +241,7 @@ export default function StartPage() {
       <div className="border-b hairline bg-paper/80 backdrop-blur-md">
         <div className="container-luxe flex h-16 items-center justify-between">
           <Link href="/" className="font-display text-xl">
-            StyleAI
+            {BRAND.name}
           </Link>
           <Link href="/" className="text-sm text-stone hover:text-ink">
             Save &amp; exit

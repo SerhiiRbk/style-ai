@@ -2,9 +2,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { MeetStylist } from "@/components/MeetStylist";
 import { ButtonLink } from "@/components/Button";
 import { getGeo } from "@/lib/geo";
 import { TIER_PRICES } from "@/lib/currency";
+import { BRAND } from "@/lib/brand";
 
 export default function Home() {
   return (
@@ -14,6 +16,7 @@ export default function Home() {
         <Hero />
         <Marquee />
         <Problem />
+        <MeetStylist />
         <Understand />
         <HowItWorks />
         <SampleReport />
@@ -34,16 +37,18 @@ function Hero() {
     <section className="relative">
       <div className="container-luxe grid items-center gap-12 py-20 md:grid-cols-2 md:py-28 md:pb-32">
         <div className="animate-rise">
-          <p className="eyebrow">Personal AI image consultant</p>
+          <p className="eyebrow">{BRAND.eyebrow} · {BRAND.tagline}</p>
           <h1 className="mt-5 font-display text-[2.7rem] leading-[1.05] tracking-tight sm:text-6xl">
             Look more{" "}
             <em className="not-italic text-brass">considered</em> — without
             becoming a fashion victim.
           </h1>
           <p className="mt-6 max-w-md text-lg leading-relaxed text-stone">
-            Upload your photos, answer a few questions, and receive a clear,
-            visual, and practical plan: hair, colours, clothing, silhouettes,
-            and a precise shopping list — each with the reason{" "}
+            {BRAND.name} is a personal style atelier led by{" "}
+            <span className="text-ink">{BRAND.stylist.name}</span>. Share a few
+            photos, answer a few honest questions, and receive a calm, practical
+            plan: hair, colours, clothing, silhouettes, and a precise shopping
+            list — each with the reason{" "}
             <span className="text-ink">why it works for you.</span>
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-4">
@@ -170,9 +175,9 @@ function Problem() {
               <span className="text-ink">you</span>.
             </p>
             <p>
-              StyleAI is different: a deep, honest analysis of your colouring,
-              features, lifestyle and goals — turned into a calm, practical plan
-              you can actually act on.
+              {BRAND.name} is different: a deep, honest analysis of your
+              colouring, features, lifestyle and goals — turned into a calm,
+              practical plan you can actually act on.
             </p>
           </div>
         </div>
@@ -536,6 +541,18 @@ function Principles() {
             AI imagery matters — but it should never replace a genuine analysis.
             This is a consultant, not a toy.
           </p>
+          <div className="relative mt-8 aspect-[4/3] overflow-hidden rounded-2xl border hairline">
+            <Image
+              src={BRAND.stylist.atelier}
+              alt={`${BRAND.stylist.name} reviewing fabrics in the atelier`}
+              fill
+              sizes="(max-width: 768px) 100vw, 420px"
+              className="object-cover"
+            />
+            <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-3 py-1.5 text-[11px] text-ink backdrop-blur-sm">
+              {BRAND.stylist.name} · the atelier
+            </span>
+          </div>
         </div>
         <div className="grid gap-px overflow-hidden rounded-2xl border hairline bg-line sm:grid-cols-2">
           {items.map(([t, b]) => (
@@ -569,6 +586,7 @@ function FinalCTA() {
             Create my style report
           </ButtonLink>
         </div>
+        <p className="mt-6 text-sm text-paper/50">— {BRAND.stylist.signature}</p>
       </div>
     </section>
   );

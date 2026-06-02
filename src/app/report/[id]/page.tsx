@@ -6,6 +6,8 @@ import { TryOnButton } from "@/components/TryOnButton";
 import { LookTryOn } from "@/components/LookTryOn";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
+import { StylistNote } from "@/components/StylistNote";
+import { BRAND } from "@/lib/brand";
 import type { ColorRec, HairRec, ShoppingItem } from "@/lib/report";
 import { formatMoney } from "@/lib/currency";
 import { BodyTypeFigure } from "@/components/BodyTypePicker";
@@ -83,7 +85,7 @@ export default async function ReportPage({
       <header className="border-b hairline bg-ink text-paper">
         <div className="container-luxe flex h-16 items-center justify-between">
           <Link href="/" className="font-display text-xl">
-            StyleAI
+            {BRAND.name}
           </Link>
           <div className="flex items-center gap-3">
             <a
@@ -118,6 +120,13 @@ export default async function ReportPage({
             <p className="mt-5 max-w-xl leading-relaxed text-paper/70">
               {report.summary}
             </p>
+            <div className="mt-7 max-w-xl">
+              <StylistNote tone="dark">
+                I&apos;ve read your colouring, proportions and goals — here&apos;s
+                how I&apos;d dress you. Calm, considered, and with the reason
+                behind every choice. Take what fits your life; leave the rest.
+              </StylistNote>
+            </div>
             <div className="mt-7 border-t border-paper/15 pt-6">
               <ArchetypeBadge archetype={extras.archetype} />
             </div>

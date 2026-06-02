@@ -4,6 +4,7 @@ import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { signIn, signUp } from "./actions";
 import { ButtonLink } from "@/components/Button";
+import { BRAND } from "@/lib/brand";
 
 export default async function LoginPage({
   searchParams,
@@ -39,7 +40,7 @@ export default async function LoginPage({
   return (
     <Centered>
       <Link href="/" className="font-display text-2xl">
-        StyleAI
+        {BRAND.name}
       </Link>
       <h1 className="mt-8 font-display text-3xl">Create your account</h1>
       <p className="mt-2 text-stone">

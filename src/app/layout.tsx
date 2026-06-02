@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
+import { BRAND } from "@/lib/brand";
 
 const fraunces = Fraunces({
   variable: "--font-display",
@@ -16,15 +17,31 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "StyleAI Consultant — your personal AI image consultant",
+  title: "Valetti — personal style atelier with Carlo Valetti",
   description:
-    "Upload your photos, answer a few questions, and receive a clear, visual, and practical plan to elevate your look — hair, colors, clothing, silhouettes, and a precise shopping list.",
-  metadataBase: new URL("https://styleai.example"),
+    "Valetti is a personal style atelier led by stylist Carlo Valetti. Share a few photos, answer honest questions, and receive a calm, practical plan — hair, colours, clothing, silhouettes, and a precise shopping list. AI-assisted personal styling.",
+  metadataBase: new URL("https://valetti.example"),
   openGraph: {
-    title: "StyleAI Consultant",
+    title: "Valetti — personal style atelier",
     description:
-      "A personal AI image consultant — explainable recommendations, photorealistic looks, and a precise shopping plan.",
+      "AI-assisted personal styling with Carlo Valetti — explainable recommendations, photorealistic looks, and a precise shopping plan.",
     type: "website",
+    siteName: BRAND.name,
+    images: [
+      {
+        url: BRAND.ogImage,
+        width: 1200,
+        height: 630,
+        alt: "Valetti — personal style atelier with Carlo Valetti",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Valetti — personal style atelier",
+    description:
+      "AI-assisted personal styling with Carlo Valetti — find your own style, not the latest trend.",
+    images: [BRAND.ogImage],
   },
 };
 
