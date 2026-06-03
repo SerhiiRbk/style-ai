@@ -16,9 +16,11 @@ import { ShareReportButton } from "@/components/ShareReportButton";
 import { BRAND } from "@/lib/brand";
 import {
   isMockShopping,
+  reportUpsellForTier,
   type ColorRec,
   type HairRec,
   type ShoppingItem,
+  type Tier,
 } from "@/lib/report";
 import { formatMoney } from "@/lib/currency";
 import { BodyTypeFigure } from "@/components/BodyTypePicker";
@@ -733,32 +735,7 @@ export default async function ReportPage({
 
           <TipsStrip />
 
-          <div className="mt-16 rounded-2xl border hairline bg-cream/40 p-10 text-center">
-            <h3 className="font-display text-2xl">Want the full lookbook?</h3>
-            <p className="mx-auto mt-2 max-w-md text-stone">
-              Unlock 12 photorealistic looks, virtual try-on of every item, and a
-              capsule wardrobe built around these pieces.
-            </p>
-            <div className="mt-6 flex justify-center gap-3">
-              <ButtonLink href="/pricing">Upgrade to Lookbook</ButtonLink>
-              {isFree ? (
-                <Link
-                  href="/pricing"
-                  className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
-                >
-                  Upgrade for PDF
-                </Link>
-              ) : (
-                <a
-                  href={`/api/reports/${report.id}/pdf`}
-                  download
-                  className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
-                >
-                  Download PDF
-                </a>
-              )}
-            </div>
-          </div>
+          <ReportTierUpsell tier={report.tier} reportId={report.id} />
         </section>
       </main>
       <Footer />
@@ -770,6 +747,43 @@ export default async function ReportPage({
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function ReportTierUpsell({
+  tier,
+  reportId,
+}: {
+  tier: Tier;
+  reportId: string;
+}) {
+  const upsell = reportUpsellForTier(tier);
+  if (!upsell) return null;
+
+  return (
+    <div className="mt-16 rounded-2xl border hairline bg-cream/40 p-10 text-center">
+      <h3 className="font-display text-2xl">{upsell.title}</h3>
+      <p className="mx-auto mt-2 max-w-md text-stone">{upsell.body}</p>
+      <div className="mt-6 flex justify-center gap-3">
+        <ButtonLink href={upsell.ctaHref}>{upsell.ctaLabel}</ButtonLink>
+        {tier === "free" ? (
+          <Link
+            href="/pricing"
+            className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
+          >
+            Upgrade for PDF
+          </Link>
+        ) : (
+          <a
+            href={`/api/reports/${reportId}/pdf`}
+            download
+            className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
+          >
+            Download PDF
+          </a>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function UpgradeLock({ title, body }: { title: string; body: string }) {

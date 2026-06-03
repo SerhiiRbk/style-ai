@@ -31,6 +31,47 @@ export function canShareReport(tier: Tier): boolean {
   return tier !== "free";
 }
 
+export type ReportUpsell = {
+  title: string;
+  body: string;
+  ctaLabel: string;
+  ctaHref: string;
+};
+
+/** Bottom-of-report CTA — tier upgrade for lower tiers, another report for Premium. */
+export function reportUpsellForTier(tier: Tier): ReportUpsell | null {
+  switch (tier) {
+    case "free":
+    case "basic":
+      return {
+        title: "Want the full lookbook?",
+        body:
+          `Unlock ${lookCountForTier("lookbook")} photorealistic looks, the capsule wardrobe and week-of-outfits matrix, ` +
+          `virtual try-on on your photo, dual-angle hairstyle previews, and a Good · Better · Best buying plan.`,
+        ctaLabel: "Upgrade to Lookbook",
+        ctaHref: "/pricing",
+      };
+    case "lookbook":
+      return {
+        title: "Want the deepest report?",
+        body:
+          `Upgrade to Premium for ${lookCountForTier("premium")} photorealistic looks, personalized facial-hair and eyewear previews on your photo, ` +
+          `and deeper grooming guidance — the most personal report we offer.`,
+        ctaLabel: "Upgrade to Premium",
+        ctaHref: "/pricing",
+      };
+    case "premium":
+      return {
+        title: "Ready for another Premium report?",
+        body:
+          `Your style evolves — start a new Premium report with updated photos for ${lookCountForTier("premium")} fresh photorealistic looks, ` +
+          `personalized facial-hair and eyewear previews, and a capsule built around your current goals.`,
+        ctaLabel: "Create another Premium report",
+        ctaHref: "/start",
+      };
+  }
+}
+
 /** Max personalized recommend-hair images to generate for a tier (controls API cost). */
 export function hairRecommendGenLimit(tier?: Tier): number {
   switch (tier) {
