@@ -418,5 +418,17 @@
     "aspect_ratio": "3:4",
     "suggested_filename": "flexoffers-thursday-boot-co_fo-3003.png",
     "prompt": "Clean e-commerce editorial studio packshot of a single Thursday Boots Captain leather boots, no model and no human, no face, the product centered and fully in frame with generous negative space. Neutral seamless light-stone / off-white background, soft diffused studio lighting with a subtle natural shadow grounding the object, high detail on fabric texture and true-to-life colour accuracy (the colour is Brown and must be reproduced faithfully). Footwear shown as a clean pair at a flattering three-quarter angle, slightly elevated, laces and sole detail crisp. Quiet-luxury, European smart-casual aesthetic matching the Valetti brand: understated, refined, calm. Portrait 3:4 aspect ratio (vertical), shot for a ~600x800 catalogue card. Product category: Footwear. Intended for men wear. Key features: Brown leather lace-up boots. Negative prompt: no text, no captions, no logos or branding, no watermark, no clutter, no busy or patterned background, no props beyond the garment, no human model, no mannequin face, no harsh reflections, no oversaturation."
+  },
+  {
+    "id": "12f5c059-5f55-42f0-9bf8-9b4ee9d0f02c",
+    "source": "manual:levis",
+    "external_id": "LEV-501-LBL",
+    "title": "501 Original Fit Jeans",
+    "category": "Trousers",
+    "color": "Light Blue",
+    "gender": "men",
+    "aspect_ratio": "3:4",
+    "suggested_filename": "manual-levis_lev-501-lbl.png",
+    "prompt": "Clean e-commerce editorial studio packshot of a single Levi's 501 Original Fit Jeans, no model and no human, no face, the product centered and fully in frame with generous negative space. Neutral seamless light-stone / off-white background, soft diffused studio lighting with a subtle natural shadow grounding the object, high detail on fabric texture and true-to-life colour accuracy (the colour is Light Blue and must be reproduced faithfully). Bottoms styled as a flat-lay or softly folded to show the cut, drape and waistband cleanly. Quiet-luxury, European smart-casual aesthetic matching the Valetti brand: understated, refined, calm. Portrait 3:4 aspect ratio (vertical), shot for a ~600x800 catalogue card. Product category: Trousers. Intended for men wear. Key features: Classic five-pocket denim jeans in a light blue wash. Straight original fit, button fly, signature red tab. Negative prompt: no text, no captions, no logos or branding, no watermark, no clutter, no busy or patterned background, no props beyond the garment, no human model, no mannequin face, no harsh reflections, no oversaturation."
   }
 ]
