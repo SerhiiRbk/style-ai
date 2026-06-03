@@ -1,4 +1,4 @@
 Product Id	SKU	Brand Name	Product Name	Long Description	Category Name	Color	Gender	Sale Price	Currency	Medium Image	Buy Link	In Stock	Merchant Name
-AV-4001	AV-4001	Filson	Mackinaw wool jacket	Heavyweight Mackinaw wool jacket	Outerwear	Charcoal	men	350	USD	https://example.com/img/av4001.jpg	https://example.com/p/av4001	1	Huckberry
-AV-4002	AV-4002	Allen Edmonds	Park Avenue derby shoes	Goodyear-welted derby shoes	Footwear	Brown	men	395	USD	https://example.com/img/av4002.jpg	https://example.com/p/av4002	1	Allen Edmonds
-AV-4003	AV-4003	Pendleton	Lambswool sweater	Classic lambswool crew sweater	Knitwear	Camel	men	149	USD	https://example.com/img/av4003.jpg	https://example.com/p/av4003	1	Pendleton
+AV-4001	AV-4001	Filson	Mackinaw wool jacket	Heavyweight Mackinaw wool jacket	Outerwear	Charcoal	men	350	USD	https://picsum.photos/seed/av-4001/600/800	https://example.com/p/av4001	1	Huckberry
+AV-4002	AV-4002	Allen Edmonds	Park Avenue derby shoes	Goodyear-welted derby shoes	Footwear	Brown	men	395	USD	https://picsum.photos/seed/av-4002/600/800	https://example.com/p/av4002	1	Allen Edmonds
+AV-4003	AV-4003	Pendleton	Lambswool sweater	Classic lambswool crew sweater	Knitwear	Camel	men	149	USD	https://picsum.photos/seed/av-4003/600/800	https://example.com/p/av4003	1	Pendleton

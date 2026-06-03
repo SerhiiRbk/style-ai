@@ -12,7 +12,7 @@
       "colorHex": "#6B6B47",
       "price": 99,
       "currency": "EUR",
-      "imageUrl": "https://img.arket.com/overshirt-olive.jpg",
+      "imageUrl": "https://picsum.photos/seed/arket-overshirt-olive/600/800",
       "deeplink": "https://www.arket.com/en/overshirt-olive.html",
       "inStock": true
     },
@@ -27,7 +27,7 @@
       "colorHex": "#9B8C72",
       "price": 79,
       "currency": "EUR",
-      "imageUrl": "https://img.arket.com/chino-taupe.jpg",
+      "imageUrl": "https://picsum.photos/seed/arket-chino-taupe/600/800",
       "deeplink": "https://www.arket.com/en/chinos-taupe.html",
       "inStock": true
     },
@@ -40,7 +40,7 @@
       "color": "Sand",
       "price": 69,
       "currency": "EUR",
-      "imageUrl": "https://img.cos.com/linen-sand.jpg",
+      "imageUrl": "https://picsum.photos/seed/cos-linen-shirt-sand/600/800",
       "deeplink": "https://www.cos.com/en/linen-shirt-sand.html"
     }
   ]

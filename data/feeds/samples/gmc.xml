@@ -12,7 +12,7 @@
       <g:color>Camel</g:color>
       <g:gender>male</g:gender>
       <g:price>59.90 EUR</g:price>
-      <g:image_link>https://example-store.com/img/1001.jpg</g:image_link>
+      <g:image_link>https://picsum.photos/seed/ex-1001/600/800</g:image_link>
       <link>https://example-store.com/p/1001</link>
       <g:availability>in stock</g:availability>
     </item>
@@ -25,7 +25,7 @@
       <g:color>Navy</g:color>
       <g:gender>men</g:gender>
       <g:price>129.99 EUR</g:price>
-      <g:image_link>https://example-store.com/img/1002.jpg</g:image_link>
+      <g:image_link>https://picsum.photos/seed/ex-1002/600/800</g:image_link>
       <link>https://example-store.com/p/1002</link>
       <g:availability>in stock</g:availability>
     </item>
@@ -39,7 +39,7 @@
       <g:gender>male</g:gender>
       <g:sale_price>45.00 EUR</g:sale_price>
       <g:price>59.00 EUR</g:price>
-      <g:image_link>https://example-store.com/img/1003.jpg</g:image_link>
+      <g:image_link>https://picsum.photos/seed/ex-1003/600/800</g:image_link>
       <link>https://example-store.com/p/1003</link>
       <g:availability>in stock</g:availability>
     </item>

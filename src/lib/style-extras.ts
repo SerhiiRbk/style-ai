@@ -586,6 +586,76 @@ export function itemsForLook(look: Look, shopping: ShoppingItem[]): ShoppingItem
     .slice(0, 4);
 }
 
+/* ----------------------------- look decomposition ------------------------- */
+
+/** One garment parsed out of a look description, mapped to a catalogue category. */
+export type LookGarment = { category: string; garment: string; color: string | null };
+
+/** Garment keyword → catalogue CATEGORY. Mirrors catalog.ts CATEGORIES. */
+const GARMENT_CATEGORY: Record<string, string> = {
+  blazer: "Outerwear", jacket: "Outerwear", coat: "Outerwear", overcoat: "Outerwear",
+  overshirt: "Outerwear", trench: "Outerwear", parka: "Outerwear", bomber: "Outerwear",
+  peacoat: "Outerwear", suit: "Outerwear",
+  knit: "Knitwear", sweater: "Knitwear", crewneck: "Knitwear", jumper: "Knitwear",
+  cardigan: "Knitwear", turtleneck: "Knitwear", rollneck: "Knitwear", pullover: "Knitwear",
+  shirt: "Shirts", tee: "Shirts", polo: "Shirts", henley: "Shirts",
+  trousers: "Trousers", chinos: "Trousers", chino: "Trousers", jeans: "Trousers",
+  denim: "Trousers", slacks: "Trousers", pants: "Trousers",
+  loafers: "Footwear", boots: "Footwear", boot: "Footwear", sneakers: "Footwear",
+  derbies: "Footwear", derby: "Footwear", oxfords: "Footwear", brogues: "Footwear",
+  chelsea: "Footwear", shoes: "Footwear", trainers: "Footwear", sandals: "Footwear",
+  belt: "Accessories", watch: "Accessories", scarf: "Accessories", tie: "Accessories",
+  sunglasses: "Accessories", hat: "Accessories", cap: "Accessories", gloves: "Accessories",
+  bag: "Accessories", socks: "Accessories",
+};
+
+/** Colour words used to qualify a garment query (not garments themselves). */
+const COLOR_WORDS = new Set([
+  "navy", "cream", "charcoal", "grey", "gray", "black", "white", "brown", "tan",
+  "camel", "olive", "beige", "khaki", "burgundy", "rust", "ecru", "stone", "taupe",
+  "sand", "indigo", "blue", "green", "red", "pink", "purple", "yellow", "orange",
+  "maroon", "mustard", "forest", "sage", "cognac", "chocolate", "ivory", "midnight",
+  "dark", "light", "mid", "off",
+]);
+
+/**
+ * Deterministically split a free-text look description into individual garments,
+ * each mapped to a catalogue category with any qualifying colour. Keyword-based
+ * (no AI call) so it behaves identically in demo and live mode.
+ */
+export function decomposeLook(description: string): LookGarment[] {
+  const clauses = description
+    .toLowerCase()
+    .split(/,|\s+over\s+|\s+and\s+|\s+with\s+/);
+  const out: LookGarment[] = [];
+  const seen = new Set<string>();
+  for (const clause of clauses) {
+    const words = clause
+      .replace(/-/g, " ")
+      .replace(/[^a-z\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    let garment: string | null = null;
+    let category: string | null = null;
+    for (const w of words) {
+      const c = GARMENT_CATEGORY[w];
+      if (c) {
+        garment = w;
+        category = c;
+        break; // first garment keyword in the clause wins
+      }
+    }
+    if (!garment || !category) continue;
+    const colors = words.filter((w) => COLOR_WORDS.has(w));
+    const color = colors.length ? colors.join(" ") : null;
+    const key = `${category}:${color ?? ""}:${garment}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ category, garment, color });
+  }
+  return out;
+}
+
 export function capsuleMatrix(shopping: ShoppingItem[]): OutfitCombo[] {
   const pick = (cats: string[]) =>
     shopping.filter((i) => cats.includes(i.category)).map((i) => i.title);

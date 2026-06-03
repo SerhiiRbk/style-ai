@@ -1,4 +1,4 @@
 product_id,sku,brand,title,description,category,color,gender,sale_price,currency,image_link,destination_url,availability,campaign_name
-PZ-5001,PZ-5001,Mango,Linen blazer,Unstructured linen blazer,Outerwear,Sand,men,99.99,EUR,https://example.com/img/pz5001.jpg,https://example.com/p/pz5001,in stock,Mango Man
-PZ-5002,PZ-5002,COS,Merino polo shirt,Fine-gauge merino polo shirt,Shirts,Ecru,men,69,EUR,https://example.com/img/pz5002.jpg,https://example.com/p/pz5002,in stock,COS
-PZ-5003,PZ-5003,Vagabond,Suede chelsea boots,Tan suede chelsea boots,Footwear,Tan,men,150,EUR,https://example.com/img/pz5003.jpg,https://example.com/p/pz5003,in stock,Vagabond
+PZ-5001,PZ-5001,Mango,Linen blazer,Unstructured linen blazer,Outerwear,Sand,men,99.99,EUR,https://picsum.photos/seed/pz-5001/600/800,https://example.com/p/pz5001,in stock,Mango Man
+PZ-5002,PZ-5002,COS,Merino polo shirt,Fine-gauge merino polo shirt,Shirts,Ecru,men,69,EUR,https://picsum.photos/seed/pz-5002/600/800,https://example.com/p/pz5002,in stock,COS
+PZ-5003,PZ-5003,Vagabond,Suede chelsea boots,Tan suede chelsea boots,Footwear,Tan,men,150,EUR,https://picsum.photos/seed/pz-5003/600/800,https://example.com/p/pz5003,in stock,Vagabond

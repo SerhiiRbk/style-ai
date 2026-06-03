@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { ProductImage } from "@/components/ProductImage";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getGeo } from "@/lib/geo";
@@ -302,19 +303,11 @@ function ProductCard({
       className="group flex flex-col overflow-hidden rounded-2xl border hairline bg-paper transition-shadow hover:shadow-[0_24px_48px_-28px_rgba(21,18,13,0.45)]"
     >
       <div className="relative aspect-[3/4] overflow-hidden bg-cream/40">
-        {p.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={p.image_url}
-            alt={name}
-            loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-stone-soft">
-            No image
-          </div>
-        )}
+        <ProductImage
+          src={p.image_url}
+          alt={name}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+        />
         {p.in_stock === false && (
           <span className="absolute left-2 top-2 rounded-full bg-ink/80 px-2 py-1 text-[10px] text-paper backdrop-blur-sm">
             Out of stock

@@ -320,7 +320,7 @@ export default async function ReportPage({
             sub="Photorealistic outfit directions for the moments that matter."
           />
           <div className="mt-12 grid gap-6 md:grid-cols-3">
-            {report.looks.map((look) => (
+            {report.looks.map((look, i) => (
               <article
                 key={look.title}
                 className="overflow-hidden rounded-2xl border hairline bg-cream/30"
@@ -352,7 +352,11 @@ export default async function ReportPage({
                     {look.description}
                   </p>
                   <ShopTheLook
-                    items={itemsForLook(look, report.shopping)}
+                    items={
+                      report.lookItems?.[i]?.length
+                        ? report.lookItems[i]
+                        : itemsForLook(look, report.shopping)
+                    }
                     currency={profile.currency}
                   />
                   {canTryOn && (

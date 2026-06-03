@@ -1,4 +1,4 @@
 product_id,sku,brand,product_name,description,category,colour,gender,search_price,currency,image_url,deeplink,in_stock,program_name
-WG-2001,WG-2001,Reiss,Wool-blend overcoat,Tailored wool-blend overcoat,Outerwear,Camel,men,250,GBP,https://example.com/img/wg2001.jpg,https://example.com/p/wg2001,1,Reiss
-WG-2002,WG-2002,Sunspel,Lambswool crew jumper,Soft lambswool crewneck,Knitwear,Navy,men,120,GBP,https://example.com/img/wg2002.jpg,https://example.com/p/wg2002,1,Sunspel
-WG-2003,WG-2003,Folk,Tapered cotton trousers,Relaxed tapered cotton trousers,Trousers,Stone,men,95,GBP,https://example.com/img/wg2003.jpg,https://example.com/p/wg2003,yes,Folk
+WG-2001,WG-2001,Reiss,Wool-blend overcoat,Tailored wool-blend overcoat,Outerwear,Camel,men,250,GBP,https://picsum.photos/seed/wg-2001/600/800,https://example.com/p/wg2001,1,Reiss
+WG-2002,WG-2002,Sunspel,Lambswool crew jumper,Soft lambswool crewneck,Knitwear,Navy,men,120,GBP,https://picsum.photos/seed/wg-2002/600/800,https://example.com/p/wg2002,1,Sunspel
+WG-2003,WG-2003,Folk,Tapered cotton trousers,Relaxed tapered cotton trousers,Trousers,Stone,men,95,GBP,https://picsum.photos/seed/wg-2003/600/800,https://example.com/p/wg2003,yes,Folk

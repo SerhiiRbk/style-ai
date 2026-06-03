@@ -1,5 +1,5 @@
 aw_deep_link,product_name,aw_product_id,merchant_product_id,merchant_image_url,description,merchant_category,search_price,merchant_name,brand_name,colour,currency,in_stock
-https://www.awin1.com/pclick.php?p=201&a=123&m=999,Selected Homme overshirt,201,ZAL-SLH-OLV,https://img.zalando.de/slh-overshirt-olive.jpg,Cotton overshirt in olive,Herren > Hemden,69.95,Zalando,Selected Homme,Olive,EUR,1
-https://www.awin1.com/pclick.php?p=202&a=123&m=999,Tommy Hilfiger lambswool jumper,202,ZAL-TH-RST,https://img.zalando.de/th-jumper-rust.jpg,Lambswool crewneck jumper,Herren > Pullover,99.90,Zalando,Tommy Hilfiger,Rust,EUR,1
-https://www.awin1.com/pclick.php?p=203&a=123&m=999,Vagabond chelsea boots,203,ZAL-VAG-BRN,https://img.zalando.de/vagabond-chelsea.jpg,Suede chelsea boots,Herren > Schuhe > Boots,150.00,Zalando,Vagabond,Brown,EUR,1
-https://www.awin1.com/pclick.php?p=204&a=123&m=999,Damen Midikleid,204,ZAL-DRS-CRM,https://img.zalando.de/midikleid-cream.jpg,Fließendes Midikleid,Damen > Kleider,89.95,Zalando,Mango,Cream,EUR,1
+https://www.awin1.com/pclick.php?p=201&a=123&m=999,Selected Homme overshirt,201,ZAL-SLH-OLV,https://picsum.photos/seed/201/600/800,Cotton overshirt in olive,Herren > Hemden,69.95,Zalando,Selected Homme,Olive,EUR,1
+https://www.awin1.com/pclick.php?p=202&a=123&m=999,Tommy Hilfiger lambswool jumper,202,ZAL-TH-RST,https://picsum.photos/seed/202/600/800,Lambswool crewneck jumper,Herren > Pullover,99.90,Zalando,Tommy Hilfiger,Rust,EUR,1
+https://www.awin1.com/pclick.php?p=203&a=123&m=999,Vagabond chelsea boots,203,ZAL-VAG-BRN,https://picsum.photos/seed/203/600/800,Suede chelsea boots,Herren > Schuhe > Boots,150.00,Zalando,Vagabond,Brown,EUR,1
+https://www.awin1.com/pclick.php?p=204&a=123&m=999,Damen Midikleid,204,ZAL-DRS-CRM,https://picsum.photos/seed/204/600/800,Fließendes Midikleid,Damen > Kleider,89.95,Zalando,Mango,Cream,EUR,1

@@ -4,6 +4,7 @@ import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server
 import {
   assembleReport,
   mockShopping,
+  type ShoppingItem,
   type StyleReport,
   type Tier,
 } from "@/lib/report";
@@ -14,7 +15,7 @@ import {
   type PhotoInput,
 } from "@/lib/ai/pipeline";
 import { capsuleMatrix } from "@/lib/style-extras";
-import { matchShopping } from "@/lib/data/catalog";
+import { matchShopping, matchLookItems } from "@/lib/data/catalog";
 import type { Intake } from "@/lib/style-profile";
 
 type CreateInput = {
@@ -73,6 +74,7 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
 
     const { profile, content } = await generateReportContent(intake, photos);
     const shopping = await matchShopping(profile, content);
+    const lookItems = await matchLookItems(profile, content);
 
     await admin
       .from("reports")
@@ -89,6 +91,15 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
         dont_list: content.dontList,
       })
       .eq("id", reportId);
+
+    // Persisted separately so an older schema missing the column never fails the
+    // whole report — per-look "Shop the Look" just falls back to keyword matching.
+    if (Object.keys(lookItems).length) {
+      await admin
+        .from("reports")
+        .update({ look_items: lookItems })
+        .eq("id", reportId);
+    }
 
     const referenceImageUrl =
       photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
@@ -229,5 +240,7 @@ export async function getReportById(id: string): Promise<StyleReport | null> {
     shopping: row.shopping ?? mockShopping(),
     lookImages,
     capsuleImages,
+    lookItems:
+      (row.look_items as Record<number, ShoppingItem[]> | null) ?? undefined,
   });
 }
