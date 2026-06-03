@@ -23,7 +23,7 @@ export function getReport(id: string): StyleReport | undefined {
 let cachedDemo: StyleReport | undefined;
 export function demoReport(): StyleReport {
   if (!cachedDemo) {
-    cachedDemo = { ...generateReport(demoIntake, "premium"), id: "demo" };
+    cachedDemo = generateReport(demoIntake, "premium", "demo");
   }
   return cachedDemo;
 }

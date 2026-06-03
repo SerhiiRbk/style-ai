@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getReportById } from "@/lib/data/reports";
@@ -8,6 +7,7 @@ import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { StylistNote } from "@/components/StylistNote";
 import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
+import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { BRAND } from "@/lib/brand";
 import type { ColorRec, HairRec, ShoppingItem } from "@/lib/report";
 import { formatMoney } from "@/lib/currency";
@@ -81,6 +81,17 @@ export default async function ReportPage({
     : extras.matrix;
 
   const generation = report.generation;
+  const isDemo = report.id === "demo";
+  const firstLookImage = report.looks.map((l) => l.image).find(Boolean);
+  const heroPortrait = isDemo
+    ? "/images/hero-editorial.png"
+    : firstLookImage || null;
+  const moodboardPortrait = isDemo
+    ? "/images/hero-editorial.png"
+    : firstLookImage || "";
+  const moodboardLook = isDemo
+    ? report.looks[0]?.image || "/images/look-work.png"
+    : report.looks[0]?.image || firstLookImage || "";
 
   return (
     <>
@@ -138,16 +149,18 @@ export default async function ReportPage({
               <ArchetypeBadge archetype={extras.archetype} />
             </div>
           </div>
-          <div className="relative hidden aspect-[4/5] overflow-hidden rounded-2xl border border-paper/15 md:block">
-            <Image
-              src="/images/hero-editorial.png"
-              alt="Editorial portrait reflecting the recommended direction"
-              fill
-              sizes="(max-width: 768px) 0px, 33vw"
-              className="object-cover object-top"
-              priority
-            />
-          </div>
+          {heroPortrait ? (
+            <div className="relative hidden aspect-[4/5] overflow-hidden rounded-2xl border border-paper/15 md:block">
+              <ReportZoomImage
+                src={heroPortrait}
+                alt="Your style direction"
+                fill
+                sizes="(max-width: 768px) 0px, 33vw"
+                className="object-cover object-top"
+                priority
+              />
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -186,11 +199,12 @@ export default async function ReportPage({
             </h3>
             <div className="mt-6">
               <Moodboard
-                portrait="/images/hero-editorial.png"
-                look={report.looks[0]?.image ?? "/images/look-work.png"}
+                portrait={moodboardPortrait}
+                look={moodboardLook}
                 product={report.shopping.find((i) => i.image)?.image}
                 palette={report.colors.best.map((c) => c.hex)}
                 archetypeName={extras.archetype.name}
+                zoomable
               />
             </div>
           </div>
@@ -333,13 +347,19 @@ export default async function ReportPage({
                 className="overflow-hidden rounded-2xl border hairline bg-cream/30"
               >
                 <div className="relative aspect-[3/4] bg-sand">
-                  <Image
-                    src={look.image}
-                    alt={`${look.title} — ${look.description}`}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 33vw"
-                    className="object-cover"
-                  />
+                  {look.image ? (
+                    <ReportZoomImage
+                      src={look.image}
+                      alt={`${look.title} — ${look.description}`}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 33vw"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-4 text-center text-sm text-stone-soft">
+                      Outfit photo generating…
+                    </div>
+                  )}
                   <div className="absolute inset-x-0 bottom-0 flex gap-1.5 bg-gradient-to-t from-ink/60 to-transparent p-3 pt-8">
                     {look.palette.map((c) => (
                       <span
@@ -710,10 +730,10 @@ function HairCard({ h, good = false }: { h: HairRec; good?: boolean }) {
     <article className="overflow-hidden rounded-2xl border hairline bg-paper">
       <div className="relative aspect-[4/5] bg-sand">
         {h.image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <ReportZoomImage
             src={h.image}
             alt={h.name}
+            wrapperClassName="relative block h-full w-full"
             className={`h-full w-full object-cover ${
               good ? "" : "opacity-95 grayscale-[35%]"
             }`}

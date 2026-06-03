@@ -4,6 +4,7 @@ import {
   type StyleProfile,
   type ReportContent,
 } from "./style-profile";
+import { resolveHairImage } from "./hair-images";
 
 export type Tier = "free" | "basic" | "lookbook" | "premium";
 
@@ -206,6 +207,17 @@ const LOOK_IMAGES = [
   "/images/look-travel.png",
 ];
 
+function enrichHair(hair: { recommend: HairRec[]; avoid: HairRec[] }) {
+  const withImage = (h: HairRec) => ({
+    ...h,
+    image: h.image ?? resolveHairImage(h.name),
+  });
+  return {
+    recommend: hair.recommend.map(withImage),
+    avoid: hair.avoid.map(withImage),
+  };
+}
+
 /** Deterministic mock shopping list — used in demo mode and as catalogue fallback. */
 export function mockShopping(): ShoppingItem[] {
   return [
@@ -234,9 +246,12 @@ export function assembleReport(opts: {
   id?: string;
   createdAt?: string;
 }): StyleReport {
+  const isDemo = opts.id === "demo";
   const looks: Look[] = opts.content.looks.map((l, i) => ({
     ...l,
-    image: opts.lookImages?.[i] ?? LOOK_IMAGES[i % LOOK_IMAGES.length],
+    image:
+      opts.lookImages?.[i] ??
+      (isDemo ? LOOK_IMAGES[i % LOOK_IMAGES.length] : ""),
   }));
   return {
     id: opts.id ?? Math.random().toString(36).slice(2, 10),
@@ -247,7 +262,7 @@ export function assembleReport(opts: {
     headline: opts.content.headline,
     summary: opts.content.summary,
     colors: opts.content.colors,
-    hair: opts.content.hair,
+    hair: enrichHair(opts.content.hair),
     silhouette: opts.content.silhouette,
     looks,
     shopping: opts.shopping,
@@ -260,8 +275,13 @@ export function assembleReport(opts: {
 }
 
 /** Full deterministic mock report (demo mode + fallback). */
-export function generateReport(intake: Intake, tier: Tier): StyleReport {
+export function generateReport(
+  intake: Intake,
+  tier: Tier,
+  id?: string,
+): StyleReport {
   return assembleReport({
+    id,
     intake,
     tier,
     profile: mockStyleProfile(intake),

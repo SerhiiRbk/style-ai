@@ -1,6 +1,6 @@
 import "server-only";
 import { after } from "next/server";
-import { hasSupabaseAdmin } from "@/lib/env";
+import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
   assembleReport,
@@ -84,8 +84,15 @@ async function generateReportImages(input: ImageJobInput) {
   const referenceImageUrl =
     photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
 
+  const { data: lookRows } = await admin
+    .from("looks")
+    .select("id")
+    .eq("report_id", reportId)
+    .order("created_at", { ascending: true });
+
   for (let i = 0; i < content.looks.length; i++) {
     const l = content.looks[i];
+    const rowId = lookRows?.[i]?.id;
     let imagePath: string | null = null;
     const img = await generateLookImage({
       profile,
@@ -103,11 +110,9 @@ async function generateReportImages(input: ImageJobInput) {
         });
       if (!upErr) imagePath = path;
     }
-    await admin
-      .from("looks")
-      .update({ image_path: imagePath })
-      .eq("report_id", reportId)
-      .eq("title", l.title);
+    if (rowId) {
+      await admin.from("looks").update({ image_path: imagePath }).eq("id", rowId);
+    }
   }
 
   if (tier === "lookbook" || tier === "premium") {
@@ -257,10 +262,29 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
   return reportId;
 }
 
+/** Sign private `assets` bucket paths for report display (10 min). */
+async function signAssetPaths(
+  paths: (string | null | undefined)[],
+): Promise<(string | undefined)[]> {
+  const signer = hasSupabaseAdmin
+    ? createAdminSupabase()
+    : await createServerSupabase();
+  return Promise.all(
+    paths.map(async (path) => {
+      if (!path) return undefined;
+      const { data, error } = await signer.storage
+        .from("assets")
+        .createSignedUrl(path, 600);
+      if (error || !data?.signedUrl) return undefined;
+      return data.signedUrl;
+    }),
+  );
+}
+
 /** Fetch a report (RLS-scoped to the signed-in user). Falls back to mock store. */
 export async function getReportById(id: string): Promise<StyleReport | null> {
-  if (!hasSupabaseAdmin) return getMockReport(id) ?? null;
   if (id === "demo") return getMockReport("demo") ?? null;
+  if (!hasSupabase) return getMockReport(id) ?? null;
 
   const sb = await createServerSupabase();
   const { data: row } = await sb.from("reports").select("*").eq("id", id).single();
@@ -272,26 +296,12 @@ export async function getReportById(id: string): Promise<StyleReport | null> {
     .eq("report_id", id)
     .order("created_at", { ascending: true });
 
-  // Sign private generated-look images (10 min) for display.
-  const lookImages = await Promise.all(
-    (looks ?? []).map(async (l) => {
-      if (!l.image_path) return undefined;
-      const { data } = await sb.storage
-        .from("assets")
-        .createSignedUrl(l.image_path, 600);
-      return data?.signedUrl ?? undefined;
-    }),
+  const lookImages = await signAssetPaths(
+    (looks ?? []).map((l) => l.image_path as string | null | undefined),
   );
 
-  // Sign capsule "week of outfits" photos (ordered to match capsuleMatrix()).
   const capsulePaths = (row.capsule_images as (string | null)[] | null) ?? [];
-  const capsuleImages = await Promise.all(
-    capsulePaths.map(async (p) => {
-      if (!p) return undefined;
-      const { data } = await sb.storage.from("assets").createSignedUrl(p, 600);
-      return data?.signedUrl ?? undefined;
-    }),
-  );
+  const capsuleImages = await signAssetPaths(capsulePaths);
 
   const generation = reportGenerationState(
     {

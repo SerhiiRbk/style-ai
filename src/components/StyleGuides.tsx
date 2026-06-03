@@ -1,3 +1,4 @@
+import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { formatMoney } from "@/lib/currency";
 import type { Currency } from "@/lib/currency";
 import { LookTryOn } from "./LookTryOn";
@@ -20,36 +21,68 @@ import type {
 
 /* -------------------------------- moodboard ------------------------------- */
 
+function MoodboardPhoto({
+  src,
+  alt,
+  zoomable,
+}: {
+  src: string;
+  alt: string;
+  zoomable?: boolean;
+}) {
+  if (!src) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-sm text-stone-soft">
+        Generating…
+      </div>
+    );
+  }
+  if (zoomable) {
+    return (
+      <ReportZoomImage
+        src={src}
+        alt={alt}
+        wrapperClassName="relative block h-full w-full"
+        className="h-full w-full object-cover object-top"
+      />
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={alt} className="h-full w-full object-cover object-top" />
+  );
+}
+
 export function Moodboard({
   portrait,
   look,
   product,
   palette,
   archetypeName,
+  zoomable,
 }: {
   portrait: string;
   look: string;
   product?: string;
   palette: string[];
   archetypeName: string;
+  zoomable?: boolean;
 }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       <figure className="relative col-span-2 aspect-[5/4] overflow-hidden rounded-2xl bg-sand sm:col-span-1 sm:row-span-2 sm:aspect-auto">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <MoodboardPhoto
           src={portrait}
           alt="Direction portrait"
-          className="h-full w-full object-cover object-top"
+          zoomable={zoomable}
         />
       </figure>
 
       <figure className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-sand">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <MoodboardPhoto
           src={look}
           alt="Reference look"
-          className="h-full w-full object-cover object-top"
+          zoomable={zoomable}
         />
       </figure>
 
@@ -64,11 +97,10 @@ export function Moodboard({
 
       {product && (
         <figure className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-paper">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <MoodboardPhoto
             src={product}
             alt="Reference piece"
-            className="h-full w-full object-cover"
+            zoomable={zoomable}
           />
         </figure>
       )}
@@ -252,10 +284,10 @@ export function CapsuleMatrix({
             {visual && (
               <div className="relative aspect-[3/4] bg-sand">
                 {c.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <ReportZoomImage
                     src={c.image}
                     alt={`${c.context} outfit`}
+                    wrapperClassName="relative block h-full w-full"
                     className="h-full w-full object-cover object-top"
                   />
                 ) : null}
