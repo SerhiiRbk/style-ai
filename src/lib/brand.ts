@@ -14,8 +14,10 @@ export const BRAND = {
   /** Honest, understated AI disclosure. */
   tagline: "AI-assisted personal styling",
 
-  /** Open Graph / social share card (1200x630 link card). */
-  ogImage: "/images/og-valetti.png",
+  /** Open Graph / social share card (flat lay men's essentials). */
+  ogImage: "/images/flatlay-essentials.png",
+  ogImageWidth: 1536,
+  ogImageHeight: 1024,
   /** Square share card (1080x1080) for Instagram / LinkedIn posts. */
   ogSquare: "/images/og-square.png",
 

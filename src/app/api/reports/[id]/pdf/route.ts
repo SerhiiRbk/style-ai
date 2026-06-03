@@ -41,6 +41,20 @@ export async function GET(
     if (!report) {
       return pdfResponse(await getSamplePdf(), "styleai-sample-report.pdf");
     }
+    // The free tier is a gated preview — no PDF export.
+    if (report.tier === "free") {
+      return new Response(
+        JSON.stringify({
+          error: "The PDF export is a paid feature. Upgrade to download your report.",
+          code: "tier_locked",
+          upgrade: "/pricing",
+        }),
+        {
+          status: 402,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
     const bytes = await buildReportPdf(report);
     return pdfResponse(bytes, `styleai-report-${id}.pdf`);
   } catch {

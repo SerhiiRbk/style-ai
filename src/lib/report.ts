@@ -9,7 +9,28 @@ import { resolveHairImage } from "./hair-images";
 export type Tier = "free" | "basic" | "lookbook" | "premium";
 
 export type ColorRec = { name: string; hex: string; why: string };
-export type HairRec = { name: string; why: string; image?: string };
+/** Max personalized hair images generated per recommend/avoid list (controls API cost). */
+export const HAIR_GEN_LIMIT = 3;
+/** Max personalized facial-hair / eyewear previews per premium report. */
+export const PREMIUM_GROOMING_GEN_LIMIT = 2;
+
+export type HairRec = {
+  name: string;
+  why: string;
+  /** Public static path (demo) or signed URL after read. */
+  image?: string;
+  /** Private assets bucket path — live reports only. */
+  imagePath?: string;
+};
+
+/** Premium personalized facial-hair style preview (beard / mustache). */
+export type FacialHairRec = HairRec;
+
+/** Premium personalized eyewear preview on the user's photo. */
+export type EyewearRec = HairRec & {
+  /** Static fallback shape id when image is still generating. */
+  shape?: string;
+};
 export type ShoppingItem = {
   category: string;
   title: string;
@@ -20,6 +41,8 @@ export type ShoppingItem = {
   color: string;
   image?: string;
   productId?: string;
+  /** Catalogue pick is stylistically close, not a guaranteed photo match. */
+  similarPick?: boolean;
 };
 export type Look = {
   context: string;
@@ -32,7 +55,7 @@ export type Look = {
 export type ReportGenerationState = {
   status: "processing" | "ready" | "failed";
   pending: boolean;
-  phase: "report" | "images" | "capsule" | null;
+  phase: "report" | "hair" | "grooming" | "images" | "capsule" | null;
 };
 
 export type StyleReport = {
@@ -45,6 +68,10 @@ export type StyleReport = {
   summary: string;
   colors: { best: ColorRec[]; avoid: ColorRec[] };
   hair: { recommend: HairRec[]; avoid: HairRec[] };
+  /** Premium — personalized beard / mustache previews (1–2). */
+  facialHair?: FacialHairRec[];
+  /** Premium — personalized glasses previews (1–2). */
+  eyewear?: EyewearRec[];
   silhouette: { fit: string; rules: string[] };
   looks: Look[];
   shopping: ShoppingItem[];
@@ -207,15 +234,69 @@ const LOOK_IMAGES = [
   "/images/look-travel.png",
 ];
 
-function enrichHair(hair: { recommend: HairRec[]; avoid: HairRec[] }) {
-  const withImage = (h: HairRec) => ({
-    ...h,
-    image: h.image ?? resolveHairImage(h.name),
-  });
+/** True when top-N hair items still await personalized image generation. */
+export function hairGenerationPending(hair: {
+  recommend: HairRec[];
+  avoid: HairRec[];
+}): boolean {
+  const targets = [
+    ...hair.recommend.slice(0, HAIR_GEN_LIMIT),
+    ...hair.avoid.slice(0, HAIR_GEN_LIMIT),
+  ];
+  if (targets.length === 0) return false;
+  return targets.some((h) => !h.imagePath);
+}
+
+/** True when premium facial-hair / eyewear previews still await generation. */
+export function premiumGroomingPending(
+  facialHair: FacialHairRec[] | null | undefined,
+  eyewear: EyewearRec[] | null | undefined,
+): boolean {
+  const targets = [
+    ...(facialHair ?? []).slice(0, PREMIUM_GROOMING_GEN_LIMIT),
+    ...(eyewear ?? []).slice(0, PREMIUM_GROOMING_GEN_LIMIT),
+  ];
+  if (targets.length === 0) return false;
+  return targets.some((item) => !item.imagePath);
+}
+
+function enrichHair(
+  hair: { recommend: HairRec[]; avoid: HairRec[] },
+  opts?: { isDemo?: boolean; personalizedPending?: boolean },
+) {
+  const isDemo = opts?.isDemo ?? false;
+  const personalizedPending = opts?.personalizedPending ?? false;
+
+  const withImage = (h: HairRec, index: number) => {
+    if (h.image) return h;
+    const inGenBatch = index < HAIR_GEN_LIMIT;
+    if (!isDemo && inGenBatch && personalizedPending) return h;
+    return { ...h, image: resolveHairImage(h.name) };
+  };
+
   return {
     recommend: hair.recommend.map(withImage),
     avoid: hair.avoid.map(withImage),
   };
+}
+
+const MOCK_SHOPPING_TITLES = new Set([
+  "Unstructured navy blazer",
+  "Camel merino crewneck",
+  "Olive overshirt",
+  "Charcoal wool-blend trousers",
+  "Brown leather derbies",
+  "Cream leather sneakers",
+  "Tan suede chelsea boots",
+  "Field watch, cream dial",
+]);
+
+/** True when items are the curated demo list (persisted fallback), not catalogue matches. */
+export function isMockShopping(items: ShoppingItem[]): boolean {
+  if (!items.length) return false;
+  const titles = items.map((i) => i.title);
+  if (titles.length !== MOCK_SHOPPING_TITLES.size) return false;
+  return titles.every((t) => MOCK_SHOPPING_TITLES.has(t));
 }
 
 /** Deterministic mock shopping list — used in demo mode and as catalogue fallback. */
@@ -243,6 +324,9 @@ export function assembleReport(opts: {
   capsuleImages?: (string | null | undefined)[];
   lookItems?: Record<number, ShoppingItem[]>;
   generation?: ReportGenerationState;
+  personalizedHairPending?: boolean;
+  facialHair?: FacialHairRec[];
+  eyewear?: EyewearRec[];
   id?: string;
   createdAt?: string;
 }): StyleReport {
@@ -262,7 +346,12 @@ export function assembleReport(opts: {
     headline: opts.content.headline,
     summary: opts.content.summary,
     colors: opts.content.colors,
-    hair: enrichHair(opts.content.hair),
+    hair: enrichHair(opts.content.hair, {
+      isDemo,
+      personalizedPending: opts.personalizedHairPending,
+    }),
+    facialHair: opts.facialHair,
+    eyewear: opts.eyewear,
     silhouette: opts.content.silhouette,
     looks,
     shopping: opts.shopping,

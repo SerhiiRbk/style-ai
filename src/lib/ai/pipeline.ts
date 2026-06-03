@@ -129,8 +129,17 @@ export async function recommend(
   intake: Intake,
   profile: StyleProfile,
   rules: string[],
+  /** How many looks to produce. Free preview = 1; paid tiers = 3. */
+  lookCount = 3,
 ): Promise<ReportContent> {
   if (!hasAI) return mockReportContent(intake);
+
+  const looksLine =
+    lookCount <= 1
+      ? `- Provide exactly 1 versatile look for everyday wear, with a ` +
+        `3–4 colour hex palette and a one-line description of the outfit.\n`
+      : `- Provide exactly ${lookCount} looks for different contexts (work, smart-casual, weekend), each with a ` +
+        `3–4 colour hex palette and a one-line description of the outfit.\n`;
 
   const grounding = rules.length
     ? `Ground every recommendation in these established style rules:\n- ${rules.join("\n- ")}\n`
@@ -152,9 +161,8 @@ export async function recommend(
       `- For hair, recommend and avoid with reasons tied to face shape.\n` +
       `- Tailor the silhouette "fit" line and all 3 rules specifically to the "${profile.physical.bodyType}" body type: ` +
       `what to emphasise, what to balance, and which cuts/proportions to avoid for this shape. Reference the body type explicitly.\n` +
-      `- Ensure the 3 looks flatter this body type.\n` +
-      `- Provide exactly 3 looks for different contexts (work, smart-casual, weekend), each with a ` +
-      `3–4 colour hex palette and a one-line description of the outfit.\n` +
+      `- Ensure the looks flatter this body type.\n` +
+      looksLine +
       `- doList and dontList: 4 short, actionable items each.\n` +
       `Keep the tone refined and encouraging.`,
   });
@@ -169,20 +177,193 @@ export async function recommend(
  */
 export async function generateLookImage(opts: {
   profile: StyleProfile;
-  look: { title: string; description: string; palette: string[] };
+  look: {
+    title: string;
+    description: string;
+    palette: string[];
+    /** Catalogue pieces from “Shop a look like this” (dominates the prompt). */
+    catalogContext?: string;
+    /** Public product image URLs rendered as garment references. */
+    catalogImageUrls?: string[];
+  };
   referenceImageUrl?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
     const { profile, look, referenceImageUrl } = opts;
-    const prompt =
-      `Editorial, full-length fashion photograph for a premium style report. ` +
-      `Outfit: ${look.description}. Colour palette: ${look.palette.join(", ")}. ` +
+    const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
+    const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
+
+    const subject =
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.bodyType} build. Soft natural light, neutral studio backdrop, ` +
       `confident relaxed pose, sharp focus, magazine quality. ` +
+      `Vertical 9:16 framing, full body head to shoes visible. `;
+
+    // When catalogue picks exist, THEY define the outfit. The free-text look
+    // description is demoted to a styling/mood hint so it stops dominating and
+    // re-creating the report's original look.
+    const outfitBlock = hasCatalog
+      ? `${look.catalogContext ?? ""}` +
+        `Styling note (mood and proportions only — do NOT substitute different clothes): ${look.description}. `
+      : `Outfit: ${look.description}. `;
+
+    // Describe the role of each input image so identity (person photo) and the
+    // garments (catalogue product photos) are not confused.
+    let imageRoles = "";
+    if (referenceImageUrl && catalogImageUrls.length) {
+      imageRoles =
+        `The FIRST image shows the person — preserve their face, hair and identity exactly. ` +
+        `The remaining ${catalogImageUrls.length} image(s) are the actual catalogue garments to dress them in — ` +
+        `reproduce those exact garments on the person. `;
+    } else if (referenceImageUrl) {
+      imageRoles = `Preserve the face and identity of the person in the provided photo. `;
+    } else if (catalogImageUrls.length) {
+      imageRoles =
+        `The provided image(s) are the actual catalogue garments to render as the outfit. ` +
+        `Do not show identifiable facial features. `;
+    } else {
+      imageRoles = `Do not show identifiable facial features. `;
+    }
+
+    const prompt =
+      `Editorial, full-length fashion photograph for a premium style report. ` +
+      outfitBlock +
+      `Colour palette: ${look.palette.join(", ")}. ` +
+      subject +
+      imageRoles;
+
+    const content: (
+      | { type: "text"; text: string }
+      | { type: "image"; image: URL }
+    )[] = [{ type: "text", text: prompt }];
+    if (referenceImageUrl) {
+      content.push({ type: "image", image: new URL(referenceImageUrl) });
+    }
+    for (const url of catalogImageUrls) {
+      try {
+        content.push({ type: "image", image: new URL(url) });
+      } catch {
+        // Skip malformed product URLs rather than failing the whole render.
+      }
+    }
+
+    const result = await generateText({
+      model: env.modelImage,
+      messages: [{ role: "user", content }],
+    });
+    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
+    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate a personalized hairstyle headshot. With a reference portrait, the
+ * model preserves the person's identity while applying the named cut.
+ */
+export async function generateHairImage(opts: {
+  profile: StyleProfile;
+  hair: { name: string; why: string };
+  recommend: boolean;
+  referenceImageUrl?: string;
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI) return null;
+  try {
+    const { profile, hair, recommend, referenceImageUrl } = opts;
+    const intent = recommend
+      ? `Show this hairstyle as a flattering recommendation: ${hair.name}. ${hair.why}`
+      : `Show this hairstyle as an example to avoid: ${hair.name}. ${hair.why}`;
+
+    const prompt =
+      `Editorial beauty headshot for a premium grooming report. ` +
+      `Hairstyle: ${hair.name}. ${intent} ` +
+      `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
+      `${profile.physical.faceShape} face shape. Shoulders-up framing, neutral soft studio backdrop, ` +
+      `natural soft light, sharp focus on hair and face, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
-        ? `Preserve the face and identity of the person in the provided photo.`
+        ? `Preserve the face, skin tone, and identity of the person in the provided photo — only change the hairstyle.`
+        : `Do not show identifiable facial features.`);
+
+    const content = referenceImageUrl
+      ? [
+          { type: "text" as const, text: prompt },
+          { type: "image" as const, image: new URL(referenceImageUrl) },
+        ]
+      : [{ type: "text" as const, text: prompt }];
+
+    const result = await generateText({
+      model: env.modelImage,
+      messages: [{ role: "user", content }],
+    });
+    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
+    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate a personalized facial-hair preview (beard / mustache). With a
+ * reference portrait, the model preserves identity while applying the style.
+ */
+export async function generateFacialHairImage(opts: {
+  profile: StyleProfile;
+  style: { name: string; why: string };
+  referenceImageUrl?: string;
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI) return null;
+  try {
+    const { profile, style, referenceImageUrl } = opts;
+    const prompt =
+      `Editorial grooming headshot for a premium style report. ` +
+      `Facial hair style: ${style.name}. ${style.why} ` +
+      `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
+      `${profile.physical.faceShape} face shape. Shoulders-up framing, neutral soft studio backdrop, ` +
+      `natural soft light, sharp focus on face and facial hair, magazine quality, tasteful and respectful. ` +
+      (referenceImageUrl
+        ? `Preserve the face, skin tone, and identity of the person in the provided photo — only change the facial hair style.`
+        : `Do not show identifiable facial features.`);
+
+    const content = referenceImageUrl
+      ? [
+          { type: "text" as const, text: prompt },
+          { type: "image" as const, image: new URL(referenceImageUrl) },
+        ]
+      : [{ type: "text" as const, text: prompt }];
+
+    const result = await generateText({
+      model: env.modelImage,
+      messages: [{ role: "user", content }],
+    });
+    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
+    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate a personalized eyewear preview. With a reference portrait, the
+ * model preserves identity while applying the named frame style.
+ */
+export async function generateEyewearImage(opts: {
+  profile: StyleProfile;
+  frame: { name: string; why: string; shape?: string };
+  referenceImageUrl?: string;
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI) return null;
+  try {
+    const { profile, frame, referenceImageUrl } = opts;
+    const prompt =
+      `Editorial eyewear headshot for a premium style report. ` +
+      `Glasses frames: ${frame.name}${frame.shape ? ` (${frame.shape} shape)` : ""}. ${frame.why} ` +
+      `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
+      `${profile.physical.faceShape} face shape. Shoulders-up framing, neutral soft studio backdrop, ` +
+      `natural soft light, sharp focus on face and glasses, magazine quality, tasteful and respectful. ` +
+      (referenceImageUrl
+        ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add or change the eyewear.`
         : `Do not show identifiable facial features.`);
 
     const content = referenceImageUrl
@@ -207,9 +388,11 @@ export async function generateLookImage(opts: {
 export async function generateReportContent(
   intake: Intake,
   photos: PhotoInput[],
+  /** Number of looks to generate (free preview = 1, paid = 3). */
+  lookCount = 3,
 ): Promise<{ profile: StyleProfile; content: ReportContent }> {
   const profile = await analyzeProfile(intake, photos);
   const rules = await retrieveRules(profile);
-  const content = await recommend(intake, profile, rules);
+  const content = await recommend(intake, profile, rules, lookCount);
   return { profile, content };
 }

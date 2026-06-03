@@ -7,8 +7,10 @@
  *   node scripts/build-og.mjs
  *
  * Outputs:
- *   public/images/og-valetti.png   1200x630   (OG / Twitter link card)
+ *   public/images/og-valetti.png   1200x630   (optional typographic card; not used for site OG)
  *   public/images/og-square.png    1080x1080  (Instagram / LinkedIn post)
+ *
+ * Site-wide OG / Twitter link previews use public/images/flatlay-essentials.png (see BRAND.ogImage).
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";

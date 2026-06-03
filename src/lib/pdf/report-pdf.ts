@@ -395,14 +395,35 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   d.gap(4);
   d.text("Eyewear for your face", { size: 11, font: d.bold });
   d.gap(3);
-  for (const f of extras.eyewear.recommend) {
-    const img = await embedImage(
-      d.doc,
-      `/images/eyewear/eyewear-${f.shape}.png`,
-      { w: 70, h: 52 },
-    );
-    d.imageRow(img, f.name, f.why, { thumbW: 70, thumbH: 52 });
-    d.gap(4);
+  if (report.tier === "premium" && report.facialHair?.length) {
+    d.text("Recommended facial hair", { size: 11, font: d.bold });
+    d.gap(3);
+    for (const item of report.facialHair) {
+      const img = await embedImage(d.doc, item.image, { w: 58, h: 70 });
+      d.imageRow(img, item.name, item.why);
+      d.gap(4);
+    }
+    d.gap(2);
+  }
+  if (report.tier === "premium" && report.eyewear?.length) {
+    d.text("Recommended glasses", { size: 11, font: d.bold });
+    d.gap(3);
+    for (const item of report.eyewear) {
+      const img = await embedImage(d.doc, item.image, { w: 58, h: 70 });
+      d.imageRow(img, item.name, item.why);
+      d.gap(4);
+    }
+    d.gap(2);
+  } else {
+    for (const f of extras.eyewear.recommend) {
+      const img = await embedImage(
+        d.doc,
+        `/images/eyewear/eyewear-${f.shape}.png`,
+        { w: 70, h: 52 },
+      );
+      d.imageRow(img, f.name, f.why, { thumbW: 70, thumbH: 52 });
+      d.gap(4);
+    }
   }
   d.text(`Avoid: ${extras.eyewear.avoid.join(" · ")}`, {
     size: 9,
@@ -453,11 +474,14 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       h: 70,
       position: "top",
     });
-    const shop = itemsForLook(l, report.shopping)
-      .map((it) => it.title)
-      .join(", ");
+    const lookIdx = report.looks.indexOf(l);
+    const shopItems =
+      (lookIdx >= 0 && report.lookItems?.[lookIdx]?.length
+        ? report.lookItems[lookIdx]
+        : itemsForLook(l, report.shopping)) ?? [];
+    const shop = shopItems.map((it) => it.title).join(", ");
     d.imageRow(img, `${l.context} — ${l.title}`, l.description, {
-      meta: shop ? `Shop this look: ${shop}` : undefined,
+      meta: shop ? `Shop a look like this: ${shop}` : undefined,
     });
     d.gap(5);
   }

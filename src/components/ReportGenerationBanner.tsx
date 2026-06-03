@@ -10,6 +10,12 @@ function messageFor(phase: ReportGenerationState["phase"]): string {
   if (phase === "report") {
     return "We're analysing your photos and writing your personalised report.";
   }
+  if (phase === "hair") {
+    return "We're generating personalised hairstyle previews on your photo.";
+  }
+  if (phase === "grooming") {
+    return "We're generating personalised facial hair and glasses previews on your photo.";
+  }
   if (phase === "capsule") {
     return "We're generating your week-of-outfits lookbook photos.";
   }
@@ -94,7 +100,7 @@ export function ReportGenerationBanner({
             <p className="font-medium">Generation in progress</p>
             <p className="mt-1 text-stone">{messageFor(state.phase)}</p>
             <p className="mt-1 text-stone">
-              You can stay on this page — we'll refresh when new images are ready
+              You can stay on this page — we&apos;ll refresh when new images are ready
               — or come back in a few minutes. Your colours, shopping list, and
               written guidance are already saved below.
             </p>

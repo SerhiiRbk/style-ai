@@ -2,8 +2,15 @@ import { NextResponse } from "next/server";
 import { intakeSchema } from "@/lib/style-profile";
 import { type Tier } from "@/lib/report";
 import { createAndRunReport } from "@/lib/data/reports";
-import { hasSupabase } from "@/lib/env";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
+import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
+import {
+  REPORT_COST,
+  creditBalance,
+  spendCredits,
+  ensureSignupBonus,
+  InsufficientCreditsError,
+} from "@/lib/credits";
 
 const TIERS: Tier[] = ["free", "basic", "lookbook", "premium"];
 
@@ -38,6 +45,32 @@ export async function POST(request: Request) {
     userId = user.id;
   }
 
+  // Credits: free tier costs nothing (gated preview); paid tiers are charged.
+  // New users get a one-time signup bonus so their first report is affordable.
+  const cost = REPORT_COST[tier];
+  if (userId && hasSupabaseAdmin) {
+    const admin = createAdminSupabase();
+    try {
+      await ensureSignupBonus(admin, userId);
+    } catch {
+      // Non-fatal — the balance check below still guards paid tiers.
+    }
+    if (cost > 0) {
+      const balance = await creditBalance(admin, userId);
+      if (balance < cost) {
+        return NextResponse.json(
+          {
+            error: "Not enough credits to generate this report.",
+            code: "insufficient_credits",
+            balance,
+            needed: cost,
+          },
+          { status: 402 },
+        );
+      }
+    }
+  }
+
   try {
     const id = await createAndRunReport({
       intake: parsed.data,
@@ -45,6 +78,32 @@ export async function POST(request: Request) {
       userId,
       photoPaths: Array.isArray(body.photoPaths) ? body.photoPaths : [],
     });
+
+    // Charge after the report is created so a failed generation isn't billed.
+    if (userId && hasSupabaseAdmin && cost > 0) {
+      try {
+        await spendCredits(createAdminSupabase(), {
+          userId,
+          amount: cost,
+          reason: "report",
+          refId: id,
+        });
+      } catch (e) {
+        if (e instanceof InsufficientCreditsError) {
+          return NextResponse.json(
+            {
+              error: "Not enough credits to generate this report.",
+              code: "insufficient_credits",
+              balance: e.balance,
+              needed: e.needed,
+            },
+            { status: 402 },
+          );
+        }
+        throw e;
+      }
+    }
+
     return NextResponse.json({ id, tier }, { status: 201 });
   } catch (e) {
     return NextResponse.json(

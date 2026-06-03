@@ -188,6 +188,90 @@ function eyewearFor(faceShape: string): { recommend: FrameRec[]; avoid: string[]
   };
 }
 
+/** Top eyewear picks for premium personalized previews (1–2). */
+export function premiumEyewearPicks(profile: StyleProfile): FrameRec[] {
+  return eyewearFor(profile.physical.faceShape).recommend.slice(0, 2);
+}
+
+/** Named facial-hair styles for premium photo previews (1–2). */
+export function facialHairFor(
+  profile: StyleProfile,
+): { name: string; why: string }[] {
+  const gender = lc(profile.demographics.genderPresentation);
+  if (gender === "female") {
+    return [
+      {
+        name: "Clean-shaven",
+        why: "Keeps focus on your features and pairs cleanly with structured tailoring.",
+      },
+      {
+        name: "Soft natural brows",
+        why: "Well-groomed brows frame the face — the detail that reads as polished.",
+      },
+    ];
+  }
+
+  const f = lc(profile.physical.faceShape);
+  if (f.includes("round")) {
+    return [
+      {
+        name: "Short boxed beard",
+        why: "A slightly longer chin with tighter cheeks adds length to a round face.",
+      },
+      {
+        name: "Light stubble",
+        why: "Even 2–3 mm stubble sharpens the jaw without adding width.",
+      },
+    ];
+  }
+  if (f.includes("square")) {
+    return [
+      {
+        name: "Rounded full beard",
+        why: "Soft curves along the jaw balance strong, angular bone structure.",
+      },
+      {
+        name: "Classic mustache",
+        why: "A neat mustache draws the eye upward and softens a square jawline.",
+      },
+    ];
+  }
+  if (f.includes("oblong") || f.includes("rectang") || f.includes("long")) {
+    return [
+      {
+        name: "Full beard with side volume",
+        why: "Width on the cheeks breaks up vertical length and balances proportions.",
+      },
+      {
+        name: "Short goatee",
+        why: "Concentrated length at the chin adds width without elongating the face.",
+      },
+    ];
+  }
+  if (f.includes("heart") || f.includes("triang")) {
+    return [
+      {
+        name: "Medium stubble",
+        why: "Even coverage adds weight to a narrower chin and balances a wider forehead.",
+      },
+      {
+        name: "Short beard, clean cheeks",
+        why: "Keeps the upper face light while defining the jaw.",
+      },
+    ];
+  }
+  return [
+    {
+      name: "Short even beard",
+      why: "A tidy, even line suits an oval face — natural cheek line, clean neckline.",
+    },
+    {
+      name: "Refined stubble",
+      why: "Low-maintenance texture that reads modern without overpowering your features.",
+    },
+  ];
+}
+
 /* ------------------------------ fit blueprint ----------------------------- */
 
 function fitBlueprint(profile: StyleProfile): FitSpec[] {
@@ -580,10 +664,40 @@ function keywords(title: string): string[] {
 
 /** Shopping items that appear in a look's description ("shop the look"). */
 export function itemsForLook(look: Look, shopping: ShoppingItem[]): ShoppingItem[] {
+  const garments = decomposeLook(look.description);
+  if (garments.length) {
+    const seen = new Set<string>();
+    const items: ShoppingItem[] = [];
+    for (const g of garments) {
+      if (items.length >= 6) break;
+      const candidates = shopping.filter((it) => it.category === g.category);
+      if (!candidates.length) continue;
+      const ranked = [...candidates].sort(
+        (a, b) =>
+          colorMatchScore(g.color, b.color, b.title) -
+          colorMatchScore(g.color, a.color, a.title),
+      );
+      const best = ranked[0];
+      const id = best.productId ?? best.title;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const score = colorMatchScore(g.color, best.color, best.title);
+      items.push({
+        ...best,
+        similarPick: score < 0.45,
+        why:
+          score >= 0.45
+            ? best.why
+            : `A similar ${g.garment} from your capsule — close in category and tone.`,
+      });
+    }
+    if (items.length) return items;
+  }
   const desc = look.description.toLowerCase();
   return shopping
     .filter((it) => keywords(it.title).some((k) => desc.includes(k)))
-    .slice(0, 4);
+    .slice(0, 4)
+    .map((it) => ({ ...it, similarPick: true }));
 }
 
 /* ----------------------------- look decomposition ------------------------- */
@@ -598,7 +712,7 @@ const GARMENT_CATEGORY: Record<string, string> = {
   peacoat: "Outerwear", suit: "Outerwear",
   knit: "Knitwear", sweater: "Knitwear", crewneck: "Knitwear", jumper: "Knitwear",
   cardigan: "Knitwear", turtleneck: "Knitwear", rollneck: "Knitwear", pullover: "Knitwear",
-  shirt: "Shirts", tee: "Shirts", polo: "Shirts", henley: "Shirts",
+  shirt: "Shirts", oxford: "Shirts", tee: "Shirts", polo: "Shirts", henley: "Shirts",
   trousers: "Trousers", chinos: "Trousers", chino: "Trousers", jeans: "Trousers",
   denim: "Trousers", slacks: "Trousers", pants: "Trousers",
   loafers: "Footwear", boots: "Footwear", boot: "Footwear", sneakers: "Footwear",
@@ -615,8 +729,33 @@ const COLOR_WORDS = new Set([
   "camel", "olive", "beige", "khaki", "burgundy", "rust", "ecru", "stone", "taupe",
   "sand", "indigo", "blue", "green", "red", "pink", "purple", "yellow", "orange",
   "maroon", "mustard", "forest", "sage", "cognac", "chocolate", "ivory", "midnight",
-  "dark", "light", "mid", "off",
+  "dark", "light", "mid", "off", "dusty",
 ]);
+
+const GARMENT_KEYS = Object.keys(GARMENT_CATEGORY).sort(
+  (a, b) => b.length - a.length,
+);
+
+/** 0–1 overlap between a look garment colour and catalogue title/colour fields. */
+export function colorMatchScore(
+  queryColor: string | null,
+  productColor: string | null,
+  title: string,
+): number {
+  const tokens = (queryColor ?? "")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => COLOR_WORDS.has(w));
+  if (!tokens.length) return 0.5;
+  const hay = `${productColor ?? ""} ${title}`.toLowerCase();
+  let hits = 0;
+  for (const t of tokens) {
+    if (hay.includes(t)) hits++;
+    else if (t === "grey" && hay.includes("gray")) hits++;
+    else if (t === "gray" && hay.includes("grey")) hits++;
+  }
+  return hits / tokens.length;
+}
 
 /**
  * Deterministically split a free-text look description into individual garments,
@@ -630,27 +769,28 @@ export function decomposeLook(description: string): LookGarment[] {
   const out: LookGarment[] = [];
   const seen = new Set<string>();
   for (const clause of clauses) {
-    const words = clause
+    const normalized = clause
       .replace(/-/g, " ")
       .replace(/[^a-z\s]/g, " ")
-      .split(/\s+/)
-      .filter(Boolean);
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized) continue;
+    const words = normalized.split(/\s+/).filter(Boolean);
     let garment: string | null = null;
     let category: string | null = null;
-    for (const w of words) {
-      const c = GARMENT_CATEGORY[w];
-      if (c) {
-        garment = w;
-        category = c;
-        break; // first garment keyword in the clause wins
+    for (const key of GARMENT_KEYS) {
+      if (normalized.includes(key)) {
+        garment = key;
+        category = GARMENT_CATEGORY[key];
+        break;
       }
     }
     if (!garment || !category) continue;
     const colors = words.filter((w) => COLOR_WORDS.has(w));
     const color = colors.length ? colors.join(" ") : null;
-    const key = `${category}:${color ?? ""}:${garment}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const dedupeKey = `${category}:${color ?? ""}:${garment}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
     out.push({ category, garment, color });
   }
   return out;

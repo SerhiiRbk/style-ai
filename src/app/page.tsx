@@ -5,7 +5,12 @@ import { Footer } from "@/components/Footer";
 import { MeetStylist } from "@/components/MeetStylist";
 import { ButtonLink } from "@/components/Button";
 import { getGeo } from "@/lib/geo";
-import { TIER_PRICES } from "@/lib/currency";
+import {
+  REPORT_COST,
+  CREDIT_COSTS,
+  CREDIT_PACKAGES,
+  SIGNUP_BONUS,
+} from "@/lib/credit-costs";
 import { BRAND } from "@/lib/brand";
 
 export default function Home() {
@@ -412,57 +417,80 @@ function Card({
 
 async function Pricing() {
   const { subCurrency } = await getGeo();
-  const p = TIER_PRICES[subCurrency];
   const tiers = [
     {
       name: "Free preview",
-      price: p.free,
-      cadence: "one simplified report",
-      features: ["1 goal analysed", "3 key recommendations", "1 preview look (watermarked)"],
+      price: "Free",
+      cadence: "",
+      features: [
+        "Colour & hair analysis with reasons",
+        "1 photorealistic preview look",
+        "No try-on, capsule or PDF",
+      ],
       cta: "Try it free",
       href: "/start",
       featured: false,
     },
     {
-      name: "Basic Report",
-      price: p.basic,
-      cadence: "one-time",
-      features: ["Full style profile", "Colours, hair & silhouette with reasons", "Infographic + PDF", "Shopping list with real links"],
+      name: "Basic report",
+      price: String(REPORT_COST.basic),
+      cadence: "credits",
+      features: [
+        "Full style profile & colour story",
+        "Hair, silhouette & fit, with reasons",
+        "3 photorealistic looks",
+        "Shopping list + PDF export",
+      ],
       cta: "Get Basic",
       href: "/start",
       featured: false,
     },
     {
       name: "Lookbook",
-      price: p.lookbook,
-      cadence: "one-time",
-      features: ["Everything in Basic", "8–12 photorealistic looks", "Virtual try-on", "Capsule wardrobe"],
+      price: String(REPORT_COST.lookbook),
+      cadence: "credits",
+      features: [
+        "Everything in Basic",
+        "Capsule wardrobe + week matrix",
+        `Virtual try-on (${CREDIT_COSTS.tryon} credit each)`,
+        "Good · Better · Best buying plan",
+      ],
       cta: "Get Lookbook",
       href: "/start",
       featured: true,
     },
     {
       name: "Premium",
-      price: p.premium,
-      cadence: "one-time",
-      features: ["Everything in Lookbook", "20+ looks & deeper analysis", "Priority generation", "Free regenerations"],
+      price: String(REPORT_COST.premium),
+      cadence: "credits",
+      features: [
+        "Everything in Lookbook",
+        "Facial-hair previews on your photo",
+        "Eyewear previews on your photo",
+        "Deeper grooming guidance",
+      ],
       cta: "Get Premium",
       href: "/start",
       featured: false,
     },
   ];
+  const starter = CREDIT_PACKAGES[0];
   return (
     <section id="pricing" className="border-y hairline bg-cream/40">
       <div className="container-luxe py-24">
         <div className="max-w-2xl">
           <p className="eyebrow">Pricing</p>
           <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
-            Pay once, or subscribe for a wardrobe that keeps up.
+            Pay for the work, not a subscription.
           </h2>
           <p className="mt-4 text-stone">
-            Membership at {p.membership}/mo adds monthly refreshes, credits, the
-            Look Builder and unlimited try-on. Business white-label from{" "}
-            {p.business}/mo.
+            {BRAND.name} runs on credits — a report costs credits by tier, and
+            each virtual try-on or re-render is {CREDIT_COSTS.tryon} credit. New
+            accounts get {SIGNUP_BONUS} free credits, and packs start at{" "}
+            {starter.price[subCurrency]} for {starter.credits} credits.{" "}
+            <Link href="/pricing" className="text-brass hover:text-ink">
+              See full pricing &amp; credit packs →
+            </Link>
           </p>
         </div>
 
@@ -484,11 +512,13 @@ async function Pricing() {
               <div className="text-sm tracking-wide opacity-80">{t.name}</div>
               <div className="mt-3 flex items-baseline gap-2">
                 <span className="font-display text-4xl">{t.price}</span>
-                <span
-                  className={`text-xs ${t.featured ? "text-paper/60" : "text-stone-soft"}`}
-                >
-                  {t.cadence}
-                </span>
+                {t.cadence && (
+                  <span
+                    className={`text-xs ${t.featured ? "text-paper/60" : "text-stone-soft"}`}
+                  >
+                    {t.cadence}
+                  </span>
+                )}
               </div>
               <ul className="mt-6 flex-1 space-y-3 text-sm">
                 {t.features.map((f) => (

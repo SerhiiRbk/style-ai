@@ -1,15 +1,25 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getReportById } from "@/lib/data/reports";
+import { getReportView } from "@/lib/data/reports";
+import { reportOgMetadataImageUrl } from "@/lib/data/report-og";
 import { TryOnButton } from "@/components/TryOnButton";
 import { LookTryOn } from "@/components/LookTryOn";
+import { CreditsProvider } from "@/components/CreditsContext";
+import { getCreditBalance } from "@/lib/credits";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { StylistNote } from "@/components/StylistNote";
 import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
+import { ShareReportButton } from "@/components/ShareReportButton";
 import { BRAND } from "@/lib/brand";
-import type { ColorRec, HairRec, ShoppingItem } from "@/lib/report";
+import {
+  isMockShopping,
+  type ColorRec,
+  type HairRec,
+  type ShoppingItem,
+} from "@/lib/report";
 import { formatMoney } from "@/lib/currency";
 import { BodyTypeFigure } from "@/components/BodyTypePicker";
 import { ColorWheel } from "@/components/ColorWheel";
@@ -24,6 +34,8 @@ import {
   Pairings,
   EyewearGuide,
   GroomingGuide,
+  FacialHairGuide,
+  PremiumEyewearGuide,
   FitBlueprint,
   Capsule,
   CapsuleMatrix,
@@ -39,15 +51,67 @@ import {
   type Measurements as MeasurementsT,
 } from "@/lib/style-profile";
 
+/** Owner-only content; must not be prefetched or cached without the session cookie. */
+export const dynamic = "force-dynamic";
+
+function ogDescription(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= 160) return trimmed;
+  return `${trimmed.slice(0, 157).trimEnd()}…`;
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const view = await getReportView(id);
+  if (!view) return {};
+
+  const { report } = view;
+  const title = report.headline
+    ? `${report.headline} · ${BRAND.name}`
+    : `Your Style Report · ${BRAND.name}`;
+  const description = ogDescription(report.summary || report.headline);
+  const ogImage = await reportOgMetadataImageUrl(id);
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "article",
+      siteName: BRAND.name,
+      images: [
+        {
+          url: ogImage,
+          width: 1200,
+          height: 630,
+          alt: report.headline || "Personal style report",
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+    },
+  };
+}
+
 export default async function ReportPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const report = await getReportById(id);
-  if (!report) notFound();
+  const view = await getReportView(id);
+  if (!view) notFound();
 
+  const { report, isOwner, isPublic } = view;
   const { profile, intake } = report;
   const tierLabel = report.tier.charAt(0).toUpperCase() + report.tier.slice(1);
 
@@ -71,8 +135,15 @@ export default async function ReportPage({
     "/images/capsule/capsule-5.png",
     "/images/capsule/capsule-6.png",
   ];
+  const isFree = report.tier === "free";
   // Live reports (not the demo) can render outfits on the user's own photo.
-  const canTryOn = report.id !== "demo";
+  // Try-on is a paid feature, so the free preview can't use it.
+  const canTryOn = isOwner && report.id !== "demo" && !isFree;
+  // Owner's live credit balance — drives the cost UI on try-on controls.
+  const balance =
+    isOwner && report.id !== "demo" ? await getCreditBalance() : null;
+  const catalogShopping =
+    report.id !== "demo" && !isMockShopping(report.shopping);
 
   const capsuleImages =
     report.id === "demo" ? CAPSULE_IMAGES : report.capsuleImages;
@@ -94,9 +165,26 @@ export default async function ReportPage({
     : report.looks[0]?.image || firstLookImage || "";
 
   return (
-    <>
+    <CreditsProvider initialBalance={balance}>
       {generation?.pending || generation?.status === "failed" ? (
         <ReportGenerationBanner reportId={report.id} initial={generation} />
+      ) : null}
+
+      {isFree && isOwner ? (
+        <div className="border-b hairline bg-brass/10">
+          <div className="container-luxe flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-ink">
+              <span className="font-medium">Preview — upgrade for the full report.</span>{" "}
+              <span className="text-stone">
+                The free preview shows one look. Unlock all looks, virtual
+                try-on, the capsule wardrobe and PDF export.
+              </span>
+            </p>
+            <ButtonLink href="/pricing" className="shrink-0 !px-5 !py-2 text-sm">
+              See plans &amp; credits
+            </ButtonLink>
+          </div>
+        </div>
       ) : null}
 
       {/* Report header */}
@@ -106,19 +194,46 @@ export default async function ReportPage({
             {BRAND.name}
           </Link>
           <div className="flex items-center gap-3">
-            <a
-              href={`/api/reports/${report.id}/pdf`}
-              download
-              className="rounded-full border border-paper/25 px-5 py-2 text-sm text-paper/90 transition-colors hover:bg-paper hover:text-ink"
-            >
-              Download PDF
-            </a>
-            <ButtonLink
-              href="/start"
-              className="!bg-paper !text-ink hover:!bg-cream !px-5 !py-2"
-            >
-              New report
-            </ButtonLink>
+            {!isOwner && isPublic ? (
+              <span className="rounded-full border border-paper/20 px-3 py-1.5 text-xs text-paper/60">
+                Shared report
+              </span>
+            ) : null}
+            {isOwner && report.id !== "demo" ? (
+              <ShareReportButton reportId={report.id} initialIsPublic={isPublic} />
+            ) : null}
+            {isFree ? (
+              <Link
+                href="/pricing"
+                className="rounded-full border border-brass-soft/50 px-5 py-2 text-sm text-brass-soft transition-colors hover:bg-paper hover:text-ink"
+                title="PDF export is a paid feature"
+              >
+                Upgrade for PDF
+              </Link>
+            ) : (
+              <a
+                href={`/api/reports/${report.id}/pdf`}
+                download
+                className="rounded-full border border-paper/25 px-5 py-2 text-sm text-paper/90 transition-colors hover:bg-paper hover:text-ink"
+              >
+                Download PDF
+              </a>
+            )}
+            {isOwner ? (
+              <ButtonLink
+                href="/start"
+                className="!bg-paper !text-ink hover:!bg-cream !px-5 !py-2"
+              >
+                New report
+              </ButtonLink>
+            ) : (
+              <ButtonLink
+                href="/start"
+                className="!bg-paper !text-ink hover:!bg-cream !px-5 !py-2"
+              >
+                Create yours
+              </ButtonLink>
+            )}
           </div>
         </div>
 
@@ -298,8 +413,41 @@ export default async function ReportPage({
 
             <div className="mt-12 grid gap-12 border-t hairline pt-12 lg:grid-cols-2">
               <GroomingGuide items={extras.grooming} />
-              <EyewearGuide eyewear={extras.eyewear} />
+              {report.tier === "premium" ? (
+                report.facialHair?.length ? (
+                  <FacialHairGuide items={report.facialHair} />
+                ) : (
+                  <div className="rounded-2xl border hairline bg-cream/30 p-6 text-sm leading-relaxed text-stone">
+                    <p className="font-display text-lg text-ink">
+                      Recommended facial hair
+                    </p>
+                    <p className="mt-2">
+                      Beard and mustache previews on your photo are being
+                      generated.
+                    </p>
+                  </div>
+                )
+              ) : (
+                <EyewearGuide eyewear={extras.eyewear} />
+              )}
             </div>
+
+            {report.tier === "premium" ? (
+              <div className="mt-12 border-t hairline pt-12">
+                {report.eyewear?.length ? (
+                  <PremiumEyewearGuide items={report.eyewear} />
+                ) : (
+                  <div className="rounded-2xl border hairline bg-cream/30 p-6 text-sm leading-relaxed text-stone">
+                    <p className="font-display text-lg text-ink">
+                      Recommended glasses
+                    </p>
+                    <p className="mt-2">
+                      Frame previews on your photo are being generated.
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -346,14 +494,14 @@ export default async function ReportPage({
                 key={look.title}
                 className="overflow-hidden rounded-2xl border hairline bg-cream/30"
               >
-                <div className="relative aspect-[3/4] bg-sand">
+                <div className="relative aspect-[9/16] bg-sand">
                   {look.image ? (
                     <ReportZoomImage
                       src={look.image}
                       alt={`${look.title} — ${look.description}`}
                       fill
                       sizes="(max-width: 768px) 100vw, 33vw"
-                      className="object-cover"
+                      className="object-cover object-top"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center px-4 text-center text-sm text-stone-soft">
@@ -393,7 +541,15 @@ export default async function ReportPage({
                         title={look.title}
                         description={look.description}
                         palette={look.palette}
+                        lookIndex={i}
                       />
+                    </div>
+                  )}
+                  {isFree && isOwner && (
+                    <div className="mt-4 border-t hairline pt-3 text-sm">
+                      <Link href="/pricing" className="text-brass hover:text-ink">
+                        Upgrade to try this on you · 1 credit →
+                      </Link>
                     </div>
                   )}
                 </div>
@@ -409,19 +565,26 @@ export default async function ReportPage({
             title="Capsule & buying plan"
             sub="A small, deliberate set of pieces that multiply into many outfits — bought in the order that pays off fastest."
           />
-          <div className="mt-10">
-            <Capsule capsule={extras.capsule} currency={profile.currency} />
-            <CapsuleMatrix
-              combos={matrix}
-              reportId={canTryOn ? report.id : undefined}
+          {isFree ? (
+            <UpgradeLock
+              title="The capsule wardrobe is a paid feature"
+              body="See your full mix-and-match capsule, the week-of-outfits matrix, and a Good · Better · Best buying plan — included from the Lookbook tier."
             />
-            <div className="mt-12 border-t hairline pt-10">
-              <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-                Good · Better · Best — where to spend
-              </h3>
-              <PriceTiers tiers={extras.priceTiers} currency={profile.currency} />
+          ) : (
+            <div className="mt-10">
+              <Capsule capsule={extras.capsule} currency={profile.currency} />
+              <CapsuleMatrix
+                combos={matrix}
+                reportId={canTryOn ? report.id : undefined}
+              />
+              <div className="mt-12 border-t hairline pt-10">
+                <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                  Good · Better · Best — where to spend
+                </h3>
+                <PriceTiers tiers={extras.priceTiers} currency={profile.currency} />
+              </div>
             </div>
-          </div>
+          )}
         </section>
 
         {/* Shopping list */}
@@ -434,8 +597,11 @@ export default async function ReportPage({
                   Your shopping list
                 </h2>
                 <p className="mt-3 max-w-md text-paper/60">
-                  The pieces that unlock the most new outfits. Real products,
-                  real links — affiliate links are disclosed.
+                  {catalogShopping
+                    ? "Pieces matched to your palette from our catalogue — real products and affiliate links."
+                    : report.id === "demo"
+                      ? "Sample curated list for the demo report."
+                      : "The pieces that unlock the most new outfits. Real products, real links — affiliate links are disclosed."}
                 </p>
               </div>
               <div className="hidden text-right sm:block">
@@ -503,11 +669,14 @@ export default async function ReportPage({
                             </div>
                           </div>
                         </a>
-                        {item.productId && (
+                        {item.productId && canTryOn ? (
                           <div className="px-5 pb-5">
-                            <TryOnButton productId={item.productId} />
+                            <TryOnButton
+                              productId={item.productId}
+                              reportId={report.id}
+                            />
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -567,20 +736,29 @@ export default async function ReportPage({
               capsule wardrobe built around these pieces.
             </p>
             <div className="mt-6 flex justify-center gap-3">
-              <ButtonLink href="/#pricing">Upgrade to Lookbook</ButtonLink>
-              <a
-                href={`/api/reports/${report.id}/pdf`}
-                download
-                className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
-              >
-                Download PDF
-              </a>
+              <ButtonLink href="/pricing">Upgrade to Lookbook</ButtonLink>
+              {isFree ? (
+                <Link
+                  href="/pricing"
+                  className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
+                >
+                  Upgrade for PDF
+                </Link>
+              ) : (
+                <a
+                  href={`/api/reports/${report.id}/pdf`}
+                  download
+                  className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
+                >
+                  Download PDF
+                </a>
+              )}
             </div>
           </div>
         </section>
       </main>
       <Footer />
-    </>
+    </CreditsProvider>
   );
 }
 
@@ -588,6 +766,30 @@ export default async function ReportPage({
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function UpgradeLock({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="mt-10 rounded-3xl border border-dashed border-ink/20 bg-cream/40 px-8 py-14 text-center">
+      <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-ink text-paper">
+        <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+          <path
+            d="M7 11V8a5 5 0 0110 0v3M5 11h14v9H5z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+      <h3 className="mt-5 font-display text-2xl">{title}</h3>
+      <p className="mx-auto mt-2 max-w-md text-stone">{body}</p>
+      <div className="mt-6 flex justify-center">
+        <ButtonLink href="/pricing">See plans &amp; credits</ButtonLink>
+      </div>
+    </div>
+  );
 }
 
 const STYLE_TIPS: { title: string; desc: string; icon: React.ReactNode }[] = [
@@ -739,8 +941,9 @@ function HairCard({ h, good = false }: { h: HairRec; good?: boolean }) {
             }`}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center px-4 text-center font-display text-lg text-stone-soft">
-            {h.name}
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-stone-soft">
+            <span className="font-display text-lg text-stone">{h.name}</span>
+            <span>Generating preview…</span>
           </div>
         )}
         <span

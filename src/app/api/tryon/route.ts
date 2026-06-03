@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
-import { hasSupabase, hasVTON } from "@/lib/env";
+import { hasSupabase, hasVTON, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { runTryOn } from "@/lib/ai/tryon";
+import { getReportById } from "@/lib/data/reports";
+import {
+  CREDIT_COSTS,
+  creditBalance,
+  spendCredits,
+  InsufficientCreditsError,
+} from "@/lib/credits";
 
 export async function POST(request: Request) {
   if (!hasSupabase) {
@@ -27,8 +34,43 @@ export async function POST(request: Request) {
   if (!productId) {
     return NextResponse.json({ error: "Missing productId" }, { status: 400 });
   }
+  const reportId: string | undefined =
+    typeof body?.reportId === "string" && body.reportId !== "demo"
+      ? body.reportId
+      : undefined;
+
+  // Try-on is a paid feature — block it for free-tier reports.
+  if (reportId) {
+    const report = await getReportById(reportId);
+    if (report?.tier === "free") {
+      return NextResponse.json(
+        {
+          error: "Virtual try-on isn't included in the free preview. Upgrade for try-on.",
+          code: "tier_locked",
+        },
+        { status: 402 },
+      );
+    }
+  }
 
   const admin = createAdminSupabase();
+
+  // Verify credit balance before running the (paid) render.
+  const cost = CREDIT_COSTS.tryon;
+  if (hasSupabaseAdmin) {
+    const balance = await creditBalance(admin, user.id);
+    if (balance < cost) {
+      return NextResponse.json(
+        {
+          error: "Not enough credits for this try-on.",
+          code: "insufficient_credits",
+          balance,
+          needed: cost,
+        },
+        { status: 402 },
+      );
+    }
+  }
 
   const { data: product } = await admin
     .from("products")
@@ -86,9 +128,35 @@ export async function POST(request: Request) {
     status: "ready",
   });
 
+  // Charge after success so failed renders are never billed.
+  let balance: number | null = null;
+  if (hasSupabaseAdmin) {
+    try {
+      balance = await spendCredits(admin, {
+        userId: user.id,
+        amount: cost,
+        reason: "tryon",
+        refId: reportId,
+      });
+    } catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        return NextResponse.json(
+          {
+            error: "Not enough credits for this try-on.",
+            code: "insufficient_credits",
+            balance: e.balance,
+            needed: e.needed,
+          },
+          { status: 402 },
+        );
+      }
+      throw e;
+    }
+  }
+
   const { data: out } = await admin.storage
     .from("assets")
     .createSignedUrl(path, 600);
 
-  return NextResponse.json({ url: out?.signedUrl ?? null }, { status: 201 });
+  return NextResponse.json({ url: out?.signedUrl ?? null, balance }, { status: 201 });
 }

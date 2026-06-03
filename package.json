@@ -12,7 +12,8 @@
     "seed:rules": "node --env-file=.env.local scripts/seed-rules.mjs",
     "seed:catalog": "node --env-file=.env.local scripts/ingest-catalog.mjs",
     "import:feed": "node --env-file=.env.local scripts/import-feed.mjs",
-    "import:feed:test": "node scripts/import-feed.mjs --all-samples --dry-run"
+    "import:feed:test": "node scripts/import-feed.mjs --all-samples --dry-run",
+    "grant:credits": "node --env-file=.env.local scripts/grant-credits.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

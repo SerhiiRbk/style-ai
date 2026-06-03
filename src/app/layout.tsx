@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { BRAND } from "@/lib/brand";
+import { getSiteUrl } from "@/lib/site-url";
 
 const fraunces = Fraunces({
   variable: "--font-display",
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
   title: "Valetti — personal style atelier with Carlo Valetti",
   description:
     "Valetti is a personal style atelier led by stylist Carlo Valetti. Share a few photos, answer honest questions, and receive a calm, practical plan — hair, colours, clothing, silhouettes, and a precise shopping list. AI-assisted personal styling.",
-  metadataBase: new URL("https://valetti.example"),
+  metadataBase: getSiteUrl(),
   openGraph: {
     title: "Valetti — personal style atelier",
     description:
@@ -30,9 +31,9 @@ export const metadata: Metadata = {
     images: [
       {
         url: BRAND.ogImage,
-        width: 1200,
-        height: 630,
-        alt: "Valetti — personal style atelier with Carlo Valetti",
+        width: BRAND.ogImageWidth,
+        height: BRAND.ogImageHeight,
+        alt: "Men's style essentials flat lay — Valetti personal style atelier",
       },
     ],
   },

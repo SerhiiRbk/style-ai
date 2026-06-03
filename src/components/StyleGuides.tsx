@@ -2,7 +2,7 @@ import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { formatMoney } from "@/lib/currency";
 import type { Currency } from "@/lib/currency";
 import { LookTryOn } from "./LookTryOn";
-import type { ShoppingItem } from "@/lib/report";
+import type { ShoppingItem, EyewearRec, FacialHairRec } from "@/lib/report";
 import type {
   Archetype as ArchetypeT,
   CapsulePlan,
@@ -205,6 +205,34 @@ export function ColorDNAGuide({ dna }: { dna: ColorDNAT }) {
   );
 }
 
+/* --------------------------- shopping item thumb -------------------------- */
+
+function ShoppingItemThumb({
+  item,
+  alt,
+}: {
+  item: ShoppingItem;
+  alt?: string;
+}) {
+  return (
+    <span className="h-7 w-7 shrink-0 overflow-hidden rounded-full bg-sand">
+      {item.image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.image}
+          alt={alt ?? item.title}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <span
+          className="block h-full w-full"
+          style={{ background: item.color }}
+        />
+      )}
+    </span>
+  );
+}
+
 /* ------------------------------ shop the look ----------------------------- */
 
 export function ShopTheLook({
@@ -215,36 +243,35 @@ export function ShopTheLook({
   currency: Currency;
 }) {
   if (!items.length) return null;
+  const showAlternativesNote =
+    items.some((it) => it.similarPick) || items.length < 3;
   return (
     <div className="mt-4 border-t hairline pt-4">
       <div className="text-[11px] uppercase tracking-wider text-stone-soft">
-        Shop this look
+        Shop a look like this
       </div>
+      {showAlternativesNote ? (
+        <p className="mt-1 max-w-md text-xs leading-relaxed text-stone-soft">
+          Stylistic alternatives from our catalogue — close in category and colour,
+          not necessarily the exact pieces in the photo.
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {items.map((it) => (
           <a
-            key={it.title}
+            key={it.productId ?? it.title}
             href={it.url}
             target="_blank"
             rel="noopener noreferrer nofollow sponsored"
             className="group flex items-center gap-2 rounded-full border border-line bg-paper py-1 pl-1 pr-3 transition-colors hover:border-ink/30"
           >
-            <span className="h-7 w-7 overflow-hidden rounded-full bg-sand">
-              {it.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={it.image}
-                  alt={it.title}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span
-                  className="block h-full w-full"
-                  style={{ background: it.color }}
-                />
-              )}
-            </span>
+            <ShoppingItemThumb item={it} />
             <span className="text-xs text-ink">{it.title}</span>
+            {it.similarPick ? (
+              <span className="rounded-full bg-cream px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-stone">
+                Similar
+              </span>
+            ) : null}
             <span className="text-xs text-stone-soft">
               {formatMoney(it.priceEur, currency)}
             </span>
@@ -282,7 +309,7 @@ export function CapsuleMatrix({
             className="overflow-hidden rounded-2xl border hairline bg-paper"
           >
             {visual && (
-              <div className="relative aspect-[3/4] bg-sand">
+              <div className="relative aspect-[9/16] bg-sand">
                 {c.image ? (
                   <ReportZoomImage
                     src={c.image}
@@ -316,6 +343,8 @@ export function CapsuleMatrix({
                     reportId={reportId}
                     title={c.context}
                     description={c.pieces.join(", ")}
+                    lookIndex={i}
+                    kind="capsule"
                     label="Try on me"
                   />
                 </div>
@@ -625,7 +654,10 @@ function PriorityColumn({
             key={i.title}
             className="flex items-center justify-between gap-3 rounded-xl border hairline bg-paper px-4 py-3"
           >
-            <span className="text-sm">{i.title}</span>
+            <span className="flex min-w-0 items-center gap-3">
+              <ShoppingItemThumb item={i} />
+              <span className="truncate text-sm">{i.title}</span>
+            </span>
             <span className="shrink-0 font-display text-sm text-stone">
               {formatMoney(i.priceEur, currency)}
             </span>
@@ -687,6 +719,93 @@ export function Capsule({
 }
 
 /* -------------------------------- grooming -------------------------------- */
+
+function GroomingPreviewCard({
+  item,
+  alt,
+  fallbackSrc,
+}: {
+  item: FacialHairRec | EyewearRec;
+  alt: string;
+  fallbackSrc?: string;
+}) {
+  const src = item.image ?? fallbackSrc;
+  return (
+    <article className="overflow-hidden rounded-2xl border hairline bg-paper">
+      <div className="relative aspect-[4/5] bg-sand">
+        {src ? (
+          <ReportZoomImage
+            src={src}
+            alt={alt}
+            wrapperClassName="relative block h-full w-full"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-stone-soft">
+            <span className="font-display text-lg text-stone">{item.name}</span>
+            <span>Generating preview…</span>
+          </div>
+        )}
+      </div>
+      <div className="p-4">
+        <div className="font-display text-lg">{item.name}</div>
+        <p className="mt-1 text-sm leading-relaxed text-stone">{item.why}</p>
+      </div>
+    </article>
+  );
+}
+
+export function FacialHairGuide({ items }: { items: FacialHairRec[] }) {
+  if (!items.length) return null;
+  return (
+    <div>
+      <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+        Recommended facial hair
+      </h3>
+      <p className="mt-2 text-sm leading-relaxed text-stone">
+        Personalized beard and mustache directions on your photo — take these to
+        your barber.
+      </p>
+      <div className="mt-5 grid gap-5 sm:grid-cols-2">
+        {items.map((item) => (
+          <GroomingPreviewCard
+            key={item.name}
+            item={item}
+            alt={`${item.name} — facial hair recommendation`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function PremiumEyewearGuide({ items }: { items: EyewearRec[] }) {
+  if (!items.length) return null;
+  return (
+    <div>
+      <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+        Recommended glasses
+      </h3>
+      <p className="mt-2 text-sm leading-relaxed text-stone">
+        Frame shapes chosen for your face — previewed on your photo.
+      </p>
+      <div className="mt-5 grid gap-5 sm:grid-cols-2">
+        {items.map((item) => (
+          <GroomingPreviewCard
+            key={item.name}
+            item={item}
+            alt={`${item.name} — eyewear recommendation`}
+            fallbackSrc={
+              item.shape && item.shape in EYEWEAR_IMAGE
+                ? EYEWEAR_IMAGE[item.shape as FrameShapeId]
+                : undefined
+            }
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function GroomingGuide({ items }: { items: GroomingItem[] }) {
   return (

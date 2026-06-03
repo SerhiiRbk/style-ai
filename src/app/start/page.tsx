@@ -10,12 +10,8 @@ import {
   type BodyTypeId,
 } from "@/lib/style-profile";
 import { COUNTRIES, countryNameFromCode } from "@/lib/countries";
-import {
-  TIER_PRICES,
-  PROFILE_CURRENCIES,
-  type Currency,
-  type SubCurrency,
-} from "@/lib/currency";
+import { PROFILE_CURRENCIES, type Currency } from "@/lib/currency";
+import { REPORT_COST, CREDIT_COSTS } from "@/lib/credit-costs";
 import { BRAND } from "@/lib/brand";
 
 type Tier = "free" | "basic" | "lookbook" | "premium";
@@ -65,10 +61,10 @@ const BUDGETS: { label: string; min: number; max: number }[] = [
   { label: "€3000+", min: 3000, max: 8000 },
 ];
 const TIERS: { id: Tier; name: string; note: string }[] = [
-  { id: "free", name: "Free preview", note: "Simplified, 1 look" },
-  { id: "basic", name: "Basic Report", note: "Full report + PDF" },
-  { id: "lookbook", name: "Lookbook", note: "12 looks + try-on" },
-  { id: "premium", name: "Premium", note: "Everything, deeper" },
+  { id: "free", name: "Free preview", note: "1 look · no try-on / PDF" },
+  { id: "basic", name: "Basic report", note: "Full report · 3 looks · PDF" },
+  { id: "lookbook", name: "Lookbook", note: "+ Capsule & virtual try-on" },
+  { id: "premium", name: "Premium", note: "+ Facial hair & eyewear" },
 ];
 
 const STEPS = ["About you", "Photos", "Goals", "Package"];
@@ -126,7 +122,6 @@ export default function StartPage() {
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
   const [currency, setCurrency] = useState<Currency>("EUR");
-  const [subCurrency, setSubCurrency] = useState<SubCurrency>("EUR");
   const [height, setHeight] = useState(180);
   const [weight, setWeight] = useState("");
   const [bodyType, setBodyType] = useState<BodyTypeId | "">("");
@@ -154,7 +149,6 @@ export default function StartPage() {
         if (name) setCountry((c) => c || name);
         if (g.city) setCity((c) => c || g.city);
         if (g.currency) setCurrency(g.currency);
-        if (g.subCurrency) setSubCurrency(g.subCurrency);
       })
       .catch(() => {});
     return () => {
@@ -516,12 +510,30 @@ export default function StartPage() {
                       <div className="text-sm text-ink">{t.name}</div>
                       <div className="text-xs text-stone-soft">{t.note}</div>
                     </div>
-                    <div className="font-display text-2xl">
-                      {TIER_PRICES[subCurrency][t.id]}
+                    <div className="text-right">
+                      <div className="font-display text-2xl">
+                        {REPORT_COST[t.id] === 0
+                          ? "Free"
+                          : REPORT_COST[t.id]}
+                      </div>
+                      {REPORT_COST[t.id] > 0 && (
+                        <div className="text-[11px] text-stone-soft">
+                          credits
+                        </div>
+                      )}
                     </div>
                   </button>
                 ))}
               </div>
+              <p className="mt-5 text-xs text-stone-soft">
+                Reports are paid in credits — new accounts start with free
+                credits. Virtual try-on and re-renders cost{" "}
+                {CREDIT_COSTS.tryon} credit each.{" "}
+                <Link href="/pricing" className="text-brass hover:text-ink">
+                  See pricing
+                </Link>
+                .
+              </p>
               {error && (
                 <p className="mt-4 text-sm text-[#9E5C3C]">{error}</p>
               )}
