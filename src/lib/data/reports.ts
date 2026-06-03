@@ -1,9 +1,11 @@
 import "server-only";
+import { after } from "next/server";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
   assembleReport,
   mockShopping,
+  type ReportGenerationState,
   type ShoppingItem,
   type StyleReport,
   type Tier,
@@ -16,7 +18,7 @@ import {
 } from "@/lib/ai/pipeline";
 import { capsuleMatrix } from "@/lib/style-extras";
 import { matchShopping, matchLookItems } from "@/lib/data/catalog";
-import type { Intake } from "@/lib/style-profile";
+import type { Intake, ReportContent, StyleProfile } from "@/lib/style-profile";
 
 type CreateInput = {
   intake: Intake;
@@ -24,6 +26,124 @@ type CreateInput = {
   userId?: string | null;
   photoPaths?: { role: string; path: string }[];
 };
+
+/** Whether the report or its look/capsule images are still being generated. */
+export function reportGenerationState(
+  row: {
+    status?: string | null;
+    tier?: string | null;
+    capsule_images?: (string | null)[] | null;
+  },
+  looks: { image_path?: string | null }[] | null,
+): ReportGenerationState {
+  const status =
+    row.status === "processing" || row.status === "failed"
+      ? row.status
+      : "ready";
+
+  if (status === "processing") {
+    return { status, pending: true, phase: "report" };
+  }
+  if (status === "failed") {
+    return { status, pending: false, phase: null };
+  }
+
+  const lookRows = looks ?? [];
+  const imagesPending =
+    lookRows.length > 0 && lookRows.some((l) => !l.image_path);
+
+  const needsCapsule = row.tier === "lookbook" || row.tier === "premium";
+  const capsulePaths = row.capsule_images ?? [];
+  const capsulePending =
+    needsCapsule && capsulePaths.filter(Boolean).length === 0;
+
+  if (imagesPending) {
+    return { status, pending: true, phase: "images" };
+  }
+  if (capsulePending) {
+    return { status, pending: true, phase: "capsule" };
+  }
+  return { status, pending: false, phase: null };
+}
+
+type ImageJobInput = {
+  reportId: string;
+  userId: string;
+  tier: Tier;
+  profile: StyleProfile;
+  content: ReportContent;
+  photos: PhotoInput[];
+  shopping: ShoppingItem[];
+};
+
+/** Look + capsule photos — slow; runs after the HTTP response via `after()`. */
+async function generateReportImages(input: ImageJobInput) {
+  const admin = createAdminSupabase();
+  const { reportId, userId, tier, profile, content, photos, shopping } = input;
+
+  const referenceImageUrl =
+    photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
+
+  for (let i = 0; i < content.looks.length; i++) {
+    const l = content.looks[i];
+    let imagePath: string | null = null;
+    const img = await generateLookImage({
+      profile,
+      look: l,
+      referenceImageUrl,
+    });
+    if (img) {
+      const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
+      const path = `${userId}/${reportId}/look-${i}.${ext}`;
+      const { error: upErr } = await admin.storage
+        .from("assets")
+        .upload(path, img.bytes, {
+          contentType: img.mediaType,
+          upsert: true,
+        });
+      if (!upErr) imagePath = path;
+    }
+    await admin
+      .from("looks")
+      .update({ image_path: imagePath })
+      .eq("report_id", reportId)
+      .eq("title", l.title);
+  }
+
+  if (tier === "lookbook" || tier === "premium") {
+    const colorByTitle = new Map(shopping.map((s) => [s.title, s.color]));
+    const matrix = capsuleMatrix(shopping);
+    const capsulePaths = await Promise.all(
+      matrix.map(async (combo, i) => {
+        const img = await generateLookImage({
+          profile,
+          look: {
+            title: combo.context,
+            description: combo.pieces.join(", "),
+            palette: combo.pieces
+              .map((p) => colorByTitle.get(p))
+              .filter((c): c is string => Boolean(c)),
+          },
+          referenceImageUrl,
+        });
+        if (!img) return null;
+        const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
+        const path = `${userId}/${reportId}/capsule-${i}.${ext}`;
+        const { error: upErr } = await admin.storage
+          .from("assets")
+          .upload(path, img.bytes, {
+            contentType: img.mediaType,
+            upsert: true,
+          });
+        return upErr ? null : path;
+      }),
+    );
+    await admin
+      .from("reports")
+      .update({ capsule_images: capsulePaths })
+      .eq("id", reportId);
+  }
+}
 
 /** Create a report, run the pipeline, persist. Live mode if Supabase configured. */
 export async function createAndRunReport(input: CreateInput): Promise<string> {
@@ -101,77 +221,34 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
         .eq("id", reportId);
     }
 
-    const referenceImageUrl =
-      photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
-
-    const lookRows = await Promise.all(
-      content.looks.map(async (l, i) => {
-        let imagePath: string | null = null;
-        const img = await generateLookImage({
-          profile,
-          look: l,
-          referenceImageUrl,
-        });
-        if (img) {
-          const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
-          const path = `${userId}/${reportId}/look-${i}.${ext}`;
-          const { error: upErr } = await admin.storage
-            .from("assets")
-            .upload(path, img.bytes, {
-              contentType: img.mediaType,
-              upsert: true,
-            });
-          if (!upErr) imagePath = path;
-        }
-        return {
-          report_id: reportId,
-          user_id: userId,
-          context: l.context,
-          title: l.title,
-          description: l.description,
-          palette: l.palette,
-          image_path: imagePath,
-        };
-      }),
+    await admin.from("looks").insert(
+      content.looks.map((l) => ({
+        report_id: reportId,
+        user_id: userId,
+        context: l.context,
+        title: l.title,
+        description: l.description,
+        palette: l.palette,
+        image_path: null,
+      })),
     );
 
-    await admin.from("looks").insert(lookRows);
-
-    // Capsule "week of outfits" photos — one per outfit-matrix combo, on the
-    // same person. Gated to premium tiers since each combo costs an image gen.
-    if (tier === "lookbook" || tier === "premium") {
-      const colorByTitle = new Map(shopping.map((s) => [s.title, s.color]));
-      const matrix = capsuleMatrix(shopping);
-      const capsulePaths = await Promise.all(
-        matrix.map(async (combo, i) => {
-          const img = await generateLookImage({
-            profile,
-            look: {
-              title: combo.context,
-              description: combo.pieces.join(", "),
-              palette: combo.pieces
-                .map((p) => colorByTitle.get(p))
-                .filter((c): c is string => Boolean(c)),
-            },
-            referenceImageUrl,
-          });
-          if (!img) return null;
-          const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
-          const path = `${userId}/${reportId}/capsule-${i}.${ext}`;
-          const { error: upErr } = await admin.storage
-            .from("assets")
-            .upload(path, img.bytes, {
-              contentType: img.mediaType,
-              upsert: true,
-            });
-          return upErr ? null : path;
-        }),
-      );
-      await admin
-        .from("reports")
-        .update({ capsule_images: capsulePaths })
-        .eq("id", reportId);
-    }
+    // Image generation is the slowest step (3+ model calls). Run after the
+    // response so the client is not left waiting on a single long HTTP request.
+    const imageJob: ImageJobInput = {
+      reportId,
+      userId,
+      tier,
+      profile,
+      content,
+      photos,
+      shopping,
+    };
+    after(() =>
+      generateReportImages(imageJob).catch((err) => {
+        console.error("[report images]", err);
+      }),
+    );
   } catch (e) {
     await admin.from("reports").update({ status: "failed" }).eq("id", reportId);
     throw e;
@@ -216,12 +293,22 @@ export async function getReportById(id: string): Promise<StyleReport | null> {
     }),
   );
 
+  const generation = reportGenerationState(
+    {
+      status: row.status,
+      tier: row.tier,
+      capsule_images: row.capsule_images as (string | null)[] | null,
+    },
+    looks ?? [],
+  );
+
   return assembleReport({
     id: row.id,
     createdAt: row.created_at,
     intake: row.intake,
     tier: row.tier,
     profile: row.profile,
+    generation,
     content: {
       headline: row.headline ?? "",
       summary: row.summary ?? "",

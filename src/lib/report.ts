@@ -28,6 +28,12 @@ export type Look = {
   image: string;
 };
 
+export type ReportGenerationState = {
+  status: "processing" | "ready" | "failed";
+  pending: boolean;
+  phase: "report" | "images" | "capsule" | null;
+};
+
 export type StyleReport = {
   id: string;
   tier: Tier;
@@ -47,6 +53,8 @@ export type StyleReport = {
   capsuleImages?: (string | null | undefined)[];
   /** Per-look matched products keyed by look index (Shop the Look). Optional for backward compatibility. */
   lookItems?: Record<number, ShoppingItem[]>;
+  /** Live reports only — drives the “still generating” banner. */
+  generation?: ReportGenerationState;
 };
 
 export const climateFor = (country: string): string => {
@@ -222,6 +230,7 @@ export function assembleReport(opts: {
   lookImages?: (string | null | undefined)[];
   capsuleImages?: (string | null | undefined)[];
   lookItems?: Record<number, ShoppingItem[]>;
+  generation?: ReportGenerationState;
   id?: string;
   createdAt?: string;
 }): StyleReport {
@@ -246,6 +255,7 @@ export function assembleReport(opts: {
     dontList: opts.content.dontList,
     capsuleImages: opts.capsuleImages,
     lookItems: opts.lookItems,
+    generation: opts.generation,
   };
 }
 

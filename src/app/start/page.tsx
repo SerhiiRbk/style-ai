@@ -196,10 +196,16 @@ export default function StartPage() {
   async function submit() {
     setSubmitting(true);
     setError(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      4 * 60 * 1000,
+    );
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           tier,
           photoPaths,
@@ -227,11 +233,25 @@ export default function StartPage() {
         router.push("/login");
         return;
       }
-      if (!res.ok) throw new Error("Could not generate report");
-      const data = await res.json();
+      const data = (await res.json().catch(() => ({}))) as {
+        id?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? "Could not generate report");
+      }
+      if (!data.id) throw new Error("Report created but no id returned");
       router.push(`/report/${data.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      if (e instanceof Error && e.name === "AbortError") {
+        setError(
+          "Generation is taking longer than expected. Check your connection and try again — or open Reports if one was already created.",
+        );
+      } else {
+        setError(e instanceof Error ? e.message : "Something went wrong");
+      }
+    } finally {
+      window.clearTimeout(timeout);
       setSubmitting(false);
     }
   }
@@ -532,7 +552,9 @@ export default function StartPage() {
               disabled={submitting}
               className="rounded-full bg-ink px-7 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-50"
             >
-              {submitting ? "Generating your report…" : "Generate my report"}
+              {submitting
+                ? "Analysing photos & building your report… (1–2 min)"
+                : "Generate my report"}
             </button>
           )}
         </div>

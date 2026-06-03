@@ -7,6 +7,9 @@ import { createServerSupabase } from "@/lib/supabase/server";
 
 const TIERS: Tier[] = ["free", "basic", "lookbook", "premium"];
 
+/** Vision + reasoning + catalogue matching can take 1–2 min; look photos run in `after()`. */
+export const maxDuration = 300;
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   if (!body) {

@@ -7,6 +7,7 @@ import { LookTryOn } from "@/components/LookTryOn";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { StylistNote } from "@/components/StylistNote";
+import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
 import { BRAND } from "@/lib/brand";
 import type { ColorRec, HairRec, ShoppingItem } from "@/lib/report";
 import { formatMoney } from "@/lib/currency";
@@ -79,8 +80,14 @@ export default async function ReportPage({
     ? extras.matrix.map((c, i) => ({ ...c, image: capsuleImages[i] ?? undefined }))
     : extras.matrix;
 
+  const generation = report.generation;
+
   return (
     <>
+      {generation?.pending || generation?.status === "failed" ? (
+        <ReportGenerationBanner reportId={report.id} initial={generation} />
+      ) : null}
+
       {/* Report header */}
       <header className="border-b hairline bg-ink text-paper">
         <div className="container-luxe flex h-16 items-center justify-between">
