@@ -11,6 +11,14 @@ import {
   CREDIT_PACKAGES,
   SIGNUP_BONUS,
 } from "@/lib/credit-costs";
+import {
+  HAIR_AVOID_GEN_LIMIT,
+  hairRecommendGenLimit,
+  lookCountForTier,
+  PREMIUM_EYEWEAR_GEN_LIMIT,
+  PREMIUM_FACIAL_HAIR_GEN_LIMIT,
+  type Tier,
+} from "@/lib/report";
 import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
@@ -36,9 +44,9 @@ const TIERS: TierCard[] = [
     features: [
       "Colour & hair analysis with reasons",
       "1 photorealistic preview look",
-      "No virtual try-on",
-      "No capsule wardrobe",
-      "No PDF export",
+      "2 hairstyle previews on your photo",
+      `Virtual try-on on your photo (${CREDIT_COSTS.tryon} credit each)`,
+      "No share link, capsule, or PDF",
     ],
     cta: "Try it free",
   },
@@ -61,9 +69,11 @@ const TIERS: TierCard[] = [
     tagline: "Add the wardrobe system & try-on.",
     features: [
       "Everything in Basic",
+      "4 photorealistic looks",
       "Capsule wardrobe + week-of-outfits matrix",
       `Virtual try-on on your photo (${CREDIT_COSTS.tryon} credit each)`,
       "Good · Better · Best buying plan",
+      "4 hairstyle previews on your photo (front + side)",
     ],
     cta: "Get Lookbook",
     featured: true,
@@ -74,11 +84,156 @@ const TIERS: TierCard[] = [
     tagline: "The deepest, most personal report.",
     features: [
       "Everything in Lookbook",
-      "Facial-hair previews on your photo",
-      "Eyewear previews on your photo",
+      "6 photorealistic looks",
+      "4 facial-hair previews on your photo",
+      "2 optical + 2 sunglasses previews",
       "Deeper grooming guidance",
     ],
     cta: "Get Premium",
+  },
+];
+
+const COMPARISON_TIERS: { key: Tier; label: string }[] = [
+  { key: "free", label: "Free" },
+  { key: "basic", label: "Basic" },
+  { key: "lookbook", label: "Lookbook" },
+  { key: "premium", label: "Premium" },
+];
+
+type CompareCell = boolean | string;
+
+const COMPARISON_ROWS: { feature: string; detail?: string; cells: Record<Tier, CompareCell> }[] = [
+  {
+    feature: "Credits to generate",
+    cells: {
+      free: `${REPORT_COST.free}`,
+      basic: `${REPORT_COST.basic}`,
+      lookbook: `${REPORT_COST.lookbook}`,
+      premium: `${REPORT_COST.premium}`,
+    },
+  },
+  {
+    feature: "Photorealistic looks",
+    cells: {
+      free: String(lookCountForTier("free")),
+      basic: String(lookCountForTier("basic")),
+      lookbook: String(lookCountForTier("lookbook")),
+      premium: String(lookCountForTier("premium")),
+    },
+  },
+  {
+    feature: "Look photos on your reference",
+    detail: "Requires a portrait upload",
+    cells: { free: true, basic: true, lookbook: true, premium: true },
+  },
+  {
+    feature: "Colour & hair written analysis",
+    cells: { free: true, basic: true, lookbook: true, premium: true },
+  },
+  {
+    feature: "Full style profile & silhouette",
+    cells: { free: true, basic: true, lookbook: true, premium: true },
+  },
+  {
+    feature: "Hair recommend — AI photos",
+    cells: {
+      free: String(hairRecommendGenLimit("free")),
+      basic: String(hairRecommendGenLimit("basic")),
+      lookbook: String(hairRecommendGenLimit("lookbook")),
+      premium: String(hairRecommendGenLimit("premium")),
+    },
+  },
+  {
+    feature: "Hair recommend — front + side angle",
+    cells: { free: false, basic: false, lookbook: true, premium: true },
+  },
+  {
+    feature: "Hair avoid — AI photos",
+    cells: {
+      free: String(HAIR_AVOID_GEN_LIMIT),
+      basic: String(HAIR_AVOID_GEN_LIMIT),
+      lookbook: String(HAIR_AVOID_GEN_LIMIT),
+      premium: String(HAIR_AVOID_GEN_LIMIT),
+    },
+  },
+  {
+    feature: "Capsule wardrobe plan",
+    detail: "Mix-and-match core pieces",
+    cells: { free: false, basic: false, lookbook: true, premium: true },
+  },
+  {
+    feature: "Week-of-outfits matrix photos",
+    detail: "Up to 6 AI outfit combinations",
+    cells: { free: false, basic: false, lookbook: true, premium: true },
+  },
+  {
+    feature: "Good · Better · Best buying plan",
+    cells: { free: false, basic: false, lookbook: true, premium: true },
+  },
+  {
+    feature: "Shopping list with product links",
+    cells: { free: true, basic: true, lookbook: true, premium: true },
+  },
+  {
+    feature: "Shop the Look (per outfit)",
+    cells: { free: true, basic: true, lookbook: true, premium: true },
+  },
+  {
+    feature: "PDF export",
+    cells: { free: false, basic: true, lookbook: true, premium: true },
+  },
+  {
+    feature: "Virtual try-on",
+    detail: `${CREDIT_COSTS.tryon} credit per render · any tier`,
+    cells: {
+      free: `${CREDIT_COSTS.tryon} cr`,
+      basic: `${CREDIT_COSTS.tryon} cr`,
+      lookbook: `${CREDIT_COSTS.tryon} cr`,
+      premium: `${CREDIT_COSTS.tryon} cr`,
+    },
+  },
+  {
+    feature: "Render again (try-on re-roll)",
+    detail: `${CREDIT_COSTS.regen} credit`,
+    cells: {
+      free: `${CREDIT_COSTS.regen} cr`,
+      basic: `${CREDIT_COSTS.regen} cr`,
+      lookbook: `${CREDIT_COSTS.regen} cr`,
+      premium: `${CREDIT_COSTS.regen} cr`,
+    },
+  },
+  {
+    feature: "Share report link",
+    detail: "Owner only · viewers cannot try-on",
+    cells: { free: false, basic: true, lookbook: true, premium: true },
+  },
+  {
+    feature: "Facial hair previews on your photo",
+    cells: {
+      free: false,
+      basic: false,
+      lookbook: false,
+      premium: String(PREMIUM_FACIAL_HAIR_GEN_LIMIT),
+    },
+  },
+  {
+    feature: "Eyewear previews on your photo",
+    detail: "2 optical + 2 sunglasses",
+    cells: {
+      free: false,
+      basic: false,
+      lookbook: false,
+      premium: String(PREMIUM_EYEWEAR_GEN_LIMIT),
+    },
+  },
+  {
+    feature: "Static eyewear shape guide",
+    detail: "Written picks · non-premium tiers",
+    cells: { free: true, basic: true, lookbook: true, premium: false },
+  },
+  {
+    feature: "Written grooming guide",
+    cells: { free: true, basic: true, lookbook: true, premium: true },
   },
 ];
 
@@ -127,7 +282,8 @@ export default async function PricingPage() {
 
           <div className="mt-12 grid gap-6 lg:grid-cols-4">
             {TIERS.map((t) => {
-              const cost = REPORT_COST[t.tier];
+              const isFree = t.tier === "free";
+              const cost = isFree ? SIGNUP_BONUS : REPORT_COST[t.tier];
               return (
                 <div
                   key={t.name}
@@ -146,18 +302,14 @@ export default async function PricingPage() {
                     {t.name}
                   </div>
                   <div className="mt-3 flex items-baseline gap-2">
-                    <span className="font-display text-4xl">
-                      {cost === 0 ? "Free" : cost}
+                    <span className="font-display text-4xl">{cost}</span>
+                    <span
+                      className={`text-xs ${
+                        t.featured ? "text-paper/60" : "text-stone-soft"
+                      }`}
+                    >
+                      {isFree ? "free credits" : "credits"}
                     </span>
-                    {cost > 0 && (
-                      <span
-                        className={`text-xs ${
-                          t.featured ? "text-paper/60" : "text-stone-soft"
-                        }`}
-                      >
-                        credits
-                      </span>
-                    )}
                   </div>
                   <p
                     className={`mt-2 text-sm ${
@@ -197,12 +349,14 @@ export default async function PricingPage() {
             })}
           </div>
 
+          <TierComparisonTable />
+
           {/* Per-action costs */}
           <div className="mt-12 grid gap-4 rounded-2xl border hairline bg-cream/40 p-8 sm:grid-cols-3">
             <CostRow
               label="Generate a report"
-              value={`${REPORT_COST.basic}–${REPORT_COST.premium} credits`}
-              note="By tier (free is 0)"
+              value={`${REPORT_COST.free}–${REPORT_COST.premium} credits`}
+              note={`By tier (free preview is ${REPORT_COST.free})`}
             />
             <CostRow
               label="Virtual try-on"
@@ -282,8 +436,9 @@ export default async function PricingPage() {
             </div>
             <p className="mt-6 text-sm text-paper/50">
               Card checkout is rolling out shortly. In the meantime, every new
-              account starts with {SIGNUP_BONUS} free credits — enough for your
-              first report.
+              account starts with {SIGNUP_BONUS} free credits — enough for a free
+              preview ({REPORT_COST.free} credits) and one try-on (
+              {CREDIT_COSTS.tryon} credit).
             </p>
           </div>
         </section>
@@ -313,6 +468,86 @@ export default async function PricingPage() {
       <Footer />
     </>
   );
+}
+
+function TierComparisonTable() {
+  return (
+    <div className="mt-16">
+      <div className="max-w-2xl">
+        <p className="eyebrow">Compare tiers</p>
+        <h3 className="mt-4 font-display text-2xl leading-tight sm:text-3xl">
+          What each report includes
+        </h3>
+        <p className="mt-3 text-sm leading-relaxed text-stone">
+          Matched to what the app generates and unlocks today — not marketing
+          fluff.
+        </p>
+      </div>
+
+      <div className="mt-8 -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <table className="w-full min-w-[640px] border-collapse text-sm">
+          <thead>
+            <tr className="border-b hairline">
+              <th
+                scope="col"
+                className="sticky left-0 z-10 min-w-[11rem] bg-paper py-4 pr-4 text-left text-xs font-normal uppercase tracking-wider text-stone-soft"
+              >
+                Feature
+              </th>
+              {COMPARISON_TIERS.map((t) => (
+                <th
+                  key={t.key}
+                  scope="col"
+                  className="min-w-[5.5rem] px-3 py-4 text-center font-display text-base text-ink"
+                >
+                  {t.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {COMPARISON_ROWS.map((row) => (
+              <tr key={row.feature} className="border-b hairline last:border-0">
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 bg-paper py-3.5 pr-4 text-left align-top font-normal"
+                >
+                  <span className="text-ink">{row.feature}</span>
+                  {row.detail ? (
+                    <span className="mt-0.5 block text-xs leading-snug text-stone-soft">
+                      {row.detail}
+                    </span>
+                  ) : null}
+                </th>
+                {COMPARISON_TIERS.map((t) => (
+                  <td
+                    key={t.key}
+                    className="px-3 py-3.5 text-center align-top text-ink"
+                  >
+                    <CompareValue value={row.cells[t.key]} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function CompareValue({ value }: { value: CompareCell }) {
+  if (value === true) {
+    return (
+      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brass/15 font-medium text-brass">
+        ✓
+      </span>
+    );
+  }
+  if (value === false) {
+    return <span className="text-stone-soft">—</span>;
+  }
+  return <span className="font-medium tabular-nums">{value}</span>;
 }
 
 function CostRow({

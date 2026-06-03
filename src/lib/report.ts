@@ -9,18 +9,69 @@ import { resolveHairImage } from "./hair-images";
 export type Tier = "free" | "basic" | "lookbook" | "premium";
 
 export type ColorRec = { name: string; hex: string; why: string };
-/** Max personalized hair images generated per recommend/avoid list (controls API cost). */
-export const HAIR_GEN_LIMIT = 3;
-/** Max personalized facial-hair / eyewear previews per premium report. */
-export const PREMIUM_GROOMING_GEN_LIMIT = 2;
+/** Max personalized avoid-hair images generated (all tiers). */
+export const HAIR_AVOID_GEN_LIMIT = 2;
+
+/** Photorealistic look images generated per report tier. */
+export function lookCountForTier(tier: Tier): number {
+  switch (tier) {
+    case "free":
+      return 1;
+    case "basic":
+      return 3;
+    case "lookbook":
+      return 4;
+    case "premium":
+      return 6;
+  }
+}
+
+/** Whether the tier may enable a public share link. */
+export function canShareReport(tier: Tier): boolean {
+  return tier !== "free";
+}
+
+/** Max personalized recommend-hair images to generate for a tier (controls API cost). */
+export function hairRecommendGenLimit(tier?: Tier): number {
+  switch (tier) {
+    case "free":
+      return 2;
+    case "basic":
+      return 3;
+    case "lookbook":
+    case "premium":
+      return 4;
+    default:
+      return 3;
+  }
+}
+
+/** Clamp AI hair lists to tier generation caps. */
+export function clampHairForTier(
+  hair: { recommend: HairRec[]; avoid: HairRec[] },
+  tier: Tier,
+): { recommend: HairRec[]; avoid: HairRec[] } {
+  return {
+    recommend: hair.recommend.slice(0, hairRecommendGenLimit(tier)),
+    avoid: hair.avoid.slice(0, HAIR_AVOID_GEN_LIMIT),
+  };
+}
+/** Max personalized facial-hair previews per premium report. */
+export const PREMIUM_FACIAL_HAIR_GEN_LIMIT = 4;
+/** Max personalized eyewear previews per premium report (2 optical + 2 sunglasses). */
+export const PREMIUM_EYEWEAR_GEN_LIMIT = 4;
 
 export type HairRec = {
   name: string;
   why: string;
   /** Public static path (demo) or signed URL after read. */
   image?: string;
+  /** Side / three-quarter view — Lookbook & Premium recommend only. */
+  imageSide?: string;
   /** Private assets bucket path — live reports only. */
   imagePath?: string;
+  /** Private assets bucket path for the side-angle preview. */
+  imagePathSide?: string;
 };
 
 /** Premium personalized facial-hair style preview (beard / mustache). */
@@ -30,6 +81,7 @@ export type FacialHairRec = HairRec;
 export type EyewearRec = HairRec & {
   /** Static fallback shape id when image is still generating. */
   shape?: string;
+  kind?: "optical" | "sun";
 };
 export type ShoppingItem = {
   category: string;
@@ -68,9 +120,9 @@ export type StyleReport = {
   summary: string;
   colors: { best: ColorRec[]; avoid: ColorRec[] };
   hair: { recommend: HairRec[]; avoid: HairRec[] };
-  /** Premium — personalized beard / mustache previews (1–2). */
+  /** Premium — personalized beard / mustache previews (up to 4). */
   facialHair?: FacialHairRec[];
-  /** Premium — personalized glasses previews (1–2). */
+  /** Premium — personalized glasses previews (2 optical + 2 sunglasses). */
   eyewear?: EyewearRec[];
   silhouette: { fit: string; rules: string[] };
   looks: Look[];
@@ -150,9 +202,12 @@ export function mockReportContent(intake: Intake): ReportContent {
     recommend: [
       { name: "Textured crop", why: "Adds structure that balances an oval face and reads contemporary.", image: "/images/hair/textured-crop.png" },
       { name: "Short tapered sides", why: "Clean, low-maintenance, and quietly sharpens the jawline.", image: "/images/hair/tapered-sides.png" },
+      { name: "Side part with texture", why: "Classic proportion for an oval face — polished without feeling stiff.", image: "/images/hair/tapered-sides.png" },
+      { name: "Soft layered medium", why: "Adds movement and depth when you want a slightly longer, relaxed look.", image: "/images/hair/textured-crop.png" },
     ],
     avoid: [
       { name: "Heavy straight fringe", why: "Shortens the face and dates the overall look.", image: "/images/hair/heavy-fringe.png" },
+      { name: "High-volume sides", why: "Widens the face silhouette and fights clean, modern lines.", image: "/images/hair/tapered-sides.png" },
     ],
   };
 
@@ -234,17 +289,27 @@ const LOOK_IMAGES = [
   "/images/look-travel.png",
 ];
 
+const HAIR_DUAL_ANGLE_TIERS: Tier[] = ["lookbook", "premium"];
+
 /** True when top-N hair items still await personalized image generation. */
-export function hairGenerationPending(hair: {
-  recommend: HairRec[];
-  avoid: HairRec[];
-}): boolean {
-  const targets = [
-    ...hair.recommend.slice(0, HAIR_GEN_LIMIT),
-    ...hair.avoid.slice(0, HAIR_GEN_LIMIT),
-  ];
-  if (targets.length === 0) return false;
-  return targets.some((h) => !h.imagePath);
+export function hairGenerationPending(
+  hair: {
+    recommend: HairRec[];
+    avoid: HairRec[];
+  },
+  tier?: Tier,
+): boolean {
+  const dualAngle = tier != null && HAIR_DUAL_ANGLE_TIERS.includes(tier);
+
+  const recommendLimit = hairRecommendGenLimit(tier);
+  for (const h of hair.recommend.slice(0, recommendLimit)) {
+    if (!h.imagePath) return true;
+    if (dualAngle && !h.imagePathSide) return true;
+  }
+  for (const h of hair.avoid.slice(0, HAIR_AVOID_GEN_LIMIT)) {
+    if (!h.imagePath) return true;
+  }
+  return false;
 }
 
 /** True when premium facial-hair / eyewear previews still await generation. */
@@ -253,8 +318,8 @@ export function premiumGroomingPending(
   eyewear: EyewearRec[] | null | undefined,
 ): boolean {
   const targets = [
-    ...(facialHair ?? []).slice(0, PREMIUM_GROOMING_GEN_LIMIT),
-    ...(eyewear ?? []).slice(0, PREMIUM_GROOMING_GEN_LIMIT),
+    ...(facialHair ?? []).slice(0, PREMIUM_FACIAL_HAIR_GEN_LIMIT),
+    ...(eyewear ?? []).slice(0, PREMIUM_EYEWEAR_GEN_LIMIT),
   ];
   if (targets.length === 0) return false;
   return targets.some((item) => !item.imagePath);
@@ -262,21 +327,23 @@ export function premiumGroomingPending(
 
 function enrichHair(
   hair: { recommend: HairRec[]; avoid: HairRec[] },
-  opts?: { isDemo?: boolean; personalizedPending?: boolean },
+  opts?: { isDemo?: boolean; personalizedPending?: boolean; tier?: Tier },
 ) {
   const isDemo = opts?.isDemo ?? false;
   const personalizedPending = opts?.personalizedPending ?? false;
+  const recommendLimit = hairRecommendGenLimit(opts?.tier);
+  const avoidLimit = HAIR_AVOID_GEN_LIMIT;
 
-  const withImage = (h: HairRec, index: number) => {
+  const withImage = (h: HairRec, index: number, genLimit: number) => {
     if (h.image) return h;
-    const inGenBatch = index < HAIR_GEN_LIMIT;
+    const inGenBatch = index < genLimit;
     if (!isDemo && inGenBatch && personalizedPending) return h;
     return { ...h, image: resolveHairImage(h.name) };
   };
 
   return {
-    recommend: hair.recommend.map(withImage),
-    avoid: hair.avoid.map(withImage),
+    recommend: hair.recommend.map((h, i) => withImage(h, i, recommendLimit)),
+    avoid: hair.avoid.map((h, i) => withImage(h, i, avoidLimit)),
   };
 }
 
@@ -331,6 +398,7 @@ export function assembleReport(opts: {
   createdAt?: string;
 }): StyleReport {
   const isDemo = opts.id === "demo";
+  const hairContent = clampHairForTier(opts.content.hair, opts.tier);
   const looks: Look[] = opts.content.looks.map((l, i) => ({
     ...l,
     image:
@@ -346,8 +414,9 @@ export function assembleReport(opts: {
     headline: opts.content.headline,
     summary: opts.content.summary,
     colors: opts.content.colors,
-    hair: enrichHair(opts.content.hair, {
+    hair: enrichHair(hairContent, {
       isDemo,
+      tier: opts.tier,
       personalizedPending: opts.personalizedHairPending,
     }),
     facialHair: opts.facialHair,

@@ -1,11 +1,17 @@
 import "server-only";
+import { cache } from "react";
 import { after } from "next/server";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
   assembleReport,
-  HAIR_GEN_LIMIT,
-  PREMIUM_GROOMING_GEN_LIMIT,
+  clampHairForTier,
+  HAIR_AVOID_GEN_LIMIT,
+  canShareReport,
+  hairRecommendGenLimit,
+  lookCountForTier,
+  PREMIUM_EYEWEAR_GEN_LIMIT,
+  PREMIUM_FACIAL_HAIR_GEN_LIMIT,
   hairGenerationPending,
   premiumGroomingPending,
   isMockShopping,
@@ -75,7 +81,7 @@ export function reportGenerationState(
   const hairPending =
     opts?.hasReferencePhoto === true &&
     !looksStarted &&
-    hairGenerationPending(hair);
+    hairGenerationPending(hair, row.tier as Tier | undefined);
 
   const groomingPending =
     row.tier === "premium" &&
@@ -122,37 +128,51 @@ const HAIR_GEN_DELAY_MS = 400;
 /** Personalized hairstyle headshots — runs before look images in `after()`. */
 async function generateHairImages(input: ImageJobInput) {
   const admin = createAdminSupabase();
-  const { reportId, userId, profile, content, photos } = input;
+  const { reportId, userId, tier, profile, content, photos } = input;
 
   const referenceImageUrl =
     photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
   if (!referenceImageUrl) return;
+
+  const dualAngle = tier === "lookbook" || tier === "premium";
+  const recommendLimit = hairRecommendGenLimit(tier);
+  const avoidLimit = HAIR_AVOID_GEN_LIMIT;
 
   const hair: { recommend: HairRec[]; avoid: HairRec[] } = {
     recommend: content.hair.recommend.map((h) => ({ ...h })),
     avoid: content.hair.avoid.map((h) => ({ ...h })),
   };
 
-  type Slot = { list: "recommend" | "avoid"; index: number };
+  type Slot = { list: "recommend" | "avoid"; index: number; angle?: "front" | "three_quarter" };
   const slots: Slot[] = [];
-  for (let i = 0; i < Math.min(HAIR_GEN_LIMIT, hair.recommend.length); i++) {
-    slots.push({ list: "recommend", index: i });
+  for (let i = 0; i < Math.min(recommendLimit, hair.recommend.length); i++) {
+    slots.push({ list: "recommend", index: i, angle: "front" });
+    if (dualAngle) {
+      slots.push({ list: "recommend", index: i, angle: "three_quarter" });
+    }
   }
-  for (let i = 0; i < Math.min(HAIR_GEN_LIMIT, hair.avoid.length); i++) {
-    slots.push({ list: "avoid", index: i });
+  for (let i = 0; i < Math.min(avoidLimit, hair.avoid.length); i++) {
+    slots.push({ list: "avoid", index: i, angle: "front" });
   }
 
-  for (const { list, index } of slots) {
+  for (const { list, index, angle = "front" } of slots) {
     const item = hair[list][index]!;
+    const isSide = angle !== "front";
+    if (isSide && item.imagePathSide) continue;
+    if (!isSide && item.imagePath) continue;
+
     const img = await generateHairImage({
       profile,
       hair: item,
       recommend: list === "recommend",
       referenceImageUrl,
+      angle,
     });
     if (img) {
       const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
-      const path = `${userId}/${reportId}/hair-${list}-${index}.${ext}`;
+      const path = isSide
+        ? `${userId}/${reportId}/hair-${list}-${index}-side.${ext}`
+        : `${userId}/${reportId}/hair-${list}-${index}.${ext}`;
       const { error: upErr } = await admin.storage
         .from("assets")
         .upload(path, img.bytes, {
@@ -160,7 +180,9 @@ async function generateHairImages(input: ImageJobInput) {
           upsert: true,
         });
       if (!upErr) {
-        hair[list][index] = { ...item, imagePath: path };
+        hair[list][index] = isSide
+          ? { ...item, imagePathSide: path }
+          : { ...item, imagePath: path };
         await admin.from("reports").update({ hair }).eq("id", reportId);
       }
     }
@@ -185,18 +207,43 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
     .eq("id", reportId)
     .single();
 
-  const facialHair: FacialHairRec[] =
-    (row?.facial_hair as FacialHairRec[] | null) ??
-    facialHairFor(profile).slice(0, PREMIUM_GROOMING_GEN_LIMIT);
-  const eyewear: EyewearRec[] =
-    (row?.eyewear as EyewearRec[] | null) ??
-    premiumEyewearPicks(profile).map((f) => ({
-      name: f.name,
-      why: f.why,
-      shape: f.shape,
-    }));
+  const pickFacialHair = () =>
+    facialHairFor(profile).slice(0, PREMIUM_FACIAL_HAIR_GEN_LIMIT);
+  const pickEyewear = () =>
+    premiumEyewearPicks(profile)
+      .slice(0, PREMIUM_EYEWEAR_GEN_LIMIT)
+      .map((f) => ({
+        name: f.name,
+        why: f.why,
+        shape: f.shape,
+        kind: f.kind,
+      }));
 
-  if (!row?.facial_hair || !row?.eyewear) {
+  const mergeByName = <T extends { name: string }>(
+    existing: T[] | null | undefined,
+    picks: T[],
+  ): T[] => {
+    if (!existing?.length) return picks;
+    const byName = new Map(existing.map((item) => [item.name, item]));
+    return picks.map((pick) => byName.get(pick.name) ?? pick);
+  };
+
+  const facialHair: FacialHairRec[] = mergeByName(
+    row?.facial_hair as FacialHairRec[] | null,
+    pickFacialHair(),
+  );
+  const eyewear: EyewearRec[] = mergeByName(
+    row?.eyewear as EyewearRec[] | null,
+    pickEyewear(),
+  );
+
+  const needsSeed =
+    !row?.facial_hair ||
+    !row?.eyewear ||
+    (row.facial_hair as FacialHairRec[]).length < PREMIUM_FACIAL_HAIR_GEN_LIMIT ||
+    (row.eyewear as EyewearRec[]).length < PREMIUM_EYEWEAR_GEN_LIMIT;
+
+  if (needsSeed) {
     await admin
       .from("reports")
       .update({ facial_hair: facialHair, eyewear })
@@ -372,19 +419,18 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
       if (data?.signedUrl) photos.push({ role: p.role, url: data.signedUrl });
     }
 
-    // Free tier is a gated preview — a single look (vs. 3 for paid tiers).
-    const FREE_LOOK_COUNT = 1;
-    const lookCount = tier === "free" ? FREE_LOOK_COUNT : 3;
+    const lookCount = lookCountForTier(tier);
     const { profile, content } = await generateReportContent(
       intake,
       photos,
       lookCount,
+      tier,
     );
-    // Belt-and-suspenders: enforce the look cap even if the model (or the mock
-    // fallback) returns more than requested.
-    if (tier === "free" && content.looks.length > FREE_LOOK_COUNT) {
-      content.looks = content.looks.slice(0, FREE_LOOK_COUNT);
+    // Belt-and-suspenders: enforce caps even if the model (or mock) returns extra.
+    if (content.looks.length > lookCount) {
+      content.looks = content.looks.slice(0, lookCount);
     }
+    content.hair = clampHairForTier(content.hair, tier);
     const shopping = await matchShopping(profile, content);
     if (isMockShopping(shopping)) {
       console.error(
@@ -410,13 +456,16 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
           ? {
               facial_hair: facialHairFor(profile).slice(
                 0,
-                PREMIUM_GROOMING_GEN_LIMIT,
+                PREMIUM_FACIAL_HAIR_GEN_LIMIT,
               ),
-              eyewear: premiumEyewearPicks(profile).map((f) => ({
-                name: f.name,
-                why: f.why,
-                shape: f.shape,
-              })),
+              eyewear: premiumEyewearPicks(profile)
+                .slice(0, PREMIUM_EYEWEAR_GEN_LIMIT)
+                .map((f) => ({
+                  name: f.name,
+                  why: f.why,
+                  shape: f.shape,
+                  kind: f.kind,
+                })),
             }
           : {}),
       })
@@ -473,17 +522,38 @@ export type ReportView = {
   isPublic: boolean;
 };
 
+type AssetSigner = {
+  storage: {
+    from: (bucket: string) => {
+      createSignedUrl: (
+        path: string,
+        expiresIn: number,
+      ) => Promise<{
+        data: { signedUrl: string } | null;
+        error: unknown;
+      }>;
+    };
+  };
+};
+
+/**
+ * Resolve the client used to sign private `assets` URLs once per request.
+ * Both owner and public viewers use the admin client when configured (it has
+ * blanket read on the bucket); otherwise the owner falls back to their own
+ * RLS-scoped client. Reused across all sign calls to avoid creating a new
+ * Supabase client (and TLS handshake) per path.
+ */
+async function resolveSigner(
+  sb: Awaited<ReturnType<typeof createServerSupabase>>,
+): Promise<AssetSigner> {
+  return hasSupabaseAdmin ? createAdminSupabase() : sb;
+}
+
 /** Sign private `assets` bucket paths for report display (10 min). */
 async function signAssetPaths(
+  signer: AssetSigner,
   paths: (string | null | undefined)[],
-  opts?: { useAdmin?: boolean },
 ): Promise<(string | undefined)[]> {
-  const signer =
-    opts?.useAdmin && hasSupabaseAdmin
-      ? createAdminSupabase()
-      : hasSupabaseAdmin
-        ? createAdminSupabase()
-        : await createServerSupabase();
   return Promise.all(
     paths.map(async (path) => {
       if (!path) return undefined;
@@ -498,31 +568,38 @@ async function signAssetPaths(
 
 /** Sign hair item storage paths and attach as `image` URLs. */
 async function signHairItems(
+  signer: AssetSigner,
   hair: {
     recommend: HairRec[];
     avoid: HairRec[];
   },
-  signOpts?: { useAdmin?: boolean },
 ): Promise<{ recommend: HairRec[]; avoid: HairRec[] }> {
   const signOne = async (h: HairRec): Promise<HairRec> => {
-    if (!h.imagePath) return h;
-    const [signed] = await signAssetPaths([h.imagePath], signOpts);
-    return signed ? { ...h, image: signed } : h;
+    const [front, side] = await signAssetPaths(signer, [
+      h.imagePath,
+      h.imagePathSide,
+    ]);
+    return {
+      ...h,
+      ...(front ? { image: front } : {}),
+      ...(side ? { imageSide: side } : {}),
+    };
   };
-  return {
-    recommend: await Promise.all(hair.recommend.map(signOne)),
-    avoid: await Promise.all(hair.avoid.map(signOne)),
-  };
+  const [recommend, avoid] = await Promise.all([
+    Promise.all(hair.recommend.map(signOne)),
+    Promise.all(hair.avoid.map(signOne)),
+  ]);
+  return { recommend, avoid };
 }
 
 /** Sign grooming preview storage paths and attach as `image` URLs. */
 async function signGroomingItems<T extends { imagePath?: string; image?: string }>(
+  signer: AssetSigner,
   items: T[],
-  signOpts?: { useAdmin?: boolean },
 ): Promise<T[]> {
   const signOne = async (item: T): Promise<T> => {
     if (!item.imagePath) return item;
-    const [signed] = await signAssetPaths([item.imagePath], signOpts);
+    const [signed] = await signAssetPaths(signer, [item.imagePath]);
     return signed ? { ...item, image: signed } : item;
   };
   return Promise.all(items.map(signOne));
@@ -535,8 +612,52 @@ function hairHasGeneratedImages(hair: {
   return [...hair.recommend, ...hair.avoid].some((h) => Boolean(h.imagePath));
 }
 
-/** Fetch a report for the owner or, when enabled, anyone with the link. */
-export async function getReportView(id: string): Promise<ReportView | null> {
+/**
+ * Schedule a catalogue re-match in the background (after the response is sent)
+ * when persisted shopping / look-items look stale or mock. Keeps the request
+ * path fast: the page renders immediately with what's stored, and the refreshed
+ * data lands on the next view. Only runs for the owner with an admin client.
+ */
+function scheduleMatchRefresh(
+  id: string,
+  profile: StyleProfile,
+  content: ReportContent,
+  opts: { needShopping: boolean; needLookItems: boolean },
+): void {
+  if (!opts.needShopping && !opts.needLookItems) return;
+  after(async () => {
+    try {
+      const admin = createAdminSupabase();
+      if (opts.needShopping) {
+        const matched = await matchShopping(profile, content);
+        if (!isMockShopping(matched)) {
+          await admin.from("reports").update({ shopping: matched }).eq("id", id);
+        }
+      }
+      if (opts.needLookItems) {
+        const matchedLooks = await matchLookItems(profile, content);
+        if (Object.keys(matchedLooks).length) {
+          await admin
+            .from("reports")
+            .update({ look_items: matchedLooks })
+            .eq("id", id);
+        }
+      }
+    } catch (err) {
+      console.error("[report match refresh]", err);
+    }
+  });
+}
+
+/**
+ * Fetch a report for the owner or, when enabled, anyone with the link.
+ *
+ * Wrapped in React `cache()` so the page component and `generateMetadata`
+ * (which both call this in the same request) share a single execution instead
+ * of doing all the queries + signing twice.
+ */
+export const getReportView = cache(
+  async (id: string): Promise<ReportView | null> => {
   if (id === "demo") {
     const report = getMockReport("demo");
     if (!report) return null;
@@ -549,61 +670,67 @@ export async function getReportView(id: string): Promise<ReportView | null> {
   }
 
   const sb = await createServerSupabase();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  const { data: row } = await sb.from("reports").select("*").eq("id", id).single();
+  // Auth and the report row are independent — fetch them together.
+  const [
+    {
+      data: { user },
+    },
+    { data: row },
+  ] = await Promise.all([
+    sb.auth.getUser(),
+    sb.from("reports").select("*").eq("id", id).single(),
+  ]);
   if (!row) return null;
 
   const isOwner = Boolean(user && row.user_id === user.id);
-  const isPublic = Boolean(row.is_public);
+  const tier = row.tier as Tier;
+  const isPublic =
+    canShareReport(tier) && Boolean(row.is_public);
   if (!isOwner && !isPublic) return null;
 
-  const signOpts = !isOwner && isPublic ? { useAdmin: true as const } : undefined;
+  const signer = await resolveSigner(sb);
 
-  const { data: looks } = await sb
-    .from("looks")
-    .select("*")
-    .eq("report_id", id)
-    .order("created_at", { ascending: true });
-
-  const lookImages = await signAssetPaths(
-    (looks ?? []).map((l) => l.image_path as string | null | undefined),
-    signOpts,
-  );
+  // Looks + the owner's reference-photo check are independent — run together.
+  const [{ data: looks }, ownerPhotoCheck] = await Promise.all([
+    sb
+      .from("looks")
+      .select("*")
+      .eq("report_id", id)
+      .order("created_at", { ascending: true }),
+    isOwner
+      ? sb.from("photos").select("id").eq("user_id", row.user_id).limit(1)
+      : Promise.resolve(null),
+  ]);
 
   const capsulePaths = (row.capsule_images as (string | null)[] | null) ?? [];
-  const capsuleImages = await signAssetPaths(capsulePaths, signOpts);
-
   const rawHair = (row.hair as { recommend: HairRec[]; avoid: HairRec[] } | null) ?? {
     recommend: [],
     avoid: [],
   };
-
-  let hasReferencePhoto = false;
-  if (isOwner) {
-    const { data: userPhotos } = await sb
-      .from("photos")
-      .select("id")
-      .eq("user_id", row.user_id)
-      .limit(1);
-    hasReferencePhoto = (userPhotos?.length ?? 0) > 0;
-  } else {
-    hasReferencePhoto =
-      (looks ?? []).some((l) => l.image_path) || hairHasGeneratedImages(rawHair);
-  }
-
-  const signedHair = await signHairItems(rawHair, signOpts);
-
   const rawFacialHair =
     (row.facial_hair as FacialHairRec[] | null) ?? undefined;
   const rawEyewear = (row.eyewear as EyewearRec[] | null) ?? undefined;
-  const signedFacialHair = rawFacialHair
-    ? await signGroomingItems(rawFacialHair, signOpts)
-    : undefined;
-  const signedEyewear = rawEyewear
-    ? await signGroomingItems(rawEyewear, signOpts)
-    : undefined;
+
+  // Sign every private asset path in one parallel pass on a single client.
+  const [lookImages, capsuleImages, signedHair, signedFacialHair, signedEyewear] =
+    await Promise.all([
+      signAssetPaths(
+        signer,
+        (looks ?? []).map((l) => l.image_path as string | null | undefined),
+      ),
+      signAssetPaths(signer, capsulePaths),
+      signHairItems(signer, rawHair),
+      rawFacialHair
+        ? signGroomingItems(signer, rawFacialHair)
+        : Promise.resolve(undefined),
+      rawEyewear
+        ? signGroomingItems(signer, rawEyewear)
+        : Promise.resolve(undefined),
+    ]);
+
+  const hasReferencePhoto = isOwner
+    ? (ownerPhotoCheck?.data?.length ?? 0) > 0
+    : (looks ?? []).some((l) => l.image_path) || hairHasGeneratedImages(rawHair);
 
   const content: ReportContent = {
     headline: row.headline ?? "",
@@ -625,29 +752,26 @@ export async function getReportView(id: string): Promise<ReportView | null> {
   let lookItems =
     (row.look_items as Record<number, ShoppingItem[]> | null) ?? undefined;
 
+  // Catalogue (re-)matching is the dominant cost when it runs (embeddings +
+  // pgvector RPCs). It's normally done once at generation; only re-run when the
+  // stored data is stale/mock — and do it OFF the request path so the page
+  // renders instantly with whatever is stored.
   if (isOwner && hasSupabaseAdmin && row.profile) {
-    if (isMockShopping(shopping)) {
-      const matched = await matchShopping(row.profile, content);
-      if (!isMockShopping(matched)) {
-        shopping = matched;
-        const admin = createAdminSupabase();
-        void admin.from("reports").update({ shopping }).eq("id", id);
-      }
-    }
-    if (lookItemsNeedRefresh(lookItems)) {
-      const matchedLooks = await matchLookItems(row.profile, content);
-      if (Object.keys(matchedLooks).length) {
-        lookItems = matchedLooks;
-        const admin = createAdminSupabase();
-        void admin.from("reports").update({ look_items: matchedLooks }).eq("id", id);
-      }
-    }
+    scheduleMatchRefresh(id, row.profile, content, {
+      needShopping: isMockShopping(shopping),
+      needLookItems: lookItemsNeedRefresh(lookItems),
+    });
   }
 
-  shopping = await enrichShoppingImages(shopping);
-  if (lookItems && Object.keys(lookItems).length) {
-    lookItems = await enrichLookItems(lookItems);
-  }
+  // Backfill missing product images (cheap DB lookups) in parallel.
+  const [enrichedShopping, enrichedLookItems] = await Promise.all([
+    enrichShoppingImages(shopping),
+    lookItems && Object.keys(lookItems).length
+      ? enrichLookItems(lookItems)
+      : Promise.resolve(lookItems),
+  ]);
+  shopping = enrichedShopping;
+  lookItems = enrichedLookItems;
 
   const generation = reportGenerationState(
     {
@@ -672,7 +796,7 @@ export async function getReportView(id: string): Promise<ReportView | null> {
     personalizedHairPending:
       hasReferencePhoto &&
       !(looks ?? []).some((l) => l.image_path) &&
-      hairGenerationPending(rawHair),
+      hairGenerationPending(rawHair, row.tier as Tier),
     facialHair: signedFacialHair,
     eyewear: signedEyewear,
     content,
@@ -683,7 +807,8 @@ export async function getReportView(id: string): Promise<ReportView | null> {
   });
 
   return { report, isOwner, isPublic };
-}
+  },
+);
 
 /** Fetch report content only — owner or public link. Falls back to mock store. */
 export async function getReportById(id: string): Promise<StyleReport | null> {

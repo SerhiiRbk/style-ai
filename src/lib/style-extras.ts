@@ -188,12 +188,91 @@ function eyewearFor(faceShape: string): { recommend: FrameRec[]; avoid: string[]
   };
 }
 
-/** Top eyewear picks for premium personalized previews (1–2). */
-export function premiumEyewearPicks(profile: StyleProfile): FrameRec[] {
-  return eyewearFor(profile.physical.faceShape).recommend.slice(0, 2);
+/** Top eyewear picks for premium personalized previews (2 optical + 2 sunglasses). */
+export type PremiumEyewearPick = FrameRec & { kind: "optical" | "sun" };
+
+function sunglassesFor(faceShape: string): FrameRec[] {
+  const f = lc(faceShape);
+  if (f.includes("round")) {
+    return [
+      {
+        shape: "rectangle",
+        name: "Rectangular sunglasses",
+        why: "Sharp angles add definition and lengthen a round face in sun.",
+      },
+      {
+        shape: "wayfarer",
+        name: "Wayfarer sunglasses",
+        why: "Structured top bar sharpens soft features without adding width.",
+      },
+    ];
+  }
+  if (f.includes("square")) {
+    return [
+      {
+        shape: "round",
+        name: "Round sunglasses",
+        why: "Soft curves balance a strong, angular jaw in bright light.",
+      },
+      {
+        shape: "aviator",
+        name: "Aviator sunglasses",
+        why: "Curved bottom edge softens square corners outdoors.",
+      },
+    ];
+  }
+  if (f.includes("oblong") || f.includes("rectang") || f.includes("long")) {
+    return [
+      {
+        shape: "round",
+        name: "Round sunglasses",
+        why: "Adds width and breaks up a longer face in sun.",
+      },
+      {
+        shape: "geometric",
+        name: "Bold geometric sunglasses",
+        why: "Deeper frames shorten the appearance of vertical length.",
+      },
+    ];
+  }
+  if (f.includes("heart") || f.includes("triang")) {
+    return [
+      {
+        shape: "aviator",
+        name: "Aviator sunglasses",
+        why: "Bottom-heavy shape balances a wider forehead outdoors.",
+      },
+      {
+        shape: "round",
+        name: "Round sunglasses",
+        why: "Adds softness to a narrower chin without widening the brow.",
+      },
+    ];
+  }
+  return [
+    {
+      shape: "wayfarer",
+      name: "Wayfarer sunglasses",
+      why: "Classic balance for an oval face — versatile in sun.",
+    },
+    {
+      shape: "aviator",
+      name: "Aviator sunglasses",
+      why: "Relaxed edge while keeping proportions balanced outdoors.",
+    },
+  ];
 }
 
-/** Named facial-hair styles for premium photo previews (1–2). */
+export function premiumEyewearPicks(profile: StyleProfile): PremiumEyewearPick[] {
+  const optical = eyewearFor(profile.physical.faceShape).recommend.slice(0, 2);
+  const sun = sunglassesFor(profile.physical.faceShape);
+  return [
+    ...optical.map((f) => ({ ...f, kind: "optical" as const })),
+    ...sun.map((f) => ({ ...f, kind: "sun" as const })),
+  ];
+}
+
+/** Named facial-hair styles for premium photo previews (up to 4). */
 export function facialHairFor(
   profile: StyleProfile,
 ): { name: string; why: string }[] {
@@ -207,6 +286,14 @@ export function facialHairFor(
       {
         name: "Soft natural brows",
         why: "Well-groomed brows frame the face — the detail that reads as polished.",
+      },
+      {
+        name: "Defined brow arch",
+        why: "A subtle arch lifts the eye area and adds structure without heaviness.",
+      },
+      {
+        name: "Polished neckline",
+        why: "Clean jaw and neck line keep the silhouette sharp under open collars.",
       },
     ];
   }
@@ -222,6 +309,14 @@ export function facialHairFor(
         name: "Light stubble",
         why: "Even 2–3 mm stubble sharpens the jaw without adding width.",
       },
+      {
+        name: "Goatee, clean cheeks",
+        why: "Vertical length at the chin elongates a round face without widening the sides.",
+      },
+      {
+        name: "Tapered full beard",
+        why: "Length at the chin with trimmed cheeks adds definition while staying balanced.",
+      },
     ];
   }
   if (f.includes("square")) {
@@ -233,6 +328,14 @@ export function facialHairFor(
       {
         name: "Classic mustache",
         why: "A neat mustache draws the eye upward and softens a square jawline.",
+      },
+      {
+        name: "Medium stubble",
+        why: "Even coverage softens sharp corners without hiding bone structure.",
+      },
+      {
+        name: "Short rounded beard",
+        why: "A rounded neckline and cheek line takes the edge off a square jaw.",
       },
     ];
   }
@@ -246,6 +349,14 @@ export function facialHairFor(
         name: "Short goatee",
         why: "Concentrated length at the chin adds width without elongating the face.",
       },
+      {
+        name: "Wide sideburns + stubble",
+        why: "Horizontal emphasis at the temples adds width to a longer face.",
+      },
+      {
+        name: "Chevron mustache",
+        why: "A bold upper-lip line draws attention horizontally across the face.",
+      },
     ];
   }
   if (f.includes("heart") || f.includes("triang")) {
@@ -258,6 +369,14 @@ export function facialHairFor(
         name: "Short beard, clean cheeks",
         why: "Keeps the upper face light while defining the jaw.",
       },
+      {
+        name: "Anchor beard",
+        why: "Focused length along the chin adds weight where the face is narrowest.",
+      },
+      {
+        name: "Light goatee",
+        why: "Minimal chin definition without adding bulk to the upper face.",
+      },
     ];
   }
   return [
@@ -268,6 +387,14 @@ export function facialHairFor(
     {
       name: "Refined stubble",
       why: "Low-maintenance texture that reads modern without overpowering your features.",
+    },
+    {
+      name: "Classic full beard",
+      why: "Even growth with a defined neckline — versatile on an oval face.",
+    },
+    {
+      name: "Van Dyke",
+      why: "A neat mustache paired with a small chin patch adds character without bulk.",
     },
   ];
 }

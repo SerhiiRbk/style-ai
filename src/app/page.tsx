@@ -63,7 +63,8 @@ function Hero() {
             </ButtonLink>
           </div>
           <p className="mt-5 text-sm text-stone-soft">
-            One simplified preview is free · No subscription required
+            Sign up for {SIGNUP_BONUS} credits — free preview {REPORT_COST.free}{" "}
+            credits, try-on {CREDIT_COSTS.tryon} credit · No subscription
           </p>
         </div>
 
@@ -420,12 +421,14 @@ async function Pricing() {
   const tiers = [
     {
       name: "Free preview",
-      price: "Free",
-      cadence: "",
+      price: String(SIGNUP_BONUS),
+      cadence: "free credits",
       features: [
         "Colour & hair analysis with reasons",
         "1 photorealistic preview look",
-        "No try-on, capsule or PDF",
+        "2 hairstyle previews on your photo",
+        `Virtual try-on (${CREDIT_COSTS.tryon} credit each)`,
+        "No share link, capsule, or PDF",
       ],
       cta: "Try it free",
       href: "/start",
@@ -451,9 +454,11 @@ async function Pricing() {
       cadence: "credits",
       features: [
         "Everything in Basic",
+        "4 photorealistic looks",
         "Capsule wardrobe + week matrix",
         `Virtual try-on (${CREDIT_COSTS.tryon} credit each)`,
         "Good · Better · Best buying plan",
+        "4 hairstyle previews on your photo (front + side)",
       ],
       cta: "Get Lookbook",
       href: "/start",
@@ -465,8 +470,9 @@ async function Pricing() {
       cadence: "credits",
       features: [
         "Everything in Lookbook",
-        "Facial-hair previews on your photo",
-        "Eyewear previews on your photo",
+        "6 photorealistic looks",
+        "4 facial-hair previews on your photo",
+        "2 optical + 2 sunglasses previews",
         "Deeper grooming guidance",
       ],
       cta: "Get Premium",
@@ -606,7 +612,8 @@ function FinalCTA() {
           See what genuinely suits you — and why.
         </h2>
         <p className="mx-auto mt-5 max-w-md text-paper/70">
-          Start with a free simplified preview. No subscription, no commitment.
+          Sign up for {SIGNUP_BONUS} credits — free preview costs{" "}
+          {REPORT_COST.free}, try-on {CREDIT_COSTS.tryon} credit. No subscription.
         </p>
         <div className="mt-9 flex justify-center">
           <ButtonLink

@@ -8,7 +8,9 @@
  *   node --env-file=.env.local scripts/backfill-premium-report.mjs <reportId> --with-facial-hair
  *   node --env-file=.env.local scripts/backfill-premium-report.mjs <reportId> --with-eyewear
  *
- * Skips look regeneration when all looks already have image_path.
+ * Hair: Lookbook/Premium — 4 recommend (front + side); Basic — 3; Free — 2 (front only).
+ * All tiers: 2 avoid (front only).
+ * Premium grooming: 4 facial-hair + 4 eyewear (2 optical + 2 sunglasses).
  */
 import { createClient } from "@supabase/supabase-js";
 import { generateText } from "ai";
@@ -111,15 +113,29 @@ async function generateLookImage({ profile, look, referenceImageUrl }) {
   }
 }
 
-async function generateHairImage({ profile, hair, recommend, referenceImageUrl }) {
+async function generateHairImage({
+  profile,
+  hair,
+  recommend,
+  referenceImageUrl,
+  angle = "front",
+}) {
   try {
     const intent = recommend
       ? `Show this hairstyle as a flattering recommendation: ${hair.name}. ${hair.why}`
       : `Show this hairstyle as an example to avoid: ${hair.name}. ${hair.why}`;
 
+    const angleNote =
+      angle === "front"
+        ? "Face the camera directly, front-facing headshot."
+        : angle === "profile"
+          ? "Head turned to a side profile (90°), showing the hairstyle silhouette from the side."
+          : "Head turned roughly 45° (three-quarter view), showing the hairstyle from the side while keeping most of the face visible.";
+
     const prompt =
       `Editorial beauty headshot for a premium grooming report. ` +
       `Hairstyle: ${hair.name}. ${intent} ` +
+      `Camera angle: ${angleNote} ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.faceShape} face shape. Shoulders-up framing, neutral soft studio backdrop, ` +
       `natural soft light, sharp focus on hair and face, magazine quality, tasteful and respectful. ` +
@@ -144,9 +160,33 @@ async function generateHairImage({ profile, hair, recommend, referenceImageUrl }
   }
 }
 
-const HAIR_GEN_LIMIT = 3;
-const PREMIUM_GROOMING_GEN_LIMIT = 2;
+const HAIR_AVOID_GEN_LIMIT = 2;
+function hairRecommendGenLimit(tier) {
+  if (tier === "free") return 2;
+  if (tier === "basic") return 3;
+  if (tier === "lookbook" || tier === "premium") return 4;
+  return 3;
+}
+const PREMIUM_FACIAL_HAIR_GEN_LIMIT = 4;
+const PREMIUM_EYEWEAR_GEN_LIMIT = 4;
 const HAIR_GEN_DELAY_MS = 400;
+
+/** Pad legacy reports to current tier limits before image generation. */
+function normalizeHairForTier(hair, tier) {
+  const recommendLimit = hairRecommendGenLimit(tier);
+  const padRecommend = [
+    { name: "Side part with texture", why: "Classic proportion — polished without feeling stiff." },
+    { name: "Soft layered medium", why: "Adds movement when you want a slightly longer, relaxed look." },
+    { name: "Classic scissor cut", why: "Clean shape that works with most face types." },
+  ];
+  while (hair.recommend.length < recommendLimit) {
+    const pad = padRecommend[hair.recommend.length - 3] ?? padRecommend.at(-1);
+    hair.recommend.push({ ...pad });
+  }
+  hair.recommend = hair.recommend.slice(0, recommendLimit);
+  hair.avoid = hair.avoid.slice(0, HAIR_AVOID_GEN_LIMIT);
+  return hair;
+}
 
 function lc(s) {
   return (s ?? "").toLowerCase();
@@ -178,12 +218,43 @@ function eyewearFor(faceShape) {
   };
 }
 
+function sunglassesFor(faceShape) {
+  const f = lc(faceShape);
+  if (f.includes("round")) {
+    return [
+      { shape: "rectangle", name: "Rectangular sunglasses", why: "Sharp angles add definition in sun." },
+      { shape: "wayfarer", name: "Wayfarer sunglasses", why: "Structured top bar sharpens soft features outdoors." },
+    ];
+  }
+  if (f.includes("square")) {
+    return [
+      { shape: "round", name: "Round sunglasses", why: "Soft curves balance a strong jaw in bright light." },
+      { shape: "aviator", name: "Aviator sunglasses", why: "Curved bottom edge softens square corners outdoors." },
+    ];
+  }
+  return [
+    { shape: "wayfarer", name: "Wayfarer sunglasses", why: "Classic balance for an oval face in sun." },
+    { shape: "aviator", name: "Aviator sunglasses", why: "Relaxed edge while keeping proportions balanced outdoors." },
+  ];
+}
+
+function premiumEyewearPicks(profile) {
+  const optical = eyewearFor(profile.physical.faceShape).recommend.slice(0, 2);
+  const sun = sunglassesFor(profile.physical.faceShape);
+  return [
+    ...optical.map((f) => ({ ...f, kind: "optical" })),
+    ...sun.map((f) => ({ ...f, kind: "sun" })),
+  ];
+}
+
 function facialHairFor(profile) {
   const gender = lc(profile.demographics.genderPresentation);
   if (gender === "female") {
     return [
       { name: "Clean-shaven", why: "Keeps focus on your features and pairs cleanly with structured tailoring." },
       { name: "Soft natural brows", why: "Well-groomed brows frame the face — the detail that reads as polished." },
+      { name: "Defined brow arch", why: "A subtle arch lifts the eye area and adds structure without heaviness." },
+      { name: "Polished neckline", why: "Clean jaw and neck line keep the silhouette sharp under open collars." },
     ];
   }
   const f = lc(profile.physical.faceShape);
@@ -191,11 +262,23 @@ function facialHairFor(profile) {
     return [
       { name: "Short boxed beard", why: "A slightly longer chin with tighter cheeks adds length to a round face." },
       { name: "Light stubble", why: "Even 2–3 mm stubble sharpens the jaw without adding width." },
+      { name: "Goatee, clean cheeks", why: "Vertical length at the chin elongates a round face without widening the sides." },
+      { name: "Tapered full beard", why: "Length at the chin with trimmed cheeks adds definition while staying balanced." },
+    ];
+  }
+  if (f.includes("square")) {
+    return [
+      { name: "Rounded full beard", why: "Soft curves along the jaw balance strong, angular bone structure." },
+      { name: "Classic mustache", why: "A neat mustache draws the eye upward and softens a square jawline." },
+      { name: "Medium stubble", why: "Even coverage softens sharp corners without hiding bone structure." },
+      { name: "Short rounded beard", why: "A rounded neckline and cheek line takes the edge off a square jaw." },
     ];
   }
   return [
     { name: "Short even beard", why: "A tidy, even line suits an oval face — natural cheek line, clean neckline." },
     { name: "Refined stubble", why: "Low-maintenance texture that reads modern without overpowering your features." },
+    { name: "Classic full beard", why: "Even growth with a defined neckline — versatile on an oval face." },
+    { name: "Van Dyke", why: "A neat mustache paired with a small chin patch adds character without bulk." },
   ];
 }
 
@@ -230,12 +313,16 @@ async function generateFacialHairImage({ profile, style, referenceImageUrl }) {
 
 async function generateEyewearImage({ profile, frame, referenceImageUrl }) {
   try {
+    const isSun = frame.kind === "sun";
+    const eyewearType = isSun
+      ? `Fashion sunglasses with tinted lenses`
+      : `Optical eyeglasses with clear lenses`;
     const prompt =
       `Editorial eyewear headshot for a premium style report. ` +
-      `Glasses frames: ${frame.name}${frame.shape ? ` (${frame.shape} shape)` : ""}. ${frame.why} ` +
+      `${eyewearType}: ${frame.name}${frame.shape ? ` (${frame.shape} shape)` : ""}. ${frame.why} ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.faceShape} face shape. Shoulders-up framing, neutral soft studio backdrop, ` +
-      `natural soft light, sharp focus on face and glasses, magazine quality, tasteful and respectful. ` +
+      `natural soft light, sharp focus on face and ${isSun ? "sunglasses" : "glasses"}, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
         ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add or change the eyewear.`
         : `Do not show identifiable facial features.`);
@@ -317,40 +404,63 @@ async function main() {
 
   if (withHair && referenceImageUrl) {
     console.log("Generating hairstyle preview images…");
-    const hair = {
-      recommend: (row.hair?.recommend ?? []).map((h) => ({ ...h })),
-      avoid: (row.hair?.avoid ?? []).map((h) => ({ ...h })),
-    };
+    const dualAngle = tier === "lookbook" || tier === "premium";
+    const hair = normalizeHairForTier(
+      {
+        recommend: (row.hair?.recommend ?? []).map((h) => ({ ...h })),
+        avoid: (row.hair?.avoid ?? []).map((h) => ({ ...h })),
+      },
+      tier,
+    );
+    await admin.from("reports").update({ hair }).eq("id", reportId);
     const slots = [];
-    for (let i = 0; i < Math.min(HAIR_GEN_LIMIT, hair.recommend.length); i++) {
-      slots.push({ list: "recommend", index: i });
+    const recommendLimit = hairRecommendGenLimit(tier);
+    for (let i = 0; i < recommendLimit; i++) {
+      slots.push({ list: "recommend", index: i, angle: "front" });
+      if (dualAngle) {
+        slots.push({ list: "recommend", index: i, angle: "three_quarter" });
+      }
     }
-    for (let i = 0; i < Math.min(HAIR_GEN_LIMIT, hair.avoid.length); i++) {
-      slots.push({ list: "avoid", index: i });
+    for (let i = 0; i < Math.min(HAIR_AVOID_GEN_LIMIT, hair.avoid.length); i++) {
+      slots.push({ list: "avoid", index: i, angle: "front" });
     }
-    for (const { list, index } of slots) {
+    for (const { list, index, angle } of slots) {
       const item = hair[list][index];
+      const isSide = angle !== "front";
+      if (isSide && item.imagePathSide) {
+        console.log(`  skip hair ${list}[${index}] side — already has path`);
+        continue;
+      }
+      if (!isSide && item.imagePath) {
+        console.log(`  skip hair ${list}[${index}] front — already has path`);
+        continue;
+      }
       const img = await generateHairImage({
         profile,
         hair: item,
         recommend: list === "recommend",
         referenceImageUrl,
+        angle,
       });
       if (img) {
         const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
-        const path = `${userId}/${reportId}/hair-${list}-${index}.${ext}`;
+        const path = isSide
+          ? `${userId}/${reportId}/hair-${list}-${index}-side.${ext}`
+          : `${userId}/${reportId}/hair-${list}-${index}.${ext}`;
         const { error: upErr } = await admin.storage
           .from("assets")
           .upload(path, img.bytes, { contentType: img.mediaType, upsert: true });
         if (!upErr) {
-          hair[list][index] = { ...item, imagePath: path };
+          hair[list][index] = isSide
+            ? { ...item, imagePathSide: path }
+            : { ...item, imagePath: path };
           await admin.from("reports").update({ hair }).eq("id", reportId);
-          console.log(`  ✓ hair ${list}[${index}] → ${path}`);
+          console.log(`  ✓ hair ${list}[${index}]${isSide ? " side" : ""} → ${path}`);
         } else {
           console.error(`  ✗ upload ${path}:`, upErr.message);
         }
       } else {
-        console.warn(`  ✗ hair ${list}[${index}] generation failed`);
+        console.warn(`  ✗ hair ${list}[${index}]${isSide ? " side" : ""} generation failed`);
       }
       await new Promise((r) => setTimeout(r, HAIR_GEN_DELAY_MS));
     }
@@ -359,8 +469,19 @@ async function main() {
   if (tier === "premium" && withFacialHair && referenceImageUrl) {
     console.log("Generating facial hair preview images…");
     let facialHair = (row.facial_hair ?? []).map((h) => ({ ...h }));
-    if (!facialHair.length) {
-      facialHair = facialHairFor(profile).slice(0, PREMIUM_GROOMING_GEN_LIMIT);
+    if (facialHair.length < PREMIUM_FACIAL_HAIR_GEN_LIMIT) {
+      const picks = facialHairFor(profile).slice(0, PREMIUM_FACIAL_HAIR_GEN_LIMIT);
+      const existing = new Set(facialHair.map((h) => h.name));
+      for (const pick of picks) {
+        if (facialHair.length >= PREMIUM_FACIAL_HAIR_GEN_LIMIT) break;
+        if (!existing.has(pick.name)) {
+          facialHair.push(pick);
+          existing.add(pick.name);
+        }
+      }
+      if (facialHair.length < PREMIUM_FACIAL_HAIR_GEN_LIMIT) {
+        facialHair = picks;
+      }
       await admin.from("reports").update({ facial_hair: facialHair }).eq("id", reportId);
     }
     for (let i = 0; i < facialHair.length; i++) {
@@ -397,10 +518,15 @@ async function main() {
   if (tier === "premium" && withEyewear && referenceImageUrl) {
     console.log("Generating eyewear preview images…");
     let eyewear = (row.eyewear ?? []).map((h) => ({ ...h }));
-    if (!eyewear.length) {
-      eyewear = eyewearFor(profile.physical.faceShape).recommend
-        .slice(0, PREMIUM_GROOMING_GEN_LIMIT)
-        .map((f) => ({ name: f.name, why: f.why, shape: f.shape }));
+    if (eyewear.length < PREMIUM_EYEWEAR_GEN_LIMIT) {
+      eyewear = premiumEyewearPicks(profile)
+        .slice(0, PREMIUM_EYEWEAR_GEN_LIMIT)
+        .map((f) => ({
+          name: f.name,
+          why: f.why,
+          shape: f.shape,
+          kind: f.kind,
+        }));
       await admin.from("reports").update({ eyewear }).eq("id", reportId);
     }
     for (let i = 0; i < eyewear.length; i++) {
@@ -497,8 +623,12 @@ async function main() {
   console.log("  capsule_images:", verify?.capsule_images);
   if (withHair) {
     console.log(
-      "  hair imagePaths recommend:",
+      "  hair imagePaths recommend (front):",
       verify?.hair?.recommend?.map((h) => h.imagePath ?? null),
+    );
+    console.log(
+      "  hair imagePaths recommend (side):",
+      verify?.hair?.recommend?.map((h) => h.imagePathSide ?? null),
     );
   }
   if (withFacialHair) {

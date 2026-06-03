@@ -8,19 +8,21 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { getCreditBalance } from "@/lib/credits";
 
 const primaryLinks: NavLink[] = [
-  { href: "/#stylist", label: "Your stylist" },
   { href: "/#how", label: "How it works" },
   { href: "/catalog", label: "Catalog" },
   { href: "/pricing", label: "Pricing" },
+  { href: "/#sample", label: "Sample" },
 ];
 
 const secondaryLinks: NavLink[] = [
-  { href: "/#sample", label: "Sample report" },
   { href: "/report/demo", label: "View example", hideWhenAuthed: true },
 ];
 
 const navLinkClass =
-  "whitespace-nowrap text-sm text-stone transition-colors hover:text-ink";
+  "whitespace-nowrap text-xs xl:text-sm text-stone transition-colors hover:text-ink";
+
+const creditsPillClass =
+  "whitespace-nowrap rounded-full border border-brass/40 bg-brass/5 text-ink transition-colors hover:border-brass";
 
 export async function Navbar() {
   let authed = false;
@@ -36,56 +38,70 @@ export async function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b hairline bg-paper/80 backdrop-blur-md">
-      <nav className="container-luxe grid h-16 grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-x-3 md:gap-x-4">
+      <nav className="container-luxe flex h-16 items-center gap-2 lg:gap-3">
         <Link
           href="/"
-          className="group flex min-w-0 shrink-0 items-baseline gap-2"
+          className="group flex shrink-0 items-baseline gap-1.5 xl:gap-2"
         >
-          <span className="font-display text-xl tracking-tight">
+          <span className="font-display text-lg tracking-tight xl:text-xl">
             {BRAND.name}
           </span>
-          <span className="eyebrow hidden lg:inline">{BRAND.eyebrow}</span>
+          <span className="eyebrow hidden whitespace-nowrap xl:inline">
+            {BRAND.eyebrow}
+          </span>
         </Link>
 
-        <div className="hidden min-w-0 items-center justify-center gap-x-5 overflow-hidden xl:flex 2xl:gap-x-7">
+        <div className="hidden min-w-0 flex-1 items-center justify-center gap-x-1.5 xl:gap-x-2.5 lg:flex">
           {primaryLinks.map((l) => (
             <Link key={l.href} href={l.href} className={navLinkClass}>
               {l.label}
             </Link>
           ))}
-          <Link
-            href="/#sample"
-            className={`${navLinkClass} hidden 2xl:inline`}
-          >
-            Sample report
-          </Link>
         </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-2 sm:gap-3">
-          <div className="hidden items-center gap-3 xl:flex">
-            {!authed && (
-              <Link href="/report/demo" className={navLinkClass}>
-                View example
-              </Link>
-            )}
-            {authed && (
-              <Link href="/reports" className={navLinkClass}>
-                My reports
-              </Link>
-            )}
-            {authed && balance !== null && (
+        <div className="ml-auto flex shrink-0 items-center justify-end gap-1 sm:gap-1.5 md:gap-2 xl:gap-3">
+          {!authed && (
+            <Link
+              href="/report/demo"
+              className={`${navLinkClass} hidden xl:inline-flex`}
+            >
+              View example
+            </Link>
+          )}
+          {authed && (
+            <Link
+              href="/reports"
+              className={`${navLinkClass} hidden lg:inline-flex`}
+            >
+              My reports
+            </Link>
+          )}
+          {authed && balance !== null && (
+            <>
               <Link
                 href="/pricing"
                 title="Your credit balance — buy more"
-                className="whitespace-nowrap rounded-full border border-brass/40 bg-brass/5 px-3 py-1 text-xs text-ink transition-colors hover:border-brass"
+                className={`${creditsPillClass} hidden px-2 py-0.5 text-[11px] lg:inline-flex xl:hidden`}
+              >
+                {balance} cr
+              </Link>
+              <Link
+                href="/pricing"
+                title="Your credit balance — buy more"
+                className={`${creditsPillClass} hidden px-3 py-1 text-xs xl:inline-flex`}
               >
                 {balance} credits
               </Link>
-            )}
-            <AuthControls />
+            </>
+          )}
+          <div className="hidden lg:block">
+            <AuthControls className="whitespace-nowrap text-xs text-stone transition-colors hover:text-ink xl:text-sm" />
           </div>
 
-          <ButtonLink href="/start" className="!px-4 !py-2.5 sm:!px-5">
+          <ButtonLink
+            href="/start"
+            className="!px-2.5 !py-2 sm:!px-3 md:!px-4 xl:!px-5"
+          >
             <span className="xl:hidden">Create report</span>
             <span className="hidden xl:inline">Create my report</span>
           </ButtonLink>
@@ -94,6 +110,7 @@ export async function Navbar() {
             authed={authed}
             primaryLinks={primaryLinks}
             secondaryLinks={secondaryLinks}
+            balance={balance}
           />
         </div>
       </nav>

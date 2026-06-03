@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { hasSupabase } from "@/lib/env";
+import { canShareReport, type Tier } from "@/lib/report";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 export async function PATCH(
@@ -37,6 +38,25 @@ export async function PATCH(
   } = await sb.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const { data: row, error: fetchErr } = await sb
+    .from("reports")
+    .select("tier")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (fetchErr || !row) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const tier = row.tier as Tier;
+  if (!canShareReport(tier)) {
+    return NextResponse.json(
+      { error: "Sharing is not available on the free preview tier" },
+      { status: 403 },
+    );
   }
 
   const { data, error } = await sb

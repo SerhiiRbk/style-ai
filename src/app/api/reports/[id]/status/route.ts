@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { reportGenerationState } from "@/lib/data/reports";
 import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
-import type { HairRec } from "@/lib/report";
+import { canShareReport, type HairRec, type Tier } from "@/lib/report";
 
 export async function GET(
   _request: Request,
@@ -34,7 +34,9 @@ export async function GET(
   }
 
   const isOwner = Boolean(user && row.user_id === user.id);
-  if (!isOwner && !row.is_public) {
+  const isPublic =
+    canShareReport(row.tier as Tier) && Boolean(row.is_public);
+  if (!isOwner && !isPublic) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

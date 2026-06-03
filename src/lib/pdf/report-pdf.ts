@@ -379,6 +379,11 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     const img = await embedImage(d.doc, h.image, { w: 58, h: 70 });
     d.imageRow(img, `Recommended — ${h.name}`, h.why);
     d.gap(5);
+    if (h.imageSide) {
+      const sideImg = await embedImage(d.doc, h.imageSide, { w: 58, h: 70 });
+      d.imageRow(sideImg, `${h.name} — side view`, "Three-quarter angle showing cut shape.");
+      d.gap(5);
+    }
   }
   for (const h of report.hair.avoid) {
     const img = await embedImage(d.doc, h.image, { w: 58, h: 70 });
@@ -410,7 +415,13 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     d.gap(3);
     for (const item of report.eyewear) {
       const img = await embedImage(d.doc, item.image, { w: 58, h: 70 });
-      d.imageRow(img, item.name, item.why);
+      const kindLabel =
+        item.kind === "sun"
+          ? "Sunglasses"
+          : item.kind === "optical"
+            ? "Optical"
+            : "Glasses";
+      d.imageRow(img, `${kindLabel} — ${item.name}`, item.why);
       d.gap(4);
     }
     d.gap(2);

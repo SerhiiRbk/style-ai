@@ -724,15 +724,22 @@ function GroomingPreviewCard({
   item,
   alt,
   fallbackSrc,
+  label,
 }: {
   item: FacialHairRec | EyewearRec;
   alt: string;
   fallbackSrc?: string;
+  label?: string;
 }) {
   const src = item.image ?? fallbackSrc;
   return (
     <article className="overflow-hidden rounded-2xl border hairline bg-paper">
       <div className="relative aspect-[4/5] bg-sand">
+        {label ? (
+          <span className="absolute right-3 top-3 z-10 rounded-full bg-paper/90 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-stone">
+            {label}
+          </span>
+        ) : null}
         {src ? (
           <ReportZoomImage
             src={src}
@@ -763,10 +770,10 @@ export function FacialHairGuide({ items }: { items: FacialHairRec[] }) {
         Recommended facial hair
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-stone">
-        Personalized beard and mustache directions on your photo — take these to
-        your barber.
+        Four personalized beard and mustache directions on your photo — take
+        these to your barber.
       </p>
-      <div className="mt-5 grid gap-5 sm:grid-cols-2">
+      <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {items.map((item) => (
           <GroomingPreviewCard
             key={item.name}
@@ -781,27 +788,59 @@ export function FacialHairGuide({ items }: { items: FacialHairRec[] }) {
 
 export function PremiumEyewearGuide({ items }: { items: EyewearRec[] }) {
   if (!items.length) return null;
+  const optical = items.filter((i) => i.kind !== "sun");
+  const sun = items.filter((i) => i.kind === "sun");
+  const unlabeled = items.filter((i) => !i.kind);
+
+  const renderGroup = (
+    group: EyewearRec[],
+    heading: string,
+    defaultLabel?: string,
+  ) =>
+    group.length ? (
+      <div>
+        <h4 className="text-xs uppercase tracking-wider text-stone-soft">
+          {heading}
+        </h4>
+        <div className="mt-4 grid gap-5 sm:grid-cols-2">
+          {group.map((item) => (
+            <GroomingPreviewCard
+              key={`${item.kind ?? "frame"}-${item.name}`}
+              item={item}
+              alt={`${item.name} — eyewear recommendation`}
+              label={
+                item.kind === "sun"
+                  ? "Sunglasses"
+                  : item.kind === "optical"
+                    ? "Optical"
+                    : defaultLabel
+              }
+              fallbackSrc={
+                item.shape && item.shape in EYEWEAR_IMAGE
+                  ? EYEWEAR_IMAGE[item.shape as FrameShapeId]
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+      </div>
+    ) : null;
+
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
         Recommended glasses
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-stone">
-        Frame shapes chosen for your face — previewed on your photo.
+        Two optical frames and two sunglasses suited to your face — previewed on
+        your photo.
       </p>
-      <div className="mt-5 grid gap-5 sm:grid-cols-2">
-        {items.map((item) => (
-          <GroomingPreviewCard
-            key={item.name}
-            item={item}
-            alt={`${item.name} — eyewear recommendation`}
-            fallbackSrc={
-              item.shape && item.shape in EYEWEAR_IMAGE
-                ? EYEWEAR_IMAGE[item.shape as FrameShapeId]
-                : undefined
-            }
-          />
-        ))}
+      <div className="mt-5 space-y-8">
+        {renderGroup(optical, "Optical frames")}
+        {renderGroup(sun, "Sunglasses")}
+        {unlabeled.length
+          ? renderGroup(unlabeled, "Frames", "Optical")
+          : null}
       </div>
     </div>
   );

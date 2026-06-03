@@ -15,9 +15,9 @@ export type CreditReason =
   | "premium_addon"
   | "admin_grant";
 
-/** Credits charged to generate a report, by tier. Free is a gated preview → 0. */
+/** Credits charged to generate a report, by tier. */
 export const REPORT_COST: Record<Tier, number> = {
-  free: 0,
+  free: 3,
   basic: 10,
   lookbook: 20,
   premium: 35,
@@ -33,8 +33,8 @@ export const CREDIT_COSTS = {
   premium_addon: 3,
 } as const;
 
-/** Credits granted once to a new user — enough for one Basic report. */
-export const SIGNUP_BONUS = 10;
+/** Credits granted once on signup — free report (3) + one try-on (1). */
+export const SIGNUP_BONUS = 5;
 
 /** Purchasable credit packages. Prices are clean per-currency numbers (no FX). */
 export type CreditPackage = {

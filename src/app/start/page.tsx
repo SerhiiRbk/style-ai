@@ -11,7 +11,7 @@ import {
 } from "@/lib/style-profile";
 import { COUNTRIES, countryNameFromCode } from "@/lib/countries";
 import { PROFILE_CURRENCIES, type Currency } from "@/lib/currency";
-import { REPORT_COST, CREDIT_COSTS } from "@/lib/credit-costs";
+import { REPORT_COST, CREDIT_COSTS, SIGNUP_BONUS } from "@/lib/credit-costs";
 import { BRAND } from "@/lib/brand";
 
 type Tier = "free" | "basic" | "lookbook" | "premium";
@@ -61,10 +61,18 @@ const BUDGETS: { label: string; min: number; max: number }[] = [
   { label: "€3000+", min: 3000, max: 8000 },
 ];
 const TIERS: { id: Tier; name: string; note: string }[] = [
-  { id: "free", name: "Free preview", note: "1 look · no try-on / PDF" },
-  { id: "basic", name: "Basic report", note: "Full report · 3 looks · PDF" },
-  { id: "lookbook", name: "Lookbook", note: "+ Capsule & virtual try-on" },
-  { id: "premium", name: "Premium", note: "+ Facial hair & eyewear" },
+  {
+    id: "free",
+    name: "Free preview",
+    note: `1 look · 2 hair previews · try-on ${CREDIT_COSTS.tryon} cr · no share/PDF`,
+  },
+  { id: "basic", name: "Basic report", note: "3 looks · PDF · share link" },
+  { id: "lookbook", name: "Lookbook", note: "4 looks · capsule, try-on & dual-angle hair" },
+  {
+    id: "premium",
+    name: "Premium",
+    note: "6 looks · 4 beard & 4 eyewear previews",
+  },
 ];
 
 const STEPS = ["About you", "Photos", "Goals", "Package"];
@@ -493,13 +501,19 @@ export default function StartPage() {
             <Section
               eyebrow="Step 4"
               title="Choose your package"
-              subtitle="Start free, or go straight to a full lookbook. You can upgrade later."
+              subtitle="Sign in required. New accounts get signup credits; free preview uses credits like paid tiers."
             >
               <div className="grid gap-4 sm:grid-cols-2">
                 {TIERS.map((t) => (
                   <button
                     key={t.id}
-                    onClick={() => setTier(t.id)}
+                    onClick={() => {
+                      if (t.id === "free" && LIVE && !userId) {
+                        router.push("/login");
+                        return;
+                      }
+                      setTier(t.id);
+                    }}
                     className={`flex items-center justify-between rounded-xl border p-5 text-left transition-colors ${
                       tier === t.id
                         ? "border-ink bg-cream/60"
@@ -512,23 +526,19 @@ export default function StartPage() {
                     </div>
                     <div className="text-right">
                       <div className="font-display text-2xl">
-                        {REPORT_COST[t.id] === 0
-                          ? "Free"
-                          : REPORT_COST[t.id]}
+                        {t.id === "free" ? SIGNUP_BONUS : REPORT_COST[t.id]}
                       </div>
-                      {REPORT_COST[t.id] > 0 && (
-                        <div className="text-[11px] text-stone-soft">
-                          credits
-                        </div>
-                      )}
+                      <div className="text-[11px] text-stone-soft">
+                        {t.id === "free" ? "free credits" : "credits"}
+                      </div>
                     </div>
                   </button>
                 ))}
               </div>
               <p className="mt-5 text-xs text-stone-soft">
-                Reports are paid in credits — new accounts start with free
-                credits. Virtual try-on and re-renders cost{" "}
-                {CREDIT_COSTS.tryon} credit each.{" "}
+                Sign up for {SIGNUP_BONUS} credits — free preview is{" "}
+                {REPORT_COST.free} credits, try-on is {CREDIT_COSTS.tryon}{" "}
+                credit. Re-renders cost {CREDIT_COSTS.tryon} credit each.{" "}
                 <Link href="/pricing" className="text-brass hover:text-ink">
                   See pricing
                 </Link>

@@ -3,7 +3,15 @@ import { generateText, Output, embed } from "ai";
 import { z } from "zod";
 import { env, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
-import { climateFor, mockStyleProfile, mockReportContent } from "@/lib/report";
+import {
+  climateFor,
+  HAIR_AVOID_GEN_LIMIT,
+  hairRecommendGenLimit,
+  lookCountForTier,
+  mockStyleProfile,
+  mockReportContent,
+  type Tier,
+} from "@/lib/report";
 import {
   reportContentSchema,
   inferBodyTypeFromMeasurements,
@@ -129,10 +137,14 @@ export async function recommend(
   intake: Intake,
   profile: StyleProfile,
   rules: string[],
-  /** How many looks to produce. Free preview = 1; paid tiers = 3. */
-  lookCount = 3,
+  /** How many looks to produce (see `lookCountForTier`). */
+  lookCount = lookCountForTier("basic"),
+  tier: Tier = "basic",
 ): Promise<ReportContent> {
   if (!hasAI) return mockReportContent(intake);
+
+  const hairRecommend = hairRecommendGenLimit(tier);
+  const hairAvoid = HAIR_AVOID_GEN_LIMIT;
 
   const looksLine =
     lookCount <= 1
@@ -158,7 +170,8 @@ export async function recommend(
       `${grounding}\n` +
       `Produce an explainable style report. Requirements:\n` +
       `- For every colour (best AND avoid) include a hex code and a concrete "why" tied to the profile.\n` +
-      `- For hair, recommend and avoid with reasons tied to face shape.\n` +
+      `- For hair: exactly ${hairRecommend} recommended hairstyles and exactly ${hairAvoid} styles to avoid, ` +
+      `each with a concrete reason tied to face shape (${profile.physical.faceShape}).\n` +
       `- Tailor the silhouette "fit" line and all 3 rules specifically to the "${profile.physical.bodyType}" body type: ` +
       `what to emphasise, what to balance, and which cuts/proportions to avoid for this shape. Reference the body type explicitly.\n` +
       `- Ensure the looks flatter this body type.\n` +
@@ -268,17 +281,27 @@ export async function generateHairImage(opts: {
   hair: { name: string; why: string };
   recommend: boolean;
   referenceImageUrl?: string;
+  angle?: "front" | "profile" | "three_quarter";
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
     const { profile, hair, recommend, referenceImageUrl } = opts;
+    const angle = opts.angle ?? "front";
     const intent = recommend
       ? `Show this hairstyle as a flattering recommendation: ${hair.name}. ${hair.why}`
       : `Show this hairstyle as an example to avoid: ${hair.name}. ${hair.why}`;
 
+    const angleNote =
+      angle === "front"
+        ? "Face the camera directly, front-facing headshot."
+        : angle === "profile"
+          ? "Head turned to a side profile (90°), showing the hairstyle silhouette from the side."
+          : "Head turned roughly 45° (three-quarter view), showing the hairstyle from the side while keeping most of the face visible.";
+
     const prompt =
       `Editorial beauty headshot for a premium grooming report. ` +
       `Hairstyle: ${hair.name}. ${intent} ` +
+      `Camera angle: ${angleNote} ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.faceShape} face shape. Shoulders-up framing, neutral soft studio backdrop, ` +
       `natural soft light, sharp focus on hair and face, magazine quality, tasteful and respectful. ` +
@@ -350,18 +373,22 @@ export async function generateFacialHairImage(opts: {
  */
 export async function generateEyewearImage(opts: {
   profile: StyleProfile;
-  frame: { name: string; why: string; shape?: string };
+  frame: { name: string; why: string; shape?: string; kind?: "optical" | "sun" };
   referenceImageUrl?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
     const { profile, frame, referenceImageUrl } = opts;
+    const isSun = frame.kind === "sun";
+    const eyewearType = isSun
+      ? `Fashion sunglasses with tinted lenses`
+      : `Optical eyeglasses with clear lenses`;
     const prompt =
       `Editorial eyewear headshot for a premium style report. ` +
-      `Glasses frames: ${frame.name}${frame.shape ? ` (${frame.shape} shape)` : ""}. ${frame.why} ` +
+      `${eyewearType}: ${frame.name}${frame.shape ? ` (${frame.shape} shape)` : ""}. ${frame.why} ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.faceShape} face shape. Shoulders-up framing, neutral soft studio backdrop, ` +
-      `natural soft light, sharp focus on face and glasses, magazine quality, tasteful and respectful. ` +
+      `natural soft light, sharp focus on face and ${isSun ? "sunglasses" : "glasses"}, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
         ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add or change the eyewear.`
         : `Do not show identifiable facial features.`);
@@ -388,11 +415,12 @@ export async function generateEyewearImage(opts: {
 export async function generateReportContent(
   intake: Intake,
   photos: PhotoInput[],
-  /** Number of looks to generate (free preview = 1, paid = 3). */
-  lookCount = 3,
+  /** Number of looks to generate (see `lookCountForTier`). */
+  lookCount = lookCountForTier("basic"),
+  tier: Tier = "basic",
 ): Promise<{ profile: StyleProfile; content: ReportContent }> {
   const profile = await analyzeProfile(intake, photos);
   const rules = await retrieveRules(profile);
-  const content = await recommend(intake, profile, rules, lookCount);
+  const content = await recommend(intake, profile, rules, lookCount, tier);
   return { profile, content };
 }

@@ -108,7 +108,13 @@ export default async function ReportPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const view = await getReportView(id);
+  // `getReportView` is request-deduped (React cache) so this reuses the work
+  // already done in generateMetadata; the balance is fetched alongside it
+  // instead of in a later serial round-trip.
+  const [view, balanceRaw] = await Promise.all([
+    getReportView(id),
+    getCreditBalance(),
+  ]);
   if (!view) notFound();
 
   const { report, isOwner, isPublic } = view;
@@ -137,11 +143,9 @@ export default async function ReportPage({
   ];
   const isFree = report.tier === "free";
   // Live reports (not the demo) can render outfits on the user's own photo.
-  // Try-on is a paid feature, so the free preview can't use it.
-  const canTryOn = isOwner && report.id !== "demo" && !isFree;
+  const canTryOn = isOwner && report.id !== "demo";
   // Owner's live credit balance — drives the cost UI on try-on controls.
-  const balance =
-    isOwner && report.id !== "demo" ? await getCreditBalance() : null;
+  const balance = isOwner && report.id !== "demo" ? balanceRaw : null;
   const catalogShopping =
     report.id !== "demo" && !isMockShopping(report.shopping);
 
@@ -176,8 +180,8 @@ export default async function ReportPage({
             <p className="text-sm text-ink">
               <span className="font-medium">Preview — upgrade for the full report.</span>{" "}
               <span className="text-stone">
-                The free preview shows one look. Unlock all looks, virtual
-                try-on, the capsule wardrobe and PDF export.
+                One look included. Try-on costs 1 credit. Unlock all looks, the
+                capsule wardrobe and PDF export on paid tiers.
               </span>
             </p>
             <ButtonLink href="/pricing" className="shrink-0 !px-5 !py-2 text-sm">
@@ -199,7 +203,7 @@ export default async function ReportPage({
                 Shared report
               </span>
             ) : null}
-            {isOwner && report.id !== "demo" ? (
+            {isOwner && report.id !== "demo" && !isFree ? (
               <ShareReportButton reportId={report.id} initialIsPublic={isPublic} />
             ) : null}
             {isFree ? (
@@ -395,7 +399,14 @@ export default async function ReportPage({
                 </h3>
                 <div className="mt-5 grid gap-5 sm:grid-cols-2">
                   {report.hair.recommend.map((h) => (
-                    <HairCard key={h.name} h={h} good />
+                    <HairCard
+                      key={h.name}
+                      h={h}
+                      good
+                      dualAngle={
+                        report.tier === "lookbook" || report.tier === "premium"
+                      }
+                    />
                   ))}
                 </div>
               </div>
@@ -543,13 +554,6 @@ export default async function ReportPage({
                         palette={look.palette}
                         lookIndex={i}
                       />
-                    </div>
-                  )}
-                  {isFree && isOwner && (
-                    <div className="mt-4 border-t hairline pt-3 text-sm">
-                      <Link href="/pricing" className="text-brass hover:text-ink">
-                        Upgrade to try this on you · 1 credit →
-                      </Link>
                     </div>
                   )}
                 </div>
@@ -927,23 +931,79 @@ function ColorCard({ c, muted = false }: { c: ColorRec; muted?: boolean }) {
   );
 }
 
-function HairCard({ h, good = false }: { h: HairRec; good?: boolean }) {
+function HairCard({
+  h,
+  good = false,
+  dualAngle = false,
+}: {
+  h: HairRec;
+  good?: boolean;
+  dualAngle?: boolean;
+}) {
+  const showDual = dualAngle && good;
+  const hasFront = Boolean(h.image);
+  const hasSide = Boolean(h.imageSide);
+  const showSplit = showDual && (hasFront || hasSide);
+
   return (
     <article className="overflow-hidden rounded-2xl border hairline bg-paper">
-      <div className="relative aspect-[4/5] bg-sand">
-        {h.image ? (
-          <ReportZoomImage
-            src={h.image}
-            alt={h.name}
-            wrapperClassName="relative block h-full w-full"
-            className={`h-full w-full object-cover ${
-              good ? "" : "opacity-95 grayscale-[35%]"
-            }`}
-          />
+      <div className="relative bg-sand">
+        {showSplit ? (
+          <div className="grid grid-cols-2 divide-x divide-line">
+            <div className="relative aspect-[4/5]">
+              {hasFront ? (
+                <ReportZoomImage
+                  src={h.image!}
+                  alt={`${h.name} — front view`}
+                  wrapperClassName="relative block h-full w-full"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-xs text-stone-soft">
+                  <span>Front</span>
+                  <span>Generating…</span>
+                </div>
+              )}
+              <span className="absolute left-2 top-2 rounded-full bg-paper/90 px-2 py-0.5 text-[10px] uppercase tracking-wider text-stone">
+                Front
+              </span>
+            </div>
+            <div className="relative aspect-[4/5]">
+              {hasSide ? (
+                <ReportZoomImage
+                  src={h.imageSide!}
+                  alt={`${h.name} — side view`}
+                  wrapperClassName="relative block h-full w-full"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-xs text-stone-soft">
+                  <span>Side</span>
+                  <span>Generating…</span>
+                </div>
+              )}
+              <span className="absolute left-2 top-2 rounded-full bg-paper/90 px-2 py-0.5 text-[10px] uppercase tracking-wider text-stone">
+                Side
+              </span>
+            </div>
+          </div>
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-stone-soft">
-            <span className="font-display text-lg text-stone">{h.name}</span>
-            <span>Generating preview…</span>
+          <div className="relative aspect-[4/5]">
+            {h.image ? (
+              <ReportZoomImage
+                src={h.image}
+                alt={h.name}
+                wrapperClassName="relative block h-full w-full"
+                className={`h-full w-full object-cover ${
+                  good ? "" : "opacity-95 grayscale-[35%]"
+                }`}
+              />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-stone-soft">
+                <span className="font-display text-lg text-stone">{h.name}</span>
+                <span>Generating preview…</span>
+              </div>
+            )}
           </div>
         )}
         <span

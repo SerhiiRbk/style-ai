@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { hasSupabase, hasVTON, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { runTryOn } from "@/lib/ai/tryon";
-import { getReportById } from "@/lib/data/reports";
 import {
   CREDIT_COSTS,
   creditBalance,
@@ -38,20 +37,6 @@ export async function POST(request: Request) {
     typeof body?.reportId === "string" && body.reportId !== "demo"
       ? body.reportId
       : undefined;
-
-  // Try-on is a paid feature — block it for free-tier reports.
-  if (reportId) {
-    const report = await getReportById(reportId);
-    if (report?.tier === "free") {
-      return NextResponse.json(
-        {
-          error: "Virtual try-on isn't included in the free preview. Upgrade for try-on.",
-          code: "tier_locked",
-        },
-        { status: 402 },
-      );
-    }
-  }
 
   const admin = createAdminSupabase();
 

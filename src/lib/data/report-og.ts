@@ -2,6 +2,7 @@ import "server-only";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getReport as getMockReport } from "@/lib/store";
+import { canShareReport, type Tier } from "@/lib/report";
 import { absoluteUrl } from "@/lib/site-url";
 import { BRAND } from "@/lib/brand";
 
@@ -31,11 +32,16 @@ export async function getReportHeroStoragePath(
   const admin = createAdminSupabase();
   const { data: row } = await admin
     .from("reports")
-    .select("is_public")
+    .select("is_public, tier")
     .eq("id", id)
     .maybeSingle();
 
-  if (!row?.is_public) return null;
+  if (
+    !row?.is_public ||
+    !canShareReport((row.tier as Tier | null) ?? "free")
+  ) {
+    return null;
+  }
 
   const { data: looks } = await admin
     .from("looks")

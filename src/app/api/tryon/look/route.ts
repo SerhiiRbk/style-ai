@@ -153,17 +153,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Report not found" }, { status: 404 });
   }
 
-  // Try-on is a paid feature — free reports are gated previews.
-  if (report.tier === "free") {
-    return NextResponse.json(
-      {
-        error: "Virtual try-on isn't included in the free preview. Upgrade for try-on.",
-        code: "tier_locked",
-      },
-      { status: 402 },
-    );
-  }
-
   // Charge credits (try-on or re-render). Verify the balance up front so we
   // never run an expensive render the user can't pay for.
   const cost = isRegen ? CREDIT_COSTS.regen : CREDIT_COSTS.tryon;

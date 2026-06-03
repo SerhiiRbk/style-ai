@@ -42,10 +42,12 @@ export function NavbarMenu({
   authed,
   primaryLinks,
   secondaryLinks,
+  balance = null,
 }: {
   authed: boolean;
   primaryLinks: NavLink[];
   secondaryLinks: NavLink[];
+  balance?: number | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -88,7 +90,7 @@ export function NavbarMenu({
         aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink transition-colors hover:bg-cream xl:hidden"
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink transition-colors hover:bg-cream lg:hidden"
       >
         <MenuIcon open={open} />
       </button>
@@ -98,14 +100,14 @@ export function NavbarMenu({
           <button
             type="button"
             aria-label="Close menu"
-            className="fixed inset-0 z-40 bg-ink/15 backdrop-blur-[2px] xl:hidden"
+            className="fixed inset-0 z-40 bg-ink/15 backdrop-blur-[2px] lg:hidden"
             onClick={() => setOpen(false)}
           />
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Site navigation"
-            className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xs flex-col border-l hairline bg-paper shadow-[0_8px_40px_rgba(21,18,13,0.12)] xl:hidden"
+            className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xs flex-col border-l hairline bg-paper shadow-[0_8px_40px_rgba(21,18,13,0.12)] lg:hidden"
           >
             <div className="flex items-center justify-between border-b hairline px-6 py-4">
               <span className="eyebrow">Menu</span>
@@ -120,6 +122,16 @@ export function NavbarMenu({
             </div>
 
             <nav className="flex-1 overflow-y-auto px-6 py-4">
+              {authed && balance !== null && (
+                <Link
+                  href="/pricing"
+                  onClick={() => setOpen(false)}
+                  className="mb-4 inline-flex rounded-full border border-brass/40 bg-brass/5 px-3 py-1 text-xs text-ink transition-colors hover:border-brass md:hidden"
+                >
+                  {balance} credits
+                </Link>
+              )}
+
               <ul className="divide-y hairline">
                 {menuLinks.map((l) => (
                   <li key={l.href}>

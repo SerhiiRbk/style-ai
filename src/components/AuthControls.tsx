@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const LIVE = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
-export function AuthControls() {
+export function AuthControls({ className }: { className?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -31,7 +31,10 @@ export function AuthControls() {
           router.push("/");
           router.refresh();
         }}
-        className="hidden text-sm text-stone transition-colors hover:text-ink sm:inline"
+        className={
+          className ??
+          "whitespace-nowrap text-sm text-stone transition-colors hover:text-ink"
+        }
       >
         Sign out
       </button>
@@ -41,7 +44,10 @@ export function AuthControls() {
   return (
     <Link
       href="/login"
-      className="hidden text-sm text-stone transition-colors hover:text-ink sm:inline"
+      className={
+        className ??
+        "whitespace-nowrap text-sm text-stone transition-colors hover:text-ink"
+      }
     >
       Log in
     </Link>

@@ -110,9 +110,8 @@ export default async function ReportsPage() {
             <ul className="divide-y hairline rounded-2xl border hairline bg-paper">
               {reports.map((r) => (
                 <li key={r.id}>
-                  <Link
+                  <a
                     href={`/report/${r.id}`}
-                    prefetch={false}
                     className="group flex w-full flex-col gap-3 px-5 py-5 transition-colors hover:bg-cream/30 sm:flex-row sm:items-center sm:justify-between sm:px-6"
                   >
                     <div className="min-w-0 flex-1">
@@ -135,7 +134,7 @@ export default async function ReportsPage() {
                         Open →
                       </span>
                     </div>
-                  </Link>
+                  </a>
                 </li>
               ))}
             </ul>
