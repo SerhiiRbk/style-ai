@@ -38,7 +38,7 @@ export async function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b hairline bg-paper/80 backdrop-blur-md">
-      <nav className="container-luxe flex h-16 items-center gap-2 lg:gap-3">
+      <nav className="container-luxe flex h-16 items-center gap-2 lg:gap-4">
         <Link
           href="/"
           className="group flex shrink-0 items-baseline gap-1.5 xl:gap-2"
@@ -51,15 +51,12 @@ export async function Navbar() {
           </span>
         </Link>
 
-        <div className="hidden min-w-0 flex-1 items-center justify-center gap-x-1.5 xl:gap-x-2.5 lg:flex">
+        <div className="hidden min-w-0 flex-1 items-center justify-between lg:flex">
           {primaryLinks.map((l) => (
             <Link key={l.href} href={l.href} className={navLinkClass}>
               {l.label}
             </Link>
           ))}
-        </div>
-
-        <div className="ml-auto flex shrink-0 items-center justify-end gap-1 sm:gap-1.5 md:gap-2 xl:gap-3">
           {!authed && (
             <Link
               href="/report/demo"
@@ -69,10 +66,7 @@ export async function Navbar() {
             </Link>
           )}
           {authed && (
-            <Link
-              href="/reports"
-              className={`${navLinkClass} hidden lg:inline-flex`}
-            >
+            <Link href="/reports" className={navLinkClass}>
               My reports
             </Link>
           )}
@@ -81,7 +75,7 @@ export async function Navbar() {
               <Link
                 href="/pricing"
                 title="Your credit balance — buy more"
-                className={`${creditsPillClass} hidden px-2 py-0.5 text-[11px] lg:inline-flex xl:hidden`}
+                className={`${creditsPillClass} px-2 py-0.5 text-[11px] xl:hidden`}
               >
                 {balance} cr
               </Link>
@@ -94,18 +88,20 @@ export async function Navbar() {
               </Link>
             </>
           )}
-          <div className="hidden lg:block">
-            <AuthControls className="whitespace-nowrap text-xs text-stone transition-colors hover:text-ink xl:text-sm" />
-          </div>
-
-          <ButtonLink
-            href="/start"
-            className="!px-2.5 !py-2 sm:!px-3 md:!px-4 xl:!px-5"
-          >
+          <AuthControls className="whitespace-nowrap text-xs text-stone transition-colors hover:text-ink xl:text-sm" />
+          <ButtonLink href="/start" className="!px-3 !py-2 xl:!px-5">
             <span className="xl:hidden">Create report</span>
             <span className="hidden xl:inline">Create my report</span>
           </ButtonLink>
+        </div>
 
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5 md:gap-2 lg:hidden">
+          <ButtonLink
+            href="/start"
+            className="!px-2.5 !py-2 sm:!px-3 md:!px-4"
+          >
+            Create report
+          </ButtonLink>
           <NavbarMenu
             authed={authed}
             primaryLinks={primaryLinks}
