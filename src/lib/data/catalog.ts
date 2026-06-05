@@ -62,6 +62,52 @@ async function rpcMatchProducts(
   return (data ?? []) as MatchRow[];
 }
 
+/**
+ * Premium, category-specific reason for a shopping pick. Two variants per
+ * category so the (max 2) items in a category don't read identically, and the
+ * copy is grammatical and specific rather than a templated "A outerwear …".
+ */
+function shoppingReason(
+  category: string,
+  variant: number,
+  profile: StyleProfile,
+  goal: string,
+): string {
+  const season =
+    profile.colorSeason.charAt(0).toUpperCase() + profile.colorSeason.slice(1);
+  const body = profile.physical.bodyType;
+  const v = variant % 2;
+  const byCategory: Record<string, [string, string]> = {
+    Outerwear: [
+      `The highest-impact layer you can own — a clean shape that adds shoulder definition to your ${body} frame and grounds every outfit in your ${season} palette.`,
+      `A second outer layer in muted ${season} tones — versatile enough to dress a look up or keep it relaxed, all in service of your goal to ${goal}.`,
+    ],
+    Knitwear: [
+      `A soft mid-layer in your ${season} palette — wears under a jacket or on its own, adding texture without stark contrast.`,
+      `An easy knit that layers cleanly and keeps the look modern — the quiet, considered piece behind your goal to ${goal}.`,
+    ],
+    Shirts: [
+      `A refined base layer that sits well under knitwear and overshirts, holding the look together without competing for attention.`,
+      `A clean shirt in your palette — equally at home tucked under a blazer or worn open over a tee.`,
+    ],
+    Trousers: [
+      `Tailored through the leg to add a clean line to your ${body} build — a neutral foundation that pairs with everything above.`,
+      `A versatile trouser in muted ${season} tones — modern proportions that keep the silhouette sharp, never boxy.`,
+    ],
+    Footwear: [
+      `Warm, considered leather that ties your palette together far better than black — and outlasts cheaper pairs many times over.`,
+      `A clean shoe that bridges smart and casual, finishing the look without shouting.`,
+    ],
+    Accessories: [
+      `A quiet finishing touch in your palette — the kind of detail that reads as "polished" without effort.`,
+      `One considered accent near your ${season} neutrals — small, but it lifts the whole outfit.`,
+    ],
+  };
+  const pair = byCategory[category];
+  if (pair) return pair[v];
+  return `A ${season}-palette piece chosen to support your goal to ${goal}.`;
+}
+
 /** Map the profile's gender presentation onto the feed's gender vocabulary. */
 function genderFilterFor(
   presentation: StyleProfile["demographics"]["genderPresentation"],
@@ -112,9 +158,7 @@ export async function matchShopping(
         items.push({
           category,
           title: p.brand ? `${p.brand} ${p.title}` : p.title,
-          why:
-            `A ${category.toLowerCase()} that fits your ${profile.colorSeason} ` +
-            `palette and your goal to ${goal}.`,
+          why: shoppingReason(category, added - 1, profile, goal),
           priceEur: Number(p.price_eur ?? 0),
           retailer: p.brand ?? p.source ?? "",
           url: p.deeplink ?? "#",

@@ -20,9 +20,8 @@ export function Footer() {
         <FooterCol
           title="Product"
           items={[
-            ["Your stylist", "/#stylist"],
             ["How it works", "/#how"],
-            ["Sample report", "/report/demo"],
+            ["Sample", "/report/demo"],
             ["Catalog", "/catalog"],
             ["Pricing", "/#pricing"],
           ]}

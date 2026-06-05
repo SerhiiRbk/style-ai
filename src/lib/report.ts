@@ -485,6 +485,13 @@ const MOCK_SHOPPING_TITLES = new Set([
   "Field watch, cream dial",
 ]);
 
+/** True when shopping reasons use the old generic template (pre-v2 copy). */
+export function isStaleShoppingCopy(items: ShoppingItem[]): boolean {
+  return items.some((i) =>
+    /^A \S+ that fits your .+ palette and your goal to/.test(i.why),
+  );
+}
+
 /** True when items are the curated demo list (persisted fallback), not catalogue matches. */
 export function isMockShopping(items: ShoppingItem[]): boolean {
   if (!items.length) return false;

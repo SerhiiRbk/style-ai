@@ -15,6 +15,7 @@ import {
   hairGenerationPending,
   premiumGroomingPending,
   isMockShopping,
+  isStaleShoppingCopy,
   mockShopping,
   type EyewearRec,
   type FacialHairRec,
@@ -763,7 +764,7 @@ async function fetchReportView(
     row.profile
   ) {
     scheduleMatchRefresh(id, row.profile, content, {
-      needShopping: isMockShopping(shopping),
+      needShopping: isMockShopping(shopping) || isStaleShoppingCopy(shopping),
       needLookItems: lookItemsNeedRefresh(lookItems),
     });
   }
