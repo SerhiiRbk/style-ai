@@ -10,6 +10,7 @@ import {
   canShareReport,
   hairRecommendGenLimit,
   lookCountForTier,
+  PREMIUM_ACCESSORY_GEN_LIMIT,
   PREMIUM_EYEWEAR_GEN_LIMIT,
   PREMIUM_FACIAL_HAIR_GEN_LIMIT,
   hairGenerationPending,
@@ -17,6 +18,7 @@ import {
   isMockShopping,
   isStaleShoppingCopy,
   mockShopping,
+  type AccessoryRec,
   type EyewearRec,
   type FacialHairRec,
   type HairRec,
@@ -32,9 +34,15 @@ import {
   generateHairImage,
   generateFacialHairImage,
   generateEyewearImage,
+  generateAccessoryImage,
   type PhotoInput,
 } from "@/lib/ai/pipeline";
-import { capsuleMatrix, facialHairFor, premiumEyewearPicks } from "@/lib/style-extras";
+import {
+  accessoryPicksFor,
+  capsuleMatrix,
+  facialHairFor,
+  premiumEyewearPicks,
+} from "@/lib/style-extras";
 import {
   enrichLookItems,
   enrichShoppingImages,
@@ -60,6 +68,7 @@ export function reportGenerationState(
     hair?: { recommend: HairRec[]; avoid: HairRec[] } | null;
     facial_hair?: FacialHairRec[] | null;
     eyewear?: EyewearRec[] | null;
+    accessories?: AccessoryRec[] | null;
   },
   looks: { image_path?: string | null }[] | null,
   opts?: { hasReferencePhoto?: boolean },
@@ -89,7 +98,7 @@ export function reportGenerationState(
     opts?.hasReferencePhoto === true &&
     !looksStarted &&
     !hairPending &&
-    premiumGroomingPending(row.facial_hair, row.eyewear);
+    premiumGroomingPending(row.facial_hair, row.eyewear, row.accessories);
 
   const imagesPending =
     lookRows.length > 0 && lookRows.some((l) => !l.image_path);
@@ -204,7 +213,7 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
 
   const { data: row } = await admin
     .from("reports")
-    .select("facial_hair, eyewear")
+    .select("facial_hair, eyewear, accessories")
     .eq("id", reportId)
     .single();
 
@@ -219,6 +228,10 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
         shape: f.shape,
         kind: f.kind,
       }));
+  const pickAccessories = () =>
+    accessoryPicksFor(profile)
+      .slice(0, PREMIUM_ACCESSORY_GEN_LIMIT)
+      .map((a) => ({ name: a.name, why: a.why, kind: a.kind }));
 
   const mergeByName = <T extends { name: string }>(
     existing: T[] | null | undefined,
@@ -237,17 +250,26 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
     row?.eyewear as EyewearRec[] | null,
     pickEyewear(),
   );
+  // Accessories are now included by default — but never shrink a report that
+  // already bought the extra add-on (length beyond the base limit).
+  const existingAccessories = row?.accessories as AccessoryRec[] | null;
+  const accessories: AccessoryRec[] =
+    existingAccessories && existingAccessories.length > PREMIUM_ACCESSORY_GEN_LIMIT
+      ? existingAccessories
+      : mergeByName(existingAccessories, pickAccessories());
 
   const needsSeed =
     !row?.facial_hair ||
     !row?.eyewear ||
+    !row?.accessories ||
     (row.facial_hair as FacialHairRec[]).length < PREMIUM_FACIAL_HAIR_GEN_LIMIT ||
-    (row.eyewear as EyewearRec[]).length < PREMIUM_EYEWEAR_GEN_LIMIT;
+    (row.eyewear as EyewearRec[]).length < PREMIUM_EYEWEAR_GEN_LIMIT ||
+    (row.accessories as AccessoryRec[]).length < PREMIUM_ACCESSORY_GEN_LIMIT;
 
   if (needsSeed) {
     await admin
       .from("reports")
-      .update({ facial_hair: facialHair, eyewear })
+      .update({ facial_hair: facialHair, eyewear, accessories })
       .eq("id", reportId);
   }
 
@@ -290,6 +312,28 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
       if (!upErr) {
         eyewear[i] = { ...item, imagePath: path };
         await admin.from("reports").update({ eyewear }).eq("id", reportId);
+      }
+    }
+    await new Promise((r) => setTimeout(r, HAIR_GEN_DELAY_MS));
+  }
+
+  for (let i = 0; i < accessories.length; i++) {
+    const item = accessories[i]!;
+    if (item.imagePath) continue;
+    const img = await generateAccessoryImage({
+      profile,
+      accessory: item,
+      referenceImageUrl,
+    });
+    if (img) {
+      const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
+      const path = `${userId}/${reportId}/accessory-${i}.${ext}`;
+      const { error: upErr } = await admin.storage
+        .from("assets")
+        .upload(path, img.bytes, { contentType: img.mediaType, upsert: true });
+      if (!upErr) {
+        accessories[i] = { ...item, imagePath: path };
+        await admin.from("reports").update({ accessories }).eq("id", reportId);
       }
     }
     await new Promise((r) => setTimeout(r, HAIR_GEN_DELAY_MS));
@@ -711,23 +755,34 @@ async function fetchReportView(
   const rawFacialHair =
     (row.facial_hair as FacialHairRec[] | null) ?? undefined;
   const rawEyewear = (row.eyewear as EyewearRec[] | null) ?? undefined;
+  const rawAccessories =
+    (row.accessories as AccessoryRec[] | null) ?? undefined;
 
   // Sign every private asset path in one parallel pass on a single client.
-  const [lookImages, capsuleImages, signedHair, signedFacialHair, signedEyewear] =
-    await Promise.all([
-      signAssetPaths(
-        signer,
-        (looks ?? []).map((l) => l.image_path as string | null | undefined),
-      ),
-      signAssetPaths(signer, capsulePaths),
-      signHairItems(signer, rawHair),
-      rawFacialHair
-        ? signGroomingItems(signer, rawFacialHair)
-        : Promise.resolve(undefined),
-      rawEyewear
-        ? signGroomingItems(signer, rawEyewear)
-        : Promise.resolve(undefined),
-    ]);
+  const [
+    lookImages,
+    capsuleImages,
+    signedHair,
+    signedFacialHair,
+    signedEyewear,
+    signedAccessories,
+  ] = await Promise.all([
+    signAssetPaths(
+      signer,
+      (looks ?? []).map((l) => l.image_path as string | null | undefined),
+    ),
+    signAssetPaths(signer, capsulePaths),
+    signHairItems(signer, rawHair),
+    rawFacialHair
+      ? signGroomingItems(signer, rawFacialHair)
+      : Promise.resolve(undefined),
+    rawEyewear
+      ? signGroomingItems(signer, rawEyewear)
+      : Promise.resolve(undefined),
+    rawAccessories
+      ? signGroomingItems(signer, rawAccessories)
+      : Promise.resolve(undefined),
+  ]);
 
   const hasReferencePhoto = isOwner
     ? (ownerPhotoCheck?.data?.length ?? 0) > 0
@@ -787,6 +842,7 @@ async function fetchReportView(
       hair: rawHair,
       facial_hair: rawFacialHair ?? null,
       eyewear: rawEyewear ?? null,
+      accessories: rawAccessories ?? null,
     },
     looks ?? [],
     { hasReferencePhoto },
@@ -805,6 +861,7 @@ async function fetchReportView(
       hairGenerationPending(rawHair, row.tier as Tier),
     facialHair: signedFacialHair,
     eyewear: signedEyewear,
+    accessories: signedAccessories,
     content,
     shopping: shopping.length ? shopping : mockShopping(),
     lookImages,

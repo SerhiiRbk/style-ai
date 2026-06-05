@@ -31,6 +31,20 @@ export const CREDIT_COSTS = {
   regen: 1,
   /** A premium add-on render (e.g. facial-hair / eyewear preview). */
   premium_addon: 3,
+  /** One-time "generate 2 more" accessory previews on a premium report. */
+  accessory_extra: 2,
+  /** One-time "generate 2 more" facial-hair previews on a premium report. */
+  facialhair_extra: 2,
+  /** One-time "generate 2 optical + 2 sunglasses" extra eyewear previews. */
+  eyewear_extra: 5,
+  /**
+   * Non-premium "unlock" add-ons — generate the full base set on the user's
+   * photo for a report that doesn't include it. Priced ABOVE the equivalent
+   * Premium value on purpose, to nudge the customer toward Premium.
+   */
+  facialhair_addon: 10,
+  eyewear_addon: 10,
+  accessory_addon: 5,
 } as const;
 
 /** Credits granted once on signup — Starter Report (5) + one try-on (1). */

@@ -22,6 +22,17 @@ import {
 
 export type PhotoInput = { role: string; url: string };
 
+/**
+ * Strict instruction appended to every image-generation prompt. Image models
+ * (esp. when the prompt contains descriptive phrases like "style to avoid")
+ * sometimes render that copy as a caption baked into the photo. This forbids
+ * any text/graphics in the output.
+ */
+const NO_TEXT_RULE =
+  " Output a clean photographic image only — absolutely no text, letters, " +
+  "words, captions, labels, headings, watermarks, logos, numbers, arrows or " +
+  "graphic overlays anywhere in the frame.";
+
 const visionSchema = z.object({
   skinTone: z.string().describe("e.g. 'warm medium', 'cool fair'"),
   undertone: z.enum(["warm", "cool", "neutral"]),
@@ -244,7 +255,8 @@ export async function generateLookImage(opts: {
       outfitBlock +
       `Colour palette: ${look.palette.join(", ")}. ` +
       subject +
-      imageRoles;
+      imageRoles +
+      NO_TEXT_RULE;
 
     const content: (
       | { type: "text"; text: string }
@@ -288,8 +300,8 @@ export async function generateHairImage(opts: {
     const { profile, hair, recommend, referenceImageUrl } = opts;
     const angle = opts.angle ?? "front";
     const intent = recommend
-      ? `Show this hairstyle as a flattering recommendation: ${hair.name}. ${hair.why}`
-      : `Show this hairstyle as an example to avoid: ${hair.name}. ${hair.why}`;
+      ? `Render the person wearing this hairstyle in a flattering way: ${hair.name}.`
+      : `Render the person wearing this hairstyle: ${hair.name}.`;
 
     const angleNote =
       angle === "front"
@@ -307,7 +319,8 @@ export async function generateHairImage(opts: {
       `natural soft light, sharp focus on hair and face, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
         ? `Preserve the face, skin tone, and identity of the person in the provided photo — only change the hairstyle.`
-        : `Do not show identifiable facial features.`);
+        : `Do not show identifiable facial features.`) +
+      NO_TEXT_RULE;
 
     const content = referenceImageUrl
       ? [
@@ -347,7 +360,8 @@ export async function generateFacialHairImage(opts: {
       `natural soft light, sharp focus on face and facial hair, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
         ? `Preserve the face, skin tone, and identity of the person in the provided photo — only change the facial hair style.`
-        : `Do not show identifiable facial features.`);
+        : `Do not show identifiable facial features.`) +
+      NO_TEXT_RULE;
 
     const content = referenceImageUrl
       ? [
@@ -391,7 +405,56 @@ export async function generateEyewearImage(opts: {
       `natural soft light, sharp focus on face and ${isSun ? "sunglasses" : "glasses"}, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
         ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add or change the eyewear.`
-        : `Do not show identifiable facial features.`);
+        : `Do not show identifiable facial features.`) +
+      NO_TEXT_RULE;
+
+    const content = referenceImageUrl
+      ? [
+          { type: "text" as const, text: prompt },
+          { type: "image" as const, image: new URL(referenceImageUrl) },
+        ]
+      : [{ type: "text" as const, text: prompt }];
+
+    const result = await generateText({
+      model: env.modelImage,
+      messages: [{ role: "user", content }],
+    });
+    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
+    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Premium add-on: render an accessory (scarf / neckwear / tie) on the user's own
+ * photo, preserving identity (image-to-image), shown shoulders-up so the
+ * neckwear is clearly visible.
+ */
+export async function generateAccessoryImage(opts: {
+  profile: StyleProfile;
+  accessory: { name: string; why: string; kind?: "scarf" | "neckwear" | "tie" };
+  referenceImageUrl?: string;
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI) return null;
+  try {
+    const { profile, accessory, referenceImageUrl } = opts;
+    const piece =
+      accessory.kind === "tie"
+        ? "a necktie knotted over a collared shirt under a jacket"
+        : accessory.kind === "neckwear"
+          ? "a neckerchief / silk neck-scarf knotted at an open collar"
+          : "a scarf draped around the neck over a coat or knitwear";
+    const prompt =
+      `Editorial accessory styling photo for a premium style report. ` +
+      `Accessory: ${accessory.name} — ${piece}. ${accessory.why} ` +
+      `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}. ` +
+      `Upper-body framing (head to mid-chest) so the neckwear is clearly visible, ` +
+      `neutral soft studio backdrop, natural soft light, sharp focus, magazine quality, tasteful and respectful. ` +
+      (referenceImageUrl
+        ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add the accessory and a simple complementary outfit.`
+        : `Do not show identifiable facial features.`) +
+      NO_TEXT_RULE;
 
     const content = referenceImageUrl
       ? [

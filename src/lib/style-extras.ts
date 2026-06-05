@@ -272,6 +272,135 @@ export function premiumEyewearPicks(profile: StyleProfile): PremiumEyewearPick[]
   ];
 }
 
+/**
+ * Four ADDITIONAL eyewear picks (2 optical + 2 sunglasses) for the one-time
+ * paid extra generation — versatile alternates, distinct from the base picks.
+ */
+export function premiumEyewearExtraPicks(): PremiumEyewearPick[] {
+  return [
+    {
+      shape: "geometric",
+      name: "Browline frames",
+      why: "A bold upper brow line adds character and structure to optical frames.",
+      kind: "optical",
+    },
+    {
+      shape: "round",
+      name: "Keyhole round frames",
+      why: "A softer round optical with a keyhole bridge for a refined, classic look.",
+      kind: "optical",
+    },
+    {
+      shape: "wayfarer",
+      name: "Clubmaster sunglasses",
+      why: "Half-rim browline sunglasses — a timeless, smart-casual alternative.",
+      kind: "sun",
+    },
+    {
+      shape: "aviator",
+      name: "Navigator sunglasses",
+      why: "A squared aviator shape for a confident, contemporary edge in the sun.",
+      kind: "sun",
+    },
+  ];
+}
+
+/* ------------------------------- accessories ------------------------------ */
+
+/** One accessory styling pick for the premium add-on. */
+export type AccessoryPick = {
+  name: string;
+  why: string;
+  kind: "scarf" | "neckwear" | "tie";
+};
+
+/**
+ * Two accessory styling picks (scarf / neckwear / tie) for the premium add-on,
+ * tuned to the user's climate and goals. Pure + deterministic, like the other
+ * stylist-layer helpers.
+ */
+export function accessoryPicksFor(profile: StyleProfile): AccessoryPick[] {
+  const climate = lc(profile.demographics.climate);
+  const cold = /(cold|nordic|maritime|temperate)/.test(climate);
+  const goals = profile.goals.map(lc).join(" ");
+  const formal =
+    /(work|office|business|promotion|professional|formal|interview|leadership|executive|client)/.test(
+      goals,
+    );
+  const gender = lc(profile.demographics.genderPresentation);
+
+  const picks: AccessoryPick[] = [];
+
+  // 1) A scarf tuned to climate — the workhorse accessory.
+  picks.push(
+    cold
+      ? {
+          name: "Wool-blend scarf",
+          why: "A soft neutral scarf in your palette adds warmth and a finished, considered layer over coats and knitwear.",
+          kind: "scarf",
+        }
+      : {
+          name: "Lightweight cotton-silk scarf",
+          why: "A featherweight scarf adds an elegant accent at the neck without heat — easy to wear loosely looped.",
+          kind: "scarf",
+        },
+  );
+
+  // 2) A tie for formal goals, otherwise a softer neckwear option.
+  if (formal) {
+    picks.push({
+      name: "Silk grenadine tie",
+      why: "A textured, matte tie in your palette reads refined — the detail that elevates a jacket for work.",
+      kind: "tie",
+    });
+  } else if (gender === "female") {
+    picks.push({
+      name: "Silk neck-scarf",
+      why: "A small silk scarf knotted at the neck adds colour and polish to an open collar.",
+      kind: "neckwear",
+    });
+  } else {
+    picks.push({
+      name: "Silk neckerchief",
+      why: "A loosely knotted neckerchief brings quiet personality to an open-collar shirt.",
+      kind: "neckwear",
+    });
+  }
+
+  return picks;
+}
+
+/** Two ADDITIONAL accessory picks for the one-time paid "generate 2 more" add-on. */
+export function accessoryExtraPicksFor(profile: StyleProfile): AccessoryPick[] {
+  const gender = lc(profile.demographics.genderPresentation);
+  if (gender === "female") {
+    return [
+      {
+        name: "Printed silk neck-scarf",
+        why: "A bolder print at the neck adds a confident focal point to a plain outfit.",
+        kind: "neckwear",
+      },
+      {
+        name: "Twilly scarf",
+        why: "A slim silk twilly tied at the collar or bag handle is an easy, elegant accent.",
+        kind: "scarf",
+      },
+    ];
+  }
+  return [
+    {
+      name: "Patterned silk scarf",
+      why: "A subtle pattern adds depth at the neck while staying within your palette.",
+      kind: "scarf",
+    },
+    {
+      name: "Knitted tie",
+      why: "A matte knitted tie with a square end reads relaxed-smart — ideal under a blazer.",
+      kind: "tie",
+    },
+  ];
+}
+
 /** Named facial-hair styles for premium photo previews (up to 4). */
 export function facialHairFor(
   profile: StyleProfile,
@@ -395,6 +524,35 @@ export function facialHairFor(
     {
       name: "Van Dyke",
       why: "A neat mustache paired with a small chin patch adds character without bulk.",
+    },
+  ];
+}
+
+/** Two ADDITIONAL facial-hair picks for the one-time paid "generate 2 more" add-on. */
+export function facialHairExtraFor(
+  profile: StyleProfile,
+): { name: string; why: string }[] {
+  const gender = lc(profile.demographics.genderPresentation);
+  if (gender === "female") {
+    return [
+      {
+        name: "Soft natural finish",
+        why: "A fresh, even complexion with minimal product — the polished baseline.",
+      },
+      {
+        name: "Defined jawline contour",
+        why: "Subtle contour along the jaw sharpens the profile under open collars.",
+      },
+    ];
+  }
+  return [
+    {
+      name: "Heavy stubble",
+      why: "A fuller 5–7 mm stubble adds depth and a rugged, modern edge.",
+    },
+    {
+      name: "Long statement beard",
+      why: "A longer, well-shaped beard makes a confident, characterful statement.",
     },
   ];
 }

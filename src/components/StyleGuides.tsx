@@ -2,7 +2,12 @@ import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { formatMoney } from "@/lib/currency";
 import type { Currency } from "@/lib/currency";
 import { LookTryOn } from "./LookTryOn";
-import type { ShoppingItem, EyewearRec, FacialHairRec } from "@/lib/report";
+import type {
+  ShoppingItem,
+  EyewearRec,
+  FacialHairRec,
+  AccessoryRec,
+} from "@/lib/report";
 import type {
   Archetype as ArchetypeT,
   CapsulePlan,
@@ -726,7 +731,7 @@ function GroomingPreviewCard({
   fallbackSrc,
   label,
 }: {
-  item: FacialHairRec | EyewearRec;
+  item: FacialHairRec | EyewearRec | AccessoryRec;
   alt: string;
   fallbackSrc?: string;
   label?: string;
@@ -773,7 +778,7 @@ export function FacialHairGuide({ items }: { items: FacialHairRec[] }) {
         Four personalized beard and mustache directions on your photo — take
         these to your barber.
       </p>
-      <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-5 grid gap-5 sm:grid-cols-2">
         {items.map((item) => (
           <GroomingPreviewCard
             key={item.name}
@@ -841,6 +846,39 @@ export function PremiumEyewearGuide({ items }: { items: EyewearRec[] }) {
         {unlabeled.length
           ? renderGroup(unlabeled, "Frames", "Optical")
           : null}
+      </div>
+    </div>
+  );
+}
+
+export function AccessoriesGuide({ items }: { items: AccessoryRec[] }) {
+  if (!items.length) return null;
+  const label = (k?: string) =>
+    k === "tie"
+      ? "Tie"
+      : k === "neckwear"
+        ? "Neckwear"
+        : k === "scarf"
+          ? "Scarf"
+          : undefined;
+  return (
+    <div>
+      <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+        Accessory styling
+      </h3>
+      <p className="mt-2 text-sm leading-relaxed text-stone">
+        Scarves, neckwear and ties chosen for your colouring and climate —
+        previewed on your own photo.
+      </p>
+      <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {items.map((item) => (
+          <GroomingPreviewCard
+            key={item.name}
+            item={item}
+            alt={`${item.name} — accessory recommendation`}
+            label={label(item.kind)}
+          />
+        ))}
       </div>
     </div>
   );

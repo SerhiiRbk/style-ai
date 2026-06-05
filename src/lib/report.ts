@@ -101,6 +101,8 @@ export function clampHairForTier(
 export const PREMIUM_FACIAL_HAIR_GEN_LIMIT = 4;
 /** Max personalized eyewear previews per premium report (2 optical + 2 sunglasses). */
 export const PREMIUM_EYEWEAR_GEN_LIMIT = 4;
+/** Accessory styling previews generated per premium add-on purchase. */
+export const PREMIUM_ACCESSORY_GEN_LIMIT = 2;
 
 export type HairRec = {
   name: string;
@@ -123,6 +125,11 @@ export type EyewearRec = HairRec & {
   /** Static fallback shape id when image is still generating. */
   shape?: string;
   kind?: "optical" | "sun";
+};
+
+/** Premium paid add-on — accessory styling preview (scarf / neckwear / tie) on the user's photo. */
+export type AccessoryRec = HairRec & {
+  kind?: "scarf" | "neckwear" | "tie";
 };
 export type ShoppingItem = {
   category: string;
@@ -165,6 +172,8 @@ export type StyleReport = {
   facialHair?: FacialHairRec[];
   /** Premium — personalized glasses previews (2 optical + 2 sunglasses). */
   eyewear?: EyewearRec[];
+  /** Premium paid add-on — accessory styling previews (scarves / neckwear / ties). */
+  accessories?: AccessoryRec[];
   silhouette: { fit: string; rules: string[] };
   looks: Look[];
   shopping: ShoppingItem[];
@@ -416,6 +425,21 @@ const DEMO_EYEWEAR: EyewearRec[] = [
   },
 ];
 
+const DEMO_ACCESSORIES: AccessoryRec[] = [
+  {
+    name: "Wool-blend scarf",
+    kind: "scarf",
+    why: "A soft neutral scarf in your palette adds warmth and a finished, considered layer over coats and knitwear.",
+    image: "/images/demo/accessory-scarf.png",
+  },
+  {
+    name: "Silk grenadine tie",
+    kind: "tie",
+    why: "A textured, matte tie in your palette reads refined — the detail that elevates a jacket for work.",
+    image: "/images/demo/accessory-tie.png",
+  },
+];
+
 const HAIR_DUAL_ANGLE_TIERS: Tier[] = ["lookbook", "premium"];
 
 /** True when top-N hair items still await personalized image generation. */
@@ -439,14 +463,16 @@ export function hairGenerationPending(
   return false;
 }
 
-/** True when premium facial-hair / eyewear previews still await generation. */
+/** True when premium facial-hair / eyewear / accessory previews still await generation. */
 export function premiumGroomingPending(
   facialHair: FacialHairRec[] | null | undefined,
   eyewear: EyewearRec[] | null | undefined,
+  accessories?: AccessoryRec[] | null | undefined,
 ): boolean {
   const targets = [
     ...(facialHair ?? []).slice(0, PREMIUM_FACIAL_HAIR_GEN_LIMIT),
     ...(eyewear ?? []).slice(0, PREMIUM_EYEWEAR_GEN_LIMIT),
+    ...(accessories ?? []).slice(0, PREMIUM_ACCESSORY_GEN_LIMIT),
   ];
   if (targets.length === 0) return false;
   return targets.some((item) => !item.imagePath);
@@ -528,6 +554,7 @@ export function assembleReport(opts: {
   personalizedHairPending?: boolean;
   facialHair?: FacialHairRec[];
   eyewear?: EyewearRec[];
+  accessories?: AccessoryRec[];
   id?: string;
   createdAt?: string;
 }): StyleReport {
@@ -555,6 +582,7 @@ export function assembleReport(opts: {
     }),
     facialHair: opts.facialHair,
     eyewear: opts.eyewear,
+    accessories: opts.accessories,
     silhouette: opts.content.silhouette,
     looks,
     shopping: opts.shopping,
@@ -582,6 +610,7 @@ export function generateReport(
     shopping: mockShopping(),
     facialHair: isDemo && tier === "premium" ? DEMO_FACIAL_HAIR : undefined,
     eyewear: isDemo && tier === "premium" ? DEMO_EYEWEAR : undefined,
+    accessories: isDemo && tier === "premium" ? DEMO_ACCESSORIES : undefined,
   });
 }
 

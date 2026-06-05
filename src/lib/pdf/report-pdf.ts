@@ -247,7 +247,12 @@ class Doc {
 
     const tx = MARGIN + thumbW + gap;
     const tw = CONTENT_W - thumbW - gap;
-    this.text(title, { x: tx, width: tw, size: 11, font: this.bold });
+    // pdf-lib positions text from the baseline, so glyphs sit ~one ascent above
+    // this.y. Drop the cursor by the title ascent so the first line's top edge
+    // lines up with the top of the thumbnail instead of floating above it.
+    const titleSize = 11;
+    this.y = topY - titleSize * 0.72;
+    this.text(title, { x: tx, width: tw, size: titleSize, font: this.bold });
     this.gap(1);
     this.text(sub, { x: tx, width: tw, color: STONE });
     if (opts.meta) {
@@ -402,7 +407,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   d.gap(4);
   d.text("Eyewear for your face", { size: 11, font: d.bold });
   d.gap(3);
-  if (report.tier === "premium" && report.facialHair?.length) {
+  if (report.facialHair?.length) {
     d.text("Recommended facial hair", { size: 11, font: d.bold });
     d.gap(3);
     for (const item of report.facialHair) {
@@ -412,7 +417,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     }
     d.gap(2);
   }
-  if (report.tier === "premium" && report.eyewear?.length) {
+  if (report.eyewear?.length) {
     d.text("Recommended glasses", { size: 11, font: d.bold });
     d.gap(3);
     for (const item of report.eyewear) {
@@ -442,6 +447,17 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     size: 9,
     color: STONE,
   });
+
+  if (report.accessories?.length) {
+    d.gap(6);
+    d.text("Accessory styling", { size: 11, font: d.bold });
+    d.gap(3);
+    for (const item of report.accessories) {
+      const img = await embedImage(d.doc, item.image, { w: 58, h: 70 });
+      d.imageRow(img, item.name, item.why);
+      d.gap(4);
+    }
+  }
 
   // Silhouette & fit
   d.heading("03", "Silhouette & fit");

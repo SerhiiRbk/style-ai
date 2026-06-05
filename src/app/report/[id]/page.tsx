@@ -14,15 +14,21 @@ import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { ShareReportButton } from "@/components/ShareReportButton";
 import { DeleteReportButton } from "@/components/DeleteReportButton";
+import { GenerateMoreButton } from "@/components/GenerateMoreButton";
+import { UnlockAddonButton } from "@/components/UnlockAddonButton";
 import { BRAND } from "@/lib/brand";
 import {
   isMockShopping,
   reportUpsellForTier,
+  PREMIUM_ACCESSORY_GEN_LIMIT,
+  PREMIUM_EYEWEAR_GEN_LIMIT,
+  PREMIUM_FACIAL_HAIR_GEN_LIMIT,
   type ColorRec,
   type HairRec,
   type ShoppingItem,
   type Tier,
 } from "@/lib/report";
+import { CREDIT_COSTS } from "@/lib/credit-costs";
 import { formatMoney } from "@/lib/currency";
 import { BodyTypeFigure } from "@/components/BodyTypePicker";
 import { ColorWheel } from "@/components/ColorWheel";
@@ -39,6 +45,7 @@ import {
   GroomingGuide,
   FacialHairGuide,
   PremiumEyewearGuide,
+  AccessoriesGuide,
   FitBlueprint,
   Capsule,
   CapsuleMatrix,
@@ -402,33 +409,32 @@ export default async function ReportPage({
               title="Hair, beard & eyewear"
               sub="Cuts that flatter your face shape — with real examples to take to your barber — plus the beard and frame shapes that finish the picture."
             />
-            <div className="mt-10 grid gap-10 lg:grid-cols-2">
-              <div>
-                <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-                  Recommended
-                </h3>
-                <div className="mt-5 grid gap-5 sm:grid-cols-2">
-                  {report.hair.recommend.map((h) => (
-                    <HairCard
-                      key={h.name}
-                      h={h}
-                      good
-                      dualAngle={
-                        report.tier === "lookbook" || report.tier === "premium"
-                      }
-                    />
-                  ))}
-                </div>
+            <div className="mt-10">
+              <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                Recommended
+              </h3>
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                {report.hair.recommend.map((h) => (
+                  <HairCard
+                    key={h.name}
+                    h={h}
+                    good
+                    dualAngle={
+                      report.tier === "lookbook" || report.tier === "premium"
+                    }
+                  />
+                ))}
               </div>
-              <div>
-                <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-                  Best avoided
-                </h3>
-                <div className="mt-5 grid gap-5 sm:grid-cols-2">
-                  {report.hair.avoid.map((h) => (
-                    <HairCard key={h.name} h={h} />
-                  ))}
-                </div>
+            </div>
+
+            <div className="mt-12 border-t hairline pt-12">
+              <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                Best avoided
+              </h3>
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                {report.hair.avoid.map((h) => (
+                  <HairCard key={h.name} h={h} />
+                ))}
               </div>
             </div>
 
@@ -436,7 +442,21 @@ export default async function ReportPage({
               <GroomingGuide items={extras.grooming} />
               {report.tier === "premium" ? (
                 report.facialHair?.length ? (
-                  <FacialHairGuide items={report.facialHair} />
+                  <div>
+                    <FacialHairGuide items={report.facialHair} />
+                    {isOwner && report.id !== "demo" ? (
+                      <GenerateMoreButton
+                        reportId={report.id}
+                        type="facial_hair"
+                        cost={CREDIT_COSTS.facialhair_extra}
+                        count={
+                          report.facialHair.filter((i) => i.image).length
+                        }
+                        baseCount={PREMIUM_FACIAL_HAIR_GEN_LIMIT}
+                        label="Generate 2 more"
+                      />
+                    ) : null}
+                  </div>
                 ) : (
                   <div className="rounded-2xl border hairline bg-cream/30 p-6 text-sm leading-relaxed text-stone">
                     <p className="font-display text-lg text-ink">
@@ -456,7 +476,19 @@ export default async function ReportPage({
             {report.tier === "premium" ? (
               <div className="mt-12 border-t hairline pt-12">
                 {report.eyewear?.length ? (
-                  <PremiumEyewearGuide items={report.eyewear} />
+                  <>
+                    <PremiumEyewearGuide items={report.eyewear} />
+                    {isOwner && report.id !== "demo" ? (
+                      <GenerateMoreButton
+                        reportId={report.id}
+                        type="eyewear"
+                        cost={CREDIT_COSTS.eyewear_extra}
+                        count={report.eyewear.filter((i) => i.image).length}
+                        baseCount={PREMIUM_EYEWEAR_GEN_LIMIT}
+                        label="Generate 2 optical + 2 sunglasses"
+                      />
+                    ) : null}
+                  </>
                 ) : (
                   <div className="rounded-2xl border hairline bg-cream/30 p-6 text-sm leading-relaxed text-stone">
                     <p className="font-display text-lg text-ink">
@@ -467,6 +499,102 @@ export default async function ReportPage({
                     </p>
                   </div>
                 )}
+              </div>
+            ) : null}
+
+            {report.tier === "premium" &&
+            (report.accessories?.length || generation?.pending) ? (
+              <div className="mt-12 border-t hairline pt-12">
+                {report.accessories?.length ? (
+                  <>
+                    <AccessoriesGuide items={report.accessories} />
+                    {isOwner && report.id !== "demo" ? (
+                      <GenerateMoreButton
+                        reportId={report.id}
+                        type="accessories"
+                        cost={CREDIT_COSTS.accessory_extra}
+                        count={
+                          report.accessories.filter((i) => i.image).length
+                        }
+                        baseCount={PREMIUM_ACCESSORY_GEN_LIMIT}
+                        label="Generate 2 more"
+                      />
+                    ) : null}
+                  </>
+                ) : generation?.pending ? (
+                  <div className="rounded-2xl border hairline bg-cream/30 p-6 text-sm leading-relaxed text-stone">
+                    <p className="font-display text-lg text-ink">
+                      Accessory styling
+                    </p>
+                    <p className="mt-2">
+                      Scarves, neckwear and ties on your photo are being
+                      generated.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {report.tier !== "premium" &&
+            ((isOwner && report.id !== "demo") ||
+              Boolean(
+                report.facialHair?.length ||
+                  report.eyewear?.length ||
+                  report.accessories?.length,
+              )) ? (
+              <div className="mt-12 border-t hairline pt-12">
+                <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                  See it on your photo
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-stone">
+                  Generate photorealistic previews of facial hair, eyewear and
+                  accessories on your own photo — available as add-ons for this
+                  report.{" "}
+                  <Link href="/pricing" className="text-brass hover:text-ink">
+                    All included with Premium.
+                  </Link>
+                </p>
+
+                <div className="mt-8 space-y-10">
+                  {report.facialHair?.length ? (
+                    <FacialHairGuide items={report.facialHair} />
+                  ) : isOwner && report.id !== "demo" ? (
+                    <AddonUnlockCard
+                      title="Facial-hair previews"
+                      desc="Four beard & mustache styles rendered on your own photo."
+                      reportId={report.id}
+                      type="facial_hair"
+                      cost={CREDIT_COSTS.facialhair_addon}
+                      label="Generate 4 facial-hair previews"
+                    />
+                  ) : null}
+
+                  {report.eyewear?.length ? (
+                    <PremiumEyewearGuide items={report.eyewear} />
+                  ) : isOwner && report.id !== "demo" ? (
+                    <AddonUnlockCard
+                      title="Eyewear previews"
+                      desc="Two optical frames and two pairs of sunglasses on your photo."
+                      reportId={report.id}
+                      type="eyewear"
+                      cost={CREDIT_COSTS.eyewear_addon}
+                      label="Generate 2 optical + 2 sunglasses"
+                    />
+                  ) : null}
+
+                  {report.accessories?.length ? (
+                    <AccessoriesGuide items={report.accessories} />
+                  ) : isOwner && report.id !== "demo" ? (
+                    <AddonUnlockCard
+                      title="Accessory styling"
+                      desc="Two accessory previews (scarves, neckwear, ties) on your photo."
+                      reportId={report.id}
+                      type="accessories"
+                      cost={CREDIT_COSTS.accessory_addon}
+                      label="Generate 2 accessory previews"
+                    />
+                  ) : null}
+                </div>
               </div>
             ) : null}
           </div>
@@ -755,6 +883,35 @@ export default async function ReportPage({
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function AddonUnlockCard({
+  title,
+  desc,
+  reportId,
+  type,
+  cost,
+  label,
+}: {
+  title: string;
+  desc: string;
+  reportId: string;
+  type: "accessories" | "facial_hair" | "eyewear";
+  cost: number;
+  label: string;
+}) {
+  return (
+    <div className="rounded-2xl border hairline bg-cream/30 p-6">
+      <p className="font-display text-lg text-ink">{title}</p>
+      <p className="mt-2 text-sm leading-relaxed text-stone">{desc}</p>
+      <UnlockAddonButton
+        reportId={reportId}
+        type={type}
+        cost={cost}
+        label={label}
+      />
+    </div>
+  );
 }
 
 function ReportTierUpsell({
