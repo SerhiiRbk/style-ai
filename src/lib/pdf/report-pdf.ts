@@ -132,12 +132,14 @@ class Doc {
     const width = opts.width ?? CONTENT_W;
     const lh = size + (opts.lineGap ?? 4);
 
+    // StandardFonts use WinAnsi — strip characters pdf-lib cannot encode.
     str = str
       .replace(/[\u2192\u2794\u279C]/g, "->")
       .replace(/[\u2018\u2019]/g, "'")
       .replace(/[\u201C\u201D]/g, '"')
-      .replace(/[\u2013]/g, "-")
-      .replace(/[\u2026]/g, "...");
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/[\u2026]/g, "...")
+      .replace(/[^\n\r\t\x20-\xFF]/g, "?");
 
     for (const paragraph of str.split("\n")) {
       const words = paragraph.split(/\s+/).filter(Boolean);

@@ -651,13 +651,13 @@ function scheduleMatchRefresh(
 
 /**
  * Fetch a report for the owner or, when enabled, anyone with the link.
- *
- * Wrapped in React `cache()` so the page component and `generateMetadata`
- * (which both call this in the same request) share a single execution instead
- * of doing all the queries + signing twice.
+ * Pass `scheduleRefresh: false` from Route Handlers (e.g. PDF export) to skip
+ * catalogue backfill scheduling via `after()`.
  */
-export const getReportView = cache(
-  async (id: string): Promise<ReportView | null> => {
+async function fetchReportView(
+  id: string,
+  opts?: { scheduleRefresh?: boolean },
+): Promise<ReportView | null> {
   if (id === "demo") {
     const report = getMockReport("demo");
     if (!report) return null;
@@ -756,7 +756,12 @@ export const getReportView = cache(
   // pgvector RPCs). It's normally done once at generation; only re-run when the
   // stored data is stale/mock — and do it OFF the request path so the page
   // renders instantly with whatever is stored.
-  if (isOwner && hasSupabaseAdmin && row.profile) {
+  if (
+    opts?.scheduleRefresh !== false &&
+    isOwner &&
+    hasSupabaseAdmin &&
+    row.profile
+  ) {
     scheduleMatchRefresh(id, row.profile, content, {
       needShopping: isMockShopping(shopping),
       needLookItems: lookItemsNeedRefresh(lookItems),
@@ -807,8 +812,23 @@ export const getReportView = cache(
   });
 
   return { report, isOwner, isPublic };
-  },
-);
+}
+
+/**
+ * Fetch a report for the owner or, when enabled, anyone with the link.
+ *
+ * Wrapped in React `cache()` so the page component and `generateMetadata`
+ * (which both call this in the same request) share a single execution instead
+ * of doing all the queries + signing twice.
+ */
+export const getReportView = cache(fetchReportView);
+
+/** Uncached fetch for Route Handlers (PDF export) — avoids React cache + `after()` side effects. */
+export async function getReportViewForDownload(
+  id: string,
+): Promise<ReportView | null> {
+  return fetchReportView(id, { scheduleRefresh: false });
+}
 
 /** Fetch report content only — owner or public link. Falls back to mock store. */
 export async function getReportById(id: string): Promise<StyleReport | null> {

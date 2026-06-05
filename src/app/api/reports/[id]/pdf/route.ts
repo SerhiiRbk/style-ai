@@ -1,19 +1,18 @@
-import { getReportById } from "@/lib/data/reports";
+import { getReportViewForDownload } from "@/lib/data/reports";
 import { buildReportPdf } from "@/lib/pdf/report-pdf";
+import { demoReport } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // The example report is identical for everyone, so build it once and reuse.
-let sampleCache: Uint8Array | null = null;
+let demoPdfCache: Uint8Array | null = null;
 
-async function getSamplePdf(): Promise<Uint8Array> {
-  if (!sampleCache) {
-    const sample = await getReportById("demo");
-    if (!sample) throw new Error("Sample report unavailable");
-    sampleCache = await buildReportPdf(sample);
+async function getDemoPdf(): Promise<Uint8Array> {
+  if (!demoPdfCache) {
+    demoPdfCache = await buildReportPdf(demoReport());
   }
-  return sampleCache;
+  return demoPdfCache;
 }
 
 function pdfResponse(bytes: Uint8Array, filename: string) {
@@ -27,8 +26,10 @@ function pdfResponse(bytes: Uint8Array, filename: string) {
 }
 
 /**
- * Download a report as a generated PDF. Authenticated users get their own
- * report; everyone else (or any unavailable id) gets the cached sample report.
+ * Download a report as a generated PDF.
+ * - `demo` → cached sample report PDF
+ * - Owner or public viewer → generated PDF for that report
+ * - Free tier → 402 with upgrade hint
  */
 export async function GET(
   _request: Request,
@@ -36,28 +37,33 @@ export async function GET(
 ) {
   const { id } = await params;
 
+  if (id === "demo") {
+    return pdfResponse(await getDemoPdf(), "styleai-sample-report.pdf");
+  }
+
+  const view = await getReportViewForDownload(id);
+  if (!view) {
+    return Response.json({ error: "Report not found" }, { status: 404 });
+  }
+
+  const { report } = view;
+
+  if (report.tier === "free") {
+    return Response.json(
+      {
+        error: "The PDF export is a paid feature. Upgrade to download your report.",
+        code: "tier_locked",
+        upgrade: "/pricing",
+      },
+      { status: 402, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   try {
-    const report = id === "demo" ? null : await getReportById(id);
-    if (!report) {
-      return pdfResponse(await getSamplePdf(), "styleai-sample-report.pdf");
-    }
-    // The free tier is a gated preview — no PDF export.
-    if (report.tier === "free") {
-      return new Response(
-        JSON.stringify({
-          error: "The PDF export is a paid feature. Upgrade to download your report.",
-          code: "tier_locked",
-          upgrade: "/pricing",
-        }),
-        {
-          status: 402,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
     const bytes = await buildReportPdf(report);
     return pdfResponse(bytes, `styleai-report-${id}.pdf`);
-  } catch {
-    return pdfResponse(await getSamplePdf(), "styleai-sample-report.pdf");
+  } catch (err) {
+    console.error("[pdf] failed to build report", id, err);
+    return Response.json({ error: "Failed to generate PDF" }, { status: 500 });
   }
 }
