@@ -38,7 +38,7 @@ type TierCard = {
 
 const TIERS: TierCard[] = [
   {
-    name: "Free preview",
+    name: "Starter Report",
     tier: "free",
     tagline: "See the quality, no commitment.",
     features: [
@@ -94,7 +94,7 @@ const TIERS: TierCard[] = [
 ];
 
 const COMPARISON_TIERS: { key: Tier; label: string }[] = [
-  { key: "free", label: "Free" },
+  { key: "free", label: "Starter" },
   { key: "basic", label: "Basic" },
   { key: "lookbook", label: "Lookbook" },
   { key: "premium", label: "Premium" },
@@ -283,7 +283,7 @@ export default async function PricingPage() {
           <div className="mt-12 grid gap-6 lg:grid-cols-4">
             {TIERS.map((t) => {
               const isFree = t.tier === "free";
-              const cost = isFree ? SIGNUP_BONUS : REPORT_COST[t.tier];
+              const cost = REPORT_COST[t.tier];
               return (
                 <div
                   key={t.name}
@@ -308,9 +308,15 @@ export default async function PricingPage() {
                         t.featured ? "text-paper/60" : "text-stone-soft"
                       }`}
                     >
-                      {isFree ? "free credits" : "credits"}
+                      credits
                     </span>
                   </div>
+                  {isFree && (
+                    <p className="mt-1 text-xs text-brass">
+                      Covered by your {SIGNUP_BONUS} signup credits — leaves{" "}
+                      {SIGNUP_BONUS - REPORT_COST.free} for a try-on
+                    </p>
+                  )}
                   <p
                     className={`mt-2 text-sm ${
                       t.featured ? "text-paper/70" : "text-stone"
@@ -356,7 +362,7 @@ export default async function PricingPage() {
             <CostRow
               label="Generate a report"
               value={`${REPORT_COST.free}–${REPORT_COST.premium} credits`}
-              note={`By tier (free preview is ${REPORT_COST.free})`}
+              note={`By tier (Starter Report is ${REPORT_COST.free})`}
             />
             <CostRow
               label="Virtual try-on"
@@ -384,10 +390,10 @@ export default async function PricingPage() {
               </p>
             </div>
 
-            <div className="mt-12 grid gap-6 lg:grid-cols-3">
+            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {CREDIT_PACKAGES.map((pkg, i) => {
                 const total = pkg.credits + pkg.bonus;
-                const featured = i === 2;
+                const featured = i === CREDIT_PACKAGES.length - 1;
                 return (
                   <div
                     key={pkg.id}
@@ -436,8 +442,8 @@ export default async function PricingPage() {
             </div>
             <p className="mt-6 text-sm text-paper/50">
               Card checkout is rolling out shortly. In the meantime, every new
-              account starts with {SIGNUP_BONUS} free credits — enough for a free
-              preview ({REPORT_COST.free} credits) and one try-on (
+              account starts with {SIGNUP_BONUS} free credits — enough for your
+              Starter Report ({REPORT_COST.free} credits) and one try-on (
               {CREDIT_COSTS.tryon} credit).
             </p>
           </div>

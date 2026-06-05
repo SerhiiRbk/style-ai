@@ -25,9 +25,12 @@ export function StylistNote({
         <Image
           src={BRAND.stylist.avatar}
           alt={BRAND.stylist.name}
-          fill
+          width={96}
+          height={96}
           sizes="48px"
-          className="object-cover"
+          quality={90}
+          priority
+          className="h-full w-full object-cover"
         />
       </span>
       <div className="min-w-0">

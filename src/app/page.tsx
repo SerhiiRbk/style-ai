@@ -63,8 +63,9 @@ function Hero() {
             </ButtonLink>
           </div>
           <p className="mt-5 text-sm text-stone-soft">
-            Sign up for {SIGNUP_BONUS} credits — free preview {REPORT_COST.free}{" "}
-            credits, try-on {CREDIT_COSTS.tryon} credit · No subscription
+            Sign up for {SIGNUP_BONUS} free credits — Starter Report{" "}
+            {REPORT_COST.free} credits, try-on {CREDIT_COSTS.tryon} credit · No
+            subscription
           </p>
         </div>
 
@@ -418,11 +419,21 @@ function Card({
 
 async function Pricing() {
   const { subCurrency } = await getGeo();
-  const tiers = [
+  const tiers: {
+    name: string;
+    price: string;
+    cadence: string;
+    features: string[];
+    cta: string;
+    href: string;
+    featured: boolean;
+    note?: string;
+  }[] = [
     {
-      name: "Free preview",
-      price: String(SIGNUP_BONUS),
-      cadence: "free credits",
+      name: "Starter Report",
+      price: String(REPORT_COST.free),
+      cadence: "credits",
+      note: `Covered by your ${SIGNUP_BONUS} signup credits — leaves ${SIGNUP_BONUS - REPORT_COST.free} for a try-on`,
       features: [
         "Colour & hair analysis with reasons",
         "1 photorealistic preview look",
@@ -526,6 +537,7 @@ async function Pricing() {
                   </span>
                 )}
               </div>
+              {t.note && <p className="mt-1 text-xs text-brass">{t.note}</p>}
               <ul className="mt-6 flex-1 space-y-3 text-sm">
                 {t.features.map((f) => (
                   <li key={f} className="flex items-start gap-2.5">
@@ -612,7 +624,7 @@ function FinalCTA() {
           See what genuinely suits you — and why.
         </h2>
         <p className="mx-auto mt-5 max-w-md text-paper/70">
-          Sign up for {SIGNUP_BONUS} credits — free preview costs{" "}
+          Sign up for {SIGNUP_BONUS} free credits — Starter Report costs{" "}
           {REPORT_COST.free}, try-on {CREDIT_COSTS.tryon} credit. No subscription.
         </p>
         <div className="mt-9 flex justify-center">

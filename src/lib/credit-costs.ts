@@ -17,7 +17,7 @@ export type CreditReason =
 
 /** Credits charged to generate a report, by tier. */
 export const REPORT_COST: Record<Tier, number> = {
-  free: 3,
+  free: 5,
   basic: 10,
   lookbook: 20,
   premium: 35,
@@ -33,12 +33,12 @@ export const CREDIT_COSTS = {
   premium_addon: 3,
 } as const;
 
-/** Credits granted once on signup — free report (3) + one try-on (1). */
-export const SIGNUP_BONUS = 5;
+/** Credits granted once on signup — Starter Report (5) + one try-on (1). */
+export const SIGNUP_BONUS = 6;
 
 /** Purchasable credit packages. Prices are clean per-currency numbers (no FX). */
 export type CreditPackage = {
-  id: "starter" | "plus" | "pro";
+  id: "starter" | "plus" | "pro" | "max";
   name: string;
   /** Base credits purchased. */
   credits: number;
@@ -51,26 +51,34 @@ export type CreditPackage = {
 export const CREDIT_PACKAGES: CreditPackage[] = [
   {
     id: "starter",
-    name: "Starter",
+    name: "Single",
     credits: 10,
-    bonus: 0,
-    price: { EUR: "€19", USD: "$21" },
-    blurb: "One full report, or a stack of try-ons.",
+    bonus: 1,
+    price: { EUR: "€10", USD: "$11" },
+    blurb: "One Basic report, or a handful of try-ons.",
   },
   {
     id: "plus",
     name: "Plus",
-    credits: 25,
-    bonus: 5,
-    price: { EUR: "€39", USD: "$43" },
-    blurb: "A report plus room to experiment.",
+    credits: 20,
+    bonus: 2,
+    price: { EUR: "€20", USD: "$22" },
+    blurb: "A Lookbook report with credits to spare.",
   },
   {
     id: "pro",
     name: "Pro",
-    credits: 60,
-    bonus: 15,
+    credits: 35,
+    bonus: 5,
+    price: { EUR: "€35", USD: "$38" },
+    blurb: "A Premium report plus extra try-ons.",
+  },
+  {
+    id: "max",
+    name: "Max",
+    credits: 80,
+    bonus: 20,
     price: { EUR: "€79", USD: "$86" },
-    blurb: "Best value — multiple reports & unlimited play.",
+    blurb: "For stylists & power users — multiple Premium reports.",
   },
 ];

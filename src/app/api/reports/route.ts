@@ -47,13 +47,13 @@ export async function POST(request: Request) {
 
   if (tier === "free" && !userId) {
     return NextResponse.json(
-      { error: "Sign in required for the free preview.", code: "auth_required" },
+      { error: "Sign in required for the Starter Report.", code: "auth_required" },
       { status: 401 },
     );
   }
 
-  // Credits: every tier (including free preview) is charged. New users get a
-  // one-time signup bonus so their first free report + try-on is covered.
+  // Credits: every tier (including the Starter Report) is charged. New users
+  // get a one-time signup bonus so their first Starter Report + try-on is covered.
   const cost = REPORT_COST[tier];
   if (userId && hasSupabaseAdmin) {
     const admin = createAdminSupabase();

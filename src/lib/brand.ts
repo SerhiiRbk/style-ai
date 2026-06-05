@@ -28,7 +28,7 @@ export const BRAND = {
     role: "Lead stylist",
     /** Editorial seated portrait (hero / Meet-your-stylist section). */
     portrait: "/images/carlo-valetti.png",
-    /** Tight head-and-shoulders headshot (avatars, signatures). */
+    /** Square headshot crop (512×512) for avatars and signatures. */
     avatar: "/images/carlo-avatar.png",
     /** Environmental atelier shot (secondary editorial use). */
     atelier: "/images/carlo-atelier.png",

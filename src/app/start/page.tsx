@@ -63,7 +63,7 @@ const BUDGETS: { label: string; min: number; max: number }[] = [
 const TIERS: { id: Tier; name: string; note: string }[] = [
   {
     id: "free",
-    name: "Free preview",
+    name: "Starter Report",
     note: `1 look · 2 hair previews · try-on ${CREDIT_COSTS.tryon} cr · no share/PDF`,
   },
   { id: "basic", name: "Basic report", note: "3 looks · PDF · share link" },
@@ -501,7 +501,7 @@ export default function StartPage() {
             <Section
               eyebrow="Step 4"
               title="Choose your package"
-              subtitle="Sign in required. New accounts get signup credits; free preview uses credits like paid tiers."
+              subtitle="Sign in required. New accounts get signup credits; the Starter Report uses credits like paid tiers."
             >
               <div className="grid gap-4 sm:grid-cols-2">
                 {TIERS.map((t) => (
@@ -526,17 +526,15 @@ export default function StartPage() {
                     </div>
                     <div className="text-right">
                       <div className="font-display text-2xl">
-                        {t.id === "free" ? SIGNUP_BONUS : REPORT_COST[t.id]}
+                        {REPORT_COST[t.id]}
                       </div>
-                      <div className="text-[11px] text-stone-soft">
-                        {t.id === "free" ? "free credits" : "credits"}
-                      </div>
+                      <div className="text-[11px] text-stone-soft">credits</div>
                     </div>
                   </button>
                 ))}
               </div>
               <p className="mt-5 text-xs text-stone-soft">
-                Sign up for {SIGNUP_BONUS} credits — free preview is{" "}
+                Sign up for {SIGNUP_BONUS} free credits — your Starter Report is{" "}
                 {REPORT_COST.free} credits, try-on is {CREDIT_COSTS.tryon}{" "}
                 credit. Re-renders cost {CREDIT_COSTS.tryon} credit each.{" "}
                 <Link href="/pricing" className="text-brass hover:text-ink">

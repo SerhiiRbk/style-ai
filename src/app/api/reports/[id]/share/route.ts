@@ -54,7 +54,7 @@ export async function PATCH(
   const tier = row.tier as Tier;
   if (!canShareReport(tier)) {
     return NextResponse.json(
-      { error: "Sharing is not available on the free preview tier" },
+      { error: "Sharing is not available on the Starter Report tier" },
       { status: 403 },
     );
   }
