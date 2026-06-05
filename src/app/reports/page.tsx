@@ -6,6 +6,8 @@ import { ButtonLink } from "@/components/Button";
 import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getCreditBalance } from "@/lib/credits";
+import { DeleteReportButton } from "@/components/DeleteReportButton";
+import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 import {
   getUserReports,
   reportStatusLabel,
@@ -109,36 +111,52 @@ export default async function ReportsPage() {
           ) : (
             <ul className="divide-y hairline rounded-2xl border hairline bg-paper">
               {reports.map((r) => (
-                <li key={r.id}>
-                  <a
-                    href={`/report/${r.id}`}
-                    className="group flex w-full flex-col gap-3 px-5 py-5 transition-colors hover:bg-cream/30 sm:flex-row sm:items-center sm:justify-between sm:px-6"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-display text-lg text-ink group-hover:text-ink-soft">
-                        {r.headline || "Style report"}
-                      </p>
-                      <p className="mt-1 text-sm text-stone">
-                        {formatDate(r.createdAt)}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <span className="rounded-full border hairline bg-cream/40 px-3 py-1 text-xs text-stone">
-                        {tierLabel(r.tier)}
-                      </span>
-                      <StatusBadge status={r.status} />
-                      <span
-                        className="hidden text-sm text-brass transition-colors group-hover:text-ink sm:inline"
-                        aria-hidden
-                      >
-                        Open →
-                      </span>
-                    </div>
+                <li
+                  key={r.id}
+                  className="flex flex-col gap-3 px-5 py-5 transition-colors hover:bg-cream/30 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+                >
+                  <a href={`/report/${r.id}`} className="group min-w-0 flex-1">
+                    <p className="truncate font-display text-lg text-ink group-hover:text-ink-soft">
+                      {r.headline || "Style report"}
+                    </p>
+                    <p className="mt-1 text-sm text-stone">
+                      {formatDate(r.createdAt)}
+                    </p>
                   </a>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="rounded-full border hairline bg-cream/40 px-3 py-1 text-xs text-stone">
+                      {tierLabel(r.tier)}
+                    </span>
+                    <StatusBadge status={r.status} />
+                    <a
+                      href={`/report/${r.id}`}
+                      className="hidden text-sm text-brass transition-colors hover:text-ink sm:inline"
+                    >
+                      Open →
+                    </a>
+                    <DeleteReportButton reportId={r.id} tone="light" />
+                  </div>
                 </li>
               ))}
             </ul>
           )}
+        </section>
+
+        <section className="container-luxe pb-20">
+          <div className="rounded-2xl border border-red-100 bg-red-50/30 p-6 sm:p-8">
+            <p className="eyebrow !text-red-700">Privacy &amp; data</p>
+            <h2 className="mt-3 font-display text-2xl text-ink">
+              Delete your account
+            </h2>
+            <p className="mt-2 max-w-xl text-sm text-stone">
+              Permanently erase your account and all associated data — every
+              report, generated image, uploaded photo, try-on and credit
+              record. This cannot be undone.
+            </p>
+            <div className="mt-5">
+              <DeleteAccountButton />
+            </div>
+          </div>
         </section>
       </main>
       <Footer />

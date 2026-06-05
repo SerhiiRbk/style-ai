@@ -22,9 +22,15 @@ import {
 import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: `Pricing · ${BRAND.name}`,
+  title: `Pricing — credits, no subscription · ${BRAND.name}`,
   description:
-    "Honest, credit-based pricing for your personal style report — pay only for the AI work you use. New accounts start with free credits.",
+    "Honest, credit-based pricing for your personal style report — pay only for the AI work you use. New accounts start with 6 free credits, and credits never expire.",
+  alternates: { canonical: "/pricing" },
+  openGraph: {
+    title: `${BRAND.name} pricing — pay for the work, not a subscription`,
+    description:
+      "Credit-based pricing for personal style reports. New accounts start with 6 free credits.",
+  },
 };
 
 type TierCard = {

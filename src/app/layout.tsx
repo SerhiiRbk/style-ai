@@ -22,6 +22,7 @@ export const metadata: Metadata = {
   description:
     "Valetti is a personal style atelier led by stylist Carlo Valetti. Share a few photos, answer honest questions, and receive a calm, practical plan — hair, colours, clothing, silhouettes, and a precise shopping list. AI-assisted personal styling.",
   metadataBase: getSiteUrl(),
+  alternates: { canonical: "/" },
   openGraph: {
     title: "Valetti — personal style atelier",
     description:

@@ -13,6 +13,7 @@ import { StylistNote } from "@/components/StylistNote";
 import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { ShareReportButton } from "@/components/ShareReportButton";
+import { DeleteReportButton } from "@/components/DeleteReportButton";
 import { BRAND } from "@/lib/brand";
 import {
   isMockShopping,
@@ -225,6 +226,13 @@ export default async function ReportPage({
                 Download PDF
               </a>
             )}
+            {isOwner && report.id !== "demo" ? (
+              <DeleteReportButton
+                reportId={report.id}
+                tone="dark"
+                redirectTo="/reports"
+              />
+            ) : null}
             {isOwner ? (
               <ButtonLink
                 href="/start"

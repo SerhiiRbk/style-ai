@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
@@ -6,6 +7,13 @@ import { hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getGeo } from "@/lib/geo";
 import { formatMoney, type Currency } from "@/lib/currency";
+
+export const metadata: Metadata = {
+  title: "Catalog — shoppable menswear picks · Valetti",
+  description:
+    "Browse the Valetti catalogue — curated menswear matched to quiet-luxury, European style. Real products with disclosed affiliate links.",
+  alternates: { canonical: "/catalog" },
+};
 
 export const dynamic = "force-dynamic";
 
