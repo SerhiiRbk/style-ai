@@ -241,14 +241,38 @@ export function mockReportContent(intake: Intake): ReportContent {
 
   const hair = {
     recommend: [
-      { name: "Textured crop", why: "Adds structure that balances an oval face and reads contemporary.", image: "/images/hair/textured-crop.png" },
-      { name: "Short tapered sides", why: "Clean, low-maintenance, and quietly sharpens the jawline.", image: "/images/hair/tapered-sides.png" },
-      { name: "Side part with texture", why: "Classic proportion for an oval face — polished without feeling stiff.", image: "/images/hair/tapered-sides.png" },
-      { name: "Soft layered medium", why: "Adds movement and depth when you want a slightly longer, relaxed look.", image: "/images/hair/textured-crop.png" },
+      {
+        name: "Textured crop",
+        why: "Adds structure that balances an oval face and reads contemporary.",
+        image: "/images/hair/textured-crop.png",
+        imageSide: "/images/demo/hair-textured-crop-side.png",
+      },
+      {
+        name: "Short tapered sides",
+        why: "Clean, low-maintenance, and quietly sharpens the jawline.",
+        image: "/images/hair/tapered-sides.png",
+        imageSide: "/images/demo/hair-tapered-sides-side.png",
+      },
+      {
+        name: "Side part with texture",
+        why: "Classic proportion for an oval face — polished without feeling stiff.",
+        image: "/images/hair/tapered-sides.png",
+        imageSide: "/images/demo/hair-side-part-side.png",
+      },
+      {
+        name: "Soft layered medium",
+        why: "Adds movement and depth when you want a slightly longer, relaxed look.",
+        image: "/images/hair/textured-crop.png",
+        imageSide: "/images/demo/hair-soft-layered-side.png",
+      },
     ],
     avoid: [
       { name: "Heavy straight fringe", why: "Shortens the face and dates the overall look.", image: "/images/hair/heavy-fringe.png" },
-      { name: "High-volume sides", why: "Widens the face silhouette and fights clean, modern lines.", image: "/images/hair/tapered-sides.png" },
+      {
+        name: "Buzz cut (too short)",
+        why: "Strips away length and texture — reads harsh on an oval face and ages the overall look.",
+        image: "/images/demo/hair-buzz-cut-avoid.png",
+      },
     ],
   };
 
@@ -292,6 +316,12 @@ export function mockReportContent(intake: Intake): ReportContent {
       description: "Camel overcoat over cream crewneck, taupe trousers, cream leather sneakers.",
       palette: ["#B08A5B", "#EFE6D3", "#9B8C72", "#E8E1D3"],
     },
+    {
+      context: "Evening out",
+      title: "Relaxed polish",
+      description: "Rust merino polo, charcoal wool trousers, brown leather loafers, brass watch.",
+      palette: ["#9E5C3C", "#3A3A3A", "#5A3D2B", "#B08A5B"],
+    },
   ];
 
   const doList = [
@@ -328,6 +358,62 @@ const LOOK_IMAGES = [
   "/images/look-weekend.png",
   "/images/look-formal.png",
   "/images/look-travel.png",
+  "/images/demo/look-evening.png",
+];
+
+/** Premium demo grooming previews — generated with AI_MODEL_IMAGE on hero-editorial.png. */
+const DEMO_FACIAL_HAIR: FacialHairRec[] = [
+  {
+    name: "Short even beard",
+    why: "A tidy, even line suits an oval face — natural cheek line, clean neckline.",
+    image: "/images/demo/facial-hair-short-even-beard.png",
+  },
+  {
+    name: "Refined stubble",
+    why: "Low-maintenance texture that reads modern without overpowering your features.",
+    image: "/images/demo/facial-hair-refined-stubble.png",
+  },
+  {
+    name: "Classic full beard",
+    why: "Even growth with a defined neckline — versatile on an oval face.",
+    image: "/images/demo/facial-hair-classic-full-beard.png",
+  },
+  {
+    name: "Van Dyke",
+    why: "A neat mustache paired with a small chin patch adds character without bulk.",
+    image: "/images/demo/facial-hair-van-dyke.png",
+  },
+];
+
+const DEMO_EYEWEAR: EyewearRec[] = [
+  {
+    name: "Wayfarer",
+    shape: "wayfarer",
+    kind: "optical",
+    why: "Classic balance for an oval face — versatile and modern.",
+    image: "/images/demo/eyewear-wayfarer-optical.png",
+  },
+  {
+    name: "Rectangular",
+    shape: "rectangle",
+    kind: "optical",
+    why: "Keeps proportions in check without elongating.",
+    image: "/images/demo/eyewear-rectangle-optical.png",
+  },
+  {
+    name: "Wayfarer sunglasses",
+    shape: "wayfarer",
+    kind: "sun",
+    why: "Classic balance for an oval face in sun.",
+    image: "/images/demo/eyewear-wayfarer-sun.png",
+  },
+  {
+    name: "Aviator sunglasses",
+    shape: "aviator",
+    kind: "sun",
+    why: "Relaxed edge while keeping proportions balanced outdoors.",
+    image: "/images/demo/eyewear-aviator-sun.png",
+  },
 ];
 
 const HAIR_DUAL_ANGLE_TIERS: Tier[] = ["lookbook", "premium"];
@@ -479,6 +565,7 @@ export function generateReport(
   tier: Tier,
   id?: string,
 ): StyleReport {
+  const isDemo = id === "demo";
   return assembleReport({
     id,
     intake,
@@ -486,6 +573,8 @@ export function generateReport(
     profile: mockStyleProfile(intake),
     content: mockReportContent(intake),
     shopping: mockShopping(),
+    facialHair: isDemo && tier === "premium" ? DEMO_FACIAL_HAIR : undefined,
+    eyewear: isDemo && tier === "premium" ? DEMO_EYEWEAR : undefined,
   });
 }
 
