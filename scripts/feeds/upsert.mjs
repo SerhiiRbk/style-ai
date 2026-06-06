@@ -13,7 +13,14 @@ export function getSupabase() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-function toRow(p, embedding) {
+const VALID_SOURCE_TYPES = ["feed", "scraper", "seed", "manual"];
+
+function toRow(p, embedding, sourceType) {
+  const now = new Date().toISOString();
+  const provenance =
+    (p.sourceType && VALID_SOURCE_TYPES.includes(p.sourceType)
+      ? p.sourceType
+      : null) ?? sourceType ?? "feed";
   return {
     source: p.source,
     external_id: p.externalId,
@@ -33,14 +40,20 @@ function toRow(p, embedding) {
     in_stock: p.inStock ?? null,
     attrs: p.attrs ?? null,
     embedding,
-    updated_at: new Date().toISOString(),
+    source_type: provenance,
+    ingested_at: now,
+    updated_at: now,
   };
 }
 
-/** Embed (batched) and upsert canonical products keyed by (source, external_id). */
+/**
+ * Embed (batched) and upsert canonical products keyed by (source, external_id).
+ * `sourceType` (feed | scraper | seed | manual) is stamped on every row for
+ * provenance, overridable per-product via `p.sourceType`.
+ */
 export async function embedAndUpsert(
   products,
-  { model, batchSize = 100, onProgress } = {},
+  { model, batchSize = 100, onProgress, sourceType = "feed" } = {},
 ) {
   const sb = getSupabase();
   let upserted = 0;
@@ -50,7 +63,7 @@ export async function embedAndUpsert(
       model,
       values: batch.map(embedText),
     });
-    const rows = batch.map((p, j) => toRow(p, embeddings[j]));
+    const rows = batch.map((p, j) => toRow(p, embeddings[j], sourceType));
     const { error } = await sb
       .from("products")
       .upsert(rows, { onConflict: "source,external_id" });

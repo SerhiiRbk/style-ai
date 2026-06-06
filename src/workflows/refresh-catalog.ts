@@ -31,7 +31,7 @@ async function ingestChunk(products: CanonicalProduct[]): Promise<number> {
   "use step";
   if (products.length === 0) return 0;
   const { embedAndUpsert } = await import("../../scripts/feeds/upsert.mjs");
-  const n = await embedAndUpsert(products, {});
+  const n = await embedAndUpsert(products, { sourceType: "feed" });
   console.log(`[catalog] upserted chunk of ${n}`);
   return n;
 }

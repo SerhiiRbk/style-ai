@@ -19,6 +19,9 @@ export const env = {
   embedModel: process.env.AI_EMBED_MODEL ?? "openai/text-embedding-3-small",
 
   falKey: process.env.FAL_KEY,
+
+  // Shared secret required to POST scraper results to /api/catalog/import.
+  catalogImportKey: process.env.CATALOG_IMPORT_KEY,
 } as const;
 
 export const hasSupabase = Boolean(env.supabaseUrl && env.supabaseAnonKey);
@@ -27,3 +30,4 @@ export const hasSupabaseAdmin = Boolean(
 );
 export const hasAI = Boolean(env.aiGatewayKey);
 export const hasVTON = Boolean(env.falKey);
+export const hasCatalogImportKey = Boolean(env.catalogImportKey);

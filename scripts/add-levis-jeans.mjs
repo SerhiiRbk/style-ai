@@ -93,7 +93,7 @@ if (!process.env.AI_GATEWAY_API_KEY) {
 }
 
 console.log("Upserting product with embedding…");
-await embedAndUpsert([product], { model });
+await embedAndUpsert([product], { model, sourceType: "manual" });
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
