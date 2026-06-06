@@ -1,0 +1,86 @@
+{
+  "products": [
+    {
+      "source": "scraper:cos",
+      "externalId": "cos-merino-rollneck-1029384",
+      "sku": "1029384-002",
+      "brand": "COS",
+      "title": "Pure Merino Wool Rollneck Sweater",
+      "description": "Slim-fit rollneck knitted from fine 100% merino wool with a soft hand-feel and ribbed collar, cuffs and hem. Mid-weight, breathable and ideal for layering under a coat or wearing on its own. Falls just below the waist.",
+      "category": "Knitwear",
+      "gender": "men",
+      "color": "Charcoal Grey",
+      "colorHex": "#3A3B3C",
+      "price": 89.0,
+      "currency": "EUR",
+      "priceEur": 89.0,
+      "market": "EU",
+      "imageUrl": "https://images.cos.com/assets/008/merino-rollneck-charcoal-front.jpg",
+      "deeplink": "https://www.cos.com/en_eur/men/knitwear/product.merino-rollneck-charcoal.1029384002.html",
+      "inStock": true,
+      "attrs": {
+        "material": "100% Merino Wool",
+        "fit": "Slim",
+        "sizes": ["XS", "S", "M", "L", "XL"],
+        "care": "Hand wash cold",
+        "season": "AW",
+        "sourceUrl": "https://www.cos.com/en_eur/men/knitwear/product.merino-rollneck-charcoal.1029384002.html",
+        "scrapedAt": "2026-06-06T08:30:00Z"
+      }
+    },
+    {
+      "source": "scraper:uniqlo",
+      "externalId": "uniqlo-smart-ankle-pants-457821",
+      "sku": "457821-09",
+      "brand": "Uniqlo",
+      "title": "Smart Ankle Trousers (2-Way Stretch)",
+      "description": "Tailored-look ankle-length trousers in a 2-way stretch fabric that moves with you. Clean, slightly tapered leg with a flat front, suitable for the office or smart-casual wear. Wrinkle-resistant and machine washable.",
+      "category": "Trousers",
+      "gender": "men",
+      "color": "Navy",
+      "colorHex": "#1F2A44",
+      "price": 39.9,
+      "currency": "EUR",
+      "priceEur": 39.9,
+      "market": "EU",
+      "imageUrl": "https://image.uniqlo.com/UQ/ST3/eu/imagesgoods/457821/item/eugoods_69_457821.jpg",
+      "deeplink": "https://www.uniqlo.com/eu/en/products/E457821-000/00",
+      "inStock": true,
+      "attrs": {
+        "material": "68% Polyester, 30% Rayon, 2% Spandex",
+        "fit": "Slim tapered",
+        "inseam_cm": 68,
+        "sizes": ["28", "30", "31", "32", "34", "36"],
+        "care": "Machine washable",
+        "sourceUrl": "https://www.uniqlo.com/eu/en/products/E457821-000/00",
+        "scrapedAt": "2026-06-06T08:31:00Z"
+      }
+    },
+    {
+      "source": "scraper:acnestudios",
+      "externalId": "acne-canada-narrow-scarf-CA0098",
+      "sku": "CA0098-AX5",
+      "brand": "Acne Studios",
+      "title": "Canada Narrow Wool Fringe Scarf",
+      "description": "Lightweight wool scarf with a brushed, melange finish and signature fringed ends. A narrow, versatile shape that wraps easily and adds warmth and texture to coats and knitwear. Unisex.",
+      "category": "Accessories",
+      "gender": "unisex",
+      "color": "Oatmeal Melange",
+      "colorHex": "#C9BCA8",
+      "price": 120.0,
+      "currency": "EUR",
+      "priceEur": 120.0,
+      "market": "EU",
+      "imageUrl": "https://www.acnestudios.com/dw/image/v2/canada-narrow-scarf-oatmeal-CA0098.jpg",
+      "deeplink": "https://www.acnestudios.com/eu/en/canada-narrow-scarf-oatmeal-melange/CA0098-AX5.html",
+      "inStock": true,
+      "attrs": {
+        "material": "100% Wool",
+        "dimensions_cm": "180 x 25",
+        "fringe": true,
+        "sourceUrl": "https://www.acnestudios.com/eu/en/canada-narrow-scarf-oatmeal-melange/CA0098-AX5.html",
+        "scrapedAt": "2026-06-06T08:32:00Z"
+      }
+    }
+  ]
+}

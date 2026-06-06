@@ -20,9 +20,29 @@ const PAGE_H = 841.89;
 const MARGIN = 56;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 
-const INK = rgb(0.11, 0.1, 0.09);
-const STONE = rgb(0.42, 0.4, 0.36);
-const LINE = rgb(0.85, 0.82, 0.77);
+const INK = rgb(0.12, 0.11, 0.1);
+const STONE = rgb(0.43, 0.41, 0.37);
+const LINE = rgb(0.83, 0.79, 0.72);
+const CREAM = rgb(0.98, 0.969, 0.94);
+const SAND = rgb(0.93, 0.915, 0.875);
+const BRASS = rgb(0.62, 0.47, 0.26);
+const WHITE = rgb(1, 1, 1);
+const FOG = rgb(0.88, 0.86, 0.82);
+
+/**
+ * pdf-lib's StandardFonts use WinAnsi (Latin-1) and cannot render Latin-Extended
+ * letters such as "č" (CZK "Kč") or "ł" (PLN "zł"). Transliterate the common
+ * Central-European letters to ASCII so prices and names render cleanly instead
+ * of turning into "?".
+ */
+const EXT_LATIN: Record<string, string> = {
+  č: "c", Č: "C", š: "s", Š: "S", ž: "z", Ž: "Z", ř: "r", Ř: "R",
+  ě: "e", Ě: "E", ů: "u", Ů: "U", ť: "t", Ť: "T", ď: "d", Ď: "D",
+  ň: "n", Ň: "N", ł: "l", Ł: "L", ą: "a", Ą: "A", ę: "e", Ę: "E",
+  ń: "n", Ń: "N", ś: "s", Ś: "S", ż: "z", Ż: "Z", ź: "z", Ź: "Z",
+  ć: "c", Ć: "C",
+};
+const EXT_LATIN_RE = new RegExp(`[${Object.keys(EXT_LATIN).join("")}]`, "g");
 
 function hexToRgb(hex: string) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
@@ -49,9 +69,8 @@ async function loadBytes(src: string): Promise<Uint8Array | null> {
 
 /**
  * Embed an image from a public path or remote URL, cover-cropped to the target
- * box aspect (w:h, in points) and re-encoded to JPEG. Cropping is required
- * because pdf-lib cannot clip overflow, and JPEG keeps the PDF small (full-res
- * assets would otherwise bloat the file to tens of megabytes).
+ * box aspect (w:h) and re-encoded to JPEG. Cropping is required because pdf-lib
+ * cannot clip overflow, and JPEG keeps the PDF small.
  */
 async function embedImage(
   doc: PDFDocument,
@@ -71,7 +90,7 @@ async function embedImage(
         fit: "cover",
         position: box.position ?? "centre",
       })
-      .jpeg({ quality: 74 })
+      .jpeg({ quality: 78 })
       .toBuffer();
     return await doc.embedJpg(jpeg);
   } catch {
@@ -85,35 +104,152 @@ async function embedImage(
   }
 }
 
-/** Minimal top-down layout engine over one or more A4 pages. */
+type GalleryItem = {
+  img: PDFImage | null;
+  title: string;
+  sub?: string;
+  meta?: string;
+  label?: string;
+};
+
+/** Editorial, magazine-style layout engine over one or more A4 pages. */
 class Doc {
   doc!: PDFDocument;
   page!: PDFPage;
   y = 0;
+  pageNo = 1;
+  section = "";
   reg!: PDFFont;
   bold!: PDFFont;
   serif!: PDFFont;
+  serifBold!: PDFFont;
+  serifItalic!: PDFFont;
 
   static async create() {
     const d = new Doc();
     d.doc = await PDFDocument.create();
     d.reg = await d.doc.embedFont(StandardFonts.Helvetica);
     d.bold = await d.doc.embedFont(StandardFonts.HelveticaBold);
-    d.serif = await d.doc.embedFont(StandardFonts.TimesRomanBold);
-    d.newPage();
+    d.serif = await d.doc.embedFont(StandardFonts.TimesRoman);
+    d.serifBold = await d.doc.embedFont(StandardFonts.TimesRomanBold);
+    d.serifItalic = await d.doc.embedFont(StandardFonts.TimesRomanItalic);
     return d;
+  }
+
+  // StandardFonts use WinAnsi — transliterate / strip characters pdf-lib can't encode.
+  sanitize(str: string) {
+    return str
+      .replace(/[\u2192\u2794\u279C]/g, "->")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/[\u2026]/g, "...")
+      .replace(EXT_LATIN_RE, (ch) => EXT_LATIN[ch] ?? ch)
+      .replace(/[^\n\r\t\x20-\xFF]/g, "?");
   }
 
   newPage() {
     this.page = this.doc.addPage([PAGE_W, PAGE_H]);
-    this.y = PAGE_H - MARGIN;
+    this.page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: CREAM });
+    this.drawFooter();
+    this.pageNo++;
+    this.y = PAGE_H - MARGIN - 4;
+  }
+
+  private drawFooter() {
+    const fy = 38;
+    this.page.drawLine({
+      start: { x: MARGIN, y: fy + 13 },
+      end: { x: PAGE_W - MARGIN, y: fy + 13 },
+      thickness: 0.5,
+      color: LINE,
+    });
+    this.drawTracked("VALETTI", MARGIN, fy, 7.5, this.bold, STONE, 2.2);
+    if (this.section) {
+      const label = this.section.toUpperCase();
+      const w = this.widthTracked(label, this.reg, 7.5, 2);
+      this.drawTracked(label, (PAGE_W - w) / 2, fy, 7.5, this.reg, STONE, 2);
+    }
+    const num = String(this.pageNo).padStart(2, "0");
+    const nw = this.widthTracked(num, this.bold, 7.5, 2.2);
+    this.drawTracked(num, PAGE_W - MARGIN - nw, fy, 7.5, this.bold, BRASS, 2.2);
   }
 
   ensure(space: number) {
-    if (this.y - space < MARGIN) this.newPage();
+    if (this.y - space < MARGIN + 8) this.newPage();
   }
 
-  /** Word-wrap text and draw it; returns the height consumed. */
+  /* ----------------------------- text helpers ----------------------------- */
+
+  widthTracked(str: string, font: PDFFont, size: number, tracking: number) {
+    const s = this.sanitize(str);
+    let w = 0;
+    for (const ch of s) w += font.widthOfTextAtSize(ch, size) + tracking;
+    return w - (s.length ? tracking : 0);
+  }
+
+  /** Draw one line with manual letter-spacing at an absolute position. */
+  drawTracked(
+    str: string,
+    x: number,
+    y: number,
+    size: number,
+    font: PDFFont,
+    color: ReturnType<typeof rgb>,
+    tracking: number,
+  ) {
+    let cx = x;
+    for (const ch of this.sanitize(str)) {
+      this.page.drawText(ch, { x: cx, y, size, font, color });
+      cx += font.widthOfTextAtSize(ch, size) + tracking;
+    }
+  }
+
+  /** A tracked line in the normal flow (used for eyebrows / small caps). */
+  flowTracked(
+    str: string,
+    opts: {
+      size: number;
+      font: PDFFont;
+      color: ReturnType<typeof rgb>;
+      tracking: number;
+      lineGap?: number;
+      x?: number;
+    },
+  ) {
+    const lineGap = opts.lineGap ?? 4;
+    this.ensure(opts.size + lineGap);
+    this.drawTracked(
+      str,
+      opts.x ?? MARGIN,
+      this.y - opts.size,
+      opts.size,
+      opts.font,
+      opts.color,
+      opts.tracking,
+    );
+    this.y -= opts.size + lineGap;
+  }
+
+  wrapLines(str: string, font: PDFFont, size: number, width: number): string[] {
+    const out: string[] = [];
+    for (const para of this.sanitize(str).split("\n")) {
+      const words = para.split(/\s+/).filter(Boolean);
+      let line = "";
+      for (const w of words) {
+        const trial = line ? `${line} ${w}` : w;
+        if (font.widthOfTextAtSize(trial, size) > width && line) {
+          out.push(line);
+          line = w;
+        } else line = trial;
+      }
+      if (line) out.push(line);
+      if (!words.length) out.push("");
+    }
+    return out;
+  }
+
+  /** Word-wrap text and draw it top-down. */
   text(
     str: string,
     opts: {
@@ -131,32 +267,10 @@ class Doc {
     const x = opts.x ?? MARGIN;
     const width = opts.width ?? CONTENT_W;
     const lh = size + (opts.lineGap ?? 4);
-
-    // StandardFonts use WinAnsi — strip characters pdf-lib cannot encode.
-    str = str
-      .replace(/[\u2192\u2794\u279C]/g, "->")
-      .replace(/[\u2018\u2019]/g, "'")
-      .replace(/[\u201C\u201D]/g, '"')
-      .replace(/[\u2013\u2014]/g, "-")
-      .replace(/[\u2026]/g, "...")
-      .replace(/[^\n\r\t\x20-\xFF]/g, "?");
-
-    for (const paragraph of str.split("\n")) {
-      const words = paragraph.split(/\s+/).filter(Boolean);
-      let line = "";
-      const flush = () => {
-        this.ensure(lh);
-        this.page.drawText(line, { x, y: this.y, size, font, color });
-        this.y -= lh;
-        line = "";
-      };
-      for (const w of words) {
-        const trial = line ? `${line} ${w}` : w;
-        if (font.widthOfTextAtSize(trial, size) > width && line) flush();
-        else line = trial;
-      }
-      if (line) flush();
-      if (!words.length) this.y -= lh; // blank line
+    for (const ln of this.wrapLines(str, font, size, width)) {
+      this.ensure(lh);
+      this.page.drawText(ln, { x, y: this.y - size + 1, size, font, color });
+      this.y -= lh;
     }
   }
 
@@ -164,43 +278,130 @@ class Doc {
     this.y -= h;
   }
 
-  rule() {
+  rule(color = LINE, thickness = 0.75) {
     this.ensure(10);
     this.page.drawLine({
       start: { x: MARGIN, y: this.y },
       end: { x: PAGE_W - MARGIN, y: this.y },
-      thickness: 0.75,
-      color: LINE,
+      thickness,
+      color,
     });
     this.y -= 14;
   }
 
+  /** A chapter-opener section header. Every chapter starts on a fresh page. */
   heading(eyebrow: string, title: string) {
-    this.ensure(48);
-    this.gap(8);
-    this.text(eyebrow.toUpperCase(), {
-      size: 8,
+    // Set the running section first so the new page's footer shows this chapter.
+    this.section = title;
+    this.newPage();
+    this.gap(10);
+    this.flowTracked(eyebrow.toUpperCase(), {
+      size: 8.5,
       font: this.bold,
-      color: STONE,
-      lineGap: 3,
+      color: BRASS,
+      tracking: 3,
     });
-    this.gap(6);
-    this.text(title, { size: 18, font: this.serif, lineGap: 6 });
-    this.gap(2);
+    this.gap(8);
+    this.text(title, { size: 24, font: this.serifBold, lineGap: 7 });
+    this.gap(9);
+    this.rule();
   }
 
-  swatch(hex: string) {
-    const size = 9;
-    this.ensure(size);
+  /** A small-caps tracked subheading. */
+  subhead(str: string) {
+    this.gap(7);
+    this.flowTracked(str.toUpperCase(), {
+      size: 9,
+      font: this.bold,
+      color: INK,
+      tracking: 1.6,
+    });
+    this.gap(4);
+  }
+
+  bullet(str: string, color = STONE) {
+    const indent = 12;
+    const lh = 10.5 + 4;
+    const lines = this.wrapLines(str, this.reg, 10.5, CONTENT_W - indent);
+    lines.forEach((ln, i) => {
+      this.ensure(lh);
+      if (i === 0) {
+        this.page.drawCircle({
+          x: MARGIN + 2.5,
+          y: this.y - 4,
+          size: 1.5,
+          color: BRASS,
+        });
+      }
+      this.page.drawText(ln, {
+        x: MARGIN + indent,
+        y: this.y - 10.5 + 1,
+        size: 10.5,
+        font: this.reg,
+        color,
+      });
+      this.y -= lh;
+    });
+  }
+
+  /** A large italic pull-quote with a brass margin rule. */
+  quote(str: string) {
+    this.gap(4);
+    const size = 15;
+    const lineGap = 7;
+    const lines = this.wrapLines(str, this.serifItalic, size, CONTENT_W - 22);
+    this.ensure(lines.length * (size + lineGap) + 6);
+    const top = this.y;
+    const blockH = lines.length * (size + lineGap);
     this.page.drawRectangle({
       x: MARGIN,
-      y: this.y - size + 8,
+      y: top - blockH + 4,
+      width: 2.5,
+      height: blockH - 2,
+      color: BRASS,
+    });
+    let yy = top;
+    for (const ln of lines) {
+      this.page.drawText(ln, {
+        x: MARGIN + 18,
+        y: yy - size,
+        size,
+        font: this.serifItalic,
+        color: INK,
+      });
+      yy -= size + lineGap;
+    }
+    this.y = yy - 2;
+  }
+
+  swatch(hex: string, label: string) {
+    const size = 10;
+    const lh = 11 + 5;
+    const lines = this.wrapLines(label, this.reg, 10, CONTENT_W - 22);
+    this.ensure(Math.max(size, lines.length * lh));
+    const top = this.y;
+    this.page.drawRectangle({
+      x: MARGIN,
+      y: top - size - 1,
       width: size,
       height: size,
       color: hexToRgb(hex),
       borderColor: LINE,
       borderWidth: 0.5,
     });
+    let yy = top;
+    for (const ln of lines) {
+      this.page.drawText(ln, {
+        x: MARGIN + 20,
+        y: yy - 10 + 1,
+        size: 10,
+        font: this.reg,
+        color: INK,
+      });
+      yy -= lh;
+    }
+    this.y = Math.min(top - size - 1, yy);
+    this.gap(3);
   }
 
   /** Full-width banner image, pre-cropped to CONTENT_W x h. */
@@ -215,162 +416,235 @@ class Doc {
     this.y -= h + 12;
   }
 
-  /** A thumbnail to the left with title + supporting text to the right. */
-  imageRow(
-    img: PDFImage | null,
-    title: string,
-    sub: string,
-    opts: { meta?: string; thumbW?: number; thumbH?: number } = {},
-  ) {
-    const thumbW = opts.thumbW ?? 58;
-    const thumbH = opts.thumbH ?? 70;
-    const gap = 14;
-    this.ensure(thumbH + 8);
-    const topY = this.y;
+  /* ------------------------------ galleries ------------------------------- */
 
-    if (img) {
-      this.page.drawImage(img, {
-        x: MARGIN,
-        y: topY - thumbH,
-        width: thumbW,
-        height: thumbH,
-      });
-    } else {
-      this.page.drawRectangle({
-        x: MARGIN,
-        y: topY - thumbH,
-        width: thumbW,
-        height: thumbH,
-        color: rgb(0.95, 0.93, 0.89),
-      });
+  private captionHeight(it: GalleryItem, w: number) {
+    let h = 0;
+    h += this.wrapLines(it.title, this.bold, 9.5, w).length * (9.5 + 3);
+    if (it.sub) h += 2 + this.wrapLines(it.sub, this.reg, 8.5, w).length * (8.5 + 2.5);
+    if (it.meta) h += 2 + this.wrapLines(it.meta, this.serifItalic, 8, w).length * (8 + 2);
+    return h;
+  }
+
+  private drawCaption(it: GalleryItem, x: number, top: number, w: number) {
+    let yy = top;
+    for (const ln of this.wrapLines(it.title, this.bold, 9.5, w)) {
+      this.page.drawText(ln, { x, y: yy - 9.5, size: 9.5, font: this.bold, color: INK });
+      yy -= 9.5 + 3;
     }
-
-    const tx = MARGIN + thumbW + gap;
-    const tw = CONTENT_W - thumbW - gap;
-    // pdf-lib positions text from the baseline, so glyphs sit ~one ascent above
-    // this.y. Drop the cursor by the title ascent so the first line's top edge
-    // lines up with the top of the thumbnail instead of floating above it.
-    const titleSize = 11;
-    this.y = topY - titleSize * 0.72;
-    this.text(title, { x: tx, width: tw, size: titleSize, font: this.bold });
-    this.gap(1);
-    this.text(sub, { x: tx, width: tw, color: STONE });
-    if (opts.meta) {
-      this.gap(1);
-      this.text(opts.meta, { x: tx, width: tw, size: 8.5, color: STONE });
+    if (it.sub) {
+      yy -= 2;
+      for (const ln of this.wrapLines(it.sub, this.reg, 8.5, w)) {
+        this.page.drawText(ln, { x, y: yy - 8.5, size: 8.5, font: this.reg, color: STONE });
+        yy -= 8.5 + 2.5;
+      }
     }
+    if (it.meta) {
+      yy -= 2;
+      for (const ln of this.wrapLines(it.meta, this.serifItalic, 8, w)) {
+        this.page.drawText(ln, { x, y: yy - 8, size: 8, font: this.serifItalic, color: BRASS });
+        yy -= 8 + 2;
+      }
+    }
+  }
 
-    if (this.y > topY - thumbH - 8) this.y = topY - thumbH - 8;
+  /** A responsive image grid with captions — the magazine workhorse. */
+  gallery(items: GalleryItem[], opts: { cols?: number; ratio?: number } = {}) {
+    if (!items.length) return;
+    const cols = opts.cols ?? 2;
+    const ratio = opts.ratio ?? 1.25;
+    const colGap = 16;
+    const rowGap = 20;
+    const cardW = (CONTENT_W - colGap * (cols - 1)) / cols;
+    const imgH = cardW * ratio;
+
+    for (let i = 0; i < items.length; i += cols) {
+      const row = items.slice(i, i + cols);
+      const capH = Math.max(...row.map((it) => this.captionHeight(it, cardW)), 0);
+      this.ensure(imgH + capH + rowGap);
+      const topY = this.y;
+      row.forEach((it, j) => {
+        const x = MARGIN + j * (cardW + colGap);
+        const iy = topY - imgH;
+        if (it.img) {
+          this.page.drawImage(it.img, { x, y: iy, width: cardW, height: imgH });
+        } else {
+          this.page.drawRectangle({ x, y: iy, width: cardW, height: imgH, color: SAND });
+        }
+        this.page.drawRectangle({
+          x,
+          y: iy,
+          width: cardW,
+          height: imgH,
+          borderColor: LINE,
+          borderWidth: 0.5,
+        });
+        if (it.label) {
+          const lw = this.widthTracked(it.label, this.bold, 6.5, 1.4) + 12;
+          this.page.drawRectangle({
+            x,
+            y: topY - 16,
+            width: lw,
+            height: 16,
+            color: CREAM,
+          });
+          this.drawTracked(
+            it.label.toUpperCase(),
+            x + 6,
+            topY - 11,
+            6.5,
+            this.bold,
+            BRASS,
+            1.4,
+          );
+        }
+        this.drawCaption(it, x, iy - 8, cardW);
+      });
+      this.y = topY - imgH - 8 - capH - rowGap;
+    }
   }
 }
 
-/** Build a downloadable, multi-page PDF from a style report. */
+/** Build a downloadable, magazine-style PDF from a style report. */
 export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   const d = await Doc.create();
   const cur = report.profile.currency;
   const extras = buildExtras(report);
 
-  // Cover banner
-  const HERO_H = 188;
+  const portrait = (src?: string) =>
+    embedImage(d.doc, src, { w: 100, h: 125, px: 500, position: "top" });
+  const tall = (src?: string) =>
+    embedImage(d.doc, src, { w: 100, h: 140, px: 520, position: "top" });
+  const product = (src?: string) =>
+    embedImage(d.doc, src, { w: 100, h: 115, px: 380, position: "centre" });
+
+  /* -------------------------------- cover -------------------------------- */
+  const coverPage = d.doc.addPage([PAGE_W, PAGE_H]);
   const hero = await embedImage(d.doc, "/images/hero-editorial.png", {
-    w: CONTENT_W,
-    h: HERO_H,
-    px: 1100,
+    w: PAGE_W,
+    h: PAGE_H,
+    px: 1400,
     position: "top",
   });
   if (hero) {
-    d.banner(hero, HERO_H);
-    d.gap(2);
+    coverPage.drawImage(hero, { x: 0, y: 0, width: PAGE_W, height: PAGE_H });
+  } else {
+    coverPage.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: INK });
   }
-
-  // Cover / header
-  d.text("VALETTI · AI-ASSISTED PERSONAL STYLING", {
-    size: 9,
-    font: d.bold,
-    color: STONE,
-    lineGap: 4,
+  // Legibility scrims top & bottom.
+  coverPage.drawRectangle({
+    x: 0,
+    y: PAGE_H - 150,
+    width: PAGE_W,
+    height: 150,
+    color: INK,
+    opacity: 0.32,
   });
-  d.gap(6);
-  d.text(report.headline, { size: 26, font: d.serif, lineGap: 8 });
-  d.gap(2);
+  coverPage.drawRectangle({
+    x: 0,
+    y: 0,
+    width: PAGE_W,
+    height: 320,
+    color: INK,
+    opacity: 0.55,
+  });
+
+  // Masthead.
+  d.page = coverPage;
+  const mast = "VALETTI";
+  const mastW = d.widthTracked(mast, d.serif, 34, 12);
+  d.drawTracked(mast, (PAGE_W - mastW) / 2, PAGE_H - 92, 34, d.serif, WHITE, 12);
+  const tagline = "THE PERSONAL STYLE EDIT";
+  const tagW = d.widthTracked(tagline, d.reg, 8.5, 4.5);
+  d.drawTracked(tagline, (PAGE_W - tagW) / 2, PAGE_H - 116, 8.5, d.reg, FOG, 4.5);
+
+  // Headline + meta in the lower band.
+  const issueW = d.widthTracked("THE STYLE REPORT", d.bold, 8, 3);
+  d.drawTracked("THE STYLE REPORT", MARGIN, 224, 8, d.bold, BRASS, 3);
+  void issueW;
+  const headLines = d.wrapLines(report.headline, d.serifBold, 31, CONTENT_W);
+  let hy = 206;
+  for (const ln of headLines) {
+    coverPage.drawText(ln, { x: MARGIN, y: hy - 31, size: 31, font: d.serifBold, color: WHITE });
+    hy -= 36;
+  }
   const when = new Date(report.createdAt).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric",
   });
-  d.text(
-    `${report.tier.charAt(0).toUpperCase() + report.tier.slice(1)} report · ` +
-      `${report.profile.demographics.city}, ${report.profile.demographics.country} · ${when}`,
-    { size: 9.5, color: STONE },
+  const tierName = report.tier.charAt(0).toUpperCase() + report.tier.slice(1);
+  d.drawTracked(
+    `${tierName.toUpperCase()} EDITION`,
+    MARGIN,
+    hy - 6,
+    8.5,
+    d.bold,
+    FOG,
+    2.6,
   );
-  d.gap(2);
-  d.text("Prepared by Carlo Valetti · Lead stylist, Valetti", {
+  coverPage.drawText(
+    `${report.profile.demographics.city}, ${report.profile.demographics.country}  ·  ${when}`,
+    { x: MARGIN, y: hy - 26, size: 9.5, font: d.reg, color: FOG },
+  );
+  coverPage.drawText("Prepared by Carlo Valetti  ·  Lead stylist, Valetti", {
+    x: MARGIN,
+    y: hy - 42,
     size: 9.5,
-    color: STONE,
+    font: d.serifItalic,
+    color: FOG,
+  });
+
+  /* ----------------------------- opening page ---------------------------- */
+  d.newPage();
+  d.flowTracked("EDITOR'S NOTE", {
+    size: 8.5,
+    font: d.bold,
+    color: BRASS,
+    tracking: 3,
   });
   d.gap(8);
-  d.text(report.summary, { size: 11, color: STONE, lineGap: 5 });
-  d.gap(6);
-  d.text(`Style archetype: ${extras.archetype.name}`, {
-    size: 11,
+  d.quote(report.summary);
+  d.gap(10);
+  d.flowTracked(`STYLE ARCHETYPE · ${extras.archetype.name.toUpperCase()}`, {
+    size: 9,
     font: d.bold,
+    color: INK,
+    tracking: 1.6,
   });
-  d.text(extras.archetype.line, { size: 10, color: STONE });
-  d.gap(6);
+  d.gap(4);
+  d.text(extras.archetype.line, { color: STONE, lineGap: 5 });
+  d.gap(12);
   d.rule();
-
-  // Start here — 3 highest-impact moves
-  d.heading("Start here", "Your three highest-impact moves");
+  d.subhead("Start here — your three highest-impact moves");
   for (const mv of extras.priorityMoves) {
-    d.text(`${mv.n}  ${mv.title}`, { size: 11, font: d.bold });
-    d.gap(1);
-    d.text(mv.why, { color: STONE });
-    d.gap(4);
+    d.text(`${mv.n}.  ${mv.title}`, { size: 11.5, font: d.bold });
+    d.gap(2);
+    d.text(mv.why, { color: STONE, lineGap: 4 });
+    d.gap(7);
   }
 
-  // Colours
-  d.heading("01", "Your colours");
-  d.text("Colours that work for you", { size: 11, font: d.bold });
-  d.gap(2);
-  for (const c of report.colors.best) {
-    d.swatch(c.hex);
-    d.text(`${c.name} — ${c.why}`, { x: MARGIN + 16, width: CONTENT_W - 16 });
-    d.gap(2);
-  }
+  /* ------------------------------- colours ------------------------------- */
+  d.heading("Chapter 01", "Your colours");
+  d.subhead("Colours that work for you");
+  for (const c of report.colors.best) d.swatch(c.hex, `${c.name} — ${c.why}`);
   d.gap(6);
-  d.text("Colours to avoid", { size: 11, font: d.bold });
-  d.gap(2);
-  for (const c of report.colors.avoid) {
-    d.swatch(c.hex);
-    d.text(`${c.name} — ${c.why}`, { x: MARGIN + 16, width: CONTENT_W - 16 });
-    d.gap(2);
-  }
+  d.subhead("Colours to avoid");
+  for (const c of report.colors.avoid) d.swatch(c.hex, `${c.name} — ${c.why}`);
   d.gap(6);
-  d.text("How to combine them", { size: 11, font: d.bold });
-  d.gap(2);
+  d.subhead("How to combine them");
   if (extras.pairings.hero)
     d.text(`Hero colour near the face: ${extras.pairings.hero.name}.`, {
       color: STONE,
     });
-  for (const combo of extras.pairings.combos) {
-    d.text(`•  ${combo.name} — ${combo.why}`, { color: STONE });
-    d.gap(1);
-  }
-  d.gap(6);
-  d.text("Metals & hardware", { size: 11, font: d.bold });
   d.gap(2);
-  for (const mt of extras.metals.recommend) {
-    d.swatch(mt.hex);
-    d.text(`${mt.name} — ${mt.why}`, { x: MARGIN + 16, width: CONTENT_W - 16 });
-    d.gap(2);
-  }
+  for (const combo of extras.pairings.combos) d.bullet(`${combo.name} — ${combo.why}`);
+  d.gap(6);
+  d.subhead("Metals & hardware");
+  for (const mt of extras.metals.recommend) d.swatch(mt.hex, `${mt.name} — ${mt.why}`);
   d.text(extras.metals.avoidNote, { size: 9, color: STONE });
   d.gap(6);
-  d.text(`Your colour DNA — ${extras.colorDNA.subseason}`, {
-    size: 11,
-    font: d.bold,
-  });
-  d.gap(2);
+  d.subhead(`Your colour DNA — ${extras.colorDNA.subseason}`);
   d.text(`Neutrals: ${extras.colorDNA.neutrals.map((c) => c.name).join(", ")}`, {
     color: STONE,
   });
@@ -380,99 +654,120 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   d.text(`Instead of black: ${extras.colorDNA.blackAlt}`, { color: STONE });
   d.text(`Contrast: ${extras.colorDNA.contrastRule}`, { color: STONE });
 
-  // Hair, beard & eyewear
-  d.heading("02", "Hair, beard & eyewear");
+  /* -------------------------- hair, beard, eyewear ----------------------- */
+  d.heading("Chapter 02", "Hair, beard & eyewear");
+
+  const recItems: GalleryItem[] = [];
   for (const h of report.hair.recommend) {
-    const img = await embedImage(d.doc, h.image, { w: 58, h: 70 });
-    d.imageRow(img, `Recommended — ${h.name}`, h.why);
-    d.gap(5);
+    recItems.push({
+      img: await portrait(h.image),
+      title: h.name,
+      sub: h.why,
+      label: "Recommended",
+    });
     if (h.imageSide) {
-      const sideImg = await embedImage(d.doc, h.imageSide, { w: 58, h: 70 });
-      d.imageRow(sideImg, `${h.name} — side view`, "Three-quarter angle showing cut shape.");
-      d.gap(5);
+      recItems.push({
+        img: await portrait(h.imageSide),
+        title: `${h.name} — side view`,
+        sub: "Three-quarter angle showing the cut shape.",
+        label: "Side",
+      });
     }
   }
+  if (recItems.length) {
+    d.subhead("Hairstyles for your face");
+    d.gallery(recItems, { cols: 2, ratio: 1.25 });
+  }
+
+  const avoidItems: GalleryItem[] = [];
   for (const h of report.hair.avoid) {
-    const img = await embedImage(d.doc, h.image, { w: 58, h: 70 });
-    d.imageRow(img, `Avoid — ${h.name}`, h.why);
-    d.gap(5);
+    avoidItems.push({
+      img: await portrait(h.image),
+      title: h.name,
+      sub: h.why,
+      label: "Best avoided",
+    });
   }
-  d.gap(2);
-  d.text("Beard, skin & grooming", { size: 11, font: d.bold });
-  d.gap(2);
+  if (avoidItems.length) {
+    d.subhead("Best avoided");
+    d.gallery(avoidItems, { cols: 2, ratio: 1.25 });
+  }
+
+  d.subhead("Beard, skin & grooming");
   for (const g of extras.grooming) {
-    d.text(`${g.title} — ${g.detail}`, { color: STONE });
-    d.gap(1);
+    d.text(g.title, { size: 9.5, font: d.bold });
+    d.text(g.detail, { color: STONE });
+    d.gap(3);
   }
-  d.gap(4);
-  d.text("Eyewear for your face", { size: 11, font: d.bold });
-  d.gap(3);
+
   if (report.facialHair?.length) {
-    d.text("Recommended facial hair", { size: 11, font: d.bold });
-    d.gap(3);
+    d.subhead("Recommended facial hair");
+    const items: GalleryItem[] = [];
     for (const item of report.facialHair) {
-      const img = await embedImage(d.doc, item.image, { w: 58, h: 70 });
-      d.imageRow(img, item.name, item.why);
-      d.gap(4);
+      items.push({ img: await portrait(item.image), title: item.name, sub: item.why });
     }
-    d.gap(2);
+    d.gallery(items, { cols: 2, ratio: 1.25 });
   }
+
+  d.subhead("Eyewear for your face");
   if (report.eyewear?.length) {
-    d.text("Recommended glasses", { size: 11, font: d.bold });
-    d.gap(3);
+    const items: GalleryItem[] = [];
     for (const item of report.eyewear) {
-      const img = await embedImage(d.doc, item.image, { w: 58, h: 70 });
-      const kindLabel =
-        item.kind === "sun"
-          ? "Sunglasses"
-          : item.kind === "optical"
-            ? "Optical"
-            : "Glasses";
-      d.imageRow(img, `${kindLabel} — ${item.name}`, item.why);
-      d.gap(4);
+      const kind =
+        item.kind === "sun" ? "Sunglasses" : item.kind === "optical" ? "Optical" : "Glasses";
+      items.push({
+        img: await portrait(item.image),
+        title: item.name,
+        sub: item.why,
+        label: kind,
+      });
     }
-    d.gap(2);
+    d.gallery(items, { cols: 2, ratio: 1.25 });
   } else {
+    const items: GalleryItem[] = [];
     for (const f of extras.eyewear.recommend) {
-      const img = await embedImage(
-        d.doc,
-        `/images/eyewear/eyewear-${f.shape}.png`,
-        { w: 70, h: 52 },
-      );
-      d.imageRow(img, f.name, f.why, { thumbW: 70, thumbH: 52 });
-      d.gap(4);
+      items.push({
+        img: await embedImage(d.doc, `/images/eyewear/eyewear-${f.shape}.png`, {
+          w: 100,
+          h: 72,
+          px: 420,
+          position: "centre",
+        }),
+        title: f.name,
+        sub: f.why,
+      });
     }
+    d.gallery(items, { cols: 2, ratio: 0.72 });
   }
-  d.text(`Avoid: ${extras.eyewear.avoid.join(" · ")}`, {
-    size: 9,
-    color: STONE,
-  });
+  d.gap(2);
+  d.text(`Avoid: ${extras.eyewear.avoid.join("  ·  ")}`, { size: 9, color: STONE });
 
   if (report.accessories?.length) {
-    d.gap(6);
-    d.text("Accessory styling", { size: 11, font: d.bold });
-    d.gap(3);
+    d.subhead("Accessory styling");
+    const items: GalleryItem[] = [];
     for (const item of report.accessories) {
-      const img = await embedImage(d.doc, item.image, { w: 58, h: 70 });
-      d.imageRow(img, item.name, item.why);
-      d.gap(4);
+      items.push({ img: await portrait(item.image), title: item.name, sub: item.why });
     }
+    d.gallery(items, { cols: 2, ratio: 1.25 });
   }
 
-  // Silhouette & fit
-  d.heading("03", "Silhouette & fit");
+  /* ---------------------------- silhouette & fit ------------------------- */
+  d.heading("Chapter 03", "Silhouette & fit");
   const bt = report.profile.physical.bodyType;
   const btLabel = isBodyType(bt) ? BODY_TYPE_LABELS[bt] : bt;
-  d.text(`Body type: ${btLabel}`, { size: 11, font: d.bold });
-  d.text(report.silhouette.fit, { size: 12, font: d.serif, lineGap: 5 });
-  d.gap(2);
-  for (const r of report.silhouette.rules) {
-    d.text(`•  ${r}`, { color: STONE });
-    d.gap(1);
-  }
+  d.flowTracked(`BODY TYPE · ${String(btLabel).toUpperCase()}`, {
+    size: 8.5,
+    font: d.bold,
+    color: BRASS,
+    tracking: 2,
+  });
+  d.gap(4);
+  d.text(report.silhouette.fit, { size: 13, font: d.serifItalic, lineGap: 6 });
+  d.gap(4);
+  for (const r of report.silhouette.rules) d.bullet(r);
   const m = report.profile.physical.measurements;
   if (m && Object.values(m).some((v) => v != null)) {
-    d.gap(4);
+    d.gap(5);
     const parts = [
       m.shoulderCm && `Shoulders ${m.shoulderCm} cm`,
       m.chestCm && `Chest ${m.chestCm} cm`,
@@ -480,128 +775,179 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       m.hipCm && `Hips ${m.hipCm} cm`,
       m.sleeveCm && `Sleeve ${m.sleeveCm} cm`,
     ].filter(Boolean);
-    d.text("Measurements", { size: 9, font: d.bold, color: STONE });
-    d.text(parts.join("  ·  "), { color: STONE });
+    d.subhead("Measurements");
+    d.text(parts.join("   ·   "), { color: STONE });
   }
   d.gap(6);
-  d.text("Fit blueprint — what to tell your tailor", {
-    size: 11,
-    font: d.bold,
-  });
-  d.gap(2);
+  d.subhead("Fit blueprint — what to tell your tailor");
   for (const s of extras.fitBlueprint) {
     d.text(`${s.part}: ${s.spec}`, { font: d.bold, size: 9.5 });
     d.text(s.why, { x: MARGIN + 12, width: CONTENT_W - 12, color: STONE });
-    d.gap(2);
+    d.gap(3);
   }
 
-  // Looks
-  d.heading("04", "Your looks");
-  for (const l of report.looks) {
-    const img = await embedImage(d.doc, l.image, {
-      w: 58,
-      h: 70,
-      position: "top",
-    });
-    const lookIdx = report.looks.indexOf(l);
+  /* -------------------------------- looks -------------------------------- */
+  d.heading("Chapter 04", "Your looks");
+  const lookItems: GalleryItem[] = [];
+  for (let i = 0; i < report.looks.length; i++) {
+    const l = report.looks[i]!;
     const shopItems =
-      (lookIdx >= 0 && report.lookItems?.[lookIdx]?.length
-        ? report.lookItems[lookIdx]
+      (report.lookItems?.[i]?.length
+        ? report.lookItems[i]
         : itemsForLook(l, report.shopping)) ?? [];
     const shop = shopItems.map((it) => it.title).join(", ");
-    d.imageRow(img, `${l.context} — ${l.title}`, l.description, {
+    lookItems.push({
+      img: await tall(l.image),
+      title: `${l.context} — ${l.title}`,
+      sub: l.description,
       meta: shop ? `Shop a look like this: ${shop}` : undefined,
+      label: l.context,
     });
-    d.gap(5);
   }
+  d.gallery(lookItems, { cols: 2, ratio: 1.4 });
 
-  // Capsule & buying plan
-  d.heading("05", "Capsule & buying plan");
+  /* -------------------------- capsule & buying plan ---------------------- */
+  d.heading("Chapter 05", "Capsule & buying plan");
   d.text(
     `${extras.capsule.pieces} core pieces unlock roughly ${extras.capsule.outfits} outfits with what you already own. Buy them in three phases:`,
-    { color: STONE },
+    { color: STONE, lineGap: 5 },
   );
-  d.gap(4);
+  d.gap(5);
   const phase = (label: string, items: typeof extras.capsule.now) => {
     if (!items.length) return;
-    d.text(label, { size: 11, font: d.bold });
-    for (const i of items)
-      d.text(`•  ${i.title}  —  ${formatMoney(i.priceEur, cur)}`, {
-        color: STONE,
-      });
+    d.subhead(label);
+    for (const i of items) d.bullet(`${i.title}  —  ${formatMoney(i.priceEur, cur)}`);
     d.gap(3);
   };
   phase("Buy now", extras.capsule.now);
   phase("Next", extras.capsule.next);
   phase("Later", extras.capsule.later);
+  d.gap(2);
+  d.subhead("Outfit matrix — mix & match");
+  for (const c of extras.matrix) d.bullet(`${c.context}: ${c.pieces.join(" + ")}`);
   d.gap(4);
-  d.text("Outfit matrix — mix & match", { size: 11, font: d.bold });
-  for (const c of extras.matrix) {
-    d.text(`•  ${c.context}: ${c.pieces.join(" + ")}`, { color: STONE });
-    d.gap(1);
-  }
-  d.gap(4);
-  d.text("Good / Better / Best — where to spend", { size: 11, font: d.bold });
+  d.subhead("Good / Better / Best — where to spend");
   for (const t of extras.priceTiers) {
+    d.text(`${t.category}`, { size: 9.5, font: d.bold });
     d.text(
-      `${t.category}: ${formatMoney(t.good, cur)} / ${formatMoney(t.better, cur)} / ${formatMoney(t.best, cur)} — ${t.note}`,
+      `${formatMoney(t.good, cur)} / ${formatMoney(t.better, cur)} / ${formatMoney(t.best, cur)} — ${t.note}`,
       { color: STONE },
     );
-    d.gap(1);
+    d.gap(3);
   }
 
-  // Shopping list
-  d.heading("06", "Your shopping list");
+  /* ----------------------------- shopping list --------------------------- */
+  d.heading("Chapter 06", "Your shopping list");
+  const shopGallery: GalleryItem[] = [];
   for (const item of report.shopping) {
-    const img = await embedImage(d.doc, item.image, { w: 58, h: 70 });
-    d.imageRow(
-      img,
-      `${item.title}  —  ${formatMoney(item.priceEur, cur)}  [${investmentLevel(item)}]`,
-      item.why,
-      { meta: `${item.retailer}${item.url && item.url !== "#" ? `  ·  ${item.url}` : ""}` },
-    );
-    d.gap(5);
+    shopGallery.push({
+      img: await product(item.image),
+      title: item.title,
+      sub: item.why,
+      meta: `${item.retailer}  ·  ${formatMoney(item.priceEur, cur)} · ${investmentLevel(item)}`,
+    });
   }
+  d.gallery(shopGallery, { cols: 3, ratio: 1.15 });
 
-  // Patterns & finishing details
-  d.heading("07", "Patterns & finishing details");
-  d.text("Fabrics & texture", { size: 11, font: d.bold });
-  d.gap(2);
+  /* ------------------------ patterns & finishing ------------------------- */
+  d.heading("Chapter 07", "Patterns & finishing details");
+  d.subhead("Fabrics & texture");
   for (const f of extras.fabrics) {
-    d.text(`${f.name} — ${f.why}`, { color: STONE });
-    d.gap(1);
+    d.text(f.name, { size: 9.5, font: d.bold });
+    d.text(f.why, { color: STONE });
+    d.gap(3);
   }
-  d.gap(4);
-  d.text("Patterns", { size: 11, font: d.bold });
+  d.gap(2);
+  d.subhead("Patterns");
   d.text("Solid · Fine stripe · Gingham check · Tartan", { color: STONE });
   d.gap(4);
-  d.text("Accessories", { size: 11, font: d.bold });
+  d.subhead("Accessories");
   d.text(
     "Field watch (cream dial) · Leather belt matched to shoes · Warm tortoiseshell sunglasses · One minimal chain",
-    { color: STONE },
+    { color: STONE, lineGap: 5 },
   );
   d.gap(4);
-  d.text("Shoe guide", { size: 11, font: d.bold });
+  d.subhead("Shoe guide");
   d.text("Cream sneakers · Suede chelsea boots · Derby shoes", { color: STONE });
 
-  // How to wear, care & scent
-  d.heading("08", "How to wear it, and make it last");
-  d.text("How to wear it", { size: 11, font: d.bold });
-  for (const s of extras.styling) d.text(`•  ${s}`, { color: STONE });
+  /* ----------------------- how to wear, care & scent --------------------- */
+  d.heading("Chapter 08", "How to wear it, and make it last");
+  d.subhead("How to wear it");
+  for (const s of extras.styling) d.bullet(s);
   d.gap(4);
-  d.text("Care & longevity", { size: 11, font: d.bold });
-  for (const s of extras.care) d.text(`•  ${s}`, { color: STONE });
+  d.subhead("Care & longevity");
+  for (const s of extras.care) d.bullet(s);
   d.gap(4);
-  d.text("Signature scent", { size: 11, font: d.bold });
-  d.text(extras.fragrance, { color: STONE });
+  d.subhead("Signature scent");
+  d.text(extras.fragrance, { color: STONE, lineGap: 5 });
 
-  // Do & don't
-  d.heading("09", "Do & don't");
-  d.text("Do", { size: 11, font: d.bold });
-  for (const x of report.doList) d.text(`•  ${x}`, { color: STONE });
+  /* ------------------------------ do & don't ----------------------------- */
+  d.heading("Chapter 09", "Do & don't");
+  d.subhead("Do");
+  for (const x of report.doList) d.bullet(x);
   d.gap(6);
-  d.text("Avoid", { size: 11, font: d.bold });
-  for (const x of report.dontList) d.text(`×  ${x}`, { color: STONE });
+  d.subhead("Avoid");
+  for (const x of report.dontList) {
+    const lh = 10.5 + 4;
+    const lines = d.wrapLines(x, d.reg, 10.5, CONTENT_W - 12);
+    lines.forEach((ln, i) => {
+      d.ensure(lh);
+      if (i === 0) {
+        d.drawTracked("x", MARGIN + 1, d.y - 10.5 + 1, 9, d.bold, BRASS, 0);
+      }
+      d.page.drawText(ln, { x: MARGIN + 12, y: d.y - 10.5 + 1, size: 10.5, font: d.reg, color: STONE });
+      d.y -= lh;
+    });
+  }
+
+  /* ------------------------------- sign-off ------------------------------ */
+  const sigBytes = await loadBytes("/images/signature-carlo-valetti.png");
+  let sigPng: PDFImage | null = null;
+  try {
+    if (sigBytes) sigPng = await d.doc.embedPng(sigBytes);
+  } catch {
+    sigPng = null;
+  }
+  const sigW = 190;
+  const sigH = sigPng ? sigW * (sigPng.height / sigPng.width) : 0;
+  const rightEdge = PAGE_W - MARGIN;
+  d.ensure(40 + sigH + 40);
+  d.gap(22);
+  d.rule();
+  d.gap(4);
+  // Closing line, right-aligned above the signature.
+  const closing = d.sanitize("With care for the details,");
+  const cw = d.serifItalic.widthOfTextAtSize(closing, 12);
+  d.ensure(12 + 8);
+  d.page.drawText(closing, {
+    x: rightEdge - cw,
+    y: d.y - 12,
+    size: 12,
+    font: d.serifItalic,
+    color: STONE,
+  });
+  d.y -= 12 + 8;
+  if (sigPng) {
+    d.page.drawImage(sigPng, {
+      x: rightEdge - sigW,
+      y: d.y - sigH,
+      width: sigW,
+      height: sigH,
+    });
+    d.y -= sigH + 4;
+  }
+  d.page.drawLine({
+    start: { x: rightEdge - 150, y: d.y },
+    end: { x: rightEdge, y: d.y },
+    thickness: 0.75,
+    color: LINE,
+  });
+  d.gap(11);
+  const sigName = "CARLO VALETTI";
+  const nw = d.widthTracked(sigName, d.bold, 9, 2);
+  d.ensure(9 + 4);
+  d.drawTracked(sigName, rightEdge - nw, d.y - 9, 9, d.bold, INK, 2);
+  d.y -= 9 + 4;
 
   return d.doc.save();
 }

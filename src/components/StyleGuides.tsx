@@ -1,4 +1,5 @@
 import { ReportZoomImage } from "@/components/ReportZoomImage";
+import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { formatMoney } from "@/lib/currency";
 import type { Currency } from "@/lib/currency";
 import { LookTryOn } from "./LookTryOn";
@@ -64,39 +65,47 @@ export function Moodboard({
   product,
   palette,
   archetypeName,
+  archetypeLine,
   zoomable,
 }: {
   portrait: string;
-  look: string;
+  look?: string;
   product?: string;
   palette: string[];
   archetypeName: string;
+  archetypeLine?: string;
   zoomable?: boolean;
 }) {
+  // Only show the second photo when it's a genuinely different image.
+  const showSecondLook = Boolean(look) && look !== portrait;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       <figure className="relative col-span-2 aspect-[5/4] overflow-hidden rounded-2xl bg-sand sm:col-span-1 sm:row-span-2 sm:aspect-auto">
         <MoodboardPhoto
           src={portrait}
-          alt="Direction portrait"
+          alt="Your look on your photo"
           zoomable={zoomable}
         />
+        <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
+          Your look
+        </span>
       </figure>
 
-      <figure className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-sand">
-        <MoodboardPhoto
-          src={look}
-          alt="Reference look"
-          zoomable={zoomable}
-        />
-      </figure>
+      {showSecondLook && (
+        <figure className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-sand">
+          <MoodboardPhoto src={look!} alt="A second look" zoomable={zoomable} />
+          <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
+            Another look
+          </span>
+        </figure>
+      )}
 
       <div className="relative flex aspect-[4/5] flex-col overflow-hidden rounded-2xl">
         {palette.slice(0, 5).map((hex) => (
           <span key={hex} className="flex-1" style={{ background: hex }} />
         ))}
         <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
-          Palette
+          Your palette
         </span>
       </div>
 
@@ -104,19 +113,27 @@ export function Moodboard({
         <figure className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-paper">
           <MoodboardPhoto
             src={product}
-            alt="Reference piece"
+            alt="A hero piece for your wardrobe"
             zoomable={zoomable}
           />
+          <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
+            Hero piece
+          </span>
         </figure>
       )}
 
       <div className="flex aspect-[4/5] flex-col justify-end rounded-2xl bg-ink p-5 text-paper">
         <span className="text-[10px] uppercase tracking-[0.2em] text-brass-soft">
-          Direction
+          Your direction
         </span>
         <span className="mt-1 font-display text-xl leading-tight">
           {archetypeName}
         </span>
+        {archetypeLine && (
+          <span className="mt-2 text-xs leading-relaxed text-paper/60">
+            {archetypeLine}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -730,13 +747,20 @@ function GroomingPreviewCard({
   alt,
   fallbackSrc,
   label,
+  regen,
 }: {
   item: FacialHairRec | EyewearRec | AccessoryRec;
   alt: string;
   fallbackSrc?: string;
   label?: string;
+  regen?: {
+    reportId: string;
+    kind: "facial_hair" | "eyewear" | "accessories";
+    index: number;
+  };
 }) {
   const src = item.image ?? fallbackSrc;
+  const canRegen = Boolean(regen) && /^https?:/.test(item.image ?? "");
   return (
     <article className="overflow-hidden rounded-2xl border hairline bg-paper">
       <div className="relative aspect-[4/5] bg-sand">
@@ -758,6 +782,13 @@ function GroomingPreviewCard({
             <span>Generating preview…</span>
           </div>
         )}
+        {canRegen && regen ? (
+          <RegenPhotoButton
+            reportId={regen.reportId}
+            kind={regen.kind}
+            index={regen.index}
+          />
+        ) : null}
       </div>
       <div className="p-4">
         <div className="font-display text-lg">{item.name}</div>
@@ -767,8 +798,17 @@ function GroomingPreviewCard({
   );
 }
 
-export function FacialHairGuide({ items }: { items: FacialHairRec[] }) {
+export function FacialHairGuide({
+  items,
+  reportId,
+  owner = false,
+}: {
+  items: FacialHairRec[];
+  reportId?: string;
+  owner?: boolean;
+}) {
   if (!items.length) return null;
+  const canRegen = owner && Boolean(reportId);
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
@@ -779,11 +819,16 @@ export function FacialHairGuide({ items }: { items: FacialHairRec[] }) {
         these to your barber.
       </p>
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
-        {items.map((item) => (
+        {items.map((item, i) => (
           <GroomingPreviewCard
             key={item.name}
             item={item}
             alt={`${item.name} — facial hair recommendation`}
+            regen={
+              canRegen
+                ? { reportId: reportId!, kind: "facial_hair", index: i }
+                : undefined
+            }
           />
         ))}
       </div>
@@ -791,14 +836,24 @@ export function FacialHairGuide({ items }: { items: FacialHairRec[] }) {
   );
 }
 
-export function PremiumEyewearGuide({ items }: { items: EyewearRec[] }) {
+export function PremiumEyewearGuide({
+  items,
+  reportId,
+  owner = false,
+}: {
+  items: EyewearRec[];
+  reportId?: string;
+  owner?: boolean;
+}) {
   if (!items.length) return null;
-  const optical = items.filter((i) => i.kind !== "sun");
-  const sun = items.filter((i) => i.kind === "sun");
-  const unlabeled = items.filter((i) => !i.kind);
+  const canRegen = owner && Boolean(reportId);
+  const withIdx = items.map((item, idx) => ({ item, idx }));
+  const optical = withIdx.filter((x) => x.item.kind !== "sun");
+  const sun = withIdx.filter((x) => x.item.kind === "sun");
+  const unlabeled = withIdx.filter((x) => !x.item.kind);
 
   const renderGroup = (
-    group: EyewearRec[],
+    group: { item: EyewearRec; idx: number }[],
     heading: string,
     defaultLabel?: string,
   ) =>
@@ -808,7 +863,7 @@ export function PremiumEyewearGuide({ items }: { items: EyewearRec[] }) {
           {heading}
         </h4>
         <div className="mt-4 grid gap-5 sm:grid-cols-2">
-          {group.map((item) => (
+          {group.map(({ item, idx }) => (
             <GroomingPreviewCard
               key={`${item.kind ?? "frame"}-${item.name}`}
               item={item}
@@ -823,6 +878,11 @@ export function PremiumEyewearGuide({ items }: { items: EyewearRec[] }) {
               fallbackSrc={
                 item.shape && item.shape in EYEWEAR_IMAGE
                   ? EYEWEAR_IMAGE[item.shape as FrameShapeId]
+                  : undefined
+              }
+              regen={
+                canRegen
+                  ? { reportId: reportId!, kind: "eyewear", index: idx }
                   : undefined
               }
             />
@@ -851,8 +911,17 @@ export function PremiumEyewearGuide({ items }: { items: EyewearRec[] }) {
   );
 }
 
-export function AccessoriesGuide({ items }: { items: AccessoryRec[] }) {
+export function AccessoriesGuide({
+  items,
+  reportId,
+  owner = false,
+}: {
+  items: AccessoryRec[];
+  reportId?: string;
+  owner?: boolean;
+}) {
   if (!items.length) return null;
+  const canRegen = owner && Boolean(reportId);
   const label = (k?: string) =>
     k === "tie"
       ? "Tie"
@@ -871,12 +940,17 @@ export function AccessoriesGuide({ items }: { items: AccessoryRec[] }) {
         previewed on your own photo.
       </p>
       <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {items.map((item) => (
+        {items.map((item, i) => (
           <GroomingPreviewCard
             key={item.name}
             item={item}
             alt={`${item.name} — accessory recommendation`}
             label={label(item.kind)}
+            regen={
+              canRegen
+                ? { reportId: reportId!, kind: "accessories", index: i }
+                : undefined
+            }
           />
         ))}
       </div>

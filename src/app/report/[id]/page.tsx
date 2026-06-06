@@ -16,6 +16,7 @@ import { ShareReportButton } from "@/components/ShareReportButton";
 import { DeleteReportButton } from "@/components/DeleteReportButton";
 import { GenerateMoreButton } from "@/components/GenerateMoreButton";
 import { UnlockAddonButton } from "@/components/UnlockAddonButton";
+import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { BRAND } from "@/lib/brand";
 import {
   isMockShopping,
@@ -154,6 +155,8 @@ export default async function ReportPage({
   const isFree = report.tier === "free";
   // Live reports (not the demo) can render outfits on the user's own photo.
   const canTryOn = isOwner && report.id !== "demo";
+  // Owners can re-generate any AI photo on a live report for 1 credit.
+  const canRegen = isOwner && report.id !== "demo";
   // Owner's live credit balance — drives the cost UI on try-on controls.
   const balance = isOwner && report.id !== "demo" ? balanceRaw : null;
   const catalogShopping =
@@ -171,12 +174,16 @@ export default async function ReportPage({
   const heroPortrait = isDemo
     ? "/images/hero-editorial.png"
     : firstLookImage || null;
+  const lookImages = report.looks
+    .map((l) => l.image)
+    .filter((src): src is string => Boolean(src));
   const moodboardPortrait = isDemo
     ? "/images/hero-editorial.png"
-    : firstLookImage || "";
+    : lookImages[0] || "";
+  // Use a SECOND, distinct look so the collage never shows the same photo twice.
   const moodboardLook = isDemo
     ? report.looks[0]?.image || "/images/look-work.png"
-    : report.looks[0]?.image || firstLookImage || "";
+    : lookImages.find((src) => src !== moodboardPortrait) || "";
 
   return (
     <CreditsProvider initialBalance={balance}>
@@ -333,6 +340,11 @@ export default async function ReportPage({
             <h3 className="text-sm uppercase tracking-wider text-stone-soft">
               The direction — your moodboard
             </h3>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-stone">
+              A quick visual summary of where we&apos;re taking your style: example
+              looks on your photo, your colour palette, a hero piece, and the
+              overall direction.
+            </p>
             <div className="mt-6">
               <Moodboard
                 portrait={moodboardPortrait}
@@ -340,6 +352,7 @@ export default async function ReportPage({
                 product={report.shopping.find((i) => i.image)?.image}
                 palette={report.colors.best.map((c) => c.hex)}
                 archetypeName={extras.archetype.name}
+                archetypeLine={extras.archetype.line}
                 zoomable
               />
             </div>
@@ -414,7 +427,7 @@ export default async function ReportPage({
                 Recommended
               </h3>
               <div className="mt-5 grid gap-5 sm:grid-cols-2">
-                {report.hair.recommend.map((h) => (
+                {report.hair.recommend.map((h, i) => (
                   <HairCard
                     key={h.name}
                     h={h}
@@ -422,6 +435,10 @@ export default async function ReportPage({
                     dualAngle={
                       report.tier === "lookbook" || report.tier === "premium"
                     }
+                    reportId={report.id}
+                    group="recommend"
+                    index={i}
+                    owner={canRegen}
                   />
                 ))}
               </div>
@@ -432,8 +449,15 @@ export default async function ReportPage({
                 Best avoided
               </h3>
               <div className="mt-5 grid gap-5 sm:grid-cols-2">
-                {report.hair.avoid.map((h) => (
-                  <HairCard key={h.name} h={h} />
+                {report.hair.avoid.map((h, i) => (
+                  <HairCard
+                    key={h.name}
+                    h={h}
+                    reportId={report.id}
+                    group="avoid"
+                    index={i}
+                    owner={canRegen}
+                  />
                 ))}
               </div>
             </div>
@@ -443,7 +467,11 @@ export default async function ReportPage({
               {report.tier === "premium" ? (
                 report.facialHair?.length ? (
                   <div>
-                    <FacialHairGuide items={report.facialHair} />
+                    <FacialHairGuide
+                      items={report.facialHair}
+                      reportId={report.id}
+                      owner={canRegen}
+                    />
                     {isOwner && report.id !== "demo" ? (
                       <GenerateMoreButton
                         reportId={report.id}
@@ -477,7 +505,11 @@ export default async function ReportPage({
               <div className="mt-12 border-t hairline pt-12">
                 {report.eyewear?.length ? (
                   <>
-                    <PremiumEyewearGuide items={report.eyewear} />
+                    <PremiumEyewearGuide
+                      items={report.eyewear}
+                      reportId={report.id}
+                      owner={canRegen}
+                    />
                     {isOwner && report.id !== "demo" ? (
                       <GenerateMoreButton
                         reportId={report.id}
@@ -507,7 +539,11 @@ export default async function ReportPage({
               <div className="mt-12 border-t hairline pt-12">
                 {report.accessories?.length ? (
                   <>
-                    <AccessoriesGuide items={report.accessories} />
+                    <AccessoriesGuide
+                      items={report.accessories}
+                      reportId={report.id}
+                      owner={canRegen}
+                    />
                     {isOwner && report.id !== "demo" ? (
                       <GenerateMoreButton
                         reportId={report.id}
@@ -557,7 +593,11 @@ export default async function ReportPage({
 
                 <div className="mt-8 space-y-10">
                   {report.facialHair?.length ? (
-                    <FacialHairGuide items={report.facialHair} />
+                    <FacialHairGuide
+                      items={report.facialHair}
+                      reportId={report.id}
+                      owner={canRegen}
+                    />
                   ) : isOwner && report.id !== "demo" ? (
                     <AddonUnlockCard
                       title="Facial-hair previews"
@@ -570,7 +610,11 @@ export default async function ReportPage({
                   ) : null}
 
                   {report.eyewear?.length ? (
-                    <PremiumEyewearGuide items={report.eyewear} />
+                    <PremiumEyewearGuide
+                      items={report.eyewear}
+                      reportId={report.id}
+                      owner={canRegen}
+                    />
                   ) : isOwner && report.id !== "demo" ? (
                     <AddonUnlockCard
                       title="Eyewear previews"
@@ -583,7 +627,11 @@ export default async function ReportPage({
                   ) : null}
 
                   {report.accessories?.length ? (
-                    <AccessoriesGuide items={report.accessories} />
+                    <AccessoriesGuide
+                      items={report.accessories}
+                      reportId={report.id}
+                      owner={canRegen}
+                    />
                   ) : isOwner && report.id !== "demo" ? (
                     <AddonUnlockCard
                       title="Accessory styling"
@@ -1114,15 +1162,27 @@ function HairCard({
   h,
   good = false,
   dualAngle = false,
+  reportId,
+  group,
+  index,
+  owner = false,
 }: {
   h: HairRec;
   good?: boolean;
   dualAngle?: boolean;
+  reportId?: string;
+  group?: "recommend" | "avoid";
+  index?: number;
+  owner?: boolean;
 }) {
   const showDual = dualAngle && good;
   const hasFront = Boolean(h.image);
   const hasSide = Boolean(h.imageSide);
   const showSplit = showDual && (hasFront || hasSide);
+  const canRegen =
+    owner && Boolean(reportId) && group != null && index != null;
+  const frontGenerated = canRegen && /^https?:/.test(h.image ?? "");
+  const sideGenerated = canRegen && /^https?:/.test(h.imageSide ?? "");
 
   return (
     <article className="overflow-hidden rounded-2xl border hairline bg-paper">
@@ -1146,6 +1206,15 @@ function HairCard({
               <span className="absolute left-2 top-2 rounded-full bg-paper/90 px-2 py-0.5 text-[10px] uppercase tracking-wider text-stone">
                 Front
               </span>
+              {frontGenerated ? (
+                <RegenPhotoButton
+                  reportId={reportId!}
+                  kind="hair"
+                  group={group}
+                  index={index!}
+                  angle="front"
+                />
+              ) : null}
             </div>
             <div className="relative aspect-[4/5]">
               {hasSide ? (
@@ -1164,6 +1233,15 @@ function HairCard({
               <span className="absolute left-2 top-2 rounded-full bg-paper/90 px-2 py-0.5 text-[10px] uppercase tracking-wider text-stone">
                 Side
               </span>
+              {sideGenerated ? (
+                <RegenPhotoButton
+                  reportId={reportId!}
+                  kind="hair"
+                  group={group}
+                  index={index!}
+                  angle="side"
+                />
+              ) : null}
             </div>
           </div>
         ) : (
@@ -1183,6 +1261,15 @@ function HairCard({
                 <span>Generating preview…</span>
               </div>
             )}
+            {frontGenerated ? (
+              <RegenPhotoButton
+                reportId={reportId!}
+                kind="hair"
+                group={group}
+                index={index!}
+                angle="front"
+              />
+            ) : null}
           </div>
         )}
         <span
