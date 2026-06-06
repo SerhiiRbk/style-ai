@@ -6,7 +6,14 @@ import {
   type CanonicalProductInput,
 } from "../../../../../scripts/feeds/schema.mjs";
 import { embedAndUpsert } from "../../../../../scripts/feeds/upsert.mjs";
+import {
+  mapCategory,
+  inferMarket,
+  inferGender,
+  toEur,
+} from "../../../../../scripts/feeds/normalize.mjs";
 import { env, hasCatalogImportKey, hasSupabaseAdmin, hasAI } from "@/lib/env";
+import { createAdminSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +24,45 @@ type SourceType = (typeof SOURCE_TYPES)[number];
 
 // Guardrail so a single upload can't blow past embedding/DB limits.
 const MAX_ITEMS = 2000;
+
+const GENDERS = ["men", "women", "unisex", "kids"];
+
+/**
+ * Apply the same forgiving normalisation the feed adapters use, so a scraper can
+ * emit site-native values (e.g. Zara's "PANTALON", a country code like "ES")
+ * instead of having to know our canonical enums:
+ *  - category → mapped onto the fixed enum (falls back to "Other")
+ *  - market   → coerced to EU/US (inferred from currency when invalid)
+ *  - gender   → re-inferred when not one of the allowed values
+ *  - priceEur → derived from price + currency when missing
+ *  - source   → defaulted from the batch-level `source`
+ */
+function normalizeRaw(raw: unknown, defaultSource?: string): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const r = { ...(raw as Record<string, unknown>) };
+
+  if (defaultSource && !r.source) r.source = defaultSource;
+
+  if (typeof r.category !== "string" || !CATEGORIES.includes(r.category)) {
+    r.category = mapCategory(
+      r.category,
+      typeof r.title === "string" ? r.title : "",
+    );
+  }
+  if (r.market !== "EU" && r.market !== "US") {
+    r.market = inferMarket(r.currency);
+  }
+  if (typeof r.gender === "string" && !GENDERS.includes(r.gender)) {
+    r.gender = inferGender(r.gender, r.title, r.description);
+  }
+  if (typeof r.priceEur !== "number" && typeof r.price === "number") {
+    r.priceEur = toEur(
+      r.price,
+      typeof r.currency === "string" ? r.currency : "EUR",
+    );
+  }
+  return r;
+}
 
 /** Constant-time comparison of the provided key against the configured secret. */
 function keyMatches(provided: string | null): boolean {
@@ -95,6 +141,7 @@ export async function POST(request: Request) {
   let rawItems: unknown;
   let metaSource: string | undefined;
   let metaSourceType: string | undefined;
+  let prune = false;
   if (Array.isArray(body)) {
     rawItems = body;
   } else if (body && typeof body === "object") {
@@ -106,11 +153,13 @@ export async function POST(request: Request) {
         : undefined;
     if (typeof obj.source === "string") metaSource = obj.source;
     if (typeof obj.sourceType === "string") metaSourceType = obj.sourceType;
+    if (obj.prune === true) prune = true;
   }
 
   const url = new URL(request.url);
   metaSource ??= url.searchParams.get("source") ?? undefined;
   metaSourceType ??= url.searchParams.get("source_type") ?? undefined;
+  if (url.searchParams.get("prune") === "true") prune = true;
 
   if (!Array.isArray(rawItems)) {
     return NextResponse.json(
@@ -149,17 +198,23 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  if (prune && !metaSource) {
+    return NextResponse.json(
+      {
+        error:
+          "prune requires 'source' so only that source's stale items are hidden.",
+      },
+      { status: 400 },
+    );
+  }
 
   // Validate every item; collect all problems before deciding to ingest.
   const valid: CanonicalProductInput[] = [];
   const invalid: ItemIssue[] = [];
 
   rawItems.forEach((raw, index) => {
-    // Apply the batch-level default source to items that omit one.
-    const candidate =
-      raw && typeof raw === "object" && metaSource && !("source" in raw)
-        ? { ...(raw as Record<string, unknown>), source: metaSource }
-        : raw;
+    // Normalise site-native values onto the canonical contract before checking.
+    const candidate = normalizeRaw(raw, metaSource);
 
     const result = canonicalProductSchema.safeParse(candidate);
     if (result.success) {
@@ -195,13 +250,19 @@ export async function POST(request: Request) {
     );
   }
 
+  // Captured before the upsert so freshly-imported rows (ingested_at > this)
+  // are never pruned, while older same-source rows are.
+  const runStartedAt = new Date().toISOString();
+
   // Embed + upsert. Provenance (source_type, ingested_at) is stamped by the
-  // upsert helper; rows dedupe on (source, external_id).
+  // upsert helper; rows dedupe on (source, external_id). Unchanged items keep
+  // their existing embedding. With prune we also un-hide reappearing items.
   let upserted = 0;
   try {
     upserted = await embedAndUpsert(valid as never, {
       model: env.embedModel,
       sourceType,
+      unhide: prune,
     });
   } catch (e) {
     return NextResponse.json(
@@ -215,12 +276,27 @@ export async function POST(request: Request) {
     );
   }
 
+  // Prune (full-feed semantics): hide same-source items not present in THIS
+  // upload. Only safe when the upload is the complete catalogue for `source`.
+  let pruned = 0;
+  if (prune && metaSource) {
+    const admin = createAdminSupabase();
+    const { count, error } = await admin
+      .from("products")
+      .update({ hidden: true }, { count: "exact" })
+      .eq("source", metaSource)
+      .lt("ingested_at", runStartedAt)
+      .eq("hidden", false);
+    if (!error) pruned = count ?? 0;
+  }
+
   return NextResponse.json({
     ok: true,
     received: rawItems.length,
     upserted,
+    pruned,
     sourceType,
     source: metaSource ?? null,
-    ingestedAt: new Date().toISOString(),
+    ingestedAt: runStartedAt,
   });
 }

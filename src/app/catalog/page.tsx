@@ -6,7 +6,7 @@ import { ProductImage } from "@/components/ProductImage";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getGeo } from "@/lib/geo";
-import { formatMoney, type Currency } from "@/lib/currency";
+import { formatProductPrice, type Currency } from "@/lib/currency";
 
 export const metadata: Metadata = {
   title: "Catalog — shoppable menswear picks · Valetti",
@@ -47,6 +47,8 @@ type ProductRow = {
   category: string | null;
   color: string | null;
   price_eur: number | null;
+  original_price: number | null;
+  currency: string | null;
   image_url: string | null;
   deeplink: string | null;
   market: string | null;
@@ -127,7 +129,7 @@ export default async function CatalogPage({
   let query = sb
     .from("products")
     .select(
-      "id,source,brand,title,category,color,price_eur,image_url,deeplink,market,gender,in_stock",
+      "id,source,brand,title,category,color,price_eur,original_price,currency,image_url,deeplink,market,gender,in_stock",
       { count: "exact" },
     );
 
@@ -334,9 +336,16 @@ function ProductCard({
           </div>
         )}
         <div className="mt-1 line-clamp-2 text-sm text-ink">{p.title}</div>
-        <div className="mt-3 flex items-center justify-between">
-          <span className="font-display text-base">
-            {p.price_eur != null ? formatMoney(p.price_eur, currency) : "—"}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <span className="font-display text-sm leading-snug sm:text-base">
+            {p.price_eur != null
+              ? formatProductPrice({
+                  priceEur: p.price_eur,
+                  displayCurrency: currency,
+                  originalPrice: p.original_price,
+                  originalCurrency: p.currency,
+                })
+              : "—"}
           </span>
           {p.color && (
             <span className="flex items-center gap-1.5 text-[11px] text-stone-soft">

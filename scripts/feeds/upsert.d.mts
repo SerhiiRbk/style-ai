@@ -11,5 +11,6 @@ export function embedAndUpsert(
     batchSize?: number;
     onProgress?: (done: number, total: number) => void;
     sourceType?: SourceType;
+    unhide?: boolean;
   },
 ): Promise<number>;

@@ -1,0 +1,79 @@
+{
+  "products": [
+    {
+      "source": "scrapper:zara",
+      "externalId": "zara-00706754",
+      "sku": "C00706754428000-V2026",
+      "brand": "ZARA",
+      "title": "100% LINEN OVERSHIRT WITH POCKETS",
+      "description": "100% LINEN OVERSHIRT WITH POCKETS",
+      "category": "SOBRECAMISA",
+      "gender": "men",
+      "color": "Faded blue",
+      "colorHex": "#798798",
+      "price": 59.95,
+      "currency": "EUR",
+      "priceEur": 59.95,
+      "market": "ES",
+      "imageUrl": "https://static.zara.net/assets/public/0552/3706/16264e7892b9/d88280322903/00706754428-e1/00706754428-e1.jpg?ts=1774885738478&w=750",
+      "deeplink": "https://www.zara.com/es/en/100-linen-overshirt-with-pockets-p00706754.html",
+      "inStock": true,
+      "attrs": {
+        "material": null,
+        "sizes": null,
+        "sourceUrl": "https://www.zara.com/es/en/100-linen-overshirt-with-pockets-p00706754.html",
+        "scrapedAt": "2026-06-06T11:17:04Z"
+      }
+    },
+    {
+      "source": "scrapper:zara",
+      "externalId": "zara-07545900",
+      "sku": "C07545900403000-V2026",
+      "brand": "ZARA",
+      "title": "REGULAR FIT CHECK SHIRT",
+      "description": "REGULAR FIT CHECK SHIRT",
+      "category": "CAMISA",
+      "gender": "men",
+      "color": "Sky blue",
+      "colorHex": "#D7D4CF",
+      "price": 39.95,
+      "currency": "EUR",
+      "priceEur": 39.95,
+      "market": "ES",
+      "imageUrl": "https://static.zara.net/assets/public/926d/3e12/e77b49e084e9/ce7b0a8398dc/07545900403-e1/07545900403-e1.jpg?ts=1777991247981&w=750",
+      "deeplink": "https://www.zara.com/es/en/regular-fit-check-shirt-p07545900.html",
+      "inStock": true,
+      "attrs": {
+        "material": null,
+        "sizes": null,
+        "sourceUrl": "https://www.zara.com/es/en/regular-fit-check-shirt-p07545900.html",
+        "scrapedAt": "2026-06-06T11:17:04Z"
+      }
+    },
+    {
+      "source": "scrapper:zara",
+      "externalId": "zara-00122408",
+      "sku": "C00122408710000-V2026",
+      "brand": "ZARA",
+      "title": "WIDE-LEG PLEATED TROUSERS",
+      "description": "WIDE-LEG PLEATED TROUSERS",
+      "category": "PANTALON",
+      "gender": "men",
+      "color": "Beige",
+      "colorHex": "#9C815E",
+      "price": 39.95,
+      "currency": "EUR",
+      "priceEur": 39.95,
+      "market": "ES",
+      "imageUrl": "https://static.zara.net/assets/public/cdcc/572a/cf144323a60f/be46b31ed6b5/00122408710-e1/00122408710-e1.jpg?ts=1773995421762&w=750",
+      "deeplink": "https://www.zara.com/es/en/wide-leg-pleated-trousers-p00122408.html",
+      "inStock": true,
+      "attrs": {
+        "material": null,
+        "sizes": null,
+        "sourceUrl": "https://www.zara.com/es/en/wide-leg-pleated-trousers-p00122408.html",
+        "scrapedAt": "2026-06-06T11:17:04Z"
+      }
+    }
+  ]
+}

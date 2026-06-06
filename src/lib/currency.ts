@@ -62,6 +62,57 @@ export function formatMoney(
   return `${PREFIX_SYMBOL[cur] ?? ""}${amount}`;
 }
 
+/**
+ * Format a retailer price in its native currency (keeps cents for EUR/USD,
+ * rounds for CZK/PLN).
+ */
+export function formatNativePrice(
+  amount: number,
+  currency?: Currency | string | null,
+): string {
+  const cur = (currency || "EUR").toUpperCase();
+  const intOnly = cur === "CZK" || cur === "PLN";
+  const formatted = intOnly
+    ? Math.round(amount).toLocaleString("en-US")
+    : amount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+  if (SUFFIX_SYMBOL[cur]) return `${formatted} ${SUFFIX_SYMBOL[cur]}`;
+  return `${PREFIX_SYMBOL[cur] ?? ""}${formatted}`;
+}
+
+/**
+ * Catalogue price line: converted estimate in the visitor's currency, with the
+ * retailer's original price in parentheses when they differ.
+ *
+ * Example (CZ visitor, EUR product): `~999 Kč (39.95 €)`
+ * Same currency: `39.95 €` (no tilde, no parentheses).
+ */
+export function formatProductPrice(opts: {
+  priceEur: number;
+  displayCurrency: Currency | string;
+  originalPrice?: number | null;
+  originalCurrency?: string | null;
+}): string {
+  const { priceEur, displayCurrency, originalPrice, originalCurrency } = opts;
+  const display = (displayCurrency || "EUR").toUpperCase();
+  const origCur = (originalCurrency || "EUR").toUpperCase();
+  const origAmount =
+    originalPrice != null && Number.isFinite(originalPrice)
+      ? originalPrice
+      : priceEur;
+
+  if (display === origCur) {
+    return formatNativePrice(origAmount, origCur);
+  }
+
+  const converted = Math.round(convertFromEur(priceEur, display));
+  const estimate = formatNativePrice(converted, display);
+  const original = formatNativePrice(origAmount, origCur);
+  return `~${estimate} (${original})`;
+}
+
 /** Subscription currency for a visitor country (ISO2). Europe → EUR, else USD. */
 export function subscriptionCurrency(country?: string | null): SubCurrency {
   if (country && EUROPE.has(country.toUpperCase())) return "EUR";
