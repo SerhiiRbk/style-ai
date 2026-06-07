@@ -13,6 +13,8 @@ export type CreditReason =
   | "tryon"
   | "regen"
   | "premium_addon"
+  | "look_extra"
+  | "look_regen"
   | "admin_grant";
 
 /** Credits charged to generate a report, by tier. */
@@ -29,6 +31,16 @@ export const CREDIT_COSTS = {
   tryon: 1,
   /** Re-rendering a try-on ("Render again"). */
   regen: 1,
+  /**
+   * One standalone extra look generated on the user's photo for an existing
+   * report (any tier). Priced so multiple extra looks never undercut a richer
+   * report tier: 2 looks = Basic price (no consultation/PDF), 4 = Lookbook
+   * (no capsule), 6 < Premium (no grooming). Try-on on the look is billed
+   * separately at `tryon`.
+   */
+  look_extra: 5,
+  /** Re-render an extra look's photo (cheaper than a brand-new look). */
+  look_regen: 3,
   /** A premium add-on render (e.g. facial-hair / eyewear preview). */
   premium_addon: 3,
   /** One-time "generate 2 more" accessory previews on a premium report. */

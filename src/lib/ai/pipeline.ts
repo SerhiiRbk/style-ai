@@ -14,6 +14,7 @@ import {
 } from "@/lib/report";
 import {
   reportContentSchema,
+  lookContentSchema,
   inferBodyTypeFromMeasurements,
   type Intake,
   type StyleProfile,
@@ -192,6 +193,67 @@ export async function recommend(
   });
 
   return output;
+}
+
+/**
+ * Generate a single standalone look for an existing report — the "one more
+ * look" add-on. Grounded in the Style Profile and a chosen occasion brief, with
+ * an optional one-line user note. Falls back to a deterministic look (derived
+ * from the mock report) when AI is unavailable. `existingTitles` are avoided so
+ * each purchased look is distinct from the ones already on the report.
+ */
+export async function generateExtraLook(opts: {
+  intake: Intake;
+  profile: StyleProfile;
+  context: string;
+  brief: string;
+  note?: string;
+  rules?: string[];
+  existingTitles?: string[];
+}): Promise<{ context: string; title: string; description: string; palette: string[] }> {
+  const { intake, profile, context, brief, note, rules, existingTitles } = opts;
+
+  if (!hasAI) {
+    const mock = mockReportContent(intake);
+    const used = new Set((existingTitles ?? []).map((t) => t.toLowerCase()));
+    const pick =
+      mock.looks.find((l) => !used.has(l.title.toLowerCase())) ?? mock.looks[0]!;
+    return { ...pick, context };
+  }
+
+  const grounding = rules?.length
+    ? `Ground the look in these established style rules:\n- ${rules.join("\n- ")}\n`
+    : "";
+  const avoid = existingTitles?.length
+    ? `Avoid repeating these existing looks (make this one clearly different in title and outfit): ${existingTitles.join("; ")}.\n`
+    : "";
+  const noteLine = note?.trim()
+    ? `User request for this specific look: "${note.trim()}". Honour it within the occasion and the profile.\n`
+    : "";
+
+  const { output } = await generateText({
+    model: env.modelReasoning,
+    output: Output.object({ schema: lookContentSchema }),
+    prompt:
+      `You are a thoughtful personal stylist creating ONE additional outfit for an existing client report.\n\n` +
+      `Style Profile (JSON):\n${JSON.stringify(profile)}\n\n` +
+      `Occupation: ${intake.occupation}. Goals: ${intake.goals.join(", ")}. ` +
+      `Boldness: ${intake.boldness}. Budget: €${intake.budgetEur.min}–${intake.budgetEur.max}. ` +
+      `City climate: ${profile.demographics.climate}.\n` +
+      `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
+      `Occasion: ${context}. Styling brief: ${brief}\n` +
+      noteLine +
+      avoid +
+      grounding +
+      `Produce exactly ONE look:\n` +
+      `- context: "${context}".\n` +
+      `- title: a short evocative name (2–4 words).\n` +
+      `- description: ONE line naming each garment concretely (top, bottom, outerwear if relevant, shoes), flattering the "${profile.physical.bodyType}" body type.\n` +
+      `- palette: 3–4 hex codes aligned with the client's best colours.\n` +
+      `Keep the tone refined and practical.`,
+  });
+
+  return { ...output, context };
 }
 
 /**

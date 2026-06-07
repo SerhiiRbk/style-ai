@@ -15,6 +15,7 @@ import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { ShareReportButton } from "@/components/ShareReportButton";
 import { DeleteReportButton } from "@/components/DeleteReportButton";
 import { GenerateMoreButton } from "@/components/GenerateMoreButton";
+import { GenerateLookButton } from "@/components/GenerateLookButton";
 import { UnlockAddonButton } from "@/components/UnlockAddonButton";
 import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { BRAND } from "@/lib/brand";
@@ -746,6 +747,12 @@ export default async function ReportPage({
               </article>
             ))}
           </div>
+          {canTryOn && !generation?.pending ? (
+            <GenerateLookButton
+              reportId={report.id}
+              cost={CREDIT_COSTS.look_extra}
+            />
+          ) : null}
         </section>
 
         {/* Capsule & buying plan */}

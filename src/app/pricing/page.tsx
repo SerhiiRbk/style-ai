@@ -68,6 +68,7 @@ const TIERS: TierCard[] = [
       "3 photorealistic looks",
       "Shopping list with real product links",
       "PDF export",
+      `Add extra looks on your photo (${CREDIT_COSTS.look_extra} credits each)`,
       "Optional facial-hair / eyewear / accessory add-ons (credits)",
     ],
     cta: "Get Basic",
@@ -83,6 +84,7 @@ const TIERS: TierCard[] = [
       `Virtual try-on on your photo (${CREDIT_COSTS.tryon} credit each)`,
       "Good · Better · Best buying plan",
       "4 hairstyle previews on your photo (front + side)",
+      `Add extra looks on your photo (${CREDIT_COSTS.look_extra} credits each)`,
       "Optional facial-hair / eyewear / accessory add-ons (credits)",
     ],
     cta: "Get Lookbook",
@@ -99,6 +101,7 @@ const TIERS: TierCard[] = [
       "2 optical + 2 sunglasses previews",
       "2 accessory previews (scarves, neckwear, ties)",
       "One-time extra previews on demand (credits)",
+      `Add extra looks on your photo (${CREDIT_COSTS.look_extra} credits each)`,
       "Deeper grooming guidance",
     ],
     cta: "Get Premium",
@@ -212,6 +215,16 @@ const COMPARISON_ROWS: { feature: string; detail?: string; cells: Record<Tier, C
       basic: `${CREDIT_COSTS.regen} cr`,
       lookbook: `${CREDIT_COSTS.regen} cr`,
       premium: `${CREDIT_COSTS.regen} cr`,
+    },
+  },
+  {
+    feature: "Extra look on your photo",
+    detail: `One more occasion outfit, any tier (${CREDIT_COSTS.look_extra} cr each)`,
+    cells: {
+      free: `${CREDIT_COSTS.look_extra} cr`,
+      basic: `${CREDIT_COSTS.look_extra} cr`,
+      lookbook: `${CREDIT_COSTS.look_extra} cr`,
+      premium: `${CREDIT_COSTS.look_extra} cr`,
     },
   },
   {
@@ -386,11 +399,16 @@ export default async function PricingPage() {
           <TierComparisonTable />
 
           {/* Per-action costs */}
-          <div className="mt-12 grid gap-4 rounded-2xl border hairline bg-cream/40 p-8 sm:grid-cols-3">
+          <div className="mt-12 grid gap-4 rounded-2xl border hairline bg-cream/40 p-8 sm:grid-cols-2 lg:grid-cols-4">
             <CostRow
               label="Generate a report"
               value={`${REPORT_COST.free}–${REPORT_COST.premium} credits`}
               note={`By tier (Starter Report is ${REPORT_COST.free})`}
+            />
+            <CostRow
+              label="Extra look"
+              value={`${CREDIT_COSTS.look_extra} credits`}
+              note="One more occasion outfit on your photo"
             />
             <CostRow
               label="Virtual try-on"
