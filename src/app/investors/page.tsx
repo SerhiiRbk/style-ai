@@ -32,7 +32,36 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function InvestorsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function InvestorsPage() {
+  const gate = await gateAdminPage();
+
+  if (!gate.ok) {
+    return (
+      <div className="investors-deck">
+        <Navbar />
+        <main className="flex-1 bg-paper">
+          <div className="container-luxe py-24">
+            <h1 className="font-display text-3xl text-ink">
+              {gate.reason === "no_supabase" ? "Unavailable in demo mode" : "Not authorised"}
+            </h1>
+            <p className="mt-4 max-w-lg text-stone">
+              {gate.reason === "no_supabase"
+                ? "The investor deck requires live mode (Supabase and ADMIN_EMAILS configured)."
+                : "This page is restricted to administrators. Sign in with an email listed in ADMIN_EMAILS."}
+            </p>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  return <InvestorsDeckContent />;
+}
+
+function InvestorsDeckContent() {
   const unitRows = unitEconomicsRows();
 
   return (
@@ -63,7 +92,7 @@ export default function InvestorsPage() {
             <div className="no-print flex shrink-0 flex-wrap items-center gap-3">
               <PrintDeckButton />
               <a
-                href="/investors/valetti-investor-deck-en.pptx"
+                href="/api/admin/investor-deck"
                 download="valetti-investor-deck-en.pptx"
                 className="rounded-full border border-ink/15 bg-cream px-5 py-2.5 text-sm text-ink transition hover:border-brass hover:text-brass"
               >

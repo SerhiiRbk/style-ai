@@ -7,7 +7,6 @@
 import PptxGenJS from "pptxgenjs";
 import { fileURLToPath } from "url";
 import path from "path";
-import fs from "fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
@@ -731,9 +730,7 @@ function darkBg(slide) {
   slideNum(s, 14);
 }
 
-await pres.writeFile({ fileName: outDocs });
-fs.mkdirSync(path.dirname(outPublic), { recursive: true });
-fs.copyFileSync(outDocs, outPublic);
-console.log(`Written: ${outDocs}`);
-console.log(`Public:  ${outPublic} → /investors/valetti-investor-deck-en.pptx`);
+await pres.writeFile({ fileName: out });
+console.log(`Written: ${out}`);
+console.log("Admins download via /api/admin/investor-deck (signed in + ADMIN_EMAILS)");
 console.log("Import to Google Slides: Google Drive → Upload .pptx → Open with Google Slides");

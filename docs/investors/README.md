@@ -25,13 +25,14 @@ Open `docs/investors/slides/index.html` in Chrome/Safari:
 - Press **F** for fullscreen
 - **Print → Save as PDF** for slide-by-slide export
 
-## Live web page
+## Live web page (admins only)
 
 **https://valetti.fit/investors**
 
-- Not indexed (`noindex`) — share by private link
+- Restricted to signed-in users whose email is in `ADMIN_EMAILS`
+- Not indexed (`noindex`)
 - **Save as PDF** — print-friendly export
-- **Google Slides (.pptx)** — downloads `public/investors/valetti-investor-deck-en.pptx` (regenerated via `npm run deck:pptx`)
+- **Google Slides (.pptx)** — `/api/admin/investor-deck` (same admin gate; file from `docs/investors/`, regenerate via `npm run deck:pptx`)
 
 ## Files in this folder
 
@@ -57,7 +58,7 @@ These are **not** in git and do not open for external recipients.
 
 ## Sharing checklist
 
-1. Send link: `https://valetti.fit/investors`
-2. Or attach PDF exported from the page
-3. Or share `docs/investors/valetti-investor-deck-en.md` from the repo (for VCs who prefer markdown)
+1. **VCs / external:** attach PDF or upload `.pptx` to Google Slides — do not share `/investors` (admin-only)
+2. **Internal:** sign in as admin → `https://valetti.fit/investors`
+3. Or share `docs/investors/valetti-investor-deck-en.md` from the repo
 4. Use `founder@valetti.fit` (or your real address) in outreach — update `INVESTOR_DECK_META.contact` in code if needed
