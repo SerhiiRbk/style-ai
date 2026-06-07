@@ -30,7 +30,10 @@ type MatchRow = {
 
 const MIN_VECTOR_SIMILARITY = 0.68;
 const MIN_COLOR_MATCH = 0.4;
-const LOOK_MATCH_COUNT = 8;
+// Pull a wider candidate pool so colour re-ranking can pick the right shade
+// (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
+// closest vector hit.
+const LOOK_MATCH_COUNT = 14;
 
 type MatchProductsArgs = {
   query_embedding: number[];

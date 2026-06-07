@@ -1008,38 +1008,133 @@ const GARMENT_CATEGORY: Record<string, string> = {
   bag: "Accessories", socks: "Accessories",
 };
 
+type Shade = "light" | "dark";
+
+/**
+ * Colour-word taxonomy: maps each recognised colour token to a hue `family` and,
+ * where the word itself implies lightness, a `shade`. Named greys are the key
+ * case — "dove/ash/silver" read light while "charcoal/slate/asphalt" read dark,
+ * so a light-grey look no longer matches a dark-grey product just because both
+ * are "grey".
+ */
+const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
+  // grey
+  grey: { family: "grey" }, gray: { family: "grey" }, smoke: { family: "grey" },
+  pewter: { family: "grey" }, heather: { family: "grey" },
+  dove: { family: "grey", shade: "light" }, ash: { family: "grey", shade: "light" },
+  silver: { family: "grey", shade: "light" }, pearl: { family: "grey", shade: "light" },
+  charcoal: { family: "grey", shade: "dark" }, slate: { family: "grey", shade: "dark" },
+  graphite: { family: "grey", shade: "dark" }, anthracite: { family: "grey", shade: "dark" },
+  asphalt: { family: "grey", shade: "dark" }, gunmetal: { family: "grey", shade: "dark" },
+  // blue
+  blue: { family: "blue" }, sky: { family: "blue", shade: "light" },
+  navy: { family: "blue", shade: "dark" }, indigo: { family: "blue", shade: "dark" },
+  midnight: { family: "blue", shade: "dark" }, teal: { family: "blue" },
+  // compound blues (normalised from "slate blue" etc. before tokenising) — these
+  // read as their own muted/light blue, NOT as the dark-grey "slate".
+  slateblue: { family: "blue" }, powderblue: { family: "blue", shade: "light" },
+  iceblue: { family: "blue", shade: "light" }, steelblue: { family: "blue" },
+  // black / white
+  black: { family: "black", shade: "dark" },
+  white: { family: "white", shade: "light" }, cream: { family: "white", shade: "light" },
+  ivory: { family: "white", shade: "light" }, ecru: { family: "white", shade: "light" },
+  bone: { family: "white", shade: "light" },
+  // brown / neutral warm
+  brown: { family: "brown" }, khaki: { family: "brown" }, taupe: { family: "brown" },
+  cognac: { family: "brown" }, mocha: { family: "brown" },
+  tan: { family: "brown", shade: "light" }, camel: { family: "brown", shade: "light" },
+  beige: { family: "brown", shade: "light" }, sand: { family: "brown", shade: "light" },
+  stone: { family: "brown", shade: "light" }, oat: { family: "brown", shade: "light" },
+  oatmeal: { family: "brown", shade: "light" },
+  chocolate: { family: "brown", shade: "dark" }, chestnut: { family: "brown", shade: "dark" },
+  espresso: { family: "brown", shade: "dark" },
+  // green
+  green: { family: "green" }, sage: { family: "green", shade: "light" },
+  olive: { family: "green", shade: "dark" }, forest: { family: "green", shade: "dark" },
+  emerald: { family: "green", shade: "dark" },
+  // red / warm
+  red: { family: "red" }, rust: { family: "red" },
+  burgundy: { family: "red", shade: "dark" }, maroon: { family: "red", shade: "dark" },
+  // other hues
+  pink: { family: "pink" }, purple: { family: "purple" }, orange: { family: "orange" },
+  yellow: { family: "yellow" }, mustard: { family: "yellow" },
+};
+
+/** Standalone lightness modifiers; override any shade implied by the hue word. */
+const SHADE_WORDS: Record<string, Shade> = {
+  light: "light", pale: "light", soft: "light", dusty: "light", off: "light",
+  dark: "dark", deep: "dark",
+};
+
 /** Colour words used to qualify a garment query (not garments themselves). */
-const COLOR_WORDS = new Set([
-  "navy", "cream", "charcoal", "grey", "gray", "black", "white", "brown", "tan",
-  "camel", "olive", "beige", "khaki", "burgundy", "rust", "ecru", "stone", "taupe",
-  "sand", "indigo", "blue", "green", "red", "pink", "purple", "yellow", "orange",
-  "maroon", "mustard", "forest", "sage", "cognac", "chocolate", "ivory", "midnight",
-  "dark", "light", "mid", "off", "dusty",
+const COLOR_WORDS = new Set<string>([
+  ...Object.keys(COLOR_FAMILY),
+  ...Object.keys(SHADE_WORDS),
+  "mid",
 ]);
 
 const GARMENT_KEYS = Object.keys(GARMENT_CATEGORY).sort(
   (a, b) => b.length - a.length,
 );
 
-/** 0–1 overlap between a look garment colour and catalogue title/colour fields. */
+/** Collapse known two-word colours into a single token before parsing. */
+function normalizeCompoundColors(text: string): string {
+  return text
+    .replace(/slate\s+blue/g, "slateblue")
+    .replace(/powder\s+blue/g, "powderblue")
+    .replace(/ice\s+blue/g, "iceblue")
+    .replace(/steel\s+blue/g, "steelblue");
+}
+
+/** Parse free-text colour into the set of hue families + an implied lightness. */
+function parseColorTokens(text: string): { families: Set<string>; shade?: Shade } {
+  const families = new Set<string>();
+  let hueShade: Shade | undefined; // lightness implied by a hue word (e.g. navy → dark)
+  let modShade: Shade | undefined; // explicit modifier (e.g. soft/light/deep)
+  for (const w of normalizeCompoundColors(text.toLowerCase())
+    .split(/\s+/)
+    .filter(Boolean)) {
+    const fam = COLOR_FAMILY[w];
+    if (fam) {
+      families.add(fam.family);
+      if (fam.shade) hueShade = fam.shade;
+    }
+    const mod = SHADE_WORDS[w];
+    if (mod) modShade = mod;
+  }
+  // An explicit lightness word always wins, regardless of token order, so
+  // "soft slate blue" reads light even though "slate" alone implies dark.
+  return { families, shade: modShade ?? hueShade };
+}
+
+/**
+ * 0–1 colour fit between a look garment colour and a catalogue product. Matches
+ * on hue family first, then on lightness: same hue + same lightness scores high,
+ * same hue + opposite lightness (e.g. dove grey vs asphalt grey) scores low so
+ * the picker prefers a true light-grey piece and flags the rest as "similar".
+ */
 export function colorMatchScore(
   queryColor: string | null,
   productColor: string | null,
   title: string,
 ): number {
-  const tokens = (queryColor ?? "")
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => COLOR_WORDS.has(w));
-  if (!tokens.length) return 0.5;
-  const hay = `${productColor ?? ""} ${title}`.toLowerCase();
-  let hits = 0;
-  for (const t of tokens) {
-    if (hay.includes(t)) hits++;
-    else if (t === "grey" && hay.includes("gray")) hits++;
-    else if (t === "gray" && hay.includes("grey")) hits++;
+  const q = parseColorTokens(queryColor ?? "");
+  if (!q.families.size && !q.shade) return 0.5; // no colour cue → neutral
+  const p = parseColorTokens(`${productColor ?? ""} ${title}`);
+  if (!p.families.size) return 0.5; // product colour unknown → neutral
+
+  let hueMatch = false;
+  for (const f of q.families) {
+    if (p.families.has(f)) {
+      hueMatch = true;
+      break;
+    }
   }
-  return hits / tokens.length;
+  if (!hueMatch) return 0.1; // wrong hue family
+
+  // Same hue family — discriminate by lightness when both sides express it.
+  if (q.shade && p.shade) return q.shade === p.shade ? 1 : 0.3;
+  return 0.8; // hue matches; lightness unknown on one side
 }
 
 /**
