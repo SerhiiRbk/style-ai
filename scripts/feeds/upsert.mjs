@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { embedMany } from "ai";
-import { embedText } from "./normalize.mjs";
+import { embedText, dedupeProducts, colorKey, productVariantKey } from "./normalize.mjs";
 
 export function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -39,6 +39,7 @@ function toRow(p, embedding, sourceType, unhide) {
     category: p.category,
     gender: p.gender ?? null,
     color: p.color ?? p.colorHex ?? null,
+    color_key: colorKey(p.color, p.colorHex),
     original_price: p.price ?? null,
     currency: p.currency ?? null,
     price_eur: p.priceEur ?? null,
@@ -57,7 +58,8 @@ function toRow(p, embedding, sourceType, unhide) {
 }
 
 /**
- * Embed (batched) and upsert canonical products keyed by (source, external_id).
+ * Embed (batched) and upsert canonical products keyed by
+ * (source, external_id, color_key).
  *
  * Re-import behaviour: rows that already exist are UPDATED in place (price,
  * stock, images, description, etc.). To save embedding cost, a product whose
@@ -73,9 +75,10 @@ export async function embedAndUpsert(
   { model, batchSize = 100, onProgress, sourceType = "feed", unhide = false } = {},
 ) {
   const sb = getSupabase();
+  const { products: unique } = dedupeProducts(products);
   let upserted = 0;
-  for (let i = 0; i < products.length; i += batchSize) {
-    const batch = products.slice(i, i + batchSize);
+  for (let i = 0; i < unique.length; i += batchSize) {
+    const batch = unique.slice(i, i + batchSize);
 
     // Pull existing rows for this batch to detect unchanged descriptive text.
     const sources = [...new Set(batch.map((p) => p.source))];
@@ -83,18 +86,20 @@ export async function embedAndUpsert(
     const existing = new Map();
     const { data: prevRows, error: selErr } = await sb
       .from("products")
-      .select("source, external_id, brand, title, category, color, gender, description")
+      .select(
+        "source, external_id, color_key, brand, title, category, color, gender, description",
+      )
       .in("source", sources)
       .in("external_id", extIds);
     if (selErr) throw new Error(selErr.message);
     for (const r of prevRows ?? []) {
-      existing.set(`${r.source}::${r.external_id}`, r);
+      existing.set(productVariantKey(r), r);
     }
 
     const reuse = []; // exists + identical embed text ⇒ keep vector
     const fresh = []; // new or changed text ⇒ (re)embed
     for (const p of batch) {
-      const prev = existing.get(`${p.source}::${p.externalId}`);
+      const prev = existing.get(productVariantKey(p));
       if (prev && embedText(prev) === embedText(p)) reuse.push(p);
       else fresh.push(p);
     }
@@ -109,7 +114,7 @@ export async function embedAndUpsert(
       );
       const { error } = await sb
         .from("products")
-        .upsert(rows, { onConflict: "source,external_id" });
+        .upsert(rows, { onConflict: "source,external_id,color_key" });
       if (error) throw new Error(error.message);
       upserted += rows.length;
     }
@@ -120,12 +125,12 @@ export async function embedAndUpsert(
       const rows = reuse.map((p) => toRow(p, undefined, sourceType, unhide));
       const { error } = await sb
         .from("products")
-        .upsert(rows, { onConflict: "source,external_id" });
+        .upsert(rows, { onConflict: "source,external_id,color_key" });
       if (error) throw new Error(error.message);
       upserted += rows.length;
     }
 
-    onProgress?.(upserted, products.length);
+    onProgress?.(upserted, unique.length);
   }
   return upserted;
 }

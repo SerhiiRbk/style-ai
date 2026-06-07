@@ -6,6 +6,7 @@ import { isAdminEmail } from "@/lib/admin";
 import { BRAND } from "@/lib/brand";
 import { listSources, sourceConfig } from "../../../../scripts/feeds/run.mjs";
 import { CatalogRefreshPanel } from "@/components/CatalogRefreshPanel";
+import { CatalogAdminPanel } from "@/components/CatalogAdminPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +80,11 @@ export default async function AdminCatalogPage() {
         <CatalogRefreshPanel sources={sources} hasAI={hasAI} />
       </div>
 
-      <div className="mt-10">
+      <div className="mt-14 border-t hairline pt-14">
+        <CatalogAdminPanel />
+      </div>
+
+      <div className="mt-14 border-t hairline pt-10">
         <h2 className="text-sm uppercase tracking-wider text-stone-soft">
           Sources
         </h2>

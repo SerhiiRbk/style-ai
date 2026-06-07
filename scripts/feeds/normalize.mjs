@@ -93,3 +93,30 @@ export function embedText(p) {
     .filter(Boolean)
     .join(". ");
 }
+
+/** Normalised colour slug used in the catalogue variant key. */
+export function colorKey(color, colorHex) {
+  return (color ?? colorHex ?? "").toString().trim().toLowerCase();
+}
+
+/** Upsert / dedup key: parent SKU + colour (same id, different colours stay). */
+export function productVariantKey(p) {
+  const ext = p.externalId ?? p.external_id;
+  const ck = p.color_key ?? colorKey(p.color, p.colorHex);
+  return `${p.source}::${ext}::${ck}`;
+}
+
+/**
+ * Collapse duplicate rows that share the same (source, externalId, colour).
+ * Last occurrence wins — e.g. repeated size rows for one colour variant.
+ */
+export function dedupeProducts(products) {
+  const seen = new Map();
+  let duplicatesRemoved = 0;
+  for (const p of products) {
+    const key = productVariantKey(p);
+    if (seen.has(key)) duplicatesRemoved++;
+    seen.set(key, p);
+  }
+  return { products: [...seen.values()], duplicatesRemoved };
+}

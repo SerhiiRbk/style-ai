@@ -11,6 +11,7 @@ import {
   inferMarket,
   inferGender,
   toEur,
+  dedupeProducts,
 } from "../../../../../scripts/feeds/normalize.mjs";
 import { env, hasCatalogImportKey, hasSupabaseAdmin, hasAI } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
@@ -103,6 +104,10 @@ type ItemIssue = {
  * Every item is validated against the canonical schema. If any item is invalid
  * the whole upload is rejected (HTTP 422) and each problem is described in the
  * response so the scraper can be fixed.
+ *
+ * Duplicate rows sharing the same (source, externalId, colour) are collapsed
+ * automatically (last wins) — e.g. repeated size rows for one colour. Different
+ * colours under the same parent SKU are kept as separate catalogue rows.
  */
 export async function POST(request: Request) {
   if (!hasCatalogImportKey) {
@@ -250,16 +255,19 @@ export async function POST(request: Request) {
     );
   }
 
+  // Collapse exact (source, externalId, colour) duplicates — size repeats only.
+  const { products: toIngest, duplicatesRemoved } = dedupeProducts(valid);
+
   // Captured before the upsert so freshly-imported rows (ingested_at > this)
   // are never pruned, while older same-source rows are.
   const runStartedAt = new Date().toISOString();
 
   // Embed + upsert. Provenance (source_type, ingested_at) is stamped by the
-  // upsert helper; rows dedupe on (source, external_id). Unchanged items keep
+  // upsert helper; rows dedupe on (source, external_id, color_key). Unchanged
   // their existing embedding. With prune we also un-hide reappearing items.
   let upserted = 0;
   try {
-    upserted = await embedAndUpsert(valid as never, {
+    upserted = await embedAndUpsert(toIngest as never, {
       model: env.embedModel,
       sourceType,
       unhide: prune,
@@ -293,6 +301,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     received: rawItems.length,
+    valid: valid.length,
+    duplicatesRemoved,
     upserted,
     pruned,
     sourceType,

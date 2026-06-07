@@ -26,7 +26,7 @@ export const CATEGORIES = [
 export const canonicalProductSchema = z.object({
   // Identity / dedup
   source: z.string().min(1), // network:merchant, e.g. "awin:zalando"
-  externalId: z.string().min(1), // stable id from the feed (for upsert)
+  externalId: z.string().min(1), // parent SKU from the feed (colour = separate row)
   sku: z.string().optional(),
 
   // Descriptive

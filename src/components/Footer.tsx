@@ -29,9 +29,9 @@ export function Footer() {
         <FooterCol
           title="For business"
           items={[
+            ["Investors", "/investors"],
             ["Stylists & salons", "/#audience"],
             ["White-label", "/#audience"],
-            ["API", "/#audience"],
           ]}
         />
         <FooterCol

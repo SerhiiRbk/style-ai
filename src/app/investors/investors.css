@@ -1,0 +1,43 @@
+@media print {
+  @page {
+    margin: 1.2cm;
+    size: A4;
+  }
+
+  body {
+    background: white !important;
+    color: #15120d !important;
+  }
+
+  .investors-deck nav,
+  .investors-deck footer,
+  .no-print {
+    display: none !important;
+  }
+
+  .investors-section {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  .investors-section-major {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .investors-deck {
+    font-size: 10pt;
+  }
+
+  .investors-deck h1 {
+    font-size: 22pt;
+  }
+
+  .investors-deck h2 {
+    font-size: 14pt;
+  }
+
+  .investors-deck table {
+    font-size: 9pt;
+  }
+}
