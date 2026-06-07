@@ -1,19 +1,46 @@
 # Valetti investor materials (English)
 
-## Live page (share by link)
+## Google Slides (recommended)
+
+**Upload the PowerPoint file to Google Drive:**
+
+1. Open [Google Drive](https://drive.google.com)
+2. **New → File upload** → select `docs/investors/valetti-investor-deck-en.pptx`
+3. Double-click the file → **Open with Google Slides**
+4. Charts, tables, diagrams, and brand images are preserved (edit fonts/colours in Slides if needed)
+
+Regenerate the file after content changes:
+
+```bash
+npm run deck:pptx
+```
+
+The deck includes **14 slides**: cover, problem, product loop, pricing + bar chart, revenue pie chart, unit economics, competition table, SRE architecture diagram, engines, stack, moat, roadmap, closing.
+
+## HTML slideshow (present in browser)
+
+Open `docs/investors/slides/index.html` in Chrome/Safari:
+
+- **Arrow keys** or buttons to navigate
+- Press **F** for fullscreen
+- **Print → Save as PDF** for slide-by-slide export
+
+## Live web page
 
 **https://valetti.fit/investors**
 
-- Opens in any browser — no Cursor required
-- Not indexed by search engines (`noindex`) — safe to share privately by URL
-- **Save as PDF:** open the page → click **Save as PDF** → Print → Save as PDF (macOS/Windows)
+- Not indexed (`noindex`) — share by private link
+- **Save as PDF** — print-friendly export
+- **Google Slides (.pptx)** — downloads `public/investors/valetti-investor-deck-en.pptx` (regenerated via `npm run deck:pptx`)
 
 ## Files in this folder
 
 | File | Purpose |
 |------|---------|
-| [valetti-investor-deck-en.md](./valetti-investor-deck-en.md) | Full deck text — versioned in git, offline reading |
-| [cloud-credits-en.md](./cloud-credits-en.md) | Google / Microsoft / OpenAI + other startup credit programs |
+| **valetti-investor-deck-en.pptx** | **Google Slides import** — charts, assets, diagrams |
+| [slides/index.html](./slides/index.html) | Browser presentation with SVG diagrams |
+| [valetti-investor-deck-en.md](./valetti-investor-deck-en.md) | Full deck text — versioned in git |
+| [cloud-credits-en.md](./cloud-credits-en.md) | Cloud & AI credits application pack |
 
 ## Source of truth in code
 

@@ -13,7 +13,8 @@
     "seed:catalog": "node --env-file=.env.local scripts/ingest-catalog.mjs",
     "import:feed": "node --env-file=.env.local scripts/import-feed.mjs",
     "import:feed:test": "node scripts/import-feed.mjs --all-samples --dry-run",
-    "grant:credits": "node --env-file=.env.local scripts/grant-credits.mjs"
+    "grant:credits": "node --env-file=.env.local scripts/grant-credits.mjs",
+    "deck:pptx": "node scripts/generate-investor-pptx.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
@@ -37,6 +38,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "pptxgenjs": "^4.0.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vercel": "^54.6.1"

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { PrintDeckButton } from "@/components/PrintDeckButton";
+import { gateAdminPage } from "@/lib/admin-page";
 import { BRAND } from "@/lib/brand";
 import {
   COMPETITORS,
@@ -59,8 +60,15 @@ export default function InvestorsPage() {
                 Contact: {INVESTOR_DECK_META.contact}
               </p>
             </div>
-            <div className="no-print shrink-0">
+            <div className="no-print flex shrink-0 flex-wrap items-center gap-3">
               <PrintDeckButton />
+              <a
+                href="/investors/valetti-investor-deck-en.pptx"
+                download="valetti-investor-deck-en.pptx"
+                className="rounded-full border border-ink/15 bg-cream px-5 py-2.5 text-sm text-ink transition hover:border-brass hover:text-brass"
+              >
+                Google Slides (.pptx)
+              </a>
             </div>
           </div>
 

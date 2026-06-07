@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Valetti — Investor Deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #15120d;
+      --paper: #faf6ee;
+      --cream: #f1e9da;
+      --sand: #e7dcc7;
+      --brass: #a97c3c;
+      --brass-light: #c2a06a;
+      --stone: #6c6358;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: #0a0907; font-family: Inter, system-ui, sans-serif; }
+    .deck { height: 100vh; width: 100vw; position: relative; }
+    .slide {
+      position: absolute; inset: 0;
+      display: none; flex-direction: column;
+      padding: 4vh 5vw;
+      background: var(--paper);
+      color: var(--ink);
+    }
+    .slide.active { display: flex; }
+    .slide.dark { background: var(--ink); color: var(--paper); }
+    .slide.dark .sub, .slide.dark p { color: var(--sand); }
+    .slide.dark .eyebrow { color: var(--brass-light); }
+    .bar-top { position: absolute; top: 0; left: 0; right: 0; height: 5px; background: var(--brass); }
+    .eyebrow {
+      font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--brass); font-weight: 600; margin-bottom: 1rem;
+    }
+    h1 { font-family: Fraunces, Georgia, serif; font-size: clamp(2rem, 4.5vw, 3.2rem); font-weight: 400; line-height: 1.1; }
+    h2 { font-family: Fraunces, Georgia, serif; font-size: clamp(1.5rem, 3vw, 2.2rem); font-weight: 400; }
+    .sub { font-family: Fraunces, Georgia, serif; font-size: 1.25rem; color: var(--brass); margin-top: 0.5rem; }
+    p { color: var(--stone); line-height: 1.55; font-size: 0.95rem; max-width: 52rem; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 2rem; }
+    .stat { background: var(--cream); border: 1px solid var(--sand); border-radius: 12px; padding: 1rem 1.2rem; }
+    .slide.dark .stat { background: #2a251d; border-color: #363026; }
+    .stat strong { display: block; font-family: Fraunces, serif; font-size: 1.4rem; }
+    .stat span { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--stone); }
+    .cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.5rem; flex: 1; align-items: start; }
+    .card { background: var(--cream); border: 1px solid var(--sand); border-radius: 14px; padding: 1.25rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem; }
+    th { background: var(--ink); color: var(--paper); text-align: left; padding: 0.5rem 0.75rem; font-weight: 500; }
+    td { border-bottom: 1px solid var(--sand); padding: 0.45rem 0.75rem; color: var(--stone); }
+    tr.hl td { background: var(--cream); color: var(--ink); font-weight: 500; }
+    .loop { display: flex; gap: 0.5rem; align-items: center; margin-top: 2rem; flex-wrap: wrap; }
+    .loop-item { text-align: center; }
+    .loop-num {
+      width: 2.5rem; height: 2.5rem; border-radius: 50%;
+      background: var(--brass); color: var(--paper);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 600; margin: 0 auto 0.4rem;
+    }
+    .loop-arrow { color: var(--brass-light); font-size: 1.2rem; }
+    .chart-row { display: flex; gap: 2rem; margin-top: 1.5rem; align-items: flex-end; flex: 1; }
+    .bars { display: flex; gap: 1.5rem; align-items: flex-end; height: 200px; }
+    .bar-group { text-align: center; }
+    .bar { width: 48px; border-radius: 6px 6px 0 0; background: var(--brass); }
+    .bar.cogs { background: var(--sand); height: 8px !important; }
+    .bar-label { font-size: 0.7rem; margin-top: 0.4rem; color: var(--stone); }
+    .pie { width: 200px; height: 200px; }
+    .pie-legend { font-size: 0.8rem; color: var(--stone); }
+    .pie-legend div { display: flex; align-items: center; gap: 0.5rem; margin: 0.35rem 0; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .cover-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; flex: 1; margin: -4vh -5vw; margin-top: 0; }
+    .cover-left { padding: 4vh 5vw; display: flex; flex-direction: column; justify-content: center; }
+    .cover-img { background: url('../../../public/images/flatlay-essentials.png') center/cover; min-height: 100%; }
+    .slide.dark .cover-left { background: var(--ink); }
+    .engines { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+    .engine { background: var(--cream); border: 1px solid var(--sand); border-radius: 12px; padding: 1rem; position: relative; }
+    .engine code { position: absolute; top: 0.75rem; right: 0.75rem; font-size: 0.65rem; color: var(--brass); font-weight: 600; }
+    .engine h3 { font-family: Fraunces, serif; font-size: 1rem; margin-bottom: 0.35rem; }
+    .engine p { font-size: 0.8rem; }
+    .nav {
+      position: fixed; bottom: 1.25rem; right: 1.5rem; z-index: 100;
+      display: flex; gap: 0.5rem; align-items: center;
+      background: rgba(21,18,13,0.85); padding: 0.5rem 0.75rem; border-radius: 999px;
+      color: var(--paper); font-size: 0.75rem;
+    }
+    .nav button {
+      background: var(--brass); border: none; color: var(--paper);
+      width: 2rem; height: 2rem; border-radius: 50%; cursor: pointer; font-size: 1rem;
+    }
+    .nav button:hover { background: var(--brass-light); }
+    .arch svg { max-width: 100%; height: auto; margin-top: 1rem; }
+    @media print {
+      body { overflow: visible; background: white; }
+      .slide { display: flex !important; page-break-after: always; position: relative; height: 100vh; }
+      .nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck" id="deck">
+
+    <!-- 1 Cover -->
+    <section class="slide dark active">
+      <div class="bar-top"></div>
+      <div class="cover-split">
+        <div class="cover-left">
+          <p class="eyebrow">Confidential · 2026</p>
+          <h1>Valetti</h1>
+          <p class="sub">Personal styling you can trust</p>
+          <p style="margin-top:1.5rem">AI-assisted atelier · Style Recommendation Engine · valetti.fit</p>
+          <div class="grid-4" style="margin-top:2rem">
+            <div class="stat"><strong>€10–35</strong><span>Report price</span></div>
+            <div class="stat"><strong>5,000+</strong><span>SKUs</span></div>
+            <div class="stat"><strong>EU / USA</strong><span>Markets</span></div>
+            <div class="stat"><strong>Credits</strong><span>Pay-as-you-go</span></div>
+          </div>
+        </div>
+        <div class="cover-img"></div>
+      </div>
+    </section>
+
+    <!-- 2 Problem -->
+    <section class="slide">
+      <div class="bar-top"></div>
+      <p class="eyebrow">01 · Approach</p>
+      <h1>The styling gap</h1>
+      <p style="margin-top:1.25rem">78% of adults 30–55 in EU & USA shop without confidence. Stylists cost $150–400/session. ChatGPT gives text — not photos, catalog, or try-on.</p>
+      <div class="card" style="margin-top:2rem; max-width:52rem">
+        <strong style="color:var(--brass);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.1em">Differentiator</strong>
+        <p style="margin-top:0.5rem;color:var(--ink)">Closed pipeline: analysis → look → catalog → try-on → report. One Style Profile — not a generic LLM chat.</p>
+      </div>
+    </section>
+
+    <!-- 3 Loop -->
+    <section class="slide dark">
+      <div class="bar-top"></div>
+      <p class="eyebrow">01 · Approach</p>
+      <h1>The Valetti loop</h1>
+      <div class="loop">
+        <div class="loop-item"><div class="loop-num">1</div><small>Photos</small></div>
+        <span class="loop-arrow">→</span>
+        <div class="loop-item"><div class="loop-num">2</div><small>Profile</small></div>
+        <span class="loop-arrow">→</span>
+        <div class="loop-item"><div class="loop-num">3</div><small>Looks</small></div>
+        <span class="loop-arrow">→</span>
+        <div class="loop-item"><div class="loop-num">4</div><small>Catalog</small></div>
+        <span class="loop-arrow">→</span>
+        <div class="loop-item"><div class="loop-num">5</div><small>Try-on</small></div>
+        <span class="loop-arrow">→</span>
+        <div class="loop-item"><div class="loop-num">6</div><small>Buy</small></div>
+      </div>
+    </section>
+
+    <!-- 4 Pricing -->
+    <section class="slide">
+      <div class="bar-top"></div>
+      <p class="eyebrow">03 · Pricing</p>
+      <h1>€10 – €35 per report</h1>
+      <table>
+        <tr><th>Tier</th><th>Price</th><th>Credits</th><th>Includes</th></tr>
+        <tr><td>Starter</td><td>€0</td><td>5</td><td>1 look · colour & hair</td></tr>
+        <tr class="hl"><td>Basic</td><td>€10</td><td>10</td><td>3 looks · shopping · PDF</td></tr>
+        <tr><td>Lookbook</td><td>€20</td><td>20</td><td>4 looks · capsule</td></tr>
+        <tr><td>Premium</td><td>€35</td><td>35</td><td>6 looks · grooming</td></tr>
+      </table>
+      <div class="chart-row">
+        <div class="bars">
+          <div class="bar-group"><div class="bar" style="height:28px"></div><div class="bar-label">S·5</div></div>
+          <div class="bar-group"><div class="bar" style="height:56px"></div><div class="bar-label">B·10</div></div>
+          <div class="bar-group"><div class="bar" style="height:112px"></div><div class="bar-label">L·20</div></div>
+          <div class="bar-group"><div class="bar" style="height:196px"></div><div class="bar-label">P·35</div></div>
+        </div>
+        <p>1 credit ≈ €1 · 6 free on signup</p>
+      </div>
+    </section>
+
+    <!-- 5 Revenue -->
+    <section class="slide dark">
+      <div class="bar-top"></div>
+      <p class="eyebrow">04 · Monetization</p>
+      <h1>Revenue mix</h1>
+      <div class="cols-2">
+        <svg class="pie" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#2a251d" stroke-width="20"/>
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#a97c3c" stroke-width="20" stroke-dasharray="105 251" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#c2a06a" stroke-width="20" stroke-dasharray="88 251" stroke-dashoffset="-105" transform="rotate(-90 50 50)"/>
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#e7dcc7" stroke-width="20" stroke-dasharray="38 251" stroke-dashoffset="-193" transform="rotate(-90 50 50)"/>
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#6c6358" stroke-width="20" stroke-dasharray="20 251" stroke-dashoffset="-231" transform="rotate(-90 50 50)"/>
+        </svg>
+        <div class="pie-legend">
+          <div><span class="dot" style="background:#a97c3c"></span> Credit packs 42%</div>
+          <div><span class="dot" style="background:#c2a06a"></span> Report tiers 35%</div>
+          <div><span class="dot" style="background:#e7dcc7"></span> Affiliate 15%</div>
+          <div><span class="dot" style="background:#6c6358"></span> B2B 8%</div>
+          <p style="margin-top:1.5rem;color:var(--brass-light);font-size:1.1rem"><strong>~91%</strong> contribution margin (paid)</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 Unit econ -->
+    <section class="slide">
+      <div class="bar-top"></div>
+      <p class="eyebrow">05 · Unit economics</p>
+      <h1>Price vs COGS</h1>
+      <div class="chart-row">
+        <div class="bars">
+          <div class="bar-group"><div class="bar" style="height:40px"></div><div class="bar cogs"></div><div class="bar-label">Basic</div></div>
+          <div class="bar-group"><div class="bar" style="height:80px"></div><div class="bar cogs"></div><div class="bar-label">Lookbook</div></div>
+          <div class="bar-group"><div class="bar" style="height:140px"></div><div class="bar cogs"></div><div class="bar-label">Premium</div></div>
+        </div>
+        <table style="flex:1">
+          <tr><th>Tier</th><th>Price</th><th>COGS</th><th>Margin</th></tr>
+          <tr><td>Basic</td><td>€10</td><td>€0.34</td><td>~91%</td></tr>
+          <tr><td>Lookbook</td><td>€20</td><td>€0.64</td><td>~92%</td></tr>
+          <tr><td>Premium</td><td>€35</td><td>€1.08</td><td>~93%</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <!-- 7 SRE -->
+    <section class="slide dark arch">
+      <div class="bar-top"></div>
+      <p class="eyebrow">07 · Technology</p>
+      <h1>Style Recommendation Engine</h1>
+      <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+        <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#c2a06a"/></marker></defs>
+        <rect x="10" y="70" width="80" height="36" rx="6" fill="#2a251d" stroke="#c2a06a"/><text x="50" y="92" fill="#faf6ee" font-size="11" text-anchor="middle" font-family="Inter">Photos</text>
+        <rect x="120" y="30" width="70" height="30" rx="5" fill="#a97c3c"/><text x="155" y="50" fill="#faf6ee" font-size="10" text-anchor="middle">CAE</text>
+        <rect x="120" y="70" width="70" height="30" rx="5" fill="#a97c3c"/><text x="155" y="90" fill="#faf6ee" font-size="10" text-anchor="middle">SAE</text>
+        <rect x="120" y="110" width="70" height="30" rx="5" fill="#a97c3c"/><text x="155" y="130" fill="#faf6ee" font-size="10" text-anchor="middle">FE</text>
+        <rect x="230" y="60" width="100" height="50" rx="6" fill="#c2a06a"/><text x="280" y="90" fill="#15120d" font-size="10" text-anchor="middle" font-weight="600">Style Profile</text>
+        <rect x="360" y="70" width="80" height="36" rx="6" fill="#a97c3c"/><text x="400" y="92" fill="#faf6ee" font-size="10" text-anchor="middle">SRE</text>
+        <rect x="470" y="70" width="70" height="36" rx="6" fill="#2a251d" stroke="#c2a06a"/><text x="505" y="92" fill="#faf6ee" font-size="10" text-anchor="middle">Looks</text>
+        <rect x="360" y="140" width="90" height="36" rx="6" fill="#a97c3c"/><text x="405" y="162" fill="#faf6ee" font-size="10" text-anchor="middle">Catalog</text>
+        <rect x="480" y="140" width="70" height="36" rx="6" fill="#2a251d" stroke="#c2a06a"/><text x="515" y="162" fill="#faf6ee" font-size="10" text-anchor="middle">Match</text>
+        <rect x="300" y="175" width="120" height="30" rx="6" fill="#c2a06a"/><text x="360" y="195" fill="#15120d" font-size="10" text-anchor="middle">Try-on + Report</text>
+        <line x1="90" y1="88" x2="118" y2="88" stroke="#c2a06a" marker-end="url(#arr)"/>
+        <line x1="190" y1="88" x2="228" y2="88" stroke="#c2a06a" marker-end="url(#arr)"/>
+        <line x1="330" y1="88" x2="358" y2="88" stroke="#c2a06a" marker-end="url(#arr)"/>
+        <line x1="440" y1="88" x2="468" y2="88" stroke="#c2a06a" marker-end="url(#arr)"/>
+      </svg>
+      <div class="engines">
+        <div class="engine"><code>CAE</code><h3>Color Analytic</h3><p>Season · undertone · palette</p></div>
+        <div class="engine"><code>SAE</code><h3>Shape Analytics</h3><p>Face · body · silhouette</p></div>
+        <div class="engine"><code>FE</code><h3>Fashion Engine</h3><p>Climate · season · RAG</p></div>
+        <div class="engine"><code>CHE</code><h3>Catalog Host</h3><p>Feeds · scrapers · pgvector</p></div>
+      </div>
+    </section>
+
+    <!-- 8 Close -->
+    <section class="slide dark">
+      <div class="bar-top"></div>
+      <h1 style="margin-top:15vh">Valetti</h1>
+      <p class="sub">Let's build the future of personal styling.</p>
+      <p style="margin-top:2rem;font-size:1.1rem;color:var(--sand)">valetti.fit/investors · founder@valetti.fit</p>
+      <p style="margin-top:3rem;font-size:0.75rem">Confidential · 2026 · Brand face · inspired by Carlo Valetti</p>
+    </section>
+
+  </div>
+
+  <div class="nav">
+    <button type="button" id="prev" aria-label="Previous">‹</button>
+    <span id="counter">1 / 8</span>
+    <button type="button" id="next" aria-label="Next">›</button>
+  </div>
+
+  <script>
+    const slides = [...document.querySelectorAll('.slide')];
+    let i = 0;
+    const counter = document.getElementById('counter');
+    function show(n) {
+      i = (n + slides.length) % slides.length;
+      slides.forEach((s, j) => s.classList.toggle('active', j === i));
+      counter.textContent = `${i + 1} / ${slides.length}`;
+    }
+    document.getElementById('prev').onclick = () => show(i - 1);
+    document.getElementById('next').onclick = () => show(i + 1);
+    document.onkeydown = (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); show(i + 1); }
+      if (e.key === 'ArrowLeft') show(i - 1);
+      if (e.key === 'f' || e.key === 'F') document.documentElement.requestFullscreen?.();
+    };
+  </script>
+</body>
+</html>
