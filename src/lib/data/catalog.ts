@@ -23,8 +23,12 @@ type MatchRow = {
   title: string;
   color: string | null;
   price_eur: number | null;
+  price_native?: number | null;
+  currency?: string | null;
   deeplink: string | null;
   image_url: string | null;
+  offer_country?: string | null;
+  same_country?: boolean | null;
   similarity?: number;
 };
 
@@ -40,14 +44,26 @@ type MatchProductsArgs = {
   match_count: number;
   filter_category: string;
   max_price: number;
-  market_filter: string;
+  /** Visitor country (ISO-2) — picks the best per-country offer. */
+  country: string;
+  /** Visitor display currency — second-priority offer fallback. */
+  currency: string;
+  /** Coarse EU/US market — only used by the legacy match_products fallback. */
+  market: string;
   gender_filter?: string | null;
 };
 
-/** RPC wrapper — older DBs lack `gender_filter` on match_products (migration 0005). */
-async function rpcMatchProducts(
+/** Legacy fallback for DBs predating product_offers (migration 0012/0013). */
+async function legacyMatchProducts(
   sb: ReturnType<typeof createAdminSupabase>,
-  args: MatchProductsArgs,
+  args: {
+    query_embedding: number[];
+    match_count: number;
+    filter_category: string;
+    max_price: number;
+    market_filter: string;
+    gender_filter?: string | null;
+  },
 ): Promise<MatchRow[]> {
   const { data, error } = await sb.rpc("match_products", args);
   if (
@@ -60,6 +76,40 @@ async function rpcMatchProducts(
     const retry = await sb.rpc("match_products", legacy);
     if (retry.error) throw retry.error;
     return (retry.data ?? []) as MatchRow[];
+  }
+  if (error) throw error;
+  return (data ?? []) as MatchRow[];
+}
+
+/**
+ * Offer-aware catalogue search: every product is eligible (no hard market
+ * filter), the best per-country offer is selected for the visitor, and
+ * same-country picks are flagged for ranking. Falls back to the older,
+ * market-filtered match_products on DBs without the offer-aware RPC.
+ */
+async function rpcMatchProducts(
+  sb: ReturnType<typeof createAdminSupabase>,
+  args: MatchProductsArgs,
+): Promise<MatchRow[]> {
+  const { country, currency, market, ...base } = args;
+  const { data, error } = await sb.rpc("match_product_offers", {
+    query_embedding: base.query_embedding,
+    match_count: base.match_count,
+    filter_category: base.filter_category,
+    max_price: base.max_price,
+    gender_filter: base.gender_filter ?? null,
+    p_country: (country || "Global").toUpperCase(),
+    p_currency: (currency || "EUR").toUpperCase(),
+  });
+  if (error && /could not find the function|schema cache/i.test(error.message)) {
+    return legacyMatchProducts(sb, {
+      query_embedding: base.query_embedding,
+      match_count: base.match_count,
+      filter_category: base.filter_category,
+      max_price: base.max_price,
+      market_filter: market,
+      gender_filter: base.gender_filter ?? null,
+    });
   }
   if (error) throw error;
   return (data ?? []) as MatchRow[];
@@ -136,6 +186,8 @@ export async function matchShopping(
     const palette = content.colors.best.map((c) => c.name).join(", ");
     const goal = profile.goals[0]?.toLowerCase() ?? "your goals";
     const market = marketForCurrency(profile.currency);
+    const country = profile.demographics.country;
+    const currency = profile.currency;
     const gender = genderFilterFor(profile.demographics.genderPresentation);
     const items: ShoppingItem[] = [];
     const seen = new Set<string>();
@@ -150,7 +202,9 @@ export async function matchShopping(
         match_count: 3,
         filter_category: category,
         max_price: profile.budgetEur.max,
-        market_filter: market,
+        country,
+        currency,
+        market,
         gender_filter: gender,
       });
       let added = 0;
@@ -163,6 +217,8 @@ export async function matchShopping(
           title: p.brand ? `${p.brand} ${p.title}` : p.title,
           why: shoppingReason(category, added - 1, profile, goal),
           priceEur: Number(p.price_eur ?? 0),
+          priceNative: p.price_native != null ? Number(p.price_native) : undefined,
+          currency: p.currency ?? undefined,
           retailer: p.brand ?? p.source ?? "",
           url: p.deeplink ?? "#",
           color: p.color ?? "#CCCCCC",
@@ -206,11 +262,14 @@ function rankMatchRows(rows: MatchRow[], color: string | null): RankedMatch[] {
     const colorScore = colorMatchScore(color, row.color, row.title);
     const similarPick =
       sim < MIN_VECTOR_SIMILARITY || colorScore < MIN_COLOR_MATCH;
+    // Soft preference for items with an offer in the visitor's own country —
+    // a tiebreaker, never enough to override a clearly better style/colour fit.
+    const localBoost = row.same_country ? 0.06 : 0;
     return {
       row,
       colorScore,
       similarPick,
-      score: sim * 0.55 + colorScore * 0.45,
+      score: sim * 0.55 + colorScore * 0.45 + localBoost,
     };
   });
 }
@@ -255,6 +314,8 @@ export async function matchLookItems(
     const sb = createAdminSupabase();
     const goal = profile.goals[0]?.toLowerCase() ?? "your goals";
     const market = marketForCurrency(profile.currency);
+    const country = profile.demographics.country;
+    const currency = profile.currency;
     const gender = genderFilterFor(profile.demographics.genderPresentation);
 
     const perLook = content.looks.map((l) => ({
@@ -299,7 +360,9 @@ export async function matchLookItems(
           match_count: LOOK_MATCH_COUNT,
           filter_category: q.category,
           max_price: profile.budgetEur.max,
-          market_filter: market,
+          country,
+          currency,
+          market,
           gender_filter: gender,
         });
         matchByKey.set(q.key, (data ?? []) as MatchRow[]);
@@ -330,6 +393,8 @@ export async function matchLookItems(
             ? `Similar ${colorLabel}${g.garment} from the catalogue — same category and tone as this look.`
             : `Matches this look — ${colorLabel}${g.garment} aligned with your ${profile.colorSeason} palette and goal to ${goal}.`,
           priceEur: Number(p.price_eur ?? 0),
+          priceNative: p.price_native != null ? Number(p.price_native) : undefined,
+          currency: p.currency ?? undefined,
           retailer: p.brand ?? p.source ?? "",
           url: p.deeplink ?? "#",
           color: p.color ?? "#CCCCCC",

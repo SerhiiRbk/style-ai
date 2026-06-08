@@ -1,6 +1,6 @@
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { RegenPhotoButton } from "@/components/RegenPhotoButton";
-import { formatMoney } from "@/lib/currency";
+import { formatMoney, formatOfferPrice } from "@/lib/currency";
 import type { Currency } from "@/lib/currency";
 import { LookTryOn } from "./LookTryOn";
 import type {
@@ -295,7 +295,12 @@ export function ShopTheLook({
               </span>
             ) : null}
             <span className="text-xs text-stone-soft">
-              {formatMoney(it.priceEur, currency)}
+              {formatOfferPrice({
+                priceEur: it.priceEur,
+                displayCurrency: currency,
+                offerCurrency: it.currency,
+                priceNative: it.priceNative,
+              })}
             </span>
           </a>
         ))}
@@ -681,7 +686,12 @@ function PriorityColumn({
               <span className="truncate text-sm">{i.title}</span>
             </span>
             <span className="shrink-0 font-display text-sm text-stone">
-              {formatMoney(i.priceEur, currency)}
+              {formatOfferPrice({
+                priceEur: i.priceEur,
+                displayCurrency: currency,
+                offerCurrency: i.currency,
+                priceNative: i.priceNative,
+              })}
             </span>
           </li>
         ))}

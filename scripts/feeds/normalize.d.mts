@@ -7,6 +7,13 @@ export function toEur(
 export function parsePrice(raw: unknown): number;
 export function parseBool(raw: unknown): boolean | undefined;
 export function inferMarket(currency: unknown): "EU" | "US";
+export function normalizeCountry(c?: unknown): string;
+export function inferCountry(
+  explicit?: unknown,
+  currency?: unknown,
+  defaultCountry?: unknown,
+): string;
+export function productKey(p: Record<string, unknown>): string;
 export function inferGender(
   ...values: unknown[]
 ): "men" | "women" | "unisex" | "kids" | undefined;

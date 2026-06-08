@@ -5,6 +5,7 @@ import {
   parseBool,
   inferGender,
   inferMarket,
+  inferCountry,
 } from "./normalize.mjs";
 
 function pick(record, keys) {
@@ -14,6 +15,11 @@ function pick(record, keys) {
   }
   return undefined;
 }
+
+// Common column names so feeds don't all need explicit map entries.
+const EAN_KEYS = ["ean", "gtin", "g:gtin", "gtin13", "GTIN", "EAN", "barcode", "upc", "UPC"];
+const MPN_KEYS = ["mpn", "g:mpn", "MPN", "manufacturer_part_number", "part_number"];
+const COUNTRY_KEYS = ["country", "country_code", "market_country", "g:shipping_country", "Country"];
 
 function slug(s) {
   return String(s)
@@ -51,6 +57,15 @@ export function toCanonical(records, source, { fxRates } = {}) {
         : source.sourcePrefix);
 
     const externalId = pick(r, m.externalId) ?? deeplink;
+    const ean = pick(r, m.ean) ?? pick(r, EAN_KEYS);
+    const mpn = pick(r, m.mpn) ?? pick(r, MPN_KEYS);
+    const market =
+      (m.market && pick(r, m.market)) || source.market || inferMarket(currency);
+    const country = inferCountry(
+      pick(r, m.country) ?? pick(r, COUNTRY_KEYS),
+      currency,
+      source.defaultCountry,
+    );
     // Normalize the feed's gender value (e.g. "Men", "Womens") and fall back to
     // inferring it from category/title/brand text.
     const gender = inferGender(
@@ -64,6 +79,9 @@ export function toCanonical(records, source, { fxRates } = {}) {
       source: String(sourceLabel),
       externalId: String(externalId),
       sku: pick(r, m.sku) ? String(pick(r, m.sku)) : undefined,
+      ean: ean ? String(ean) : undefined,
+      mpn: mpn ? String(mpn) : undefined,
+      country,
       brand: brand ? String(brand) : undefined,
       title: String(title),
       description: pick(r, m.description) ? String(pick(r, m.description)) : undefined,
@@ -74,8 +92,7 @@ export function toCanonical(records, source, { fxRates } = {}) {
       price: Number.isFinite(price) ? price : 0,
       currency,
       priceEur: toEur(price, currency, fxRates),
-      market:
-        (m.market && pick(r, m.market)) || source.market || inferMarket(currency),
+      market,
       imageUrl: pick(r, m.imageUrl) ? String(pick(r, m.imageUrl)) : undefined,
       deeplink: String(deeplink),
       inStock: parseBool(pick(r, m.inStock)),

@@ -6,6 +6,9 @@ export interface CanonicalProductInput {
   source: string;
   externalId: string;
   sku?: string;
+  ean?: string;
+  mpn?: string;
+  country?: string;
   brand?: string;
   title: string;
   description?: string;

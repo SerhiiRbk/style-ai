@@ -10,6 +10,7 @@ import {
   mapCategory,
   inferMarket,
   inferGender,
+  inferCountry,
   toEur,
   dedupeProducts,
 } from "../../../../../scripts/feeds/normalize.mjs";
@@ -27,6 +28,18 @@ type SourceType = (typeof SOURCE_TYPES)[number];
 const MAX_ITEMS = 2000;
 
 const GENDERS = ["men", "women", "unisex", "kids"];
+
+// Scraped sources whose feed has no country column but is always pulled from one
+// storefront (e.g. our Zara scraper reads the Spanish site). Used as the offer
+// country when the row itself doesn't state one and the currency is shared (EUR).
+const SOURCE_DEFAULT_COUNTRY: { match: RegExp; country: string }[] = [
+  { match: /zara/i, country: "ES" },
+];
+
+function defaultCountryForSource(source: unknown): string | undefined {
+  const s = typeof source === "string" ? source : "";
+  return SOURCE_DEFAULT_COUNTRY.find((r) => r.match.test(s))?.country;
+}
 
 /**
  * Apply the same forgiving normalisation the feed adapters use, so a scraper can
@@ -50,6 +63,14 @@ function normalizeRaw(raw: unknown, defaultSource?: string): unknown {
       typeof r.title === "string" ? r.title : "",
     );
   }
+  // Scrapers often put the storefront country in `market` (e.g. "DE") before we
+  // coerce it to the coarse EU/US region — preserve it for offer-country inference.
+  const rawMarket = typeof r.market === "string" ? r.market.trim().toUpperCase() : "";
+  const marketCountry =
+    /^[A-Z]{2}$/.test(rawMarket) && rawMarket !== "EU" && rawMarket !== "US"
+      ? rawMarket
+      : undefined;
+
   if (r.market !== "EU" && r.market !== "US") {
     r.market = inferMarket(r.currency);
   }
@@ -62,6 +83,12 @@ function normalizeRaw(raw: unknown, defaultSource?: string): unknown {
       typeof r.currency === "string" ? r.currency : "EUR",
     );
   }
+  // Offer country: explicit ISO-2 → currency → per-source default → "Global".
+  r.country = inferCountry(
+    typeof r.country === "string" ? r.country : marketCountry,
+    typeof r.currency === "string" ? r.currency : undefined,
+    defaultCountryForSource(r.source),
+  );
   return r;
 }
 

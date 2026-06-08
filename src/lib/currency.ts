@@ -113,6 +113,34 @@ export function formatProductPrice(opts: {
   return `~${estimate} (${original})`;
 }
 
+/**
+ * Catalogue offer price line for the visitor.
+ *
+ * - Offer already in the visitor's currency → show the retailer's native price.
+ * - Visitor pays in EUR → a single EUR figure.
+ * - Otherwise (a neighbouring-country offer) → the EUR price with an approximate
+ *   conversion to the visitor's currency in parentheses, e.g. `€39 (~999 Kč)`.
+ */
+export function formatOfferPrice(opts: {
+  priceEur: number;
+  displayCurrency: Currency | string;
+  offerCurrency?: string | null;
+  priceNative?: number | null;
+}): string {
+  const display = (opts.displayCurrency || "EUR").toUpperCase();
+  const offer = (opts.offerCurrency || "EUR").toUpperCase();
+
+  if (
+    offer === display &&
+    opts.priceNative != null &&
+    Number.isFinite(opts.priceNative)
+  ) {
+    return formatNativePrice(opts.priceNative, offer);
+  }
+  if (display === "EUR") return formatMoney(opts.priceEur, "EUR");
+  return `${formatMoney(opts.priceEur, "EUR")} (~${formatMoney(opts.priceEur, display)})`;
+}
+
 /** Subscription currency for a visitor country (ISO2). Europe → EUR, else USD. */
 export function subscriptionCurrency(country?: string | null): SubCurrency {
   if (country && EUROPE.has(country.toUpperCase())) return "EUR";

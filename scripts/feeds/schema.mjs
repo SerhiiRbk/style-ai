@@ -28,6 +28,9 @@ export const canonicalProductSchema = z.object({
   source: z.string().min(1), // network:merchant, e.g. "awin:zalando"
   externalId: z.string().min(1), // parent SKU from the feed (colour = separate row)
   sku: z.string().optional(),
+  ean: z.string().optional(), // EAN/GTIN — primary cross-country product identity
+  mpn: z.string().optional(), // manufacturer part number — identity fallback
+  country: z.string().optional(), // ISO-3166-1 alpha-2 offer country, or "" generic
 
   // Descriptive
   brand: z.string().optional(),

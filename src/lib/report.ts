@@ -136,6 +136,10 @@ export type ShoppingItem = {
   title: string;
   why: string;
   priceEur: number;
+  /** Retailer's native sale price in `currency` (when known, from the offer). */
+  priceNative?: number;
+  /** Currency of the selected per-country offer (e.g. EUR, PLN). */
+  currency?: string;
   retailer: string;
   url: string;
   color: string;

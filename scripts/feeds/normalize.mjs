@@ -78,6 +78,52 @@ export function inferMarket(currency) {
   return "EU";
 }
 
+/** Currencies that map 1:1 to a single country (EUR is shared → no mapping). */
+const CURRENCY_COUNTRY = {
+  GBP: "GB", PLN: "PL", CZK: "CZ", SEK: "SE", DKK: "DK", NOK: "NO",
+  CHF: "CH", USD: "US", CAD: "CA", HUF: "HU", RON: "RO", BGN: "BG",
+};
+
+/** Canonical offer-country token: "Global" (region-generic) or ISO-2 uppercase. */
+export function normalizeCountry(c) {
+  const s = String(c ?? "").trim();
+  if (!s || s.toLowerCase() === "global") return "Global";
+  return s.toUpperCase();
+}
+
+/**
+ * Country of an offer: explicit feed value → currency-derived (for non-EUR) →
+ * per-source default → "Global" (region-generic, e.g. a EUR feed without a
+ * country).
+ */
+export function inferCountry(explicit, currency, defaultCountry) {
+  const e = String(explicit ?? "").trim();
+  if (e.toLowerCase() === "global") return "Global";
+  if (/^[A-Za-z]{2}$/.test(e)) return e.toUpperCase();
+  const cc = CURRENCY_COUNTRY[String(currency ?? "").toUpperCase()];
+  if (cc) return cc;
+  const d = String(defaultCountry ?? "").trim();
+  if (/^[A-Za-z]{2}$/.test(d)) return d.toUpperCase();
+  return "Global";
+}
+
+/**
+ * Stable identity for a product ACROSS feeds/countries. Used to merge the same
+ * physical item (sold in many countries) into one `products` row with many
+ * `product_offers`. EAN/GTIN is best; otherwise brand+mpn(+colour); last resort
+ * is the legacy per-source identity.
+ */
+export function productKey(p) {
+  const ck = p.color_key ?? colorKey(p.color, p.colorHex);
+  const ean = String(p.ean ?? "").replace(/[^0-9a-z]/gi, "").trim();
+  if (ean) return `ean:${ean}`;
+  const brand = String(p.brand ?? "").trim().toLowerCase();
+  const mpn = String(p.mpn ?? p.sku ?? "").trim().toLowerCase();
+  if (brand && mpn) return `bm:${brand}:${mpn}:${ck}`;
+  const ext = p.externalId ?? p.external_id ?? "";
+  return `se:${p.source ?? ""}:${ext}:${ck}`;
+}
+
 export function inferGender(...values) {
   const hay = values.join(" ").toLowerCase();
   if (/\b(women|woman|female|womens|ladies|damen|femme|donna|mujer)\b/.test(hay)) return "women";

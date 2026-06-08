@@ -1,6 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { embedMany } from "ai";
-import { embedText, dedupeProducts, colorKey, productVariantKey } from "./normalize.mjs";
+import {
+  embedText,
+  dedupeProducts,
+  colorKey,
+  productVariantKey,
+  productKey,
+  normalizeCountry,
+} from "./normalize.mjs";
 
 export function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -57,6 +64,29 @@ function toRow(p, embedding, sourceType, unhide) {
   return row;
 }
 
+/** Map a canonical product to one per-country offer row. */
+function offerRow(productId, p, sourceType) {
+  const provenance =
+    (p.sourceType && VALID_SOURCE_TYPES.includes(p.sourceType)
+      ? p.sourceType
+      : null) ?? sourceType ?? "feed";
+  return {
+    product_id: productId,
+    country: normalizeCountry(p.country),
+    market: p.market ?? null,
+    currency: p.currency ?? null,
+    price_native: p.price ?? null,
+    original_price: p.price ?? null,
+    price_eur: p.priceEur ?? null,
+    deeplink: p.deeplink,
+    image_url: p.imageUrl ?? null,
+    in_stock: p.inStock ?? null,
+    source: p.source ?? null,
+    source_type: provenance,
+    updated_at: new Date().toISOString(),
+  };
+}
+
 /**
  * Embed (batched) and upsert canonical products keyed by
  * (source, external_id, color_key).
@@ -76,58 +106,113 @@ export async function embedAndUpsert(
 ) {
   const sb = getSupabase();
   const { products: unique } = dedupeProducts(products);
+  for (const p of unique) p.__pk = productKey(p);
+
   let upserted = 0;
   for (let i = 0; i < unique.length; i += batchSize) {
     const batch = unique.slice(i, i + batchSize);
 
-    // Pull existing rows for this batch to detect unchanged descriptive text.
+    // Group rows by cross-country identity. The same product sold in several
+    // countries collapses into one `products` row with many `product_offers`.
+    const groups = new Map();
+    for (const p of batch) {
+      if (!groups.has(p.__pk)) groups.set(p.__pk, []);
+      groups.get(p.__pk).push(p);
+    }
+
+    // (a) Merge targets: existing products sharing the same product_key.
+    const pks = [...groups.keys()];
+    const byPk = new Map();
+    {
+      const { data, error } = await sb
+        .from("products")
+        .select(
+          "id, product_key, brand, title, category, color, gender, description",
+        )
+        .in("product_key", pks);
+      if (error) throw new Error(error.message);
+      for (const r of data ?? []) if (!byPk.has(r.product_key)) byPk.set(r.product_key, r);
+    }
+
+    // (b) Legacy variant rows (same source/external_id/colour) — lets us reuse
+    //     an existing vector when the descriptive text is unchanged, and lets a
+    //     pre-existing row adopt the new product_key on re-import.
     const sources = [...new Set(batch.map((p) => p.source))];
     const extIds = [...new Set(batch.map((p) => p.externalId))];
-    const existing = new Map();
-    const { data: prevRows, error: selErr } = await sb
-      .from("products")
-      .select(
-        "source, external_id, color_key, brand, title, category, color, gender, description",
-      )
-      .in("source", sources)
-      .in("external_id", extIds);
-    if (selErr) throw new Error(selErr.message);
-    for (const r of prevRows ?? []) {
-      existing.set(productVariantKey(r), r);
+    const variantPrev = new Map();
+    {
+      const { data, error } = await sb
+        .from("products")
+        .select(
+          "id, source, external_id, color_key, brand, title, category, color, gender, description",
+        )
+        .in("source", sources)
+        .in("external_id", extIds);
+      if (error) throw new Error(error.message);
+      for (const r of data ?? []) variantPrev.set(productVariantKey(r), r);
     }
 
-    const reuse = []; // exists + identical embed text ⇒ keep vector
-    const fresh = []; // new or changed text ⇒ (re)embed
-    for (const p of batch) {
-      const prev = existing.get(productVariantKey(p));
-      if (prev && embedText(prev) === embedText(p)) reuse.push(p);
-      else fresh.push(p);
+    // Decide which identities need a (re)embed, then embed them in one batch.
+    const needEmbed = [];
+    for (const [pk, items] of groups) {
+      const rep = items[0];
+      const prev = byPk.get(pk) ?? variantPrev.get(productVariantKey(rep));
+      if (!(prev && embedText(prev) === embedText(rep))) needEmbed.push(pk);
+    }
+    const embByPk = new Map();
+    if (needEmbed.length) {
+      const reps = needEmbed.map((pk) => groups.get(pk)[0]);
+      const { embeddings } = await embedMany({ model, values: reps.map(embedText) });
+      reps.forEach((rep, j) => embByPk.set(rep.__pk, embeddings[j]));
     }
 
-    if (fresh.length) {
-      const { embeddings } = await embedMany({
-        model,
-        values: fresh.map(embedText),
-      });
-      const rows = fresh.map((p, j) =>
-        toRow(p, embeddings[j], sourceType, unhide),
+    for (const [pk, items] of groups) {
+      const rep = items[0];
+      const emb = embByPk.get(pk); // undefined ⇒ preserve existing vector
+      const target = byPk.get(pk);
+      let productId;
+
+      if (target) {
+        // Merge into the canonical row — refresh descriptive/commercial fields
+        // but keep its identity columns (and first-seen) intact.
+        productId = target.id;
+        const upd = toRow(rep, emb, sourceType, unhide);
+        upd.product_key = pk;
+        delete upd.ingested_at;
+        delete upd.source;
+        delete upd.external_id;
+        delete upd.color_key;
+        const { error } = await sb.from("products").update(upd).eq("id", productId);
+        if (error) throw new Error(error.message);
+      } else {
+        // No merge target yet: upsert by the legacy variant identity (creates a
+        // new row, or adopts an existing legacy row and stamps its product_key).
+        const row = toRow(rep, emb, sourceType, unhide);
+        row.product_key = pk;
+        const { data, error } = await sb
+          .from("products")
+          .upsert(row, { onConflict: "source,external_id,color_key" })
+          .select("id")
+          .single();
+        if (error) throw new Error(error.message);
+        productId = data.id;
+        byPk.set(pk, { id: productId, product_key: pk });
+      }
+
+      // One offer per country (collapse repeated countries within the upload).
+      const offersByCountry = new Map();
+      for (const p of items) {
+        offersByCountry.set(normalizeCountry(p.country), p);
+      }
+      const offers = [...offersByCountry.values()].map((p) =>
+        offerRow(productId, p, sourceType),
       );
-      const { error } = await sb
-        .from("products")
-        .upsert(rows, { onConflict: "source,external_id,color_key" });
-      if (error) throw new Error(error.message);
-      upserted += rows.length;
-    }
+      const { error: offErr } = await sb
+        .from("product_offers")
+        .upsert(offers, { onConflict: "product_id,country" });
+      if (offErr) throw new Error(offErr.message);
 
-    if (reuse.length) {
-      // Embedding omitted ⇒ existing vector preserved. These all exist, so the
-      // upsert is always an UPDATE (no null-embedding insert).
-      const rows = reuse.map((p) => toRow(p, undefined, sourceType, unhide));
-      const { error } = await sb
-        .from("products")
-        .upsert(rows, { onConflict: "source,external_id,color_key" });
-      if (error) throw new Error(error.message);
-      upserted += rows.length;
+      upserted += items.length;
     }
 
     onProgress?.(upserted, unique.length);
