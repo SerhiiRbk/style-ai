@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ReportZoomImage } from "./ReportZoomImage";
 import { useCredits } from "./CreditsContext";
 import { MAX_TRYON_ITEMS, useTryOnSelection } from "./TryOnContext";
+import { OUTFIT_TRYON_SAVED_EVENT } from "./SavedOutfitTryOns";
 
 const LIVE = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -126,6 +127,9 @@ export function TryOnButton({
       }
       setUrl(data.url);
       setState("done");
+      if (data.savedToReport) {
+        window.dispatchEvent(new CustomEvent(OUTFIT_TRYON_SAVED_EVENT));
+      }
     } catch {
       setState("error");
       setMsg("Try-on failed");
@@ -219,12 +223,15 @@ export function TryOnButton({
       )}
       {msg && <p className="mt-1 text-xs text-paper/40">{msg}</p>}
       {url && (
-        <ReportZoomImage
-          src={url}
-          alt="Virtual try-on preview"
-          className="w-full rounded-lg border border-paper/12"
-          wrapperClassName="mt-2 block w-full"
-        />
+        <div className="mt-2">
+          <ReportZoomImage
+            src={url}
+            alt="Virtual try-on preview"
+            className="w-full rounded-lg border border-paper/12"
+            wrapperClassName="block w-full"
+          />
+          <p className="mt-1 text-[10px] text-paper/35">Tap for full size</p>
+        </div>
       )}
     </div>
   );

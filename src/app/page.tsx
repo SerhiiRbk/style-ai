@@ -335,8 +335,8 @@ function Understand() {
 
 function HowItWorks() {
   const steps = [
-    ["Upload", "Add a few photos — front, full length, optional profile. We check quality automatically."],
     ["Answer", "A short questionnaire: age, city, lifestyle, goals, budget, and how bold you want to be."],
+    ["Upload", "Add a few photos — front portrait and full length work best. Optional profile shot."],
     ["Analyse", "Our engine builds your Style Profile and grounds every recommendation in a reason."],
     ["Receive", "A structured report, infographic, photorealistic looks and a precise shopping list."],
   ];
@@ -346,7 +346,7 @@ function HowItWorks() {
         <div className="max-w-xl">
           <p className="eyebrow">How it works</p>
           <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
-            From photos to a finished plan in minutes.
+            From a few questions to a finished plan in minutes.
           </h2>
         </div>
         <ButtonLink href="/start" variant="outline">

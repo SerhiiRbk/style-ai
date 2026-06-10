@@ -6,6 +6,7 @@ import { reportOgMetadataImageUrl } from "@/lib/data/report-og";
 import { TryOnButton } from "@/components/TryOnButton";
 import { TryOnSelectionProvider } from "@/components/TryOnContext";
 import { TryOnTray } from "@/components/TryOnTray";
+import { SavedOutfitTryOns } from "@/components/SavedOutfitTryOns";
 import { LookTryOn } from "@/components/LookTryOn";
 import { CreditsProvider } from "@/components/CreditsContext";
 import { getCreditBalance } from "@/lib/credits";
@@ -894,6 +895,12 @@ export default async function ReportPage({
             </div>
             {canTryOn ? (
               <TryOnTray reportId={report.id} cost={CREDIT_COSTS.tryon} />
+            ) : null}
+            {canTryOn ? (
+              <SavedOutfitTryOns
+                reportId={report.id}
+                initial={report.outfitTryons}
+              />
             ) : null}
             </TryOnSelectionProvider>
           </div>

@@ -187,12 +187,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not store result" }, { status: 500 });
   }
 
-  await admin.from("tryons").insert({
-    user_id: user.id,
-    product_id: productIds[0],
-    image_path: path,
-    status: "ready",
-  });
+  const garmentsMeta = productIds.map((id, i) => ({
+    productId: id,
+    title: garments[i]?.title ?? "Item",
+    category: garments[i]?.category ?? "Clothing",
+    imageUrl: garments[i]?.imageUrl ?? null,
+  }));
+
+  const { data: savedTryon, error: insertErr } = await admin
+    .from("tryons")
+    .insert({
+      user_id: user.id,
+      product_id: productIds[0],
+      report_id: reportId ?? null,
+      image_path: path,
+      status: "ready",
+      kind: productIds.length > 1 ? "outfit" : "product",
+      garments: garmentsMeta,
+    })
+    .select("id")
+    .single();
+  if (insertErr) {
+    console.error("[tryon] tryons insert failed", insertErr);
+  }
 
   // Charge after success so failed renders are never billed.
   let balance: number | null = null;
@@ -231,5 +248,14 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ url: out.signedUrl, balance }, { status: 201 });
+  return NextResponse.json(
+    {
+      url: out.signedUrl,
+      balance,
+      tryonId: savedTryon?.id ?? null,
+      savedToReport: Boolean(reportId && savedTryon),
+      garments: garmentsMeta,
+    },
+    { status: 201 },
+  );
 }

@@ -5,6 +5,7 @@ import {
   type ReportContent,
 } from "./style-profile";
 import { resolveHairImage } from "./hair-images";
+import type { SavedOutfitTryOn } from "./outfit-tryon";
 
 export type Tier = "free" | "basic" | "lookbook" | "premium";
 
@@ -187,6 +188,8 @@ export type StyleReport = {
   capsuleImages?: (string | null | undefined)[];
   /** Per-look matched products keyed by look index (Shop the Look). Optional for backward compatibility. */
   lookItems?: Record<number, ShoppingItem[]>;
+  /** Owner-only — saved catalogue / outfit try-on renders for this report. */
+  outfitTryons?: SavedOutfitTryOn[];
   /** Live reports only — drives the “still generating” banner. */
   generation?: ReportGenerationState;
 };
@@ -554,6 +557,7 @@ export function assembleReport(opts: {
   lookImages?: (string | null | undefined)[];
   capsuleImages?: (string | null | undefined)[];
   lookItems?: Record<number, ShoppingItem[]>;
+  outfitTryons?: SavedOutfitTryOn[];
   generation?: ReportGenerationState;
   personalizedHairPending?: boolean;
   facialHair?: FacialHairRec[];
@@ -594,6 +598,7 @@ export function assembleReport(opts: {
     dontList: opts.content.dontList,
     capsuleImages: opts.capsuleImages,
     lookItems: opts.lookItems,
+    outfitTryons: opts.outfitTryons,
     generation: opts.generation,
   };
 }

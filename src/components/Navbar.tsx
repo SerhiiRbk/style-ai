@@ -6,6 +6,7 @@ import { BRAND } from "@/lib/brand";
 import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getCreditBalance } from "@/lib/credits";
+import { isAdminEmail } from "@/lib/admin";
 
 const primaryLinks: NavLink[] = [
   { href: "/#how", label: "How it works" },
@@ -26,6 +27,7 @@ const creditsPillClass =
 
 export async function Navbar() {
   let authed = false;
+  let isAdmin = false;
   let balance: number | null = null;
   if (hasSupabase) {
     const sb = await createServerSupabase();
@@ -33,6 +35,7 @@ export async function Navbar() {
       data: { user },
     } = await sb.auth.getUser();
     authed = Boolean(user);
+    if (user) isAdmin = isAdminEmail(user.email);
     if (authed) balance = await getCreditBalance();
   }
 
@@ -70,6 +73,11 @@ export async function Navbar() {
               My reports
             </Link>
           )}
+          {isAdmin && (
+            <Link href="/admin" className={`${navLinkClass} text-brass hover:text-brass/80`}>
+              Admin
+            </Link>
+          )}
           {authed && balance !== null && (
             <>
               <Link
@@ -104,6 +112,7 @@ export async function Navbar() {
           </ButtonLink>
           <NavbarMenu
             authed={authed}
+            isAdmin={isAdmin}
             primaryLinks={primaryLinks}
             secondaryLinks={secondaryLinks}
             balance={balance}

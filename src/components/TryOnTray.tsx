@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { MAX_TRYON_ITEMS, useTryOnSelection } from "./TryOnContext";
+import { OUTFIT_TRYON_SAVED_EVENT } from "./SavedOutfitTryOns";
 import { ReportZoomImage } from "./ReportZoomImage";
 import { useCredits } from "./CreditsContext";
 
@@ -53,6 +54,9 @@ export function TryOnTray({
       }
       setUrl(data.url);
       setState("done");
+      if (data.savedToReport) {
+        window.dispatchEvent(new CustomEvent(OUTFIT_TRYON_SAVED_EVENT));
+      }
     } catch {
       setState("error");
       setMsg("Try-on failed");
@@ -133,14 +137,24 @@ export function TryOnTray({
           </p>
         )}
         {msg && <p className="mt-2 text-xs text-paper/45">{msg}</p>}
+        {state === "done" && reportId && (
+          <p className="mt-2 text-[11px] text-paper/45">
+            Saved to your report below.
+          </p>
+        )}
 
         {url && (
-          <ReportZoomImage
-            src={url}
-            alt="Combined outfit try-on"
-            className="max-h-72 w-full rounded-lg border border-paper/12 object-cover object-top"
-            wrapperClassName="mt-3 block w-full"
-          />
+          <div className="mt-3">
+            <ReportZoomImage
+              src={url}
+              alt="Combined outfit try-on"
+              className="max-h-80 w-full rounded-lg border border-paper/12 object-cover object-top"
+              wrapperClassName="block w-full"
+            />
+            <p className="mt-1.5 text-center text-[10px] text-paper/35">
+              Tap image for full size
+            </p>
+          </div>
         )}
       </div>
     </div>

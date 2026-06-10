@@ -4,6 +4,10 @@ import { after } from "next/server";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
+  parseGarmentsJson,
+  type SavedOutfitTryOn,
+} from "@/lib/outfit-tryon";
+import {
   assembleReport,
   clampHairForTier,
   HAIR_AVOID_GEN_LIMIT,
@@ -657,6 +661,41 @@ function hairHasGeneratedImages(hair: {
   return [...hair.recommend, ...hair.avoid].some((h) => Boolean(h.imagePath));
 }
 
+/** Owner-only saved catalogue / outfit try-ons linked to this report. */
+async function loadSavedOutfitTryons(
+  signer: AssetSigner,
+  reportId: string,
+  userId: string,
+): Promise<SavedOutfitTryOn[]> {
+  const admin = hasSupabaseAdmin ? createAdminSupabase() : null;
+  if (!admin) return [];
+
+  const { data: rows } = await admin
+    .from("tryons")
+    .select("id, image_path, garments, kind, created_at")
+    .eq("report_id", reportId)
+    .eq("user_id", userId)
+    .eq("status", "ready")
+    .not("image_path", "is", null)
+    .order("created_at", { ascending: false });
+
+  const outfits: SavedOutfitTryOn[] = [];
+  for (const row of rows ?? []) {
+    const path = row.image_path as string | null;
+    if (!path) continue;
+    const [image] = await signAssetPaths(signer, [path]);
+    if (!image) continue;
+    outfits.push({
+      id: row.id as string,
+      image,
+      createdAt: row.created_at as string,
+      kind: row.kind === "outfit" ? "outfit" : "product",
+      garments: parseGarmentsJson(row.garments),
+    });
+  }
+  return outfits;
+}
+
 /**
  * Schedule a catalogue re-match in the background (after the response is sent)
  * when persisted shopping / look-items look stale or mock. Keeps the request
@@ -834,6 +873,10 @@ async function fetchReportView(
   shopping = enrichedShopping;
   lookItems = enrichedLookItems;
 
+  const outfitTryons = isOwner
+    ? await loadSavedOutfitTryons(signer, id, row.user_id as string)
+    : undefined;
+
   const generation = reportGenerationState(
     {
       status: row.status,
@@ -867,6 +910,7 @@ async function fetchReportView(
     lookImages,
     capsuleImages,
     lookItems,
+    outfitTryons,
   });
 
   return { report, isOwner, isPublic };

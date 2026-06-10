@@ -40,11 +40,13 @@ function MenuIcon({ open }: { open: boolean }) {
 
 export function NavbarMenu({
   authed,
+  isAdmin = false,
   primaryLinks,
   secondaryLinks,
   balance = null,
 }: {
   authed: boolean;
+  isAdmin?: boolean;
   primaryLinks: NavLink[];
   secondaryLinks: NavLink[];
   balance?: number | null;
@@ -152,6 +154,17 @@ export function NavbarMenu({
                       onClick={() => setOpen(false)}
                     >
                       My reports
+                    </Link>
+                  </li>
+                )}
+                {isAdmin && (
+                  <li>
+                    <Link
+                      href="/admin"
+                      className={`${linkClass} text-brass`}
+                      onClick={() => setOpen(false)}
+                    >
+                      Admin
                     </Link>
                   </li>
                 )}
