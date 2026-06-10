@@ -2,6 +2,7 @@ import "server-only";
 import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Tier } from "@/lib/report";
+export { tierLabel, reportStatusLabel } from "@/lib/report-labels";
 
 export type UserReportSummary = {
   id: string;
@@ -10,23 +11,6 @@ export type UserReportSummary = {
   tier: Tier;
   status: "processing" | "ready" | "failed";
 };
-
-const TIER_LABELS: Record<Tier, string> = {
-  free: "Free",
-  basic: "Basic",
-  lookbook: "Lookbook",
-  premium: "Premium",
-};
-
-export function tierLabel(tier: Tier): string {
-  return TIER_LABELS[tier] ?? tier;
-}
-
-export function reportStatusLabel(status: UserReportSummary["status"]): string {
-  if (status === "processing") return "Generating";
-  if (status === "failed") return "Failed";
-  return "Ready";
-}
 
 /** Fetch the signed-in user's reports (RLS-scoped). Returns null if unauthenticated. */
 export async function getUserReports(): Promise<UserReportSummary[] | null> {

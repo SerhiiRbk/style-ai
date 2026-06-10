@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { after } from "next/server";
+import { isAdminEmail } from "@/lib/admin";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
@@ -754,35 +755,35 @@ async function fetchReportView(
   }
 
   const sb = await createServerSupabase();
-  // Auth and the report row are independent — fetch them together.
-  const [
-    {
-      data: { user },
-    },
-    { data: row },
-  ] = await Promise.all([
-    sb.auth.getUser(),
-    sb.from("reports").select("*").eq("id", id).single(),
-  ]);
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  const isAdmin = Boolean(user && isAdminEmail(user.email));
+  const adminDb = isAdmin && hasSupabaseAdmin ? createAdminSupabase() : null;
+
+  const { data: row } = adminDb
+    ? await adminDb.from("reports").select("*").eq("id", id).single()
+    : await sb.from("reports").select("*").eq("id", id).single();
   if (!row) return null;
 
   const isOwner = Boolean(user && row.user_id === user.id);
   const tier = row.tier as Tier;
   const isPublic =
     canShareReport(tier) && Boolean(row.is_public);
-  if (!isOwner && !isPublic) return null;
+  if (!isOwner && !isPublic && !isAdmin) return null;
 
+  const db = isOwner || isAdmin ? (adminDb ?? sb) : sb;
   const signer = await resolveSigner(sb);
 
   // Looks + the owner's reference-photo check are independent — run together.
   const [{ data: looks }, ownerPhotoCheck] = await Promise.all([
-    sb
+    db
       .from("looks")
       .select("*")
       .eq("report_id", id)
       .order("created_at", { ascending: true }),
-    isOwner
-      ? sb.from("photos").select("id").eq("user_id", row.user_id).limit(1)
+    isOwner || isAdmin
+      ? db.from("photos").select("id").eq("user_id", row.user_id).limit(1)
       : Promise.resolve(null),
   ]);
 
@@ -823,9 +824,10 @@ async function fetchReportView(
       : Promise.resolve(undefined),
   ]);
 
-  const hasReferencePhoto = isOwner
-    ? (ownerPhotoCheck?.data?.length ?? 0) > 0
-    : (looks ?? []).some((l) => l.image_path) || hairHasGeneratedImages(rawHair);
+  const hasReferencePhoto =
+    isOwner || isAdmin
+      ? (ownerPhotoCheck?.data?.length ?? 0) > 0
+      : (looks ?? []).some((l) => l.image_path) || hairHasGeneratedImages(rawHair);
 
   const content: ReportContent = {
     headline: row.headline ?? "",
@@ -873,9 +875,10 @@ async function fetchReportView(
   shopping = enrichedShopping;
   lookItems = enrichedLookItems;
 
-  const outfitTryons = isOwner
-    ? await loadSavedOutfitTryons(signer, id, row.user_id as string)
-    : undefined;
+  const outfitTryons =
+    isOwner || isAdmin
+      ? await loadSavedOutfitTryons(signer, id, row.user_id as string)
+      : undefined;
 
   const generation = reportGenerationState(
     {

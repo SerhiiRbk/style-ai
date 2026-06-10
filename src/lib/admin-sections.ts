@@ -6,6 +6,11 @@ export const ADMIN_SECTIONS = [
     description: "Browse products, edit listings, and trigger feed refreshes.",
   },
   {
+    href: "/admin/reports",
+    title: "Reports",
+    description: "Browse every generated style report across all users.",
+  },
+  {
     href: "/admin/promos",
     title: "Promotions",
     description: "Create promo codes, credit grants, and invite links.",
