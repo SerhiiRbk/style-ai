@@ -3,6 +3,9 @@ import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
+import { BuyCreditsButton } from "@/components/BuyCreditsButton";
+import { CheckoutBanner } from "@/components/CheckoutBanner";
+import { hasStripe } from "@/lib/env";
 import { getGeo } from "@/lib/geo";
 import { TIER_PRICES } from "@/lib/currency";
 import {
@@ -285,6 +288,7 @@ export default async function PricingPage() {
   return (
     <>
       <Navbar />
+      <CheckoutBanner />
       <main className="flex-1">
         {/* Hero */}
         <section className="border-b hairline bg-cream/40">
@@ -474,23 +478,19 @@ export default async function PricingPage() {
                     <p className="mt-3 flex-1 text-sm text-paper/60">
                       {pkg.blurb}
                     </p>
-                    <button
-                      type="button"
-                      disabled
-                      title="Checkout is coming soon"
-                      className="mt-7 inline-flex cursor-not-allowed items-center justify-center rounded-full border border-paper/25 px-5 py-3 text-sm text-paper/60"
-                    >
-                      Checkout coming soon
-                    </button>
+                    <BuyCreditsButton
+                      packageId={pkg.id}
+                      featured={featured}
+                      enabled={hasStripe}
+                    />
                   </div>
                 );
               })}
             </div>
             <p className="mt-6 text-sm text-paper/50">
-              Card checkout is rolling out shortly. In the meantime, every new
-              account starts with {SIGNUP_BONUS} free credits — enough for your
-              Starter Report ({REPORT_COST.free} credits) and one try-on (
-              {CREDIT_COSTS.tryon} credit).
+              {hasStripe
+                ? `Secure card payment via Stripe. Credits never expire. Every new account also starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`
+                : `Card checkout is rolling out shortly. In the meantime, every new account starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`}
             </p>
           </div>
         </section>

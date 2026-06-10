@@ -22,6 +22,14 @@ export const env = {
 
   // Shared secret required to POST scraper results to /api/catalog/import.
   catalogImportKey: process.env.CATALOG_IMPORT_KEY,
+
+  // Stripe — credit-pack checkout + purchase webhook.
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+  stripePublishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+  // Public site URL for Checkout success/cancel redirects (falls back to the
+  // request origin when unset).
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
 } as const;
 
 export const hasSupabase = Boolean(env.supabaseUrl && env.supabaseAnonKey);
@@ -31,3 +39,8 @@ export const hasSupabaseAdmin = Boolean(
 export const hasAI = Boolean(env.aiGatewayKey);
 export const hasVTON = Boolean(env.falKey);
 export const hasCatalogImportKey = Boolean(env.catalogImportKey);
+// Checkout needs the secret key; the webhook additionally needs its signing
+// secret. Both are required to safely take money + grant credits.
+export const hasStripe = Boolean(
+  env.stripeSecretKey && env.stripeWebhookSecret,
+);

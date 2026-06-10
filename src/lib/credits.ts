@@ -96,6 +96,53 @@ export async function grantCredits(
 }
 
 /**
+ * Idempotently grant credits keyed by an external reference (a Stripe payment
+ * id). Safe to call repeatedly for the same `refExt` — a duplicate webhook
+ * delivery is a no-op that returns the current balance. Returns the balance.
+ */
+export async function grantCreditsExternal(
+  admin: AdminClient,
+  opts: { userId: string; amount: number; reason: CreditReason; refExt: string },
+): Promise<number> {
+  const { userId, amount, reason, refExt } = opts;
+  const { data, error } = await admin.rpc("grant_credits_ext", {
+    p_user_id: userId,
+    p_amount: amount,
+    p_reason: reason,
+    p_ref_ext: refExt,
+  });
+  if (error) {
+    if (!isMissingFunction(error.message)) throw new Error(error.message);
+    // Fallback (non-atomic): emulate the idempotency guard in TS until the RPC
+    // is applied. The unique index on ref_ext is the ultimate backstop.
+    const { data: existing, error: selErr } = await admin
+      .from("credits_ledger")
+      .select("id")
+      .eq("ref_ext", refExt)
+      .limit(1);
+    if (selErr) throw new Error(selErr.message);
+    if (existing && existing.length) return sumLedger(admin, userId);
+    const balance = (await sumLedger(admin, userId)) + amount;
+    const { error: insErr } = await admin.from("credits_ledger").insert({
+      user_id: userId,
+      delta: amount,
+      reason,
+      ref_ext: refExt,
+      balance_after: balance,
+    });
+    if (insErr) {
+      // Unique-violation ⇒ a concurrent/duplicate grant won the race; treat as done.
+      if (/duplicate key|unique/i.test(insErr.message)) {
+        return sumLedger(admin, userId);
+      }
+      throw new Error(insErr.message);
+    }
+    return balance;
+  }
+  return Number(data) || 0;
+}
+
+/**
  * Spend credits (negative delta) with a balance guard. Throws
  * {@link InsufficientCreditsError} when the user cannot afford it. Returns the
  * new balance on success. Atomic per-user when the spend_credits RPC is applied.
