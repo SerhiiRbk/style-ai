@@ -13,6 +13,8 @@ export const BRAND = {
   eyebrow: "Personal style atelier",
   /** Honest, understated AI disclosure. */
   tagline: "AI-assisted personal styling",
+  /** Privacy, terms, and data-subject requests. */
+  legalContactEmail: "privacy@valetti.app",
 
   /** Open Graph / social share card (flat lay men's essentials). */
   ogImage: "/images/flatlay-essentials.png",
@@ -25,7 +27,7 @@ export const BRAND = {
   stylist: {
     name: "Carlo Valetti",
     first: "Carlo",
-    role: "Lead stylist",
+    role: "Lead stylist persona",
     /** Editorial seated portrait (hero / Meet-your-stylist section). */
     portrait: "/images/carlo-valetti.png",
     /** Square headshot crop (512×512) for avatars and signatures. */
@@ -33,6 +35,6 @@ export const BRAND = {
     /** Environmental atelier shot (secondary editorial use). */
     atelier: "/images/carlo-atelier.png",
     /** One-line voice used in signatures. */
-    signature: "Carlo Valetti · Lead stylist, Valetti",
+    signature: "Carlo Valetti · Lead stylist persona, Valetti",
   },
 } as const;

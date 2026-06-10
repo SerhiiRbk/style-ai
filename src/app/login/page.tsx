@@ -105,8 +105,15 @@ export default async function LoginPage({
 
       <p className="mt-6 text-xs text-stone-soft">
         By continuing you consent to the processing of your photos for the
-        purpose of generating your style report. You can delete your data at any
-        time.
+        purpose of generating your style report, as described in our{" "}
+        <Link href="/privacy" className="text-brass hover:text-ink">
+          Privacy Policy
+        </Link>{" "}
+        and{" "}
+        <Link href="/terms" className="text-brass hover:text-ink">
+          Terms
+        </Link>
+        . You can delete your data at any time.
       </p>
     </Centered>
   );

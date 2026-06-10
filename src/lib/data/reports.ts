@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { after } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
+import { LEGAL } from "@/lib/legal";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
@@ -438,7 +439,7 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
   // Record biometric-processing consent (GDPR Art. 9).
   await admin
     .from("consents")
-    .insert({ user_id: userId, type: "biometric", version: "1.0" });
+    .insert({ user_id: userId, type: "biometric", version: LEGAL.consentVersion });
 
   // Persist uploaded photo references (reused later for virtual try-on).
   if (input.photoPaths?.length) {

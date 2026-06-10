@@ -309,8 +309,12 @@ export default function StartPage() {
               </div>
               <p className="mt-4 text-xs text-stone-soft">
                 {LIVE
-                  ? "Photos are uploaded to your private, GDPR-compliant storage and used only to generate your report. By continuing you consent to this processing."
-                  : "Demo: click a tile to simulate an upload. By continuing you consent to processing of your photos for this report."}
+                  ? "Photos are uploaded to your private, GDPR-compliant storage and used only to generate your report. By continuing you consent to this processing, as described in our "
+                  : "Demo: click a tile to simulate an upload. By continuing you consent to processing of your photos for this report, as described in our "}
+                <Link href="/privacy" className="text-brass hover:text-ink">
+                  Privacy Policy
+                </Link>
+                .
               </p>
             </Section>
           )}

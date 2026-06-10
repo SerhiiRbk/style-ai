@@ -2,15 +2,23 @@ import Image from "next/image";
 import { BRAND } from "@/lib/brand";
 
 /**
- * Homepage section introducing the brand's expert persona, Carlo Valetti.
- * Frames the whole service through a calm, experienced European stylist —
- * the human face over the AI engine.
+ * Homepage section introducing Carlo Valetti — the brand's stylist persona and
+ * the human voice through which Valetti speaks in every report.
  */
 export function MeetStylist() {
   const credentials = [
-    ["30+ years", "dressing executives, founders & quiet achievers across Europe"],
-    ["Quiet luxury", "no logos, no trends for their own sake — only what suits you"],
-    ["Method, not opinion", "every recommendation comes with the reason behind it"],
+    [
+      "Stylist persona",
+      "The calm, considered voice behind every Valetti report — European quiet luxury",
+    ],
+    [
+      "Quiet luxury",
+      "No logos, no trends for their own sake — only what suits you",
+    ],
+    [
+      "Method, not opinion",
+      "Every recommendation comes with the reason behind it",
+    ],
   ];
   return (
     <section id="stylist" className="border-y hairline bg-cream/40">
@@ -19,7 +27,7 @@ export function MeetStylist() {
           <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border hairline shadow-[0_40px_80px_-40px_rgba(21,18,13,0.45)]">
             <Image
               src={BRAND.stylist.portrait}
-              alt={`${BRAND.stylist.name}, lead stylist at ${BRAND.name}`}
+              alt={`${BRAND.stylist.name}, ${BRAND.stylist.role} at ${BRAND.name}`}
               fill
               sizes="(max-width: 768px) 100vw, 460px"
               className="object-cover object-top"
@@ -36,22 +44,22 @@ export function MeetStylist() {
         </div>
 
         <div>
-          <p className="eyebrow">Meet your stylist</p>
+          <p className="eyebrow">Meet Carlo · the voice of Valetti</p>
           <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
             I&apos;m {BRAND.stylist.first}. I help you find your own style —
             not the latest trend.
           </h2>
           <div className="mt-6 space-y-5 text-lg leading-relaxed text-stone">
             <p>
-              I&apos;ve spent a career helping thoughtful people look like the
-              best version of themselves: considered, comfortable, and quietly
-              confident. Not louder — clearer.
+              I&apos;m how Valetti talks to you — calm, direct, never loud for
+              its own sake. Good style should feel{" "}
+              <span className="text-ink">clear</span>, not mysterious.
             </p>
             <p>
-              At {BRAND.name}, that same eye now works for you. You share a few
-              photos and answer honest questions; I read your colouring,
-              proportions and life, and give you a calm, practical plan you can
-              actually act on — with the reason behind every call.
+              Share a few photos and honest answers; our engine reads your
+              colouring, proportions and life. I turn that into a practical plan
+              you can act on — hair, colours, silhouettes, shopping — with the
+              reason behind every call.
             </p>
           </div>
 

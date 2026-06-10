@@ -11,7 +11,8 @@ export function Footer() {
             {BRAND.tagline}
           </p>
           <p className="mt-3 text-sm leading-relaxed text-stone">
-            A personal style atelier led by {BRAND.stylist.name}. Explainable
+            A personal style atelier. {BRAND.stylist.name} is our stylist
+            persona — the calm voice in every report. Explainable
             recommendations, photorealistic looks, and a precise shopping plan —
             built privacy-first.
           </p>
@@ -36,9 +37,9 @@ export function Footer() {
         <FooterCol
           title="Company"
           items={[
-            ["Privacy", "/#"],
-            ["Terms", "/#"],
-            ["Contact", "/#"],
+            ["Privacy", "/privacy"],
+            ["Terms", "/terms"],
+            ["Contact", `mailto:${BRAND.legalContactEmail}`],
           ]}
         />
       </div>
