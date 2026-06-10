@@ -1,17 +1,31 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasSupabase } from "@/lib/env";
+import { normalizePromoCode } from "@/lib/promotions";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { signIn, signUp } from "./actions";
 import { ButtonLink } from "@/components/Button";
 import { BRAND } from "@/lib/brand";
 
+const PENDING_PROMO_COOKIE = "pending_promo";
+
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; check?: string }>;
+  searchParams: Promise<{ error?: string; check?: string; promo?: string }>;
 }) {
   const sp = await searchParams;
+
+  if (sp.promo) {
+    const cookieStore = await cookies();
+    cookieStore.set(PENDING_PROMO_COOKIE, normalizePromoCode(sp.promo), {
+      maxAge: 7 * 24 * 60 * 60,
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+    });
+  }
 
   // Demo mode: no auth backend — point users straight to the flow.
   if (!hasSupabase) {
@@ -47,9 +61,16 @@ export default async function LoginPage({
         Sign in or sign up to generate your private style report.
       </p>
 
+      {sp.promo && (
+        <p className="mt-4 rounded-lg border border-brass/40 bg-brass/5 px-4 py-3 text-sm text-ink">
+          Promo <code className="font-medium">{normalizePromoCode(sp.promo)}</code>{" "}
+          will be applied when you sign in or create an account.
+        </p>
+      )}
       {sp.check && (
         <p className="mt-4 rounded-lg border border-brass/40 bg-brass/5 px-4 py-3 text-sm text-ink">
-          Check your inbox to confirm your email, then sign in.
+          Check your inbox to confirm your email, then sign in — your promo code
+          will apply on first sign-in.
         </p>
       )}
       {sp.error && (

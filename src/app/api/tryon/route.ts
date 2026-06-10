@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { hasSupabase, hasVTON, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { runTryOn } from "@/lib/ai/tryon";
+import { getFullLengthPhotoUrl, tryOnErrorCode } from "@/lib/photo-tryon";
+
+/** fal queue polling can exceed the default Vercel function timeout. */
+export const maxDuration = 120;
 import {
   CREDIT_COSTS,
   creditBalance,
@@ -30,6 +34,10 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
   const productId: string | undefined = body?.productId;
+  const fallbackImageUrl: string | undefined =
+    typeof body?.imageUrl === "string" && body.imageUrl.trim()
+      ? body.imageUrl.trim()
+      : undefined;
   if (!productId) {
     return NextResponse.json({ error: "Missing productId" }, { status: 400 });
   }
@@ -62,39 +70,31 @@ export async function POST(request: Request) {
     .select("image_url")
     .eq("id", productId)
     .single();
-  if (!product?.image_url) {
+  const garmentImageUrl = product?.image_url ?? fallbackImageUrl;
+  if (!garmentImageUrl) {
     return NextResponse.json(
       { error: "Garment image unavailable for this product" },
       { status: 422 },
     );
   }
 
-  // Most recent full-length (fallback: any) photo for the user.
-  const { data: photo } = await admin
-    .from("photos")
-    .select("storage_path, role")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(20);
-  const chosen =
-    photo?.find((p) => p.role === "full") ?? photo?.[0] ?? null;
-  if (!chosen) {
-    return NextResponse.json({ error: "No photo on file" }, { status: 422 });
-  }
-
-  const { data: signed } = await admin.storage
-    .from("photos")
-    .createSignedUrl(chosen.storage_path, 600);
-  if (!signed?.signedUrl) {
-    return NextResponse.json({ error: "Could not read photo" }, { status: 500 });
+  const photo = await getFullLengthPhotoUrl(admin, user.id);
+  if (!photo.ok) {
+    return NextResponse.json(
+      { error: photo.error, code: photo.code },
+      { status: 422 },
+    );
   }
 
   const result = await runTryOn({
-    personImageUrl: signed.signedUrl,
-    garmentImageUrl: product.image_url,
+    personImageUrl: photo.signedUrl,
+    garmentImageUrl,
   });
-  if (!result) {
-    return NextResponse.json({ error: "Try-on failed" }, { status: 502 });
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error, code: tryOnErrorCode(result.error) },
+      { status: 502 },
+    );
   }
 
   const ext = result.mediaType.includes("jpeg") ? "jpg" : "png";
@@ -103,6 +103,7 @@ export async function POST(request: Request) {
     .from("assets")
     .upload(path, result.bytes, { contentType: result.mediaType, upsert: true });
   if (upErr) {
+    console.error("[tryon] storage upload failed", upErr);
     return NextResponse.json({ error: "Could not store result" }, { status: 500 });
   }
 
@@ -139,9 +140,16 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data: out } = await admin.storage
+  const { data: out, error: signErr } = await admin.storage
     .from("assets")
     .createSignedUrl(path, 600);
+  if (signErr || !out?.signedUrl) {
+    console.error("[tryon] signed URL failed", signErr);
+    return NextResponse.json(
+      { error: "Try-on saved but preview URL failed" },
+      { status: 500 },
+    );
+  }
 
-  return NextResponse.json({ url: out?.signedUrl ?? null, balance }, { status: 201 });
+  return NextResponse.json({ url: out.signedUrl, balance }, { status: 201 });
 }

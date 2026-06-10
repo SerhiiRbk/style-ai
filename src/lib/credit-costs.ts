@@ -9,6 +9,7 @@ import type { Tier } from "@/lib/report";
 export type CreditReason =
   | "signup_bonus"
   | "purchase"
+  | "promo"
   | "report"
   | "tryon"
   | "regen"

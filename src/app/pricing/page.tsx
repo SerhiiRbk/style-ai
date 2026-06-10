@@ -5,8 +5,10 @@ import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { BuyCreditsButton } from "@/components/BuyCreditsButton";
 import { CheckoutBanner } from "@/components/CheckoutBanner";
-import { hasStripe } from "@/lib/env";
+import { PromoRedeemForm } from "@/components/PromoRedeemForm";
+import { hasStripe, hasSupabase } from "@/lib/env";
 import { getGeo } from "@/lib/geo";
+import { createServerSupabase } from "@/lib/supabase/server";
 import { TIER_PRICES } from "@/lib/currency";
 import {
   REPORT_COST,
@@ -285,6 +287,15 @@ export default async function PricingPage() {
   const { subCurrency } = await getGeo();
   const tierPrices = TIER_PRICES[subCurrency];
 
+  let signedIn = false;
+  if (hasSupabase) {
+    const sb = await createServerSupabase();
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    signedIn = Boolean(user);
+  }
+
   return (
     <>
       <Navbar />
@@ -426,6 +437,24 @@ export default async function PricingPage() {
             />
           </div>
         </section>
+
+        {/* Promo code (signed-in users) */}
+        {signedIn ? (
+          <section className="container-luxe py-12">
+            <div className="max-w-xl rounded-2xl border hairline bg-paper px-6 py-6">
+              <p className="text-xs uppercase tracking-wider text-stone-soft">
+                Have a promo code?
+              </p>
+              <p className="mt-1 text-sm text-stone">
+                Enter a code from an invite or campaign — credits apply once per
+                account.
+              </p>
+              <div className="mt-4">
+                <PromoRedeemForm />
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {/* Credit packages */}
         <section id="packages" className="border-y hairline bg-ink text-paper">

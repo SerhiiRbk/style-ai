@@ -19,8 +19,12 @@ import {
 } from "@/lib/look-tryon";
 import type { StyleProfile } from "@/lib/style-profile";
 import type { ShoppingItem } from "@/lib/report";
+import { getFullLengthPhotoUrl } from "@/lib/photo-tryon";
 
 const SIGNED_TTL = 3600;
+
+/** Look rendering + fal polling can exceed the default Vercel function timeout. */
+export const maxDuration = 300;
 
 function parseLookIndex(raw: unknown): number | undefined {
   if (typeof raw === "number" && Number.isInteger(raw)) return raw;
@@ -192,25 +196,12 @@ export async function POST(request: Request) {
 
   const admin = createAdminSupabase();
 
-  const { data: photos } = await admin
-    .from("photos")
-    .select("storage_path, role, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(20);
-  const chosen = photos?.find((p) => p.role === "full") ?? photos?.[0] ?? null;
-  if (!chosen) {
+  const photo = await getFullLengthPhotoUrl(admin, user.id);
+  if (!photo.ok) {
     return NextResponse.json(
-      { error: "Upload a full-length photo to try looks on yourself" },
+      { error: photo.error, code: photo.code },
       { status: 422 },
     );
-  }
-
-  const { data: signed } = await admin.storage
-    .from("photos")
-    .createSignedUrl(chosen.storage_path, 600);
-  if (!signed?.signedUrl) {
-    return NextResponse.json({ error: "Could not read photo" }, { status: 500 });
   }
 
   const result = await generateLookImage({
@@ -218,10 +209,16 @@ export async function POST(request: Request) {
     look: { title, description, palette, catalogContext, catalogImageUrls },
     // Identity reference ONLY — the user's own photo, never the report's
     // generated look image (which would copy the original outfit).
-    referenceImageUrl: signed.signedUrl,
+    referenceImageUrl: photo.signedUrl,
   });
   if (!result) {
-    return NextResponse.json({ error: "Try-on failed" }, { status: 502 });
+    return NextResponse.json(
+      {
+        error: "Try-on failed",
+        code: "body_pose_failed" as const,
+      },
+      { status: 502 },
+    );
   }
 
   const ext = result.mediaType.includes("jpeg") ? "jpg" : "png";

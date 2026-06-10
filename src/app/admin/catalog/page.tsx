@@ -17,7 +17,12 @@ function Shell({ children }: { children: React.ReactNode }) {
         <Link href="/" className="font-display text-lg">
           {BRAND.name}
         </Link>
-        <span className="text-sm text-stone-soft">Admin · Catalogue</span>
+        <nav className="flex items-center gap-4 text-sm text-stone-soft">
+          <span>Admin · Catalogue</span>
+          <Link href="/admin/promos" className="hover:text-ink">
+            Promotions
+          </Link>
+        </nav>
       </header>
       <div className="container-luxe py-12">{children}</div>
     </main>

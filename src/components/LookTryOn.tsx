@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { startTransition, useEffect, useState } from "react";
+import { ReportZoomImage } from "./ReportZoomImage";
 import { useCredits } from "./CreditsContext";
 
 /**
@@ -146,8 +147,12 @@ export function LookTryOn({
       {msg && <p className="mt-1 text-xs text-stone-soft">{msg}</p>}
       {url && (
         <div className="mt-3 overflow-hidden rounded-xl border hairline">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={url} alt={`${title} on you`} className="w-full" />
+          <ReportZoomImage
+            src={url}
+            alt={`${title} on you`}
+            className="w-full"
+            wrapperClassName="block w-full"
+          />
         </div>
       )}
     </div>

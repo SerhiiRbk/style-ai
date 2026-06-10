@@ -871,6 +871,7 @@ export default async function ReportPage({
                             <TryOnButton
                               productId={item.productId}
                               reportId={report.id}
+                              imageUrl={item.image}
                             />
                           </div>
                         ) : null}
