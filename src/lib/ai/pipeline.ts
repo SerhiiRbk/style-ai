@@ -346,6 +346,92 @@ export async function generateLookImage(opts: {
   }
 }
 
+export type CatalogTryOnGarment = {
+  title: string;
+  category: string;
+  /** Hex or text colour; placeholder "#CCCCCC" is ignored. */
+  color?: string | null;
+  /** Absolute image URL (already normalized by the caller). */
+  imageUrl?: string | null;
+};
+
+/**
+ * Catalog try-on via the image model (same pipeline as look renders): dress
+ * the person from their own full-length photo in 1–4 exact catalogue garments,
+ * preserving identity, pose, background and lighting, with correct layering
+ * (outerwear over a base layer — never on bare skin).
+ */
+export async function generateCatalogTryOnImage(opts: {
+  personImageUrl: string;
+  garments: CatalogTryOnGarment[];
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI || !opts.garments.length) return null;
+  try {
+    const garments = opts.garments.slice(0, 4);
+    const garmentImageUrls = garments
+      .map((g) => g.imageUrl)
+      .filter((u): u is string => Boolean(u && /^https?:\/\//i.test(u)));
+
+    const garmentLines = garments.map((g, i) => {
+      const colour =
+        g.color && g.color !== "#CCCCCC" ? `, colour ${g.color}` : "";
+      return `${i + 1}. ${g.title} (${g.category.toLowerCase()}${colour})`;
+    });
+
+    const prompt =
+      `Photorealistic virtual try-on. ` +
+      `The FIRST image is the customer's own full-length photo. Recreate this exact ` +
+      `photograph changing ONLY the clothing listed below. Preserve the person's ` +
+      `identity perfectly: same face and expression, same hairstyle, same skin tone, ` +
+      `same body shape and proportions, same pose and hand positions, same background, ` +
+      `same camera angle, perspective and lighting. ` +
+      (garmentImageUrls.length
+        ? `The remaining ${garmentImageUrls.length} image(s) show the actual catalogue ` +
+          `garment(s) — reproduce these exact products, not similar ones. `
+        : ``) +
+      `Dress the person in these catalogue pieces:\n${garmentLines.join("\n")}\n` +
+      `Layering rules — follow strictly: outerwear (jackets, blazers, coats, ` +
+      `overshirts, cardigans) is always worn OVER a base layer, never directly on ` +
+      `bare skin; if the original photo already shows a suitable top underneath, keep ` +
+      `it visible at the collar and hem; otherwise add a simple neutral base layer ` +
+      `that suits the outfit. A new top replaces only the current top layer; new ` +
+      `trousers or a skirt replace only the current bottoms; new shoes replace only ` +
+      `the shoes. Every garment NOT being replaced must remain exactly as in the ` +
+      `original photo. ` +
+      `Reproduce each catalogue garment faithfully — exact colour, fabric texture, ` +
+      `pattern, buttons, zips, stitching, fit and proportions — with natural drape, ` +
+      `realistic folds, and shadows consistent with the original photo's light. ` +
+      `The result must look like an unedited photograph of the same person in the ` +
+      `same place, now wearing the new pieces. Full body, head to shoes visible.` +
+      NO_TEXT_RULE;
+
+    const content: (
+      | { type: "text"; text: string }
+      | { type: "image"; image: URL }
+    )[] = [
+      { type: "text", text: prompt },
+      { type: "image", image: new URL(opts.personImageUrl) },
+    ];
+    for (const url of garmentImageUrls) {
+      try {
+        content.push({ type: "image", image: new URL(url) });
+      } catch {
+        // Skip malformed product URLs rather than failing the whole render.
+      }
+    }
+
+    const result = await generateText({
+      model: env.modelImage,
+      messages: [{ role: "user", content }],
+    });
+    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
+    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+  } catch (e) {
+    console.error("[tryon] image-pipeline render failed", e);
+    return null;
+  }
+}
+
 /**
  * Generate a personalized hairstyle headshot. With a reference portrait, the
  * model preserves the person's identity while applying the named cut.

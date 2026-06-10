@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { hasSupabase, hasVTON, hasSupabaseAdmin } from "@/lib/env";
+import { env, hasAI, hasSupabase, hasVTON, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { runTryOn } from "@/lib/ai/tryon";
+import {
+  generateCatalogTryOnImage,
+  type CatalogTryOnGarment,
+} from "@/lib/ai/pipeline";
 import { getFullLengthPhotoUrl, tryOnErrorCode } from "@/lib/photo-tryon";
-
-/** fal queue polling can exceed the default Vercel function timeout. */
-export const maxDuration = 120;
+import { absoluteUrl } from "@/lib/site-url";
 import {
   CREDIT_COSTS,
   creditBalance,
@@ -13,13 +15,28 @@ import {
   InsufficientCreditsError,
 } from "@/lib/credits";
 
+/** Image-model render / fal queue polling can exceed the default timeout. */
+export const maxDuration = 300;
+
+const MAX_TRYON_PRODUCTS = 4;
+
+function normalizeGarmentUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("//")) return `https:${trimmed}`;
+  if (trimmed.startsWith("/")) return absoluteUrl(trimmed);
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return null;
+}
+
 export async function POST(request: Request) {
   if (!hasSupabase) {
     return NextResponse.json({ error: "Try-on requires live mode" }, { status: 501 });
   }
-  if (!hasVTON) {
+  if (!hasAI && !hasVTON) {
     return NextResponse.json(
-      { error: "Virtual try-on is not configured (set FAL_KEY)" },
+      { error: "Virtual try-on is not configured" },
       { status: 501 },
     );
   }
@@ -33,14 +50,26 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null);
-  const productId: string | undefined = body?.productId;
+
+  // Accept either a single productId or productIds (combined outfit, up to 4).
+  const rawIds: unknown = body?.productIds;
+  let productIds = Array.isArray(rawIds)
+    ? rawIds.filter(
+        (x): x is string => typeof x === "string" && x.trim() !== "",
+      )
+    : [];
+  if (!productIds.length && typeof body?.productId === "string") {
+    productIds = [body.productId];
+  }
+  productIds = [...new Set(productIds)].slice(0, MAX_TRYON_PRODUCTS);
+  if (!productIds.length) {
+    return NextResponse.json({ error: "Missing productId" }, { status: 400 });
+  }
+
   const fallbackImageUrl: string | undefined =
     typeof body?.imageUrl === "string" && body.imageUrl.trim()
       ? body.imageUrl.trim()
       : undefined;
-  if (!productId) {
-    return NextResponse.json({ error: "Missing productId" }, { status: 400 });
-  }
   const reportId: string | undefined =
     typeof body?.reportId === "string" && body.reportId !== "demo"
       ? body.reportId
@@ -65,13 +94,50 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data: product } = await admin
+  const { data: productRows } = await admin
     .from("products")
-    .select("image_url")
-    .eq("id", productId)
-    .single();
-  const garmentImageUrl = product?.image_url ?? fallbackImageUrl;
-  if (!garmentImageUrl) {
+    .select("id, title, category, color, image_url")
+    .in("id", productIds);
+  const byId = new Map((productRows ?? []).map((p) => [p.id as string, p]));
+
+  const garments: CatalogTryOnGarment[] = [];
+  for (const id of productIds) {
+    const p = byId.get(id);
+    if (!p) continue;
+    let imageUrl = normalizeGarmentUrl(p.image_url as string | null);
+    // Single-item legacy fallback: the report card passes its signed image.
+    if (!imageUrl && productIds.length === 1 && fallbackImageUrl) {
+      imageUrl = normalizeGarmentUrl(fallbackImageUrl);
+    }
+    garments.push({
+      title: (p.title as string) ?? "Catalogue item",
+      category: (p.category as string) ?? "Clothing",
+      color: (p.color as string | null) ?? undefined,
+      imageUrl,
+    });
+  }
+  if (!garments.length) {
+    return NextResponse.json({ error: "Products not found" }, { status: 404 });
+  }
+
+  // Engine selection: TRYON_ENGINE=image (default, look-render pipeline with
+  // layering + multi-garment) | fal (FASHN single-garment VTON). Fall back to
+  // whichever engine is actually configured / capable.
+  let mode: "image" | "fal";
+  if (env.tryonEngine === "fal" && garments.length === 1 && hasVTON) {
+    mode = "fal";
+  } else if (hasAI) {
+    mode = "image";
+  } else if (garments.length === 1 && hasVTON) {
+    mode = "fal";
+  } else {
+    return NextResponse.json(
+      { error: "Combined try-on is not configured on this server" },
+      { status: 501 },
+    );
+  }
+
+  if (mode === "fal" && !garments[0].imageUrl) {
     return NextResponse.json(
       { error: "Garment image unavailable for this product" },
       { status: 422 },
@@ -86,22 +152,36 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await runTryOn({
-    personImageUrl: photo.signedUrl,
-    garmentImageUrl,
-  });
-  if (!result.ok) {
+  let render: { bytes: Uint8Array; mediaType: string } | null = null;
+  let renderError = "Try-on failed";
+  if (mode === "fal") {
+    const r = await runTryOn({
+      personImageUrl: photo.signedUrl,
+      garmentImageUrl: garments[0].imageUrl!,
+    });
+    if (r.ok) render = { bytes: r.bytes, mediaType: r.mediaType };
+    else renderError = r.error;
+  } else {
+    render = await generateCatalogTryOnImage({
+      personImageUrl: photo.signedUrl,
+      garments,
+    });
+    if (!render) renderError = "Try-on failed — please try again";
+  }
+  if (!render) {
     return NextResponse.json(
-      { error: result.error, code: tryOnErrorCode(result.error) },
+      { error: renderError, code: tryOnErrorCode(renderError) },
       { status: 502 },
     );
   }
 
-  const ext = result.mediaType.includes("jpeg") ? "jpg" : "png";
-  const path = `${user.id}/tryon/${productId}-${Date.now()}.${ext}`;
+  const ext = render.mediaType.includes("jpeg") ? "jpg" : "png";
+  const fileKey =
+    garments.length > 1 ? `outfit-${productIds.length}` : productIds[0];
+  const path = `${user.id}/tryon/${fileKey}-${Date.now()}.${ext}`;
   const { error: upErr } = await admin.storage
     .from("assets")
-    .upload(path, result.bytes, { contentType: result.mediaType, upsert: true });
+    .upload(path, render.bytes, { contentType: render.mediaType, upsert: true });
   if (upErr) {
     console.error("[tryon] storage upload failed", upErr);
     return NextResponse.json({ error: "Could not store result" }, { status: 500 });
@@ -109,7 +189,7 @@ export async function POST(request: Request) {
 
   await admin.from("tryons").insert({
     user_id: user.id,
-    product_id: productId,
+    product_id: productIds[0],
     image_path: path,
     status: "ready",
   });

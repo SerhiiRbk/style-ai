@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ReportZoomImage } from "./ReportZoomImage";
 import { useCredits } from "./CreditsContext";
+import { MAX_TRYON_ITEMS, useTryOnSelection } from "./TryOnContext";
 
 const LIVE = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -15,16 +16,20 @@ export function TryOnButton({
   productId,
   reportId,
   imageUrl,
+  title,
   cost = 1,
 }: {
   productId: string;
   reportId?: string;
   /** Fallback garment image when the DB row uses a site-relative path. */
   imageUrl?: string;
+  /** Product title shown in the combined-outfit tray. */
+  title?: string;
   /** Credit cost per try-on. */
   cost?: number;
 }) {
   const { balance, setBalance } = useCredits();
+  const selection = useTryOnSelection();
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">(
     "idle",
   );
@@ -127,22 +132,50 @@ export function TryOnButton({
     }
   }
 
+  const inSet = selection?.isSelected(productId) ?? false;
+  const setFull = Boolean(selection?.full) && !inSet;
+
   return (
     <div className="mt-3 border-t border-paper/10 pt-3">
-      <button
-        onClick={run}
-        disabled={state === "loading" || insufficient || uploading}
-        title={insufficient ? "Not enough credits — top up to try on" : undefined}
-        className="text-xs text-brass-soft transition-colors hover:text-paper disabled:opacity-50"
-      >
-        {state === "loading" ? "Generating try-on…" : "Try this on"}
-        {state !== "loading" && (
-          <span className="text-paper/40">
-            {" "}
-            · {cost} credit{cost === 1 ? "" : "s"} →
-          </span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <button
+          onClick={run}
+          disabled={state === "loading" || insufficient || uploading}
+          title={
+            insufficient ? "Not enough credits — top up to try on" : undefined
+          }
+          className="text-xs text-brass-soft transition-colors hover:text-paper disabled:opacity-50"
+        >
+          {state === "loading" ? "Generating try-on…" : "Try this on"}
+          {state !== "loading" && (
+            <span className="text-paper/40">
+              {" "}
+              · {cost} credit{cost === 1 ? "" : "s"} →
+            </span>
+          )}
+        </button>
+        {selection && (
+          <button
+            type="button"
+            onClick={() =>
+              selection.toggle({ productId, title: title ?? "Item", image: imageUrl })
+            }
+            disabled={setFull}
+            title={
+              setFull
+                ? `Outfit set is full (${MAX_TRYON_ITEMS} max)`
+                : "Combine up to 4 pieces in one try-on"
+            }
+            className={`text-[11px] transition-colors disabled:opacity-40 ${
+              inSet
+                ? "text-brass-soft hover:text-paper"
+                : "text-paper/40 hover:text-paper"
+            }`}
+          >
+            {inSet ? "✓ In outfit — remove" : "+ Add to outfit"}
+          </button>
         )}
-      </button>
+      </div>
       {creditsApply && insufficient && (
         <p className="mt-1 text-[11px] text-paper/40">
           Not enough credits ({balance} left).{" "}

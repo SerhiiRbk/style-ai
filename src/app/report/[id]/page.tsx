@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { getReportView } from "@/lib/data/reports";
 import { reportOgMetadataImageUrl } from "@/lib/data/report-og";
 import { TryOnButton } from "@/components/TryOnButton";
+import { TryOnSelectionProvider } from "@/components/TryOnContext";
+import { TryOnTray } from "@/components/TryOnTray";
 import { LookTryOn } from "@/components/LookTryOn";
 import { CreditsProvider } from "@/components/CreditsContext";
 import { getCreditBalance } from "@/lib/credits";
@@ -814,6 +816,14 @@ export default async function ReportPage({
               </div>
             </div>
 
+            {canTryOn ? (
+              <p className="mt-4 text-xs text-paper/45">
+                Tip: use “+ Add to outfit” on up to 4 pieces to render them
+                together on your photo in a single try-on.
+              </p>
+            ) : null}
+
+            <TryOnSelectionProvider>
             <div className="mt-12 space-y-10">
               {Object.entries(grouped).map(([cat, items]) => (
                 <div key={cat}>
@@ -872,6 +882,7 @@ export default async function ReportPage({
                               productId={item.productId}
                               reportId={report.id}
                               imageUrl={item.image}
+                              title={item.title}
                             />
                           </div>
                         ) : null}
@@ -881,6 +892,10 @@ export default async function ReportPage({
                 </div>
               ))}
             </div>
+            {canTryOn ? (
+              <TryOnTray reportId={report.id} cost={CREDIT_COSTS.tryon} />
+            ) : null}
+            </TryOnSelectionProvider>
           </div>
         </section>
 

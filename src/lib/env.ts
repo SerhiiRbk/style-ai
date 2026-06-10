@@ -20,6 +20,11 @@ export const env = {
 
   falKey: process.env.FAL_KEY,
 
+  // Catalog try-on engine: "image" (default — same image-model pipeline as
+  // look renders, supports layering + multiple garments) or "fal" (FASHN
+  // single-garment VTON via fal.ai).
+  tryonEngine: process.env.TRYON_ENGINE === "fal" ? "fal" : "image",
+
   // Shared secret required to POST scraper results to /api/catalog/import.
   catalogImportKey: process.env.CATALOG_IMPORT_KEY,
 
