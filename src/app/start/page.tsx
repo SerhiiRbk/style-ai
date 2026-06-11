@@ -13,6 +13,7 @@ import { COUNTRIES, countryNameFromCode } from "@/lib/countries";
 import { PROFILE_CURRENCIES, type Currency } from "@/lib/currency";
 import { REPORT_COST, CREDIT_COSTS, SIGNUP_BONUS } from "@/lib/credit-costs";
 import { BRAND } from "@/lib/brand";
+import { LEGAL } from "@/lib/legal";
 
 type Tier = "free" | "basic" | "lookbook" | "premium";
 
@@ -145,6 +146,7 @@ export default function StartPage() {
   const [boldness, setBoldness] = useState("moderate");
   const [budget, setBudget] = useState(1);
   const [tier, setTier] = useState<Tier>("lookbook");
+  const [biometricConsent, setBiometricConsent] = useState(false);
 
   // Prefill country/city/currency from Vercel geolocation (best-effort).
   useEffect(() => {
@@ -189,8 +191,14 @@ export default function StartPage() {
     set(arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]);
   };
 
+  const hasRequiredPhotos = LIVE
+    ? photoPaths.some((p) => p.role === "face") &&
+      photoPaths.some((p) => p.role === "full")
+    : photos.length >= 2;
+
   const canNext = () => {
     if (step === 0) return city.trim() && country.trim();
+    if (step === 1) return hasRequiredPhotos && biometricConsent;
     if (step === 2) return goals.length > 0;
     return true;
   };
@@ -211,6 +219,8 @@ export default function StartPage() {
         body: JSON.stringify({
           tier,
           photoPaths,
+          biometricConsent: photoPaths.length ? biometricConsent : undefined,
+          consentVersion: photoPaths.length ? LEGAL.consentVersion : undefined,
           intake: {
             age,
             genderPresentation: gender,
@@ -307,15 +317,30 @@ export default function StartPage() {
                       />
                     ))}
               </div>
-              <p className="mt-4 text-xs text-stone-soft">
-                {LIVE
-                  ? "Photos are uploaded to your private, GDPR-compliant storage and used only to generate your report. By continuing you consent to this processing, as described in our "
-                  : "Demo: click a tile to simulate an upload. By continuing you consent to processing of your photos for this report, as described in our "}
-                <Link href="/privacy" className="text-brass hover:text-ink">
-                  Privacy Policy
-                </Link>
-                .
-              </p>
+              <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border hairline bg-cream/40 p-4">
+                <input
+                  type="checkbox"
+                  checked={biometricConsent}
+                  onChange={(e) => setBiometricConsent(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-ink)]"
+                />
+                <span className="text-xs leading-relaxed text-stone">
+                  I explicitly consent to Valetti processing my uploaded photos
+                  (which may reveal biometric characteristics) to analyse my
+                  appearance and generate personalised style visuals, including
+                  transfer to AI subprocessors listed in the{" "}
+                  <Link href="/privacy" className="text-brass hover:text-ink">
+                    Privacy Policy
+                  </Link>
+                  . I understand I can withdraw consent by deleting my photos,
+                  reports, or account.
+                </span>
+              </label>
+              {!biometricConsent && hasRequiredPhotos ? (
+                <p className="mt-2 text-xs text-stone-soft">
+                  Required to continue with photo-based personalisation.
+                </p>
+              ) : null}
             </Section>
           )}
 

@@ -6,6 +6,7 @@ import {
   generateEyewearImage,
   generateFacialHairImage,
 } from "@/lib/ai/pipeline";
+import { isDemoReportId } from "@/lib/demo-report";
 import {
   accessoryExtraPicksFor,
   accessoryPicksFor,
@@ -184,7 +185,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const reportId: string | undefined = body?.reportId;
   const type = body?.type as ExtraType | undefined;
-  if (!reportId || reportId === "demo") {
+  if (!reportId || isDemoReportId(reportId)) {
     return NextResponse.json({ error: "Invalid reportId" }, { status: 400 });
   }
   if (!type || !(type in CONFIG)) {

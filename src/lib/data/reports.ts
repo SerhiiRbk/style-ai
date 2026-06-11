@@ -2,7 +2,12 @@ import "server-only";
 import { cache } from "react";
 import { after } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
+import { isDemoReportId } from "@/lib/demo-report";
 import { LEGAL } from "@/lib/legal";
+import {
+  recordBiometricConsent,
+  revokeBiometricConsentIfIdle,
+} from "@/lib/data/consent";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
@@ -63,6 +68,9 @@ type CreateInput = {
   tier: Tier;
   userId?: string | null;
   photoPaths?: { role: string; path: string }[];
+  /** Explicit Art. 9 consent — required when photoPaths are present. */
+  biometricConsent?: boolean;
+  consentVersion?: string;
 };
 
 /** Whether the report or its hair/look/capsule images are still being generated. */
@@ -436,10 +444,15 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
 
   const admin = createAdminSupabase();
 
-  // Record biometric-processing consent (GDPR Art. 9).
-  await admin
-    .from("consents")
-    .insert({ user_id: userId, type: "biometric", version: LEGAL.consentVersion });
+  const hasPhotos = Boolean(input.photoPaths?.length);
+  if (hasPhotos) {
+    if (!input.biometricConsent || input.consentVersion !== LEGAL.consentVersion) {
+      throw new Error(
+        "Explicit consent for photo processing is required before generating a report.",
+      );
+    }
+    await recordBiometricConsent(userId);
+  }
 
   // Persist uploaded photo references (reused later for virtual try-on).
   if (input.photoPaths?.length) {
@@ -744,8 +757,8 @@ async function fetchReportView(
   id: string,
   opts?: { scheduleRefresh?: boolean },
 ): Promise<ReportView | null> {
-  if (id === "demo") {
-    const report = getMockReport("demo");
+  if (isDemoReportId(id)) {
+    const report = getMockReport(id);
     if (!report) return null;
     return { report, isOwner: false, isPublic: true };
   }

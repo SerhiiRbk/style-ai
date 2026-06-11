@@ -1,7 +1,9 @@
 import { BRAND } from "@/lib/brand";
-import { LEGAL, type LegalSection } from "@/lib/legal";
+import { LEGAL, controllerIdentity, type LegalSection } from "@/lib/legal";
 
-export const TERMS_INTRO = `These Terms of Service ("Terms") govern your access to and use of ${LEGAL.siteName} — the website, application, and related services operated by ${LEGAL.operatorName} ("we", "us"). By creating an account, purchasing credits, or using the service, you agree to these Terms and our Privacy Policy.`;
+const ctrl = controllerIdentity();
+
+export const TERMS_INTRO = `These Terms of Service ("Terms") govern your access to and use of ${LEGAL.siteName} — the website, application, and related services operated by ${ctrl.legalName} ("we", "us"). By creating an account, purchasing credits, or using the service, you agree to these Terms and our Privacy Policy.`;
 
 export const TERMS_SECTIONS: LegalSection[] = [
   {
@@ -34,7 +36,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     id: "refunds",
     title: "4. Refunds and failed generations",
     paragraphs: [
-      "Digital styling reports and generated images are delivered immediately or shortly after purchase of credits. Under EU consumer rules, statutory withdrawal rights may not apply once digital content delivery has begun with your prior express consent.",
+      "Digital styling reports and generated images are delivered immediately or shortly after purchase of credits. Under EU consumer rules, statutory withdrawal rights may not apply once digital content delivery has begun with your prior express consent — you must confirm this at checkout before paying.",
       "If a report fails to generate due to a technical fault on our side, contact us at " +
         LEGAL.contactEmail +
         " — we will investigate and, where appropriate, restore credits or regenerate content.",
@@ -45,8 +47,9 @@ export const TERMS_SECTIONS: LegalSection[] = [
     id: "your-content",
     title: "5. Your photos and inputs",
     paragraphs: [
-      "You retain ownership of photographs and other content you upload. You grant us a limited licence to host, process, and display that content solely to provide and improve the service for you — including sending it to subprocessors for analysis and image generation as described in our Privacy Policy.",
+      "You retain ownership of photographs and other content you upload. You grant us a limited licence to host, process, and display that content solely to provide the service for you — including sending it to subprocessors for analysis and image generation as described in our Privacy Policy.",
       "You confirm you have the right to upload the photos (they are of you, or you have permission) and that they do not infringe third-party rights or contain unlawful material.",
+      "Processing of photos for personalisation requires your separate explicit consent on the photo-upload step, as described in our Privacy Policy.",
     ],
   },
   {
@@ -119,6 +122,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
       "We encourage you to contact us first at " +
         LEGAL.contactEmail +
         " so we can try to resolve concerns informally.",
+      `The European Commission provides an Online Dispute Resolution platform: ${LEGAL.odrUrl}. We are not obliged to participate in alternative dispute-resolution proceedings before a consumer-arbitration body, but we will consider doing so where appropriate.`,
     ],
   },
   {
@@ -127,6 +131,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     paragraphs: [
       `Questions about these Terms: ${LEGAL.contactEmail}.`,
       `For privacy matters, see our Privacy Policy.`,
+      `Registered operator: ${ctrl.legalName}. Address: ${ctrl.addressLines.join(", ")}.`,
     ],
   },
 ];

@@ -49,6 +49,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unknown package" }, { status: 400 });
   }
 
+  const bodyObj =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  if (
+    bodyObj.termsAccepted !== true ||
+    bodyObj.digitalDeliveryConsent !== true
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "You must accept the Terms and acknowledge immediate digital delivery before checkout.",
+        code: "consent_required",
+      },
+      { status: 422 },
+    );
+  }
+
   // Region currency (EUR for Europe, USD elsewhere) from the Vercel geo header.
   const country = request.headers.get("x-vercel-ip-country");
   const currency = subscriptionCurrency(country);
@@ -70,6 +86,8 @@ export async function POST(request: Request) {
         userId: user.id,
         packageId: pkg.id,
         credits: String(packageCredits(pkg)),
+        termsAccepted: "true",
+        digitalDeliveryConsent: "true",
       },
       payment_intent_data: {
         metadata: {

@@ -112,7 +112,7 @@ export default async function CatalogPage({
           </p>
           <div className="mt-8 flex justify-center">
             <Link
-              href="/report/demo"
+              href="/report/valetti-style-prospect-demo"
               className="inline-flex items-center justify-center rounded-full border border-ink/25 px-5 py-3 text-sm text-ink transition-all hover:bg-ink hover:text-paper"
             >
               Open the example report

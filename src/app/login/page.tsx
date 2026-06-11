@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 import { hasSupabase } from "@/lib/env";
 import { normalizePromoCode } from "@/lib/promotions";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { signIn, signUp } from "./actions";
 import { ButtonLink } from "@/components/Button";
+import { LoginForm } from "@/components/LoginForm";
 import { BRAND } from "@/lib/brand";
 
 const PENDING_PROMO_COOKIE = "pending_promo";
@@ -79,42 +79,7 @@ export default async function LoginPage({
         </p>
       )}
 
-      <form className="mt-7 space-y-4">
-        <Input name="email" type="email" placeholder="you@email.com" label="Email" />
-        <Input
-          name="password"
-          type="password"
-          placeholder="••••••••"
-          label="Password"
-        />
-        <div className="flex gap-3 pt-2">
-          <button
-            formAction={signIn}
-            className="flex-1 rounded-full bg-ink px-6 py-3 text-sm text-paper transition-colors hover:bg-ink-soft"
-          >
-            Sign in
-          </button>
-          <button
-            formAction={signUp}
-            className="flex-1 rounded-full border border-ink/25 px-6 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
-          >
-            Create account
-          </button>
-        </div>
-      </form>
-
-      <p className="mt-6 text-xs text-stone-soft">
-        By continuing you consent to the processing of your photos for the
-        purpose of generating your style report, as described in our{" "}
-        <Link href="/privacy" className="text-brass hover:text-ink">
-          Privacy Policy
-        </Link>{" "}
-        and{" "}
-        <Link href="/terms" className="text-brass hover:text-ink">
-          Terms
-        </Link>
-        . You can delete your data at any time.
-      </p>
+      <LoginForm />
     </Centered>
   );
 }
@@ -124,30 +89,5 @@ function Centered({ children }: { children: React.ReactNode }) {
     <main className="flex flex-1 items-center justify-center px-6 py-20">
       <div className="w-full max-w-md">{children}</div>
     </main>
-  );
-}
-
-function Input({
-  name,
-  type,
-  placeholder,
-  label,
-}: {
-  name: string;
-  type: string;
-  placeholder: string;
-  label: string;
-}) {
-  return (
-    <label className="block">
-      <span className="text-sm text-stone">{label}</span>
-      <input
-        name={name}
-        type={type}
-        placeholder={placeholder}
-        required
-        className="mt-1.5 w-full rounded-lg border border-line bg-paper px-4 py-2.5 text-sm text-ink outline-none transition-colors focus:border-ink"
-      />
-    </label>
   );
 }

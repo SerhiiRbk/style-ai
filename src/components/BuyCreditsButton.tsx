@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 /**
  * Starts Stripe Checkout for a credit pack. Posts to /api/stripe/checkout and
@@ -19,6 +20,8 @@ export function BuyCreditsButton({
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [digitalDeliveryAccepted, setDigitalDeliveryAccepted] = useState(false);
 
   if (!enabled) {
     return (
@@ -33,14 +36,21 @@ export function BuyCreditsButton({
     );
   }
 
+  const canBuy = termsAccepted && digitalDeliveryAccepted;
+
   async function buy() {
+    if (!canBuy) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId }),
+        body: JSON.stringify({
+          packageId,
+          termsAccepted: true,
+          digitalDeliveryConsent: true,
+        }),
       });
       if (res.status === 401) {
         window.location.href = `/login?next=${encodeURIComponent("/pricing#packages")}`;
@@ -60,11 +70,43 @@ export function BuyCreditsButton({
   }
 
   return (
-    <div className="mt-7">
+    <div className="mt-7 space-y-3">
+      <label className="flex cursor-pointer items-start gap-2 text-left text-[11px] leading-relaxed text-paper/80">
+        <input
+          type="checkbox"
+          checked={termsAccepted}
+          onChange={(e) => setTermsAccepted(e.target.checked)}
+          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--color-brass)]"
+        />
+        <span>
+          I agree to the{" "}
+          <Link href="/terms" className="underline hover:text-paper">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline hover:text-paper">
+            Privacy Policy
+          </Link>
+          .
+        </span>
+      </label>
+      <label className="flex cursor-pointer items-start gap-2 text-left text-[11px] leading-relaxed text-paper/80">
+        <input
+          type="checkbox"
+          checked={digitalDeliveryAccepted}
+          onChange={(e) => setDigitalDeliveryAccepted(e.target.checked)}
+          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--color-brass)]"
+        />
+        <span>
+          I request immediate delivery of digital credits and content and
+          acknowledge that I lose my 14-day EU withdrawal right once delivery
+          begins.
+        </span>
+      </label>
       <button
         type="button"
         onClick={buy}
-        disabled={loading}
+        disabled={loading || !canBuy}
         className={`inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm transition-colors disabled:opacity-60 ${
           featured
             ? "bg-brass text-paper hover:bg-brass/90"
@@ -73,7 +115,7 @@ export function BuyCreditsButton({
       >
         {loading ? "Redirecting…" : "Buy credits"}
       </button>
-      {error ? <p className="mt-2 text-xs text-red-300">{error}</p> : null}
+      {error ? <p className="text-xs text-red-300">{error}</p> : null}
     </div>
   );
 }

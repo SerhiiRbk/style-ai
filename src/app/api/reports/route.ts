@@ -3,6 +3,7 @@ import { intakeSchema } from "@/lib/style-profile";
 import { type Tier } from "@/lib/report";
 import { createAndRunReport } from "@/lib/data/reports";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
+import { LEGAL } from "@/lib/legal";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
   REPORT_COST,
@@ -32,6 +33,23 @@ export async function POST(request: Request) {
   }
 
   const tier: Tier = TIERS.includes(body.tier) ? body.tier : "basic";
+  const photoPaths = Array.isArray(body.photoPaths) ? body.photoPaths : [];
+  const biometricConsent = body.biometricConsent === true;
+  const consentVersion =
+    typeof body.consentVersion === "string" ? body.consentVersion : "";
+
+  if (photoPaths.length && hasSupabase) {
+    if (!biometricConsent || consentVersion !== LEGAL.consentVersion) {
+      return NextResponse.json(
+        {
+          error:
+            "Explicit consent for photo processing is required. Please accept on the photo step.",
+          code: "consent_required",
+        },
+        { status: 422 },
+      );
+    }
+  }
 
   let userId: string | null = null;
   if (hasSupabase) {
@@ -83,7 +101,9 @@ export async function POST(request: Request) {
       intake: parsed.data,
       tier,
       userId,
-      photoPaths: Array.isArray(body.photoPaths) ? body.photoPaths : [],
+      photoPaths,
+      biometricConsent: photoPaths.length ? biometricConsent : undefined,
+      consentVersion: photoPaths.length ? consentVersion : undefined,
     });
 
     // Charge after the report is created so a failed generation isn't billed.

@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { BRAND } from "@/lib/brand";
 import { ADMIN_SECTIONS } from "@/lib/admin-sections";
+import { ValettiLogo } from "./brand/ValettiLogo";
 
 export function AdminShell({
   children,
@@ -15,9 +15,7 @@ export function AdminShell({
       <header className="border-b hairline bg-paper/80 px-6 py-4 backdrop-blur-sm">
         <div className="container-luxe flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Link href="/" className="font-display text-lg text-ink">
-              {BRAND.name}
-            </Link>
+            <ValettiLogo monogramSize={22} wordmarkClass="text-lg" />
             <span className="hidden text-stone-soft sm:inline">·</span>
             <Link
               href="/admin"

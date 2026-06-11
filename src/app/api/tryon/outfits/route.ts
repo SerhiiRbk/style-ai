@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { parseGarmentsJson, type SavedOutfitTryOn } from "@/lib/outfit-tryon";
+import { isDemoReportId } from "@/lib/demo-report";
 
 /** List saved catalogue / outfit try-ons for a report (owner only). */
 export async function GET(request: Request) {
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   }
 
   const reportId = new URL(request.url).searchParams.get("reportId");
-  if (!reportId || reportId === "demo") {
+  if (!reportId || isDemoReportId(reportId)) {
     return NextResponse.json({ error: "Invalid reportId" }, { status: 400 });
   }
 

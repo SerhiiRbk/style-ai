@@ -775,7 +775,7 @@ function GroomingPreviewCard({
     <article className="overflow-hidden rounded-2xl border hairline bg-paper">
       <div className="relative aspect-[4/5] bg-sand">
         {label ? (
-          <span className="absolute right-3 top-3 z-10 rounded-full bg-paper/90 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-stone">
+          <span className="absolute right-3 top-3 z-10 max-w-[calc(100%-1.5rem)] truncate rounded-full bg-paper/90 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-stone">
             {label}
           </span>
         ) : null}

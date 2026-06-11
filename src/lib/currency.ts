@@ -63,6 +63,35 @@ export function formatMoney(
 }
 
 /**
+ * WinAnsi-safe money string for pdf-lib StandardFonts.
+ * Avoids €, Kč, zł and other glyphs that render as "?" in PDF output.
+ */
+export function formatMoneyPdf(
+  eur: number,
+  currency?: Currency | string | null,
+): string {
+  const cur = (currency || "EUR").toUpperCase();
+  const value = Math.round(convertFromEur(eur, cur));
+  const amount = value.toLocaleString("en-US");
+  switch (cur) {
+    case "EUR":
+      return `${amount} EUR`;
+    case "USD":
+      return `$${amount}`;
+    case "CAD":
+      return `CA$${amount}`;
+    case "GBP":
+      return `GBP ${amount}`;
+    case "CZK":
+      return `${amount} Kc`;
+    case "PLN":
+      return `${amount} zl`;
+    default:
+      return `${amount} ${cur}`;
+  }
+}
+
+/**
  * Format a retailer price in its native currency (keeps cents for EUR/USD,
  * rounds for CZK/PLN).
  */

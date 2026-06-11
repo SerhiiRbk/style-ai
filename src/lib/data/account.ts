@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminSupabase } from "@/lib/supabase/server";
+import { revokeBiometricConsentIfIdle } from "@/lib/data/consent";
 
 type Admin = ReturnType<typeof createAdminSupabase>;
 
@@ -74,6 +75,8 @@ export async function deleteReportData(
 
   const { error } = await admin.from("reports").delete().eq("id", reportId);
   if (error) throw new Error(error.message);
+
+  await revokeBiometricConsentIfIdle(userId);
 }
 
 /**

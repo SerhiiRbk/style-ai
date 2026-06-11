@@ -23,6 +23,10 @@ export const metadata: Metadata = {
     "AI-assisted personal styling from Valetti. Carlo Valetti — our lead stylist persona — guides you through a calm, practical plan: hair, colours, clothing, silhouettes, and a precise shopping list, with the reason behind every call.",
   metadataBase: getSiteUrl(),
   alternates: { canonical: "/" },
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/apple-icon.svg", type: "image/svg+xml" }],
+  },
   openGraph: {
     title: "Valetti — personal style atelier",
     description:

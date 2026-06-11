@@ -160,7 +160,7 @@ function Hero() {
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-4">
             <ButtonLink href="/start">Create my style report</ButtonLink>
-            <ButtonLink href="/report/demo" variant="outline">
+            <ButtonLink href="/report/valetti-style-prospect-demo" variant="outline">
               See an example
             </ButtonLink>
           </div>
@@ -239,7 +239,6 @@ function Marquee() {
     "Real shopping links",
     "Virtual try-on",
     "GDPR-first",
-    "Built for expats",
   ];
   return (
     <div className="border-y hairline bg-ink text-paper">
@@ -404,7 +403,7 @@ function SampleReport() {
           </ul>
           <div className="mt-9">
             <ButtonLink
-              href="/report/demo"
+              href="/report/valetti-style-prospect-demo"
               className="!bg-paper !text-ink hover:!bg-cream"
             >
               Open the example report

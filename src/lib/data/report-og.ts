@@ -5,6 +5,7 @@ import { getReport as getMockReport } from "@/lib/store";
 import { canShareReport, type Tier } from "@/lib/report";
 import { absoluteUrl } from "@/lib/site-url";
 import { BRAND } from "@/lib/brand";
+import { isDemoReportId } from "@/lib/demo-report";
 
 export const REPORT_OG_FALLBACK = BRAND.ogImage;
 
@@ -20,7 +21,7 @@ function contentTypeForPath(path: string): string {
 export async function getReportHeroStoragePath(
   id: string,
 ): Promise<string | null> {
-  if (id === "demo") return null;
+  if (isDemoReportId(id)) return null;
 
   if (!hasSupabaseAdmin) {
     const report = getMockReport(id);
@@ -68,7 +69,7 @@ function staticFallback(): ReportOgImageResult {
 export async function resolveReportOgImage(
   id: string,
 ): Promise<ReportOgImageResult> {
-  if (id === "demo") return staticFallback();
+  if (isDemoReportId(id)) return staticFallback();
 
   const imagePath = await getReportHeroStoragePath(id);
   if (!imagePath) return staticFallback();

@@ -7,7 +7,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/report/demo"],
+        allow: ["/", "/report/valetti-style-prospect-demo", "/report/demo"],
         // Private/owner data and internal endpoints stay out of the index.
         disallow: ["/api/", "/admin/", "/reports", "/login", "/report/"],
       },

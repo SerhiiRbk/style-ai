@@ -8,6 +8,7 @@ import {
 } from "@/lib/ai/pipeline";
 import { getFullLengthPhotoUrl, tryOnErrorCode } from "@/lib/photo-tryon";
 import { absoluteUrl } from "@/lib/site-url";
+import { isDemoReportId } from "@/lib/demo-report";
 import {
   CREDIT_COSTS,
   creditBalance,
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
       ? body.imageUrl.trim()
       : undefined;
   const reportId: string | undefined =
-    typeof body?.reportId === "string" && body.reportId !== "demo"
+    typeof body?.reportId === "string" && !isDemoReportId(body.reportId)
       ? body.reportId
       : undefined;
 

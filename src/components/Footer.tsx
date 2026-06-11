@@ -1,13 +1,18 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
+import { ValettiLogo } from "./brand/ValettiLogo";
 
 export function Footer() {
   return (
     <footer className="mt-auto border-t hairline bg-cream/40">
       <div className="container-luxe grid gap-10 py-16 md:grid-cols-[1.5fr_1fr_1fr_1fr]">
         <div className="max-w-xs">
-          <div className="font-display text-2xl">{BRAND.name}</div>
-          <p className="mt-1 text-xs uppercase tracking-wider text-stone-soft">
+          <ValettiLogo
+            eyebrow="stacked"
+            monogramSize={30}
+            wordmarkClass="text-2xl"
+          />
+          <p className="mt-2 text-xs uppercase tracking-wider text-stone-soft">
             {BRAND.tagline}
           </p>
           <p className="mt-3 text-sm leading-relaxed text-stone">
@@ -22,7 +27,7 @@ export function Footer() {
           title="Product"
           items={[
             ["How it works", "/#how"],
-            ["Sample", "/report/demo"],
+            ["Sample", "/report/valetti-style-prospect-demo"],
             ["Catalog", "/catalog"],
             ["Pricing", "/#pricing"],
           ]}
@@ -39,6 +44,7 @@ export function Footer() {
           items={[
             ["Privacy", "/privacy"],
             ["Terms", "/terms"],
+            ["Impressum", "/impressum"],
             ["Contact", `mailto:${BRAND.legalContactEmail}`],
           ]}
         />

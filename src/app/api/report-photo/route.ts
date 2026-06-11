@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isDemoReportId } from "@/lib/demo-report";
 import { hasSupabase, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
   const reportId: string | undefined = body?.reportId;
   const kind = body?.kind as Kind | undefined;
   const index = Number(body?.index);
-  if (!reportId || reportId === "demo") {
+  if (!reportId || isDemoReportId(reportId)) {
     return NextResponse.json({ error: "Invalid reportId" }, { status: 400 });
   }
   if (!kind || !Number.isInteger(index) || index < 0) {

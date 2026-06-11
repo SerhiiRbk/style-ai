@@ -9,10 +9,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/", priority: 1, freq: "weekly" },
     { path: "/pricing", priority: 0.8, freq: "monthly" },
     { path: "/catalog", priority: 0.7, freq: "weekly" },
-    { path: "/report/demo", priority: 0.6, freq: "monthly" },
+    { path: "/report/valetti-style-prospect-demo", priority: 0.6, freq: "monthly" },
     { path: "/start", priority: 0.6, freq: "monthly" },
     { path: "/privacy", priority: 0.4, freq: "monthly" },
     { path: "/terms", priority: 0.4, freq: "monthly" },
+    { path: "/impressum", priority: 0.3, freq: "monthly" },
   ];
   return entries.map((e) => ({
     url: `${base}${e.path}`,

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ButtonLink } from "./Button";
 import { AuthControls } from "./AuthControls";
 import { NavbarMenu, type NavLink } from "./NavbarMenu";
-import { BRAND } from "@/lib/brand";
+import { ValettiLogo } from "./brand/ValettiLogo";
 import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getCreditBalance } from "@/lib/credits";
@@ -16,7 +16,7 @@ const primaryLinks: NavLink[] = [
 ];
 
 const secondaryLinks: NavLink[] = [
-  { href: "/report/demo", label: "View example", hideWhenAuthed: true },
+  { href: "/report/valetti-style-prospect-demo", label: "View example", hideWhenAuthed: true },
 ];
 
 const navLinkClass =
@@ -41,66 +41,67 @@ export async function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b hairline bg-paper/80 backdrop-blur-md">
-      <nav className="container-luxe flex h-16 items-center gap-2 lg:gap-4">
-        <Link
-          href="/"
-          className="group flex shrink-0 items-baseline gap-1.5 xl:gap-2"
-        >
-          <span className="font-display text-lg tracking-tight xl:text-xl">
-            {BRAND.name}
-          </span>
-          <span className="eyebrow hidden whitespace-nowrap xl:inline">
-            {BRAND.eyebrow}
-          </span>
-        </Link>
+      <nav className="container-luxe flex h-16 items-center gap-3 lg:gap-6">
+        <ValettiLogo
+          eyebrow="inline"
+          monogramSize={24}
+          wordmarkClass="text-lg xl:text-xl"
+        />
 
-        <div className="hidden min-w-0 flex-1 items-center justify-between lg:flex">
-          {primaryLinks.map((l) => (
-            <Link key={l.href} href={l.href} className={navLinkClass}>
-              {l.label}
-            </Link>
-          ))}
-          {!authed && (
-            <Link
-              href="/report/demo"
-              className={`${navLinkClass} hidden xl:inline-flex`}
-            >
-              View example
-            </Link>
-          )}
-          {authed && (
-            <Link href="/reports" className={navLinkClass}>
-              My reports
-            </Link>
-          )}
-          {isAdmin && (
-            <Link href="/admin" className={`${navLinkClass} text-brass hover:text-brass/80`}>
-              Admin
-            </Link>
-          )}
-          {authed && balance !== null && (
-            <>
-              <Link
-                href="/pricing"
-                title="Your credit balance — buy more"
-                className={`${creditsPillClass} px-2 py-0.5 text-[11px] xl:hidden`}
-              >
-                {balance} cr
+        <div className="hidden min-w-0 flex-1 items-center justify-end gap-4 lg:flex xl:gap-5">
+          <div className="flex items-center gap-4 xl:gap-5">
+            {primaryLinks.map((l) => (
+              <Link key={l.href} href={l.href} className={navLinkClass}>
+                {l.label}
               </Link>
+            ))}
+            {!authed && (
               <Link
-                href="/pricing"
-                title="Your credit balance — buy more"
-                className={`${creditsPillClass} hidden px-3 py-1 text-xs xl:inline-flex`}
+                href="/report/valetti-style-prospect-demo"
+                className={`${navLinkClass} hidden 2xl:inline-flex`}
               >
-                {balance} credits
+                View example
               </Link>
-            </>
-          )}
-          <AuthControls className="whitespace-nowrap text-xs text-stone transition-colors hover:text-ink xl:text-sm" />
-          <ButtonLink href="/start" className="!px-3 !py-2 xl:!px-5">
-            <span className="xl:hidden">Create report</span>
-            <span className="hidden xl:inline">Create my report</span>
-          </ButtonLink>
+            )}
+            {authed && (
+              <Link href="/reports" className={navLinkClass}>
+                My reports
+              </Link>
+            )}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className={`${navLinkClass} text-brass hover:text-brass/80`}
+              >
+                Admin
+              </Link>
+            )}
+          </div>
+          <div className="flex items-center gap-3 xl:gap-4">
+            {authed && balance !== null && (
+              <>
+                <Link
+                  href="/pricing"
+                  title="Your credit balance — buy more"
+                  className={`${creditsPillClass} px-2 py-0.5 text-[11px] xl:hidden`}
+                >
+                  {balance} cr
+                </Link>
+                <Link
+                  href="/pricing"
+                  title="Your credit balance — buy more"
+                  className={`${creditsPillClass} hidden px-3 py-1 text-xs xl:inline-flex`}
+                >
+                  {balance} credits
+                </Link>
+              </>
+            )}
+            <AuthControls className="whitespace-nowrap text-xs text-stone transition-colors hover:text-ink xl:text-sm" />
+            <ButtonLink href="/start" className="!px-3 !py-2 xl:!px-5">
+              <span className="xl:hidden">Create report</span>
+              <span className="hidden xl:inline">Create my report</span>
+            </ButtonLink>
+          </div>
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5 md:gap-2 lg:hidden">

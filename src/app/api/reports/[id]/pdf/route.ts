@@ -1,4 +1,5 @@
 import { getReportViewForDownload } from "@/lib/data/reports";
+import { DEMO_REPORT_SLUG, isDemoReportId } from "@/lib/demo-report";
 import { buildReportPdf } from "@/lib/pdf/report-pdf";
 import { demoReport } from "@/lib/store";
 
@@ -37,8 +38,8 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  if (id === "demo") {
-    return pdfResponse(await getDemoPdf(), "styleai-sample-report.pdf");
+  if (isDemoReportId(id)) {
+    return pdfResponse(await getDemoPdf(), `${DEMO_REPORT_SLUG}.pdf`);
   }
 
   const view = await getReportViewForDownload(id);

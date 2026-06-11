@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasSupabaseAdmin } from "@/lib/env";
+import { LEGAL } from "@/lib/legal";
 import { redeemPromotion } from "@/lib/promotions";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 
@@ -38,11 +39,32 @@ export async function signIn(formData: FormData) {
 export async function signUp(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const acceptTerms = formData.get("acceptTerms");
+
+  if (acceptTerms !== "on") {
+    redirect(
+      `/login?error=${encodeURIComponent("You must accept the Terms of Service and Privacy Policy to create an account.")}`,
+    );
+  }
+
   const sb = await createServerSupabase();
-  const { error } = await sb.auth.signUp({ email, password });
+  const { data, error } = await sb.auth.signUp({ email, password });
   if (error) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }
+
+  if (data.user && hasSupabaseAdmin) {
+    try {
+      await createAdminSupabase().from("consents").insert({
+        user_id: data.user.id,
+        type: "terms",
+        version: LEGAL.termsVersion,
+      });
+    } catch {
+      // Non-fatal — account was created; terms acceptance can be re-verified later.
+    }
+  }
+
   redirect("/login?check=1");
 }
 

@@ -8,6 +8,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { getCreditBalance } from "@/lib/credits";
 import { DeleteReportButton } from "@/components/DeleteReportButton";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
+import { ExportDataButton } from "@/components/ExportDataButton";
 import {
   getUserReports,
   reportStatusLabel,
@@ -38,7 +39,7 @@ export default async function ReportsPage() {
               demo mode, explore the sample report instead.
             </p>
             <div className="mt-8 flex justify-center gap-3">
-              <ButtonLink href="/report/demo" variant="outline">
+              <ButtonLink href="/report/valetti-style-prospect-demo" variant="outline">
                 View example
               </ButtonLink>
               <ButtonLink href="/start">Create a report</ButtonLink>
@@ -155,11 +156,22 @@ export default async function ReportsPage() {
         </section>
 
         <section className="container-luxe pb-20">
-          <div className="rounded-2xl border border-red-100 bg-red-50/30 p-6 sm:p-8">
-            <p className="eyebrow !text-red-700">Privacy &amp; data</p>
+          <div className="rounded-2xl border hairline bg-cream/30 p-6 sm:p-8">
+            <p className="eyebrow">Privacy &amp; data</p>
             <h2 className="mt-3 font-display text-2xl text-ink">
-              Delete your account
+              Your GDPR rights
             </h2>
+            <p className="mt-2 max-w-xl text-sm text-stone">
+              Download a structured copy of the personal data we hold about your
+              account, or permanently erase everything.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-4">
+              <ExportDataButton />
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-2xl border border-red-100 bg-red-50/30 p-6 sm:p-8">
+            <h2 className="font-display text-2xl text-ink">Delete your account</h2>
             <p className="mt-2 max-w-xl text-sm text-stone">
               Permanently erase your account and all associated data — every
               report, generated image, uploaded photo, try-on and credit

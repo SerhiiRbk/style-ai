@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportGenerationState } from "@/lib/data/reports";
 import { isAdminEmail } from "@/lib/admin";
+import { isDemoReportId } from "@/lib/demo-report";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { canShareReport, type HairRec, type Tier } from "@/lib/report";
@@ -11,7 +12,7 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  if (id === "demo" || !hasSupabase) {
+  if (isDemoReportId(id) || !hasSupabase) {
     return NextResponse.json({
       status: "ready",
       pending: false,

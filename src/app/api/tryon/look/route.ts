@@ -3,6 +3,7 @@ import { hasSupabase, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { generateLookImage } from "@/lib/ai/pipeline";
 import { getReportById } from "@/lib/data/reports";
+import { isDemoReportId } from "@/lib/demo-report";
 import {
   CREDIT_COSTS,
   creditBalance,
@@ -64,7 +65,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const reportId = searchParams.get("reportId");
-  if (!reportId || reportId === "demo") {
+  if (!reportId || isDemoReportId(reportId)) {
     return NextResponse.json({ error: "Invalid reportId" }, { status: 400 });
   }
 
@@ -139,7 +140,7 @@ export async function POST(request: Request) {
   const kind = parseKind(body?.kind);
   const isRegen = body?.regen === true;
 
-  if (!reportId || reportId === "demo" || !description) {
+  if (!reportId || isDemoReportId(reportId) || !description) {
     return NextResponse.json(
       { error: "Missing reportId or description" },
       { status: 400 },

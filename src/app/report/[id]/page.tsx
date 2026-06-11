@@ -22,6 +22,7 @@ import { GenerateLookButton } from "@/components/GenerateLookButton";
 import { UnlockAddonButton } from "@/components/UnlockAddonButton";
 import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { BRAND } from "@/lib/brand";
+import { DEMO_CAPSULE_IMAGES, isDemoReportId } from "@/lib/demo-report";
 import {
   isMockShopping,
   reportUpsellForTier,
@@ -148,32 +149,25 @@ export default async function ReportPage({
 
   // The demo report uses the deterministic mock catalogue, so the outfit-matrix
   // combinations are stable and we can attach pre-rendered lookbook photos.
-  const CAPSULE_IMAGES = [
-    "/images/look-work.png",
-    "/images/capsule/capsule-2.png",
-    "/images/capsule/capsule-3.png",
-    "/images/capsule/capsule-4.png",
-    "/images/capsule/capsule-5.png",
-    "/images/capsule/capsule-6.png",
-  ];
   const isFree = report.tier === "free";
   // Live reports (not the demo) can render outfits on the user's own photo.
-  const canTryOn = isOwner && report.id !== "demo";
+  const isLiveReport = !isDemoReportId(report.id);
+  const canTryOn = isOwner && isLiveReport;
   // Owners can re-generate any AI photo on a live report for 1 credit.
-  const canRegen = isOwner && report.id !== "demo";
+  const canRegen = isOwner && isLiveReport;
   // Owner's live credit balance — drives the cost UI on try-on controls.
-  const balance = isOwner && report.id !== "demo" ? balanceRaw : null;
-  const catalogShopping =
-    report.id !== "demo" && !isMockShopping(report.shopping);
+  const balance = isOwner && isLiveReport ? balanceRaw : null;
+  const catalogShopping = isLiveReport && !isMockShopping(report.shopping);
 
-  const capsuleImages =
-    report.id === "demo" ? CAPSULE_IMAGES : report.capsuleImages;
+  const capsuleImages = isDemoReportId(report.id)
+    ? [...DEMO_CAPSULE_IMAGES]
+    : report.capsuleImages;
   const matrix = capsuleImages
     ? extras.matrix.map((c, i) => ({ ...c, image: capsuleImages[i] ?? undefined }))
     : extras.matrix;
 
   const generation = report.generation;
-  const isDemo = report.id === "demo";
+  const isDemo = isDemoReportId(report.id);
   const firstLookImage = report.looks.map((l) => l.image).find(Boolean);
   const heroPortrait = isDemo
     ? "/images/hero-editorial.png"
@@ -224,7 +218,7 @@ export default async function ReportPage({
                 Shared report
               </span>
             ) : null}
-            {isOwner && report.id !== "demo" && !isFree ? (
+            {isOwner && isLiveReport && !isFree ? (
               <ShareReportButton reportId={report.id} initialIsPublic={isPublic} />
             ) : null}
             {isFree ? (
@@ -244,7 +238,7 @@ export default async function ReportPage({
                 Download PDF
               </a>
             )}
-            {isOwner && report.id !== "demo" ? (
+            {isOwner && isLiveReport ? (
               <DeleteReportButton
                 reportId={report.id}
                 tone="dark"
@@ -390,21 +384,25 @@ export default async function ReportPage({
               <WheelLegend />
             </div>
             <div>
-              <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-                Colours that work for you
-              </h3>
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                {report.colors.best.map((c) => (
-                  <ColorCard key={c.name} c={c} />
-                ))}
+              <div className="report-keep-together">
+                <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                  Colours that work for you
+                </h3>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  {report.colors.best.map((c) => (
+                    <ColorCard key={c.name} c={c} />
+                  ))}
+                </div>
               </div>
-              <h3 className="mt-10 text-sm uppercase tracking-wider text-stone-soft">
-                Colours to avoid
-              </h3>
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                {report.colors.avoid.map((c) => (
-                  <ColorCard key={c.name} c={c} muted />
-                ))}
+              <div className="report-keep-together mt-10">
+                <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                  Colours to avoid
+                </h3>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  {report.colors.avoid.map((c) => (
+                    <ColorCard key={c.name} c={c} muted />
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -426,7 +424,7 @@ export default async function ReportPage({
               title="Hair, beard & eyewear"
               sub="Cuts that flatter your face shape — with real examples to take to your barber — plus the beard and frame shapes that finish the picture."
             />
-            <div className="mt-10">
+            <div className="report-keep-together mt-10">
               <h3 className="text-sm uppercase tracking-wider text-stone-soft">
                 Recommended
               </h3>
@@ -448,7 +446,7 @@ export default async function ReportPage({
               </div>
             </div>
 
-            <div className="mt-12 border-t hairline pt-12">
+            <div className="report-keep-together mt-12 border-t hairline pt-12">
               <h3 className="text-sm uppercase tracking-wider text-stone-soft">
                 Best avoided
               </h3>
@@ -476,7 +474,7 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                     />
-                    {isOwner && report.id !== "demo" ? (
+                    {isOwner && isLiveReport ? (
                       <GenerateMoreButton
                         reportId={report.id}
                         type="facial_hair"
@@ -514,7 +512,7 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                     />
-                    {isOwner && report.id !== "demo" ? (
+                    {isOwner && isLiveReport ? (
                       <GenerateMoreButton
                         reportId={report.id}
                         type="eyewear"
@@ -548,7 +546,7 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                     />
-                    {isOwner && report.id !== "demo" ? (
+                    {isOwner && isLiveReport ? (
                       <GenerateMoreButton
                         reportId={report.id}
                         type="accessories"
@@ -576,7 +574,7 @@ export default async function ReportPage({
             ) : null}
 
             {report.tier !== "premium" &&
-            ((isOwner && report.id !== "demo") ||
+            ((isOwner && isLiveReport) ||
               Boolean(
                 report.facialHair?.length ||
                   report.eyewear?.length ||
@@ -602,7 +600,7 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                     />
-                  ) : isOwner && report.id !== "demo" ? (
+                  ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
                       title="Facial-hair previews"
                       desc="Four beard & mustache styles rendered on your own photo."
@@ -619,7 +617,7 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                     />
-                  ) : isOwner && report.id !== "demo" ? (
+                  ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
                       title="Eyewear previews"
                       desc="Two optical frames and two pairs of sunglasses on your photo."
@@ -636,7 +634,7 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                     />
-                  ) : isOwner && report.id !== "demo" ? (
+                  ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
                       title="Accessory styling"
                       desc="Two accessory previews (scarves, neckwear, ties) on your photo."
@@ -799,7 +797,7 @@ export default async function ReportPage({
                 <p className="mt-3 max-w-md text-paper/60">
                   {catalogShopping
                     ? "Pieces matched to your palette from our catalogue — real products and affiliate links."
-                    : report.id === "demo"
+                    : isDemo
                       ? "Sample curated list for the demo report."
                       : "The pieces that unlock the most new outfits. Real products, real links — affiliate links are disclosed."}
                 </p>

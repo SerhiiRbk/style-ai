@@ -1,5 +1,6 @@
 import type { StyleReport } from "./report";
 import { generateReport, demoIntake } from "./report";
+import { DEMO_REPORT_SLUG, isDemoReportId } from "./demo-report";
 
 // In-memory store for the demo. Swap for Postgres (Neon) + object storage in
 // production — see the technical implementation canvas.
@@ -16,14 +17,14 @@ export function saveReport(report: StyleReport): void {
 }
 
 export function getReport(id: string): StyleReport | undefined {
-  if (id === "demo") return demoReport();
+  if (isDemoReportId(id)) return demoReport();
   return store.get(id);
 }
 
 let cachedDemo: StyleReport | undefined;
 export function demoReport(): StyleReport {
   if (!cachedDemo) {
-    cachedDemo = generateReport(demoIntake, "premium", "demo");
+    cachedDemo = generateReport(demoIntake, "premium", DEMO_REPORT_SLUG);
   }
   return cachedDemo;
 }

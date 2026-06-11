@@ -10,8 +10,9 @@ import {
   type PDFPage,
 } from "pdf-lib";
 import type { StyleReport } from "@/lib/report";
-import { formatMoney } from "@/lib/currency";
+import { formatMoneyPdf } from "@/lib/currency";
 import { BODY_TYPE_LABELS, isBodyType } from "@/lib/style-profile";
+import { capsuleMatrixImageAt } from "@/lib/demo-report";
 import { buildExtras, investmentLevel, itemsForLook } from "@/lib/style-extras";
 
 // A4 in points.
@@ -139,6 +140,7 @@ class Doc {
   // StandardFonts use WinAnsi — transliterate / strip characters pdf-lib can't encode.
   sanitize(str: string) {
     return str
+      .replace(/\u20AC/g, "EUR")
       .replace(/[\u2192\u2794\u279C]/g, "->")
       .replace(/[\u2018\u2019]/g, "'")
       .replace(/[\u201C\u201D]/g, '"')
@@ -307,8 +309,16 @@ class Doc {
     this.rule();
   }
 
+  private subheadBlockHeight(leadingGap = 7) {
+    return leadingGap + 9 + 4 + 4;
+  }
+
   /** A small-caps tracked subheading. */
-  subhead(str: string) {
+  subhead(str: string, opts?: { keepWith?: number }) {
+    const blockH = this.subheadBlockHeight();
+    if (opts?.keepWith && this.y - blockH - opts.keepWith < MARGIN + 8) {
+      this.newPage();
+    }
     this.gap(7);
     this.flowTracked(str.toUpperCase(), {
       size: 9,
@@ -448,15 +458,47 @@ class Doc {
     }
   }
 
-  /** A responsive image grid with captions — the magazine workhorse. */
-  gallery(items: GalleryItem[], opts: { cols?: number; ratio?: number } = {}) {
-    if (!items.length) return;
+  private galleryMetrics(
+    items: GalleryItem[],
+    opts: { cols?: number; ratio?: number } = {},
+  ) {
     const cols = opts.cols ?? 2;
     const ratio = opts.ratio ?? 1.25;
     const colGap = 16;
     const rowGap = 20;
     const cardW = (CONTENT_W - colGap * (cols - 1)) / cols;
     const imgH = cardW * ratio;
+    const firstRow = items.slice(0, cols);
+    const capH = Math.max(
+      ...firstRow.map((it) => this.captionHeight(it, cardW)),
+      0,
+    );
+    const firstRowH = imgH + 8 + capH + rowGap;
+    return { cols, ratio, colGap, rowGap, cardW, imgH, firstRowH };
+  }
+
+  /** Subheading plus gallery kept on the same page when possible. */
+  gallerySection(
+    title: string,
+    items: GalleryItem[],
+    opts: { cols?: number; ratio?: number } = {},
+  ) {
+    if (!items.length) return;
+    const { firstRowH } = this.galleryMetrics(items, opts);
+    if (this.y - this.subheadBlockHeight() - firstRowH < MARGIN + 8) {
+      this.newPage();
+    }
+    this.subhead(title);
+    this.gallery(items, opts);
+  }
+
+  /** A responsive image grid with captions — the magazine workhorse. */
+  gallery(items: GalleryItem[], opts: { cols?: number; ratio?: number } = {}) {
+    if (!items.length) return;
+    const { cols, ratio, colGap, rowGap, cardW, imgH } = this.galleryMetrics(
+      items,
+      opts,
+    );
 
     for (let i = 0; i < items.length; i += cols) {
       const row = items.slice(i, i + cols);
@@ -480,16 +522,20 @@ class Doc {
           borderWidth: 0.5,
         });
         if (it.label) {
-          const lw = this.widthTracked(it.label, this.bold, 6.5, 1.4) + 12;
+          const labelText = it.label.toUpperCase();
+          const padX = 12;
+          const labelH = 16;
+          const textW = this.widthTracked(labelText, this.bold, 6.5, 1.4);
+          const lw = Math.min(cardW, textW + padX);
           this.page.drawRectangle({
             x,
-            y: topY - 16,
+            y: topY - labelH,
             width: lw,
-            height: 16,
+            height: labelH,
             color: CREAM,
           });
           this.drawTracked(
-            it.label.toUpperCase(),
+            labelText,
             x + 6,
             topY - 11,
             6.5,
@@ -517,6 +563,8 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     embedImage(d.doc, src, { w: 100, h: 140, px: 520, position: "top" });
   const product = (src?: string) =>
     embedImage(d.doc, src, { w: 100, h: 115, px: 380, position: "centre" });
+  const matrixOutfit = (src?: string) =>
+    embedImage(d.doc, src, { w: 100, h: 178, px: 520, position: "top" });
 
   /* -------------------------------- cover -------------------------------- */
   const coverPage = d.doc.addPage([PAGE_W, PAGE_H]);
@@ -587,7 +635,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     `${report.profile.demographics.city}, ${report.profile.demographics.country}  ·  ${when}`,
     { x: MARGIN, y: hy - 26, size: 9.5, font: d.reg, color: FOG },
   );
-  coverPage.drawText("Prepared by Carlo Valetti  ·  Lead stylist, Valetti", {
+  coverPage.drawText("Prepared by Carlo Valetti  ·  AI style atelier, Valetti", {
     x: MARGIN,
     y: hy - 42,
     size: 9.5,
@@ -616,7 +664,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   d.text(extras.archetype.line, { color: STONE, lineGap: 5 });
   d.gap(12);
   d.rule();
-  d.subhead("Start here — your three highest-impact moves");
+  d.subhead("Start here — your three highest-impact moves", { keepWith: 15 });
   for (const mv of extras.priorityMoves) {
     d.text(`${mv.n}.  ${mv.title}`, { size: 11.5, font: d.bold });
     d.gap(2);
@@ -626,13 +674,13 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
 
   /* ------------------------------- colours ------------------------------- */
   d.heading("Chapter 01", "Your colours");
-  d.subhead("Colours that work for you");
+  d.subhead("Colours that work for you", { keepWith: 16 });
   for (const c of report.colors.best) d.swatch(c.hex, `${c.name} — ${c.why}`);
   d.gap(6);
-  d.subhead("Colours to avoid");
+  d.subhead("Colours to avoid", { keepWith: 16 });
   for (const c of report.colors.avoid) d.swatch(c.hex, `${c.name} — ${c.why}`);
   d.gap(6);
-  d.subhead("How to combine them");
+  d.subhead("How to combine them", { keepWith: 15 });
   if (extras.pairings.hero)
     d.text(`Hero colour near the face: ${extras.pairings.hero.name}.`, {
       color: STONE,
@@ -640,11 +688,11 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   d.gap(2);
   for (const combo of extras.pairings.combos) d.bullet(`${combo.name} — ${combo.why}`);
   d.gap(6);
-  d.subhead("Metals & hardware");
+  d.subhead("Metals & hardware", { keepWith: 14 });
   for (const mt of extras.metals.recommend) d.swatch(mt.hex, `${mt.name} — ${mt.why}`);
   d.text(extras.metals.avoidNote, { size: 9, color: STONE });
   d.gap(6);
-  d.subhead(`Your colour DNA — ${extras.colorDNA.subseason}`);
+  d.subhead(`Your colour DNA — ${extras.colorDNA.subseason}`, { keepWith: 14 });
   d.text(`Neutrals: ${extras.colorDNA.neutrals.map((c) => c.name).join(", ")}`, {
     color: STONE,
   });
@@ -675,8 +723,10 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     }
   }
   if (recItems.length) {
-    d.subhead("Hairstyles for your face");
-    d.gallery(recItems, { cols: 2, ratio: 1.25 });
+    d.gallerySection("Hairstyles for your face", recItems, {
+      cols: 2,
+      ratio: 1.25,
+    });
   }
 
   const avoidItems: GalleryItem[] = [];
@@ -689,11 +739,10 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     });
   }
   if (avoidItems.length) {
-    d.subhead("Best avoided");
-    d.gallery(avoidItems, { cols: 2, ratio: 1.25 });
+    d.gallerySection("Best avoided", avoidItems, { cols: 2, ratio: 1.25 });
   }
 
-  d.subhead("Beard, skin & grooming");
+  d.subhead("Beard, skin & grooming", { keepWith: 28 });
   for (const g of extras.grooming) {
     d.text(g.title, { size: 9.5, font: d.bold });
     d.text(g.detail, { color: STONE });
@@ -701,15 +750,13 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   }
 
   if (report.facialHair?.length) {
-    d.subhead("Recommended facial hair");
     const items: GalleryItem[] = [];
     for (const item of report.facialHair) {
       items.push({ img: await portrait(item.image), title: item.name, sub: item.why });
     }
-    d.gallery(items, { cols: 2, ratio: 1.25 });
+    d.gallerySection("Recommended facial hair", items, { cols: 2, ratio: 1.25 });
   }
 
-  d.subhead("Eyewear for your face");
   if (report.eyewear?.length) {
     const items: GalleryItem[] = [];
     for (const item of report.eyewear) {
@@ -722,7 +769,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
         label: kind,
       });
     }
-    d.gallery(items, { cols: 2, ratio: 1.25 });
+    d.gallerySection("Eyewear for your face", items, { cols: 2, ratio: 1.25 });
   } else {
     const items: GalleryItem[] = [];
     for (const f of extras.eyewear.recommend) {
@@ -737,18 +784,17 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
         sub: f.why,
       });
     }
-    d.gallery(items, { cols: 2, ratio: 0.72 });
+    d.gallerySection("Eyewear for your face", items, { cols: 2, ratio: 0.72 });
   }
   d.gap(2);
   d.text(`Avoid: ${extras.eyewear.avoid.join("  ·  ")}`, { size: 9, color: STONE });
 
   if (report.accessories?.length) {
-    d.subhead("Accessory styling");
     const items: GalleryItem[] = [];
     for (const item of report.accessories) {
       items.push({ img: await portrait(item.image), title: item.name, sub: item.why });
     }
-    d.gallery(items, { cols: 2, ratio: 1.25 });
+    d.gallerySection("Accessory styling", items, { cols: 2, ratio: 1.25 });
   }
 
   /* ---------------------------- silhouette & fit ------------------------- */
@@ -775,11 +821,11 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       m.hipCm && `Hips ${m.hipCm} cm`,
       m.sleeveCm && `Sleeve ${m.sleeveCm} cm`,
     ].filter(Boolean);
-    d.subhead("Measurements");
+    d.subhead("Measurements", { keepWith: 14 });
     d.text(parts.join("   ·   "), { color: STONE });
   }
   d.gap(6);
-  d.subhead("Fit blueprint — what to tell your tailor");
+  d.subhead("Fit blueprint — what to tell your tailor", { keepWith: 28 });
   for (const s of extras.fitBlueprint) {
     d.text(`${s.part}: ${s.spec}`, { font: d.bold, size: 9.5 });
     d.text(s.why, { x: MARGIN + 12, width: CONTENT_W - 12, color: STONE });
@@ -813,24 +859,50 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     { color: STONE, lineGap: 5 },
   );
   d.gap(5);
-  const phase = (label: string, items: typeof extras.capsule.now) => {
+  const phase = async (label: string, items: typeof extras.capsule.now) => {
     if (!items.length) return;
-    d.subhead(label);
-    for (const i of items) d.bullet(`${i.title}  —  ${formatMoney(i.priceEur, cur)}`);
+    const cards: GalleryItem[] = [];
+    for (const i of items) {
+      cards.push({
+        img: await product(i.image),
+        title: i.title,
+        meta: formatMoneyPdf(i.priceEur, cur),
+      });
+    }
+    d.gallerySection(label, cards, { cols: 3, ratio: 1.15 });
     d.gap(3);
   };
-  phase("Buy now", extras.capsule.now);
-  phase("Next", extras.capsule.next);
-  phase("Later", extras.capsule.later);
+  await phase("Buy now", extras.capsule.now);
+  await phase("Next", extras.capsule.next);
+  await phase("Later", extras.capsule.later);
   d.gap(2);
-  d.subhead("Outfit matrix — mix & match");
-  for (const c of extras.matrix) d.bullet(`${c.context}: ${c.pieces.join(" + ")}`);
+  const matrixItems: GalleryItem[] = [];
+  for (let i = 0; i < extras.matrix.length; i++) {
+    const c = extras.matrix[i]!;
+    matrixItems.push({
+      img: await matrixOutfit(capsuleMatrixImageAt(report, i)),
+      title: c.context,
+      sub: c.pieces.join("  +  "),
+      label: c.context,
+    });
+  }
+  if (matrixItems.length) {
+    d.text(
+      "The same handful of pieces, recombined into a full week of outfits — so nothing in your wardrobe sits unused.",
+      { color: STONE, lineGap: 5 },
+    );
+    d.gap(4);
+    d.gallerySection("Outfit matrix — mix & match", matrixItems, {
+      cols: 2,
+      ratio: 16 / 9,
+    });
+  }
   d.gap(4);
-  d.subhead("Good / Better / Best — where to spend");
+  d.subhead("Good / Better / Best — where to spend", { keepWith: 28 });
   for (const t of extras.priceTiers) {
     d.text(`${t.category}`, { size: 9.5, font: d.bold });
     d.text(
-      `${formatMoney(t.good, cur)} / ${formatMoney(t.better, cur)} / ${formatMoney(t.best, cur)} — ${t.note}`,
+      `${formatMoneyPdf(t.good, cur)} / ${formatMoneyPdf(t.better, cur)} / ${formatMoneyPdf(t.best, cur)} — ${t.note}`,
       { color: STONE },
     );
     d.gap(3);
@@ -844,49 +916,49 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       img: await product(item.image),
       title: item.title,
       sub: item.why,
-      meta: `${item.retailer}  ·  ${formatMoney(item.priceEur, cur)} · ${investmentLevel(item)}`,
+      meta: `${item.retailer}  ·  ${formatMoneyPdf(item.priceEur, cur)} · ${investmentLevel(item)}`,
     });
   }
   d.gallery(shopGallery, { cols: 3, ratio: 1.15 });
 
   /* ------------------------ patterns & finishing ------------------------- */
   d.heading("Chapter 07", "Patterns & finishing details");
-  d.subhead("Fabrics & texture");
+  d.subhead("Fabrics & texture", { keepWith: 28 });
   for (const f of extras.fabrics) {
     d.text(f.name, { size: 9.5, font: d.bold });
     d.text(f.why, { color: STONE });
     d.gap(3);
   }
   d.gap(2);
-  d.subhead("Patterns");
+  d.subhead("Patterns", { keepWith: 14 });
   d.text("Solid · Fine stripe · Gingham check · Tartan", { color: STONE });
   d.gap(4);
-  d.subhead("Accessories");
+  d.subhead("Accessories", { keepWith: 14 });
   d.text(
     "Field watch (cream dial) · Leather belt matched to shoes · Warm tortoiseshell sunglasses · One minimal chain",
     { color: STONE, lineGap: 5 },
   );
   d.gap(4);
-  d.subhead("Shoe guide");
+  d.subhead("Shoe guide", { keepWith: 14 });
   d.text("Cream sneakers · Suede chelsea boots · Derby shoes", { color: STONE });
 
   /* ----------------------- how to wear, care & scent --------------------- */
   d.heading("Chapter 08", "How to wear it, and make it last");
-  d.subhead("How to wear it");
+  d.subhead("How to wear it", { keepWith: 15 });
   for (const s of extras.styling) d.bullet(s);
   d.gap(4);
-  d.subhead("Care & longevity");
+  d.subhead("Care & longevity", { keepWith: 15 });
   for (const s of extras.care) d.bullet(s);
   d.gap(4);
-  d.subhead("Signature scent");
+  d.subhead("Signature scent", { keepWith: 14 });
   d.text(extras.fragrance, { color: STONE, lineGap: 5 });
 
   /* ------------------------------ do & don't ----------------------------- */
   d.heading("Chapter 09", "Do & don't");
-  d.subhead("Do");
+  d.subhead("Do", { keepWith: 15 });
   for (const x of report.doList) d.bullet(x);
   d.gap(6);
-  d.subhead("Avoid");
+  d.subhead("Avoid", { keepWith: 15 });
   for (const x of report.dontList) {
     const lh = 10.5 + 4;
     const lines = d.wrapLines(x, d.reg, 10.5, CONTENT_W - 12);

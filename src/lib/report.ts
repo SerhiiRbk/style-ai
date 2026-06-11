@@ -4,6 +4,7 @@ import {
   type StyleProfile,
   type ReportContent,
 } from "./style-profile";
+import { isDemoReportId } from "./demo-report";
 import { resolveHairImage } from "./hair-images";
 import type { SavedOutfitTryOn } from "./outfit-tryon";
 
@@ -566,7 +567,7 @@ export function assembleReport(opts: {
   id?: string;
   createdAt?: string;
 }): StyleReport {
-  const isDemo = opts.id === "demo";
+  const isDemo = opts.id != null && isDemoReportId(opts.id);
   const hairContent = clampHairForTier(opts.content.hair, opts.tier);
   const looks: Look[] = opts.content.looks.map((l, i) => ({
     ...l,
@@ -609,7 +610,7 @@ export function generateReport(
   tier: Tier,
   id?: string,
 ): StyleReport {
-  const isDemo = id === "demo";
+  const isDemo = id != null && isDemoReportId(id);
   return assembleReport({
     id,
     intake,

@@ -3,6 +3,7 @@ import { hasSupabase, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { generateExtraLook, generateLookImage, retrieveRules } from "@/lib/ai/pipeline";
 import { matchLookItems } from "@/lib/data/catalog";
+import { isDemoReportId } from "@/lib/demo-report";
 import {
   CREDIT_COSTS,
   creditBalance,
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
   const note: string | undefined =
     typeof body?.note === "string" ? body.note.slice(0, NOTE_MAX) : undefined;
 
-  if (!reportId || reportId === "demo") {
+  if (!reportId || isDemoReportId(reportId)) {
     return NextResponse.json({ error: "Invalid reportId" }, { status: 400 });
   }
   const ctx = lookContextById(contextId);
