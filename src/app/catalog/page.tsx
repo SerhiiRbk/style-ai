@@ -2,11 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
-import { ProductImage } from "@/components/ProductImage";
-import { hasSupabaseAdmin } from "@/lib/env";
-import { createAdminSupabase } from "@/lib/supabase/server";
+import {
+  CatalogProductCard,
+  CatalogTryOnHint,
+  type CatalogProduct,
+} from "@/components/CatalogProductCard";
+import { CatalogTryOnShell } from "@/components/CatalogTryOnShell";
+import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
+import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
+import { getCreditBalance } from "@/lib/credits";
+import { CREDIT_COSTS } from "@/lib/credit-costs";
 import { getGeo } from "@/lib/geo";
-import { formatProductPrice, type Currency } from "@/lib/currency";
 
 export const metadata: Metadata = {
   title: "Catalog — shoppable menswear picks · Valetti",
@@ -39,21 +45,10 @@ const CATEGORIES = [
 const MARKETS = ["EU", "US"] as const;
 const GENDERS = ["men", "women", "unisex"] as const;
 
-type ProductRow = {
-  id: string;
+type ProductRow = CatalogProduct & {
   source: string | null;
-  brand: string | null;
-  title: string;
-  category: string | null;
-  color: string | null;
-  price_eur: number | null;
-  original_price: number | null;
-  currency: string | null;
-  image_url: string | null;
-  deeplink: string | null;
   market: string | null;
   gender: string | null;
-  in_stock: boolean | null;
 };
 
 type SP = Record<string, string | string[] | undefined>;
@@ -124,9 +119,15 @@ export default async function CatalogPage({
   }
 
   const { currency } = await getGeo();
-  const sb = createAdminSupabase();
+  const sb = await createServerSupabase();
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  const canTryOn = Boolean(hasSupabase && user);
+  const balance = canTryOn ? await getCreditBalance() : null;
+  const admin = createAdminSupabase();
 
-  let query = sb
+  let query = admin
     .from("products")
     .select(
       "id,source,brand,title,category,color,price_eur,original_price,currency,image_url,deeplink,market,gender,in_stock",
@@ -167,6 +168,10 @@ export default async function CatalogPage({
       </section>
 
       <section className="container-luxe py-10">
+        <CatalogTryOnShell
+          initialBalance={balance}
+          tryOnCost={CREDIT_COSTS.tryon}
+        >
         {/* Filters */}
         <form
           method="get"
@@ -235,6 +240,12 @@ export default async function CatalogPage({
           </div>
         </form>
 
+        <CatalogTryOnHint
+          canTryOn={canTryOn}
+          cost={CREDIT_COSTS.tryon}
+          balance={balance}
+        />
+
         {/* Result meta */}
         <div className="mt-6 flex items-center justify-between text-sm text-stone-soft">
           <span>
@@ -255,7 +266,12 @@ export default async function CatalogPage({
         {products.length > 0 && (
           <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
             {products.map((p) => (
-              <ProductCard key={p.id} p={p} currency={currency} />
+              <CatalogProductCard
+                key={p.id}
+                product={p}
+                currency={currency}
+                canTryOn={canTryOn}
+              />
             ))}
           </div>
         )}
@@ -292,83 +308,8 @@ export default async function CatalogPage({
             )}
           </div>
         )}
+        </CatalogTryOnShell>
       </section>
     </Shell>
   );
-}
-
-function ProductCard({
-  p,
-  currency,
-}: {
-  p: ProductRow;
-  currency: Currency;
-}) {
-  const name = p.brand ? `${p.brand} ${p.title}` : p.title;
-  return (
-    <a
-      href={p.deeplink ?? "#"}
-      target="_blank"
-      rel="nofollow sponsored noopener noreferrer"
-      className="group flex flex-col overflow-hidden rounded-2xl border hairline bg-paper transition-shadow hover:shadow-[0_24px_48px_-28px_rgba(21,18,13,0.45)]"
-    >
-      <div className="relative aspect-[3/4] overflow-hidden bg-cream/40">
-        <ProductImage
-          src={p.image_url}
-          alt={name}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-        />
-        {p.in_stock === false && (
-          <span className="absolute left-2 top-2 rounded-full bg-ink/80 px-2 py-1 text-[10px] text-paper backdrop-blur-sm">
-            Out of stock
-          </span>
-        )}
-        {p.category && (
-          <span className="absolute right-2 top-2 rounded-full bg-paper/90 px-2 py-1 text-[10px] text-ink backdrop-blur-sm">
-            {p.category}
-          </span>
-        )}
-      </div>
-      <div className="flex flex-1 flex-col p-4">
-        {p.brand && (
-          <div className="text-[11px] uppercase tracking-wider text-stone-soft">
-            {p.brand}
-          </div>
-        )}
-        <div className="mt-1 line-clamp-2 text-sm text-ink">{p.title}</div>
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <span className="font-display text-sm leading-snug sm:text-base">
-            {p.price_eur != null
-              ? formatProductPrice({
-                  priceEur: p.price_eur,
-                  displayCurrency: currency,
-                  originalPrice: p.original_price,
-                  originalCurrency: p.currency,
-                })
-              : "—"}
-          </span>
-          {p.color && (
-            <span className="flex items-center gap-1.5 text-[11px] text-stone-soft">
-              <span
-                className="h-3 w-3 rounded-full border border-ink/10"
-                style={{ background: hexable(p.color) }}
-              />
-              {p.color}
-            </span>
-          )}
-        </div>
-        <span className="mt-3 text-xs text-brass transition-colors group-hover:text-ink">
-          View at retailer →
-        </span>
-      </div>
-    </a>
-  );
-}
-
-/** Use the colour name directly if it looks like a CSS colour, else a swatch. */
-function hexable(color: string): string {
-  if (/^#?[0-9a-f]{3,8}$/i.test(color)) {
-    return color.startsWith("#") ? color : `#${color}`;
-  }
-  return "#D8CDBA";
 }

@@ -14,9 +14,12 @@ import { useCredits } from "./CreditsContext";
 export function TryOnTray({
   reportId,
   cost = 1,
+  variant = "report",
 }: {
   reportId?: string;
   cost?: number;
+  /** Catalog try-ons omit reportId and skip the saved-to-report hint. */
+  variant?: "report" | "catalog";
 }) {
   const selection = useTryOnSelection();
   const { balance, setBalance } = useCredits();
@@ -49,7 +52,11 @@ export function TryOnTray({
       if (typeof data.balance === "number") setBalance(data.balance);
       if (!res.ok || !data.url) {
         setState("error");
-        setMsg(data.error ?? "Try-on failed");
+        if (res.status === 401) {
+          setMsg("Sign in to try on — open Log in from the menu.");
+        } else {
+          setMsg(data.error ?? "Try-on failed");
+        }
         return;
       }
       setUrl(data.url);
@@ -140,6 +147,11 @@ export function TryOnTray({
         {state === "done" && reportId && (
           <p className="mt-2 text-[11px] text-paper/45">
             Saved to your report below.
+          </p>
+        )}
+        {state === "done" && variant === "catalog" && (
+          <p className="mt-2 text-[11px] text-paper/45">
+            Preview only — not linked to a report.
           </p>
         )}
 
