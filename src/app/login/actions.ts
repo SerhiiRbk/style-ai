@@ -10,13 +10,25 @@ import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server
 
 const PENDING_PROMO_COOKIE = "pending_promo";
 
+/** Only allow same-origin relative paths (blocks open redirects). */
+function safeRedirectPath(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  const path = raw.trim();
+  if (!path.startsWith("/") || path.startsWith("//")) return null;
+  return path;
+}
+
 export async function signIn(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const next = safeRedirectPath(String(formData.get("next") ?? ""));
   const sb = await createServerSupabase();
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
-    redirect(`/login?error=${encodeURIComponent(error.message)}`);
+    const qs = next
+      ? `&next=${encodeURIComponent(next)}`
+      : "";
+    redirect(`/login?error=${encodeURIComponent(error.message)}${qs}`);
   }
 
   const cookieStore = await cookies();
@@ -34,7 +46,7 @@ export async function signIn(formData: FormData) {
     }
   }
 
-  redirect("/start");
+  redirect(next ?? "/start");
 }
 
 export async function signUp(formData: FormData) {

@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { signIn, signUp } from "@/app/login/actions";
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string }) {
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const safeNext =
+    next && next.startsWith("/") && !next.startsWith("//") ? next : undefined;
 
   return (
     <form className="mt-7 space-y-4">
+      {safeNext ? <input type="hidden" name="next" value={safeNext} /> : null}
       <Input name="email" type="email" placeholder="you@email.com" label="Email" />
       <Input
         name="password"

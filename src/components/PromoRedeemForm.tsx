@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useCredits } from "@/components/CreditsContext";
 
 /** Manual promo-code entry for signed-in users (pricing page, etc.). */
 export function PromoRedeemForm() {
+  const router = useRouter();
   const { setBalance } = useCredits();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,6 +39,7 @@ export function PromoRedeemForm() {
         `+${data.credits} credits added (${data.name ?? "promo"}). New balance: ${data.balance}.`,
       );
       setCode("");
+      router.refresh();
     } catch {
       setError("Network error — try again.");
     } finally {

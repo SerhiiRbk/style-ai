@@ -6,9 +6,11 @@ import { ButtonLink } from "@/components/Button";
 import { BuyCreditsButton } from "@/components/BuyCreditsButton";
 import { CheckoutBanner } from "@/components/CheckoutBanner";
 import { PromoRedeemForm } from "@/components/PromoRedeemForm";
+import { CreditsProvider } from "@/components/CreditsContext";
 import { hasStripe, hasSupabase } from "@/lib/env";
 import { getGeo } from "@/lib/geo";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { getCreditBalance } from "@/lib/credits";
 import { TIER_PRICES } from "@/lib/currency";
 import {
   REPORT_COST,
@@ -347,12 +349,14 @@ export default async function PricingPage() {
   const tierPrices = TIER_PRICES[subCurrency];
 
   let signedIn = false;
+  let creditBalance: number | null = null;
   if (hasSupabase) {
     const sb = await createServerSupabase();
     const {
       data: { user },
     } = await sb.auth.getUser();
     signedIn = Boolean(user);
+    if (signedIn) creditBalance = await getCreditBalance();
   }
 
   return (
@@ -378,6 +382,11 @@ export default async function PricingPage() {
               <ButtonLink href="#packages" variant="outline">
                 Buy credits
               </ButtonLink>
+              {hasSupabase ? (
+                <ButtonLink href="#promo" variant="outline">
+                  Promo code
+                </ButtonLink>
+              ) : null}
             </div>
           </div>
         </section>
@@ -497,38 +506,51 @@ export default async function PricingPage() {
           </div>
         </section>
 
-        {/* Promo code (signed-in users) */}
-        {signedIn ? (
-          <section className="container-luxe py-12">
-            <div className="max-w-xl rounded-2xl border hairline bg-paper px-6 py-6">
-              <p className="text-xs uppercase tracking-wider text-stone-soft">
-                Have a promo code?
-              </p>
-              <p className="mt-1 text-sm text-stone">
-                Enter a code from an invite or campaign — credits apply once per
-                account.
-              </p>
-              <div className="mt-4">
-                <PromoRedeemForm />
-              </div>
-            </div>
-          </section>
-        ) : null}
-
         {/* Credit packages */}
         <section id="packages" className="border-y hairline bg-ink text-paper">
-          <div className="container-luxe py-20">
-            <div className="max-w-2xl">
-              <p className="eyebrow !text-brass-soft">Credit packages</p>
-              <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
-                Top up once. Spend whenever.
-              </h2>
-              <p className="mt-4 text-paper/70">
-                Credits never expire. Bigger packs include bonus credits.
-              </p>
-            </div>
+          <CreditsProvider initialBalance={creditBalance}>
+            <div className="container-luxe py-20">
+              <div className="grid gap-10 lg:grid-cols-[1fr_min(100%,22rem)] lg:items-start lg:gap-12">
+                <div className="max-w-2xl">
+                  <p className="eyebrow !text-brass-soft">Credit packages</p>
+                  <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
+                    Top up once. Spend whenever.
+                  </h2>
+                  <p className="mt-4 text-paper/70">
+                    Credits never expire. Bigger packs include bonus credits.
+                  </p>
+                </div>
 
-            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                {hasSupabase ? (
+                  <div
+                    id="promo"
+                    className="scroll-mt-24 rounded-2xl bg-paper p-6 text-ink shadow-[0_24px_48px_-24px_rgba(0,0,0,0.45)]"
+                  >
+                    <p className="text-xs uppercase tracking-wider text-stone-soft">
+                      Have a promo code?
+                    </p>
+                    <p className="mt-1 text-sm text-stone">
+                      {signedIn
+                        ? "Enter a code from an invite or campaign — credits apply once per account."
+                        : "Sign in to redeem a code from an invite or campaign."}
+                    </p>
+                    <div className="mt-4">
+                      {signedIn ? (
+                        <PromoRedeemForm />
+                      ) : (
+                        <ButtonLink
+                          href={`/login?next=${encodeURIComponent("/pricing#promo")}`}
+                          className="w-full"
+                        >
+                          Sign in to apply code
+                        </ButtonLink>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {CREDIT_PACKAGES.map((pkg, i) => {
                 const total = pkg.credits + pkg.bonus;
                 const featured = i === CREDIT_PACKAGES.length - 1;
@@ -580,7 +602,8 @@ export default async function PricingPage() {
                 ? `Secure card payment via Stripe. Credits never expire. Every new account also starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`
                 : `Card checkout is rolling out shortly. In the meantime, every new account starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`}
             </p>
-          </div>
+            </div>
+          </CreditsProvider>
         </section>
 
         {/* Coming soon */}

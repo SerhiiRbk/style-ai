@@ -13,7 +13,7 @@ const PENDING_PROMO_COOKIE = "pending_promo";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; check?: string; promo?: string; reset?: string }>;
+  searchParams: Promise<{ error?: string; check?: string; promo?: string; reset?: string; next?: string }>;
 }) {
   const sp = await searchParams;
 
@@ -84,7 +84,7 @@ export default async function LoginPage({
         </p>
       )}
 
-      <LoginForm />
+      <LoginForm next={sp.next} />
     </Centered>
   );
 }
