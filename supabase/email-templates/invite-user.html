@@ -1,0 +1,43 @@
+<!--
+  Supabase → Authentication → Email Templates → Invite user
+  Subject: You're invited to Valetti
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invitation · Valetti</title>
+</head>
+<body style="margin:0;padding:0;background-color:#e7dcc7;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#e7dcc7;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;background-color:#faf6ee;border:1px solid #e4dac6;border-radius:16px;">
+          <tr>
+            <td style="padding:36px 40px 28px;background-color:#f1e9da;border-bottom:1px solid #e4dac6;">
+              <p style="margin:0 0 10px;font-family:Georgia,serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#a97c3c;font-weight:600;">Personal style atelier</p>
+              <p style="margin:0;font-family:Georgia,serif;font-size:32px;color:#15120d;">Valetti</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:36px 40px;">
+              <h1 style="margin:0 0 16px;font-family:Georgia,serif;font-size:26px;font-weight:400;color:#15120d;">You&apos;re invited</h1>
+              <p style="margin:0 0 28px;font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#6c6358;">
+                Accept the invitation to create your Valetti account and start your personal style report.
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="border-radius:999px;background-color:#15120d;">
+                    <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:14px 32px;font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#faf6ee;text-decoration:none;">Accept invitation</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

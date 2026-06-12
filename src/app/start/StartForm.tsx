@@ -14,6 +14,7 @@ import { PROFILE_CURRENCIES, type Currency } from "@/lib/currency";
 import { REPORT_COST, CREDIT_COSTS, SIGNUP_BONUS } from "@/lib/credit-costs";
 import { BRAND } from "@/lib/brand";
 import { LEGAL } from "@/lib/legal";
+import { WelcomeScreen } from "@/components/WelcomeScreen";
 
 type Tier = "free" | "basic" | "lookbook" | "premium";
 
@@ -80,8 +81,20 @@ const STEPS = ["About you", "Photos", "Goals", "Package"];
 
 const LIVE = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
-export function StartForm({ userId }: { userId: string | null }) {
+export function StartForm({
+  userId,
+  showWelcome: initialWelcome = false,
+  userEmail = null,
+  creditBalance = null,
+}: {
+  userId: string | null;
+  showWelcome?: boolean;
+  userEmail?: string | null;
+  creditBalance?: number | null;
+}) {
   const router = useRouter();
+  const [showWelcome, setShowWelcome] = useState(initialWelcome);
+  const [cameFromWelcome, setCameFromWelcome] = useState(false);
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -258,6 +271,34 @@ export function StartForm({ userId }: { userId: string | null }) {
     }
   }
 
+  function beginReport() {
+    setCameFromWelcome(true);
+    setShowWelcome(false);
+    router.replace("/start", { scroll: false });
+  }
+
+  function backToWelcome() {
+    setShowWelcome(true);
+    router.replace("/start?welcome=1", { scroll: false });
+  }
+
+  function handleBack() {
+    if (cameFromWelcome) {
+      backToWelcome();
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/");
+    }
+  }
+
+  useEffect(() => {
+    setShowWelcome(initialWelcome);
+    if (!initialWelcome) setCameFromWelcome(false);
+  }, [initialWelcome]);
+
   return (
     <main className="flex-1">
       <div className="border-b hairline bg-paper/80 backdrop-blur-md">
@@ -265,13 +306,32 @@ export function StartForm({ userId }: { userId: string | null }) {
           <Link href="/" className="font-display text-xl">
             {BRAND.name}
           </Link>
-          <Link href="/" className="text-sm text-stone hover:text-ink">
-            Save &amp; exit
-          </Link>
+          <div className="flex items-center gap-4">
+            {!showWelcome ? (
+              <button
+                type="button"
+                onClick={handleBack}
+                className="text-sm text-stone transition-colors hover:text-ink"
+              >
+                ← Back
+              </button>
+            ) : null}
+            <Link href="/" className="text-sm text-stone hover:text-ink">
+              Save &amp; exit
+            </Link>
+          </div>
         </div>
       </div>
 
       <div className="container-luxe max-w-3xl py-12">
+        {showWelcome ? (
+          <WelcomeScreen
+            email={userEmail}
+            creditBalance={creditBalance}
+            onStartReport={beginReport}
+          />
+        ) : (
+          <>
         <Stepper step={step} />
 
         <div className="mt-10 min-h-[380px]">
@@ -597,6 +657,8 @@ export function StartForm({ userId }: { userId: string | null }) {
             </button>
           )}
         </div>
+          </>
+        )}
       </div>
     </main>
   );

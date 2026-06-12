@@ -22,7 +22,7 @@ type ImageForFalResult =
 
 const IMAGE_FETCH_HEADERS = {
   "User-Agent":
-    "Mozilla/5.0 (compatible; StylistAI/1.0; +https://project-7o8lp.vercel.app)",
+    "Mozilla/5.0 (compatible; StylistAI/1.0; +https://valetti.fit)",
   Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
 };
 

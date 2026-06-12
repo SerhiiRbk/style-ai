@@ -1,0 +1,91 @@
+<!--
+  Supabase → Authentication → Email Templates → Confirm signup
+  Subject: Confirm your Valetti account
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Confirm your email · Valetti</title>
+</head>
+<body style="margin:0;padding:0;background-color:#e7dcc7;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#e7dcc7;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;background-color:#faf6ee;border:1px solid #e4dac6;border-radius:16px;overflow:hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="padding:36px 40px 28px;background-color:#f1e9da;border-bottom:1px solid #e4dac6;">
+              <p style="margin:0 0 10px;font-family:Georgia,'Times New Roman',serif;font-size:11px;line-height:1.4;letter-spacing:0.18em;text-transform:uppercase;color:#a97c3c;font-weight:600;">
+                Personal style atelier
+              </p>
+              <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:32px;line-height:1.1;letter-spacing:-0.02em;color:#15120d;font-weight:400;">
+                Valetti
+              </p>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding:36px 40px 8px;">
+              <h1 style="margin:0 0 16px;font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.25;font-weight:400;letter-spacing:-0.01em;color:#15120d;">
+                Confirm your email
+              </h1>
+              <p style="margin:0 0 20px;font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#6c6358;">
+                Welcome — one step left before your private style report. Confirm your address and we&apos;ll save your account securely.
+              </p>
+              <p style="margin:0 0 28px;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#938878;">
+                Signed up as <span style="color:#15120d;">{{ .Email }}</span>
+              </p>
+              <!-- CTA -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="border-radius:999px;background-color:#15120d;">
+                    <a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:500;line-height:1;color:#faf6ee;text-decoration:none;border-radius:999px;">
+                      Confirm email &amp; continue
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:28px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#938878;">
+                Or copy this link into your browser:<br />
+                <a href="{{ .ConfirmationURL }}" style="color:#a97c3c;word-break:break-all;text-decoration:underline;">{{ .ConfirmationURL }}</a>
+              </p>
+            </td>
+          </tr>
+          <!-- Note -->
+          <tr>
+            <td style="padding:8px 40px 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f1e9da;border-radius:12px;border:1px solid #e4dac6;">
+                <tr>
+                  <td style="padding:16px 18px;">
+                    <p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.55;color:#6c6358;">
+                      This link expires soon. If you didn&apos;t create a Valetti account, you can ignore this email — no action needed.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 40px 32px;border-top:1px solid #e4dac6;background-color:#faf6ee;">
+              <p style="margin:0 0 6px;font-family:Helvetica,Arial,sans-serif;font-size:11px;line-height:1.5;letter-spacing:0.12em;text-transform:uppercase;color:#938878;">
+                AI-assisted personal styling
+              </p>
+              <p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#938878;">
+                <a href="{{ .SiteURL }}" style="color:#a97c3c;text-decoration:none;">valetti.fit</a>
+                · GDPR-first · Made in the EU
+              </p>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:20px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:11px;line-height:1.5;color:#938878;max-width:560px;text-align:center;">
+          Questions? <a href="mailto:privacy@valetti.app" style="color:#6c6358;text-decoration:underline;">privacy@valetti.app</a>
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -2,10 +2,64 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useFormStatus } from "react-dom";
 import { signIn, signUp } from "@/app/login/actions";
+
+type AuthAction = "signIn" | "signUp";
+
+function AuthSubmitButton({
+  formAction,
+  actionKey,
+  activeAction,
+  onActivate,
+  disabled,
+  variant,
+  idleLabel,
+  pendingLabel,
+}: {
+  formAction: typeof signIn;
+  actionKey: AuthAction;
+  activeAction: AuthAction | null;
+  onActivate: (key: AuthAction) => void;
+  disabled?: boolean;
+  variant: "primary" | "secondary";
+  idleLabel: string;
+  pendingLabel: string;
+}) {
+  const { pending } = useFormStatus();
+  const isActive = pending && activeAction === actionKey;
+  const base =
+    variant === "primary"
+      ? "flex flex-1 items-center justify-center gap-2 rounded-full bg-ink px-6 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-60"
+      : "flex flex-1 items-center justify-center gap-2 rounded-full border border-ink/25 px-6 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-40";
+
+  return (
+    <button
+      type="submit"
+      formAction={formAction}
+      disabled={disabled || pending}
+      onClick={() => onActivate(actionKey)}
+      className={base}
+      aria-busy={isActive}
+    >
+      {isActive ? (
+        <>
+          <span
+            className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/25 border-t-current"
+            aria-hidden
+          />
+          {pendingLabel}
+        </>
+      ) : (
+        idleLabel
+      )}
+    </button>
+  );
+}
 
 export function LoginForm({ next }: { next?: string }) {
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [activeAction, setActiveAction] = useState<AuthAction | null>(null);
   const safeNext =
     next && next.startsWith("/") && !next.startsWith("//") ? next : undefined;
 
@@ -52,21 +106,25 @@ export function LoginForm({ next }: { next?: string }) {
       </label>
 
       <div className="flex gap-3 pt-2">
-        <button
-          type="submit"
+        <AuthSubmitButton
           formAction={signIn}
-          className="flex-1 rounded-full bg-ink px-6 py-3 text-sm text-paper transition-colors hover:bg-ink-soft"
-        >
-          Sign in
-        </button>
-        <button
-          type="submit"
+          actionKey="signIn"
+          activeAction={activeAction}
+          onActivate={setActiveAction}
+          variant="primary"
+          idleLabel="Sign in"
+          pendingLabel="Signing in…"
+        />
+        <AuthSubmitButton
           formAction={signUp}
+          actionKey="signUp"
+          activeAction={activeAction}
+          onActivate={setActiveAction}
           disabled={!termsAccepted}
-          className="flex-1 rounded-full border border-ink/25 px-6 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Create account
-        </button>
+          variant="secondary"
+          idleLabel="Create account"
+          pendingLabel="Creating account…"
+        />
       </div>
 
       <p className="text-xs text-stone-soft">

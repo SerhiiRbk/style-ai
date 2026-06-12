@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { LEGAL } from "@/lib/legal";
-import { absoluteUrl } from "@/lib/site-url";
+import { absoluteAuthUrl } from "@/lib/site-url";
 import { redeemPromotion } from "@/lib/promotions";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 
@@ -61,7 +61,15 @@ export async function signUp(formData: FormData) {
   }
 
   const sb = await createServerSupabase();
-  const { data, error } = await sb.auth.signUp({ email, password });
+  const { data, error } = await sb.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: await absoluteAuthUrl(
+        `/auth/callback?next=${encodeURIComponent("/start?welcome=1")}`,
+      ),
+    },
+  });
   if (error) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }
@@ -97,7 +105,7 @@ export async function requestPasswordReset(formData: FormData) {
 
   const sb = await createServerSupabase();
   const { error } = await sb.auth.resetPasswordForEmail(email, {
-    redirectTo: absoluteUrl("/auth/callback?next=/login/reset-password"),
+    redirectTo: await absoluteAuthUrl("/auth/callback?next=/login/reset-password"),
   });
   if (error) {
     redirect(
