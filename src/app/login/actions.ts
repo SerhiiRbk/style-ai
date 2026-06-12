@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { LEGAL } from "@/lib/legal";
+import { absoluteUrl } from "@/lib/site-url";
 import { redeemPromotion } from "@/lib/promotions";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 
@@ -72,4 +73,52 @@ export async function signOut() {
   const sb = await createServerSupabase();
   await sb.auth.signOut();
   redirect("/");
+}
+
+export async function requestPasswordReset(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) {
+    redirect(
+      `/login/forgot-password?error=${encodeURIComponent("Enter your email address.")}`,
+    );
+  }
+
+  const sb = await createServerSupabase();
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: absoluteUrl("/auth/callback?next=/login/reset-password"),
+  });
+  if (error) {
+    redirect(
+      `/login/forgot-password?error=${encodeURIComponent(error.message)}`,
+    );
+  }
+
+  redirect("/login/forgot-password?sent=1");
+}
+
+export async function updatePassword(formData: FormData) {
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+
+  if (password.length < 8) {
+    redirect(
+      `/login/reset-password?error=${encodeURIComponent("Password must be at least 8 characters.")}`,
+    );
+  }
+  if (password !== confirm) {
+    redirect(
+      `/login/reset-password?error=${encodeURIComponent("Passwords do not match.")}`,
+    );
+  }
+
+  const sb = await createServerSupabase();
+  const { error } = await sb.auth.updateUser({ password });
+  if (error) {
+    redirect(
+      `/login/reset-password?error=${encodeURIComponent(error.message)}`,
+    );
+  }
+
+  await sb.auth.signOut();
+  redirect("/login?reset=1");
 }

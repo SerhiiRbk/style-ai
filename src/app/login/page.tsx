@@ -13,7 +13,7 @@ const PENDING_PROMO_COOKIE = "pending_promo";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; check?: string; promo?: string }>;
+  searchParams: Promise<{ error?: string; check?: string; promo?: string; reset?: string }>;
 }) {
   const sp = await searchParams;
 
@@ -71,6 +71,11 @@ export default async function LoginPage({
         <p className="mt-4 rounded-lg border border-brass/40 bg-brass/5 px-4 py-3 text-sm text-ink">
           Check your inbox to confirm your email, then sign in — your promo code
           will apply on first sign-in.
+        </p>
+      )}
+      {sp.reset && (
+        <p className="mt-4 rounded-lg border border-brass/40 bg-brass/5 px-4 py-3 text-sm text-ink">
+          Your password was updated. Sign in with your new password.
         </p>
       )}
       {sp.error && (

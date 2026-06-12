@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { intakeSchema } from "@/lib/style-profile";
 import { type Tier } from "@/lib/report";
@@ -7,8 +8,8 @@ import { LEGAL } from "@/lib/legal";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
   REPORT_COST,
-  creditBalance,
   spendCredits,
+  refundReportCredits,
   ensureSignupBonus,
   InsufficientCreditsError,
 } from "@/lib/credits";
@@ -70,29 +71,39 @@ export async function POST(request: Request) {
     );
   }
 
-  // Credits: every tier (including the Starter Report) is charged. New users
-  // get a one-time signup bonus so their first Starter Report + try-on is covered.
   const cost = REPORT_COST[tier];
-  if (userId && hasSupabaseAdmin) {
+  const reportId =
+    userId && hasSupabaseAdmin ? randomUUID() : undefined;
+  let creditsCharged = false;
+
+  if (userId && hasSupabaseAdmin && cost > 0 && reportId) {
     const admin = createAdminSupabase();
     try {
       await ensureSignupBonus(admin, userId);
     } catch {
-      // Non-fatal — the balance check below still guards paid tiers.
+      // Non-fatal — spendCredits still guards the balance atomically.
     }
-    if (cost > 0) {
-      const balance = await creditBalance(admin, userId);
-      if (balance < cost) {
+    try {
+      await spendCredits(admin, {
+        userId,
+        amount: cost,
+        reason: "report",
+        refId: reportId,
+      });
+      creditsCharged = true;
+    } catch (e) {
+      if (e instanceof InsufficientCreditsError) {
         return NextResponse.json(
           {
             error: "Not enough credits to generate this report.",
             code: "insufficient_credits",
-            balance,
-            needed: cost,
+            balance: e.balance,
+            needed: e.needed,
           },
           { status: 402 },
         );
       }
+      throw e;
     }
   }
 
@@ -101,38 +112,25 @@ export async function POST(request: Request) {
       intake: parsed.data,
       tier,
       userId,
+      reportId,
       photoPaths,
       biometricConsent: photoPaths.length ? biometricConsent : undefined,
       consentVersion: photoPaths.length ? consentVersion : undefined,
     });
 
-    // Charge after the report is created so a failed generation isn't billed.
-    if (userId && hasSupabaseAdmin && cost > 0) {
-      try {
-        await spendCredits(createAdminSupabase(), {
-          userId,
-          amount: cost,
-          reason: "report",
-          refId: id,
-        });
-      } catch (e) {
-        if (e instanceof InsufficientCreditsError) {
-          return NextResponse.json(
-            {
-              error: "Not enough credits to generate this report.",
-              code: "insufficient_credits",
-              balance: e.balance,
-              needed: e.needed,
-            },
-            { status: 402 },
-          );
-        }
-        throw e;
-      }
-    }
-
     return NextResponse.json({ id, tier }, { status: 201 });
   } catch (e) {
+    if (creditsCharged && userId && hasSupabaseAdmin && reportId && cost > 0) {
+      try {
+        await refundReportCredits(createAdminSupabase(), {
+          userId,
+          amount: cost,
+          reportId,
+        });
+      } catch (refundErr) {
+        console.error("[report] credit refund failed", refundErr);
+      }
+    }
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Generation failed" },
       { status: 500 },

@@ -11,6 +11,7 @@ export type CreditReason =
   | "purchase"
   | "promo"
   | "report"
+  | "report_refund"
   | "tryon"
   | "regen"
   | "premium_addon"

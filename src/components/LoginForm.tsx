@@ -17,6 +17,15 @@ export function LoginForm() {
         label="Password"
       />
 
+      <p className="text-right">
+        <Link
+          href="/login/forgot-password"
+          className="text-xs text-brass hover:text-ink"
+        >
+          Forgot password?
+        </Link>
+      </p>
+
       <label className="flex cursor-pointer items-start gap-3 rounded-xl border hairline bg-cream/40 p-4">
         <input
           type="checkbox"

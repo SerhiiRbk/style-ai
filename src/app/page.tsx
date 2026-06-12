@@ -474,8 +474,8 @@ function Audience() {
 
       <div className="mt-14 grid gap-6 lg:grid-cols-3">
         <Card
-          tag="MVP focus"
-          title="Men 35–55 in Europe"
+          tag="Valetti focus"
+          title="Men 25–55+ in Europe"
           body="IT, consulting, business, freelance. Want to look modern, sharp and professional — without spending time on fashion. Often newly relocated and unsure where to even shop."
         />
         <Card

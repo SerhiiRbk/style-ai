@@ -180,6 +180,35 @@ export async function spendCredits(
 }
 
 /**
+ * Refund report credits when generation fails after a successful spend.
+ * Idempotent per report — safe to call more than once for the same reportId.
+ */
+export async function refundReportCredits(
+  admin: AdminClient,
+  opts: { userId: string; amount: number; reportId: string },
+): Promise<void> {
+  const { userId, amount, reportId } = opts;
+  if (amount <= 0) return;
+
+  const { data: existing, error: selErr } = await admin
+    .from("credits_ledger")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("reason", "report_refund")
+    .eq("ref_id", reportId)
+    .limit(1);
+  if (selErr) throw new Error(selErr.message);
+  if (existing && existing.length > 0) return;
+
+  await grantCredits(admin, {
+    userId,
+    amount,
+    reason: "report_refund",
+    refId: reportId,
+  });
+}
+
+/**
  * Grant the one-time signup bonus the first time it's needed (idempotent —
  * only grants when no prior signup_bonus row exists for the user).
  */

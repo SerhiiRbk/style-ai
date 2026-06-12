@@ -68,6 +68,8 @@ type CreateInput = {
   intake: Intake;
   tier: Tier;
   userId?: string | null;
+  /** Pre-assigned report id — used when credits are spent before insert. */
+  reportId?: string;
   photoPaths?: { role: string; path: string }[];
   /** Explicit Art. 9 consent — required when photoPaths are present. */
   biometricConsent?: boolean;
@@ -468,7 +470,13 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
 
   const { data: created, error } = await admin
     .from("reports")
-    .insert({ user_id: userId, tier, status: "processing", intake })
+    .insert({
+      ...(input.reportId ? { id: input.reportId } : {}),
+      user_id: userId,
+      tier,
+      status: "processing",
+      intake,
+    })
     .select("id")
     .single();
   if (error || !created) throw new Error(error?.message ?? "insert failed");
