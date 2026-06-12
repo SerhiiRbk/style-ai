@@ -22,6 +22,7 @@ import { GenerateMoreButton } from "@/components/GenerateMoreButton";
 import { GenerateLookButton } from "@/components/GenerateLookButton";
 import { UnlockAddonButton } from "@/components/UnlockAddonButton";
 import { RegenPhotoButton } from "@/components/RegenPhotoButton";
+import { RegenPhotoHint } from "@/components/RegenPhotoHint";
 import { BRAND } from "@/lib/brand";
 import { DEMO_CAPSULE_IMAGES, isDemoReportId } from "@/lib/demo-report";
 import {
@@ -425,6 +426,7 @@ export default async function ReportPage({
               title="Hair, beard & eyewear"
               sub="Cuts that flatter your face shape — with real examples to take to your barber — plus the beard and frame shapes that finish the picture."
             />
+            {canRegen ? <RegenPhotoHint className="mt-6 max-w-2xl" /> : null}
             <div className="report-keep-together mt-10">
               <h3 className="text-sm uppercase tracking-wider text-stone-soft">
                 Recommended

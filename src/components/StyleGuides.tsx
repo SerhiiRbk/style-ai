@@ -1,4 +1,5 @@
 import { isGeneratedReportImage } from "@/lib/asset-url";
+import { RegenPhotoHint } from "@/components/RegenPhotoHint";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { formatMoney, formatOfferPrice } from "@/lib/currency";
@@ -829,6 +830,7 @@ export function FacialHairGuide({
         Four personalized beard and mustache directions on your photo — take
         these to your barber.
       </p>
+      {canRegen ? <RegenPhotoHint className="mt-3" /> : null}
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
         {items.map((item, i) => (
           <GroomingPreviewCard
@@ -911,6 +913,7 @@ export function PremiumEyewearGuide({
         Two optical frames and two sunglasses suited to your face — previewed on
         your photo.
       </p>
+      {canRegen ? <RegenPhotoHint className="mt-3" /> : null}
       <div className="mt-5 space-y-8">
         {renderGroup(optical, "Optical frames")}
         {renderGroup(sun, "Sunglasses")}
@@ -950,6 +953,7 @@ export function AccessoriesGuide({
         Scarves, neckwear and ties chosen for your colouring and climate —
         previewed on your own photo.
       </p>
+      {canRegen ? <RegenPhotoHint className="mt-3" /> : null}
       <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {items.map((item, i) => (
           <GroomingPreviewCard

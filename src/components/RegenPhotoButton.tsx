@@ -6,6 +6,8 @@ import { useCredits } from "./CreditsContext";
 
 type Kind = "hair" | "facial_hair" | "eyewear" | "accessories";
 
+import { CREDIT_COSTS } from "@/lib/credit-costs";
+
 /**
  * Small overlay control to re-generate a single report photo (hairstyle,
  * facial-hair, eyewear or accessory) on the owner's reference photo for 1
@@ -80,17 +82,22 @@ export function RegenPhotoButton({
       type="button"
       onClick={run}
       disabled={state === "loading" || insufficient}
+      aria-label={
+        insufficient
+          ? `Not enough credits to render again (${cost} credit)`
+          : msg ?? `Render again · ${cost} credit`
+      }
       title={
         insufficient
-          ? `Not enough credits to regenerate (${cost} credit)`
-          : msg ?? `Regenerate this photo · ${cost} credit`
+          ? `Not enough credits to render again (${cost} credit)`
+          : msg ?? undefined
       }
-      className="absolute bottom-2 right-2 z-10 inline-flex items-center gap-1 rounded-full border border-line bg-paper/90 px-2.5 py-1 text-[11px] text-ink shadow-sm backdrop-blur transition-colors hover:bg-paper disabled:opacity-50"
+      className="absolute inset-x-2 bottom-2 z-10 inline-flex items-center justify-center gap-1.5 rounded-full border border-line bg-paper/95 px-3 py-1.5 text-[11px] font-medium text-ink shadow-sm backdrop-blur transition-colors hover:bg-paper disabled:opacity-50 sm:inset-x-auto sm:right-2 sm:left-auto"
     >
       <span aria-hidden className={state === "loading" ? "animate-spin" : ""}>
         ↻
       </span>
-      {state === "loading" ? "…" : cost}
+      {state === "loading" ? "Rendering…" : `Render again · ${cost} cr`}
     </button>
   );
 }
