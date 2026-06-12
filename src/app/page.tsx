@@ -190,9 +190,14 @@ function HeroVisual() {
           sizes="(max-width: 768px) 100vw, 480px"
           className="object-cover object-top"
         />
-        <span className="absolute right-4 top-4 rounded-full bg-paper/90 px-3 py-1.5 text-[11px] text-ink backdrop-blur-sm">
-          autumn · warm · low contrast
-        </span>
+        <div className="absolute right-4 top-4 z-10 flex flex-col items-end gap-2">
+          <span className="rounded-full bg-paper/90 px-3 py-1.5 text-[11px] text-ink backdrop-blur-sm">
+            autumn · warm · low contrast
+          </span>
+          <span className="hidden rounded-full border hairline bg-paper px-4 py-2 text-xs text-stone shadow-sm sm:inline-block">
+            6 looks · PDF · shopping list
+          </span>
+        </div>
       </div>
 
       {/* Floating style-profile card */}
@@ -216,9 +221,6 @@ function HeroVisual() {
         </div>
       </div>
 
-      <div className="absolute -right-3 top-6 hidden rounded-full border hairline bg-paper px-4 py-2 text-xs text-stone shadow-sm sm:block">
-        6 looks · PDF · shopping list
-      </div>
     </div>
   );
 }

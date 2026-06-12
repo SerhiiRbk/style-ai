@@ -8,6 +8,7 @@ import {
   recordBiometricConsent,
   revokeBiometricConsentIfIdle,
 } from "@/lib/data/consent";
+import { signedAssetProxyUrl, signedAssetProxyUrls } from "@/lib/asset-token";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
@@ -586,87 +587,28 @@ export type ReportView = {
   isPublic: boolean;
 };
 
-type AssetSigner = {
-  storage: {
-    from: (bucket: string) => {
-      createSignedUrl: (
-        path: string,
-        expiresIn: number,
-      ) => Promise<{
-        data: { signedUrl: string } | null;
-        error: unknown;
-      }>;
-    };
+/** Map hair storage paths to stable same-origin proxy URLs (no signing I/O). */
+function attachHairImages(hair: {
+  recommend: HairRec[];
+  avoid: HairRec[];
+}): { recommend: HairRec[]; avoid: HairRec[] } {
+  const mapOne = (h: HairRec): HairRec => ({
+    ...h,
+    ...(h.imagePath ? { image: signedAssetProxyUrl(h.imagePath) } : {}),
+    ...(h.imagePathSide ? { imageSide: signedAssetProxyUrl(h.imagePathSide) } : {}),
+  });
+  return {
+    recommend: hair.recommend.map(mapOne),
+    avoid: hair.avoid.map(mapOne),
   };
-};
-
-/**
- * Resolve the client used to sign private `assets` URLs once per request.
- * Both owner and public viewers use the admin client when configured (it has
- * blanket read on the bucket); otherwise the owner falls back to their own
- * RLS-scoped client. Reused across all sign calls to avoid creating a new
- * Supabase client (and TLS handshake) per path.
- */
-async function resolveSigner(
-  sb: Awaited<ReturnType<typeof createServerSupabase>>,
-): Promise<AssetSigner> {
-  return hasSupabaseAdmin ? createAdminSupabase() : sb;
 }
 
-/** Sign private `assets` bucket paths for report display (10 min). */
-async function signAssetPaths(
-  signer: AssetSigner,
-  paths: (string | null | undefined)[],
-): Promise<(string | undefined)[]> {
-  return Promise.all(
-    paths.map(async (path) => {
-      if (!path) return undefined;
-      const { data, error } = await signer.storage
-        .from("assets")
-        .createSignedUrl(path, 600);
-      if (error || !data?.signedUrl) return undefined;
-      return data.signedUrl;
-    }),
-  );
-}
-
-/** Sign hair item storage paths and attach as `image` URLs. */
-async function signHairItems(
-  signer: AssetSigner,
-  hair: {
-    recommend: HairRec[];
-    avoid: HairRec[];
-  },
-): Promise<{ recommend: HairRec[]; avoid: HairRec[] }> {
-  const signOne = async (h: HairRec): Promise<HairRec> => {
-    const [front, side] = await signAssetPaths(signer, [
-      h.imagePath,
-      h.imagePathSide,
-    ]);
-    return {
-      ...h,
-      ...(front ? { image: front } : {}),
-      ...(side ? { imageSide: side } : {}),
-    };
-  };
-  const [recommend, avoid] = await Promise.all([
-    Promise.all(hair.recommend.map(signOne)),
-    Promise.all(hair.avoid.map(signOne)),
-  ]);
-  return { recommend, avoid };
-}
-
-/** Sign grooming preview storage paths and attach as `image` URLs. */
-async function signGroomingItems<T extends { imagePath?: string; image?: string }>(
-  signer: AssetSigner,
+function attachGroomingImages<T extends { imagePath?: string; image?: string }>(
   items: T[],
-): Promise<T[]> {
-  const signOne = async (item: T): Promise<T> => {
-    if (!item.imagePath) return item;
-    const [signed] = await signAssetPaths(signer, [item.imagePath]);
-    return signed ? { ...item, image: signed } : item;
-  };
-  return Promise.all(items.map(signOne));
+): T[] {
+  return items.map((item) =>
+    item.imagePath ? { ...item, image: signedAssetProxyUrl(item.imagePath) } : item,
+  );
 }
 
 function hairHasGeneratedImages(hair: {
@@ -678,7 +620,6 @@ function hairHasGeneratedImages(hair: {
 
 /** Owner-only saved catalogue / outfit try-ons linked to this report. */
 async function loadSavedOutfitTryons(
-  signer: AssetSigner,
   reportId: string,
   userId: string,
 ): Promise<SavedOutfitTryOn[]> {
@@ -698,11 +639,9 @@ async function loadSavedOutfitTryons(
   for (const row of rows ?? []) {
     const path = row.image_path as string | null;
     if (!path) continue;
-    const [image] = await signAssetPaths(signer, [path]);
-    if (!image) continue;
     outfits.push({
       id: row.id as string,
-      image,
+      image: signedAssetProxyUrl(path),
       createdAt: row.created_at as string,
       kind: row.kind === "outfit" ? "outfit" : "product",
       garments: parseGarmentsJson(row.garments),
@@ -787,7 +726,6 @@ async function fetchReportView(
   if (!isOwner && !isPublic && !isAdmin) return null;
 
   const db = isOwner || isAdmin ? (adminDb ?? sb) : sb;
-  const signer = await resolveSigner(sb);
 
   // Looks + the owner's reference-photo check are independent — run together.
   const [{ data: looks }, ownerPhotoCheck] = await Promise.all([
@@ -812,31 +750,20 @@ async function fetchReportView(
   const rawAccessories =
     (row.accessories as AccessoryRec[] | null) ?? undefined;
 
-  // Sign every private asset path in one parallel pass on a single client.
-  const [
-    lookImages,
-    capsuleImages,
-    signedHair,
-    signedFacialHair,
-    signedEyewear,
-    signedAccessories,
-  ] = await Promise.all([
-    signAssetPaths(
-      signer,
-      (looks ?? []).map((l) => l.image_path as string | null | undefined),
-    ),
-    signAssetPaths(signer, capsulePaths),
-    signHairItems(signer, rawHair),
-    rawFacialHair
-      ? signGroomingItems(signer, rawFacialHair)
-      : Promise.resolve(undefined),
-    rawEyewear
-      ? signGroomingItems(signer, rawEyewear)
-      : Promise.resolve(undefined),
-    rawAccessories
-      ? signGroomingItems(signer, rawAccessories)
-      : Promise.resolve(undefined),
-  ]);
+  const lookImages = signedAssetProxyUrls(
+    (looks ?? []).map((l) => l.image_path as string | null | undefined),
+  );
+  const capsuleImages = signedAssetProxyUrls(capsulePaths);
+  const signedHair = attachHairImages(rawHair);
+  const signedFacialHair = rawFacialHair
+    ? attachGroomingImages(rawFacialHair)
+    : undefined;
+  const signedEyewear = rawEyewear
+    ? attachGroomingImages(rawEyewear)
+    : undefined;
+  const signedAccessories = rawAccessories
+    ? attachGroomingImages(rawAccessories)
+    : undefined;
 
   const hasReferencePhoto =
     isOwner || isAdmin
@@ -891,7 +818,7 @@ async function fetchReportView(
 
   const outfitTryons =
     isOwner || isAdmin
-      ? await loadSavedOutfitTryons(signer, id, row.user_id as string)
+      ? await loadSavedOutfitTryons(id, row.user_id as string)
       : undefined;
 
   const generation = reportGenerationState(
@@ -938,7 +865,7 @@ async function fetchReportView(
  *
  * Wrapped in React `cache()` so the page component and `generateMetadata`
  * (which both call this in the same request) share a single execution instead
- * of doing all the queries + signing twice.
+ * of doing all the queries twice.
  */
 export const getReportView = cache(fetchReportView);
 

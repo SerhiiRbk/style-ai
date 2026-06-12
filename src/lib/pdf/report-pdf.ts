@@ -1,6 +1,8 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { storagePathFromAssetSrc } from "@/lib/asset-url";
+import { downloadAssetBytes } from "@/lib/data/asset-access";
 import {
   PDFDocument,
   StandardFonts,
@@ -54,6 +56,10 @@ function hexToRgb(hex: string) {
 
 async function loadBytes(src: string): Promise<Uint8Array | null> {
   try {
+    const storagePath = storagePathFromAssetSrc(src);
+    if (storagePath) {
+      return await downloadAssetBytes(storagePath);
+    }
     if (/^https?:\/\//.test(src)) {
       const res = await fetch(src);
       if (!res.ok) return null;

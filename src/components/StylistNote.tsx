@@ -22,14 +22,14 @@ export function StylistNote({
       }`}
     >
       <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full border hairline">
+        {/* Original PNG — avoids Next/Image WebP downscale blur at 48px. */}
         <Image
           src={BRAND.stylist.avatar}
           alt={BRAND.stylist.name}
-          width={96}
-          height={96}
-          sizes="48px"
-          quality={90}
+          width={48}
+          height={48}
           priority
+          unoptimized
           className="h-full w-full object-cover"
         />
       </span>

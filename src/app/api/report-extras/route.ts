@@ -28,6 +28,7 @@ import {
   type HairRec,
 } from "@/lib/report";
 import type { StyleProfile } from "@/lib/style-profile";
+import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 export const maxDuration = 300;
 
@@ -144,17 +145,11 @@ async function generateImage(
 }
 
 async function signItems(
-  admin: ReturnType<typeof createAdminSupabase>,
+  _admin: ReturnType<typeof createAdminSupabase>,
   items: PreviewItem[],
 ): Promise<PreviewItem[]> {
-  return Promise.all(
-    items.map(async (item) => {
-      if (!item.imagePath) return item;
-      const { data } = await admin.storage
-        .from("assets")
-        .createSignedUrl(item.imagePath, SIGNED_TTL);
-      return data?.signedUrl ? { ...item, image: data.signedUrl } : item;
-    }),
+  return items.map((item) =>
+    item.imagePath ? { ...item, image: signedAssetProxyUrl(item.imagePath) } : item,
   );
 }
 

@@ -5,6 +5,10 @@
  * This lets the project build and run locally without any credentials.
  */
 
+function envFlag(raw: string | undefined): boolean {
+  return raw === "true" || raw === "1" || raw === "yes";
+}
+
 export const env = {
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -35,6 +39,10 @@ export const env = {
   // Public site URL for Checkout success/cancel redirects (falls back to the
   // request origin when unset).
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+  /** Report card previews: true = original bytes via /api/assets; false = Next/Image resize (default). */
+  reportPreviewFullQuality: envFlag(
+    process.env.NEXT_PUBLIC_REPORT_PREVIEW_FULL_QUALITY,
+  ),
 } as const;
 
 export const hasSupabase = Boolean(env.supabaseUrl && env.supabaseAnonKey);

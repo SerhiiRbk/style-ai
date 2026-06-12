@@ -13,6 +13,7 @@ import {
 import { lookContextById } from "@/lib/look-contexts";
 import type { Intake, ReportContent, StyleProfile } from "@/lib/style-profile";
 import type { ShoppingItem } from "@/lib/report";
+import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 export const maxDuration = 300;
 
@@ -222,7 +223,10 @@ export async function POST(request: Request) {
     {
       ok: true,
       balance,
-      look: { ...look, image: signedLook?.signedUrl ?? null },
+      look: {
+        ...look,
+        image: signedLook?.signedUrl ? signedAssetProxyUrl(imagePath) : null,
+      },
     },
     { status: 201 },
   );

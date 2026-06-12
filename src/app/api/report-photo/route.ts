@@ -16,6 +16,7 @@ import {
 } from "@/lib/credits";
 import type { HairRec } from "@/lib/report";
 import type { StyleProfile } from "@/lib/style-profile";
+import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 export const maxDuration = 120;
 const SIGNED_TTL = 3600;
@@ -246,5 +247,8 @@ export async function POST(request: Request) {
     .from("assets")
     .createSignedUrl(newPath, SIGNED_TTL);
 
-  return NextResponse.json({ image: signed?.signedUrl ?? null, balance });
+  return NextResponse.json({
+    image: signed?.signedUrl ? signedAssetProxyUrl(newPath) : null,
+    balance,
+  });
 }

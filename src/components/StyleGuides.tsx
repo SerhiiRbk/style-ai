@@ -1,3 +1,4 @@
+import { isGeneratedReportImage } from "@/lib/asset-url";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { formatMoney, formatOfferPrice } from "@/lib/currency";
@@ -770,7 +771,7 @@ function GroomingPreviewCard({
   };
 }) {
   const src = item.image ?? fallbackSrc;
-  const canRegen = Boolean(regen) && /^https?:/.test(item.image ?? "");
+  const canRegen = Boolean(regen) && isGeneratedReportImage(item.image);
   return (
     <article className="overflow-hidden rounded-2xl border hairline bg-paper">
       <div className="relative aspect-[4/5] bg-sand">

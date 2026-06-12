@@ -21,8 +21,7 @@ import {
 import type { StyleProfile } from "@/lib/style-profile";
 import type { ShoppingItem } from "@/lib/report";
 import { getFullLengthPhotoUrl } from "@/lib/photo-tryon";
-
-const SIGNED_TTL = 3600;
+import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 /** Look rendering + fal polling can exceed the default Vercel function timeout. */
 export const maxDuration = 300;
@@ -37,16 +36,6 @@ function parseLookIndex(raw: unknown): number | undefined {
 
 function parseKind(raw: unknown): LookTryOnKind {
   return raw === "capsule" ? "capsule" : "look";
-}
-
-async function signedUrlForPath(
-  admin: ReturnType<typeof createAdminSupabase>,
-  path: string,
-): Promise<string | null> {
-  const { data } = await admin.storage
-    .from("assets")
-    .createSignedUrl(path, SIGNED_TTL);
-  return data?.signedUrl ?? null;
 }
 
 /** Return the latest saved full-look try-on for this report + look key, if any. */
@@ -79,7 +68,7 @@ export async function GET(request: Request) {
     const path = tryonStoragePath(user.id, reportId, lookKey, ext);
     const { data: blob, error } = await admin.storage.from("assets").download(path);
     if (!error && blob) {
-      const url = await signedUrlForPath(admin, path);
+      const url = signedAssetProxyUrl(path);
       return NextResponse.json({ url, lookKey });
     }
   }
@@ -95,8 +84,8 @@ export async function GET(request: Request) {
     .maybeSingle();
 
   if (row?.image_path) {
-    const url = await signedUrlForPath(admin, row.image_path);
-    if (url) return NextResponse.json({ url, lookKey });
+    const url = signedAssetProxyUrl(row.image_path);
+    return NextResponse.json({ url, lookKey });
   }
 
   return NextResponse.json({ url: null, lookKey });
@@ -266,7 +255,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const url = await signedUrlForPath(admin, path);
+  const url = signedAssetProxyUrl(path);
 
   return NextResponse.json({ url, lookKey, balance }, { status: 201 });
 }

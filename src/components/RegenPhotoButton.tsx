@@ -59,8 +59,12 @@ export function RegenPhotoButton({
       // Swap the displayed photo in place for instant feedback — the same
       // container holds the <img> rendered by ReportZoomImage.
       if (typeof data.image === "string" && data.image) {
-        const img = btnRef.current?.parentElement?.querySelector("img");
-        if (img) img.src = data.image;
+        const root = btnRef.current?.parentElement;
+        const img = root?.querySelector("img");
+        if (img) {
+          img.src = data.image;
+          img.removeAttribute("srcset");
+        }
       }
       setState("idle");
       router.refresh();

@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
+import { ASSET_PROXY_PREFIX } from "@/lib/asset-url";
+import { env } from "@/lib/env";
 
 type Props = {
   src: string;
@@ -14,14 +16,17 @@ type Props = {
   wrapperClassName?: string;
 };
 
+const DEFAULT_SIZES =
+  "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw";
+
 /** Click-to-zoom overlay for report photos (looks, hair, moodboard, header). */
 export function ReportZoomImage({
   src,
   alt,
   className = "object-cover",
-  sizes,
+  sizes = DEFAULT_SIZES,
   fill,
-  priority,
+  priority = false,
   wrapperClassName = "relative block h-full w-full",
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -40,7 +45,14 @@ export function ReportZoomImage({
     };
   }, [open, close]);
 
-  const isRemote = src.startsWith("http");
+  const isAssetProxy = src.startsWith(ASSET_PROXY_PREFIX);
+  const hasSignedToken = isAssetProxy && src.includes("sig=");
+  /** Full-quality previews skip Next/Image resize/WebP; default uses optimizer. */
+  const skipImageOptimizer =
+    env.reportPreviewFullQuality || (isAssetProxy && !hasSignedToken);
+  const useFill =
+    fill ??
+    (wrapperClassName.includes("relative") && wrapperClassName.includes("h-full"));
 
   return (
     <>
@@ -50,7 +62,7 @@ export function ReportZoomImage({
         className={`${wrapperClassName} cursor-zoom-in text-left`}
         aria-label={`View full size: ${alt}`}
       >
-        {fill ? (
+        {useFill && (src.startsWith("/") || isAssetProxy) ? (
           <Image
             src={src}
             alt={alt}
@@ -58,11 +70,18 @@ export function ReportZoomImage({
             sizes={sizes}
             className={className}
             priority={priority}
-            unoptimized={isRemote}
+            loading={priority ? undefined : "lazy"}
+            unoptimized={skipImageOptimizer}
           />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={src} alt={alt} className={className} />
+          <img
+            src={src}
+            alt={alt}
+            className={className}
+            loading={priority ? "eager" : "lazy"}
+            decoding="async"
+          />
         )}
       </button>
 

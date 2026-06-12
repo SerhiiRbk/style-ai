@@ -14,6 +14,7 @@ import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { StylistNote } from "@/components/StylistNote";
 import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
+import { isGeneratedReportImage } from "@/lib/asset-url";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { ShareReportButton } from "@/components/ShareReportButton";
 import { DeleteReportButton } from "@/components/DeleteReportButton";
@@ -1209,8 +1210,8 @@ function HairCard({
   const showSplit = showDual && (hasFront || hasSide);
   const canRegen =
     owner && Boolean(reportId) && group != null && index != null;
-  const frontGenerated = canRegen && /^https?:/.test(h.image ?? "");
-  const sideGenerated = canRegen && /^https?:/.test(h.imageSide ?? "");
+  const frontGenerated = canRegen && isGeneratedReportImage(h.image);
+  const sideGenerated = canRegen && isGeneratedReportImage(h.imageSide);
 
   return (
     <article className="overflow-hidden rounded-2xl border hairline bg-paper">

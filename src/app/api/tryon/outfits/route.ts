@@ -3,6 +3,7 @@ import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { parseGarmentsJson, type SavedOutfitTryOn } from "@/lib/outfit-tryon";
 import { isDemoReportId } from "@/lib/demo-report";
+import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 /** List saved catalogue / outfit try-ons for a report (owner only). */
 export async function GET(request: Request) {
@@ -47,14 +48,10 @@ export async function GET(request: Request) {
   for (const row of rows ?? []) {
     const path = row.image_path as string | null;
     if (!path) continue;
-    const { data: signed } = await admin.storage
-      .from("assets")
-      .createSignedUrl(path, 3600);
-    if (!signed?.signedUrl) continue;
     const kind = row.kind === "outfit" ? "outfit" : "product";
     outfits.push({
       id: row.id as string,
-      image: signed.signedUrl,
+      image: signedAssetProxyUrl(path),
       createdAt: row.created_at as string,
       kind,
       garments: parseGarmentsJson(row.garments),

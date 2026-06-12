@@ -15,6 +15,7 @@ import {
   spendCredits,
   InsufficientCreditsError,
 } from "@/lib/credits";
+import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 /** Image-model render / fal queue polling can exceed the default timeout. */
 export const maxDuration = 300;
@@ -251,7 +252,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json(
     {
-      url: out.signedUrl,
+      url: signedAssetProxyUrl(path),
       balance,
       tryonId: savedTryon?.id ?? null,
       savedToReport: Boolean(reportId && savedTryon),

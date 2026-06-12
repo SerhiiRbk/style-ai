@@ -3,8 +3,12 @@ import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
   images: {
+    localPatterns: [
+      { pathname: "/api/assets/**" },
+      { pathname: "/images/**" },
+    ],
     remotePatterns: [
-      // Supabase Storage signed URLs for generated look / try-on images.
+      // Legacy Supabase signed URLs (demo / external catalog images).
       { protocol: "https", hostname: "*.supabase.co" },
       { protocol: "https", hostname: "*.supabase.in" },
     ],
