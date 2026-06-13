@@ -149,6 +149,8 @@ export type ShoppingItem = {
   productId?: string;
   /** Catalogue pick is stylistically close, not a guaranteed photo match. */
   similarPick?: boolean;
+  /** Bumped when look-matching logic changes — triggers background refresh. */
+  matchVersion?: number;
 };
 export type Look = {
   context: string;

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ReportGenerationState } from "@/lib/report";
+import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 
 const POLL_MS = 8_000;
 
@@ -88,21 +89,18 @@ export function ReportGenerationBanner({
     <div
       role="status"
       aria-live="polite"
-      className="border-b hairline bg-brass/15 text-ink"
+      className="border-b hairline bg-gradient-to-r from-cream/80 via-brass/10 to-cream/80 text-ink"
     >
-      <div className="container-luxe flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <span
-            className="mt-0.5 inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-ink/20 border-t-ink"
-            aria-hidden
-          />
+      <div className="container-luxe flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-4">
+          <LuxeSpinner size="sm" tone="brass" className="mt-0.5" />
           <div className="text-sm leading-relaxed">
-            <p className="font-medium">Generation in progress</p>
+            <p className="font-display text-lg text-ink">Atelier in progress</p>
             <p className="mt-1 text-stone">{messageFor(state.phase)}</p>
-            <p className="mt-1 text-stone">
-              You can stay on this page — we&apos;ll refresh when new images are ready
-              — or come back in a few minutes. Your colours, shopping list, and
-              written guidance are already saved below.
+            <p className="mt-2 text-xs text-stone-soft">
+              Stay on this page — we&apos;ll refresh when new images are ready.
+              Your colours, shopping list, and written guidance are already
+              saved below.
             </p>
           </div>
         </div>

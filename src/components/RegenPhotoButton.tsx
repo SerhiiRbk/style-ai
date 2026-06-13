@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCredits } from "./CreditsContext";
+import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
+import { WORKING } from "@/components/luxe/messages";
 
 type Kind = "hair" | "facial_hair" | "eyewear" | "accessories";
 
@@ -94,10 +96,14 @@ export function RegenPhotoButton({
       }
       className="absolute inset-x-2 bottom-2 z-10 inline-flex items-center justify-center gap-1.5 rounded-full border border-line bg-paper/95 px-3 py-1.5 text-[11px] font-medium text-ink shadow-sm backdrop-blur transition-colors hover:bg-paper disabled:opacity-50 sm:inset-x-auto sm:right-2 sm:left-auto"
     >
-      <span aria-hidden className={state === "loading" ? "animate-spin" : ""}>
-        ↻
+      <span aria-hidden className="inline-flex">
+        {state === "loading" ? (
+          <LuxeSpinner size="xs" tone="ink" />
+        ) : (
+          "↻"
+        )}
       </span>
-      {state === "loading" ? "Rendering…" : `Render again · ${cost} cr`}
+      {state === "loading" ? WORKING.regen : `Render again · ${cost} cr`}
     </button>
   );
 }

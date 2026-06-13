@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ButtonLink } from "./Button";
+import { CreateReportButton } from "./CreateReportButton";
 import { createClient } from "@/lib/supabase/client";
 
 export type NavLink = {
@@ -193,13 +193,12 @@ export function NavbarMenu({
                     Log in
                   </Link>
                 ) : null}
-                <ButtonLink
-                  href="/start"
+                <CreateReportButton
                   className="w-full !px-5 !py-3"
-                  onClick={() => setOpen(false)}
-                >
-                  Create my report
-                </ButtonLink>
+                  compact
+                  label="Create my report"
+                  onNavigate={() => setOpen(false)}
+                />
               </div>
             </nav>
           </div>

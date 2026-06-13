@@ -4,6 +4,9 @@ import Link from "next/link";
 import { startTransition, useEffect, useState } from "react";
 import { ReportZoomImage } from "./ReportZoomImage";
 import { useCredits } from "./CreditsContext";
+import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
+import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
+import { WORKING } from "@/components/luxe/messages";
 
 /**
  * Renders an entire outfit on the signed-in user's own photo via the image
@@ -104,14 +107,14 @@ export function LookTryOn({
   }
 
   const actionLabel =
-    state === "loading"
-      ? "Rendering on you…"
-      : state === "done"
-        ? "Render again"
-        : label;
+    state === "done"
+      ? "Render again"
+      : label;
+
+  const loadingMessage = url ? WORKING.regen : WORKING.tryon;
 
   return (
-    <div>
+    <div aria-busy={state === "loading"}>
       <button
         onClick={run}
         disabled={state === "loading" || insufficient}
@@ -120,14 +123,18 @@ export function LookTryOn({
             ? "Not enough credits — top up to render"
             : undefined
         }
-        className="text-sm text-brass transition-colors hover:text-ink disabled:opacity-50"
+        className="inline-flex min-h-[2.25rem] items-center rounded-full border border-brass/30 bg-brass/5 px-4 py-2 text-sm text-brass transition-colors hover:border-brass/50 hover:bg-brass/10 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {actionLabel}
-        {state !== "loading" && (
-          <span className="text-stone-soft">
-            {" "}
-            · {cost} credit{cost === 1 ? "" : "s"} →
-          </span>
+        {state === "loading" ? (
+          <LuxeWorkingLabel message={loadingMessage} tone="brass" />
+        ) : (
+          <>
+            {actionLabel}
+            <span className="text-stone-soft">
+              {" "}
+              · {cost} credit{cost === 1 ? "" : "s"} →
+            </span>
+          </>
         )}
       </button>
       {creditsApply && (
@@ -145,7 +152,26 @@ export function LookTryOn({
         </p>
       )}
       {msg && <p className="mt-1 text-xs text-stone-soft">{msg}</p>}
-      {url && (
+      {state === "loading" && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mt-3 overflow-hidden rounded-xl border hairline bg-gradient-to-br from-cream/80 via-paper to-brass/5"
+        >
+          <div className="flex flex-col items-center px-6 py-10 text-center">
+            <LuxeSpinner size="lg" tone="brass" />
+            <p className="mt-4 font-display text-lg text-ink">{loadingMessage}</p>
+            <p className="mt-2 max-w-xs text-sm leading-relaxed text-stone">
+              We&apos;re dressing your photo in this look — fabric, fit, and colours
+              aligned with the outfit above.
+            </p>
+            <p className="mt-3 text-xs text-stone-soft">
+              Usually 30–90 seconds · stay on this page
+            </p>
+          </div>
+        </div>
+      )}
+      {url && state !== "loading" && (
         <div className="mt-3 overflow-hidden rounded-xl border hairline">
           <ReportZoomImage
             src={url}

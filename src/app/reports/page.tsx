@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
+import { CreateReportButton } from "@/components/CreateReportButton";
 import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getCreditBalance } from "@/lib/credits";
@@ -93,7 +94,7 @@ export default async function ReportsPage() {
                   </Link>
                 </div>
               )}
-              <ButtonLink href="/start">New report</ButtonLink>
+              <CreateReportButton compact label="New report" />
             </div>
           </div>
         </section>

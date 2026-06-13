@@ -4,7 +4,12 @@ import { env, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { mockShopping, type ShoppingItem } from "@/lib/report";
 import { marketForCurrency } from "@/lib/currency";
-import { colorMatchScore, decomposeLook } from "@/lib/style-extras";
+import { colorMatchScore, decomposeLook, garmentTitleMatchScore, paletteColorHints, type LookGarment } from "@/lib/style-extras";
+import {
+  LOOK_RERANK_CANDIDATE_LIMIT,
+  rerankLookItemSlots,
+  type RerankGarmentSlot,
+} from "@/lib/ai/look-item-rerank";
 import type { StyleProfile, ReportContent } from "@/lib/style-profile";
 
 const CATEGORIES = [
@@ -34,6 +39,9 @@ type MatchRow = {
 
 const MIN_VECTOR_SIMILARITY = 0.68;
 const MIN_COLOR_MATCH = 0.4;
+const MIN_LOOK_PICK_SCORE = 0.42;
+/** Bumped when look-matching heuristics change — triggers background refresh. */
+export const LOOK_MATCH_VERSION = 3;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
@@ -234,42 +242,71 @@ export async function matchShopping(
   }
 }
 
+type GarmentQueryOpts = {
+  lookTitle: string;
+  clause: string;
+  paletteHints: string;
+  colorSeason: string;
+  gender: string | null;
+};
+
+/** Mirror scripts/feeds/normalize.mjs embedText so vectors align with the catalogue. */
 function garmentQueryText(
   garment: string,
   color: string | null,
   category: string,
-  lookPalette?: string,
+  opts: GarmentQueryOpts,
 ): string {
-  const parts = [
-    color,
-    garment,
-    category.toLowerCase(),
-    lookPalette ? `palette ${lookPalette}` : null,
-  ].filter(Boolean);
-  return parts.join("; ");
+  const colorLabel =
+    color ??
+    (opts.paletteHints ? opts.paletteHints.split(", ")[0] ?? null : null);
+  const garmentPhrase = colorLabel
+    ? `${colorLabel} ${garment}`
+    : garment;
+  return [
+    garmentPhrase,
+    category,
+    colorLabel,
+    opts.gender,
+    opts.clause,
+    `Look: ${opts.lookTitle}`,
+    opts.paletteHints ? `Palette: ${opts.paletteHints}` : null,
+    `${opts.colorSeason} personal style`,
+  ]
+    .filter(Boolean)
+    .join(". ");
 }
 
 type RankedMatch = {
   row: MatchRow;
   colorScore: number;
+  garmentScore: number;
   similarPick: boolean;
   score: number;
 };
 
-function rankMatchRows(rows: MatchRow[], color: string | null): RankedMatch[] {
+function rankMatchRows(
+  rows: MatchRow[],
+  color: string | null,
+  garment: string,
+): RankedMatch[] {
   return rows.map((row) => {
     const sim = row.similarity ?? 0;
     const colorScore = colorMatchScore(color, row.color, row.title);
+    const garmentScore = garmentTitleMatchScore(garment, row.title);
     const similarPick =
       sim < MIN_VECTOR_SIMILARITY || colorScore < MIN_COLOR_MATCH;
-    // Soft preference for items with an offer in the visitor's own country —
-    // a tiebreaker, never enough to override a clearly better style/colour fit.
-    const localBoost = row.same_country ? 0.06 : 0;
+    const localBoost = row.same_country ? 0.04 : 0;
     return {
       row,
       colorScore,
+      garmentScore,
       similarPick,
-      score: sim * 0.55 + colorScore * 0.45 + localBoost,
+      score:
+        sim * 0.38 +
+        colorScore * 0.32 +
+        garmentScore * 0.26 +
+        localBoost,
     };
   });
 }
@@ -277,10 +314,164 @@ function rankMatchRows(rows: MatchRow[], color: string | null): RankedMatch[] {
 function pickBestMatch(
   rows: MatchRow[],
   color: string | null,
+  garment: string,
 ): { row: MatchRow; similarPick: boolean } | null {
   if (!rows.length) return null;
-  const ranked = rankMatchRows(rows, color).sort((a, b) => b.score - a.score);
-  return { row: ranked[0].row, similarPick: ranked[0].similarPick };
+  const ranked = rankMatchRows(rows, color, garment).sort(
+    (a, b) => b.score - a.score,
+  );
+  const best = ranked[0];
+  if (!best || best.score < MIN_LOOK_PICK_SCORE) return null;
+  if (best.garmentScore < 0.5 && best.colorScore < 0.45) return null;
+  return { row: best.row, similarPick: best.similarPick };
+}
+
+type GarmentMatchSlot = {
+  slot: number;
+  garment: LookGarment;
+  matchKey: string;
+  rows: MatchRow[];
+};
+
+function topRankedCandidates(
+  rows: MatchRow[],
+  color: string | null,
+  garment: string,
+): MatchRow[] {
+  return rankMatchRows(rows, color, garment)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, LOOK_RERANK_CANDIDATE_LIMIT)
+    .map((r) => r.row);
+}
+
+function toRerankCandidate(row: MatchRow, category: string): RerankGarmentSlot["candidates"][number] {
+  return {
+    id: row.id,
+    brand: row.brand,
+    title: row.title,
+    color: row.color,
+    priceEur: row.price_eur != null ? Number(row.price_eur) : null,
+    category,
+  };
+}
+
+function shoppingItemFromMatch(
+  row: MatchRow,
+  g: LookGarment,
+  profile: StyleProfile,
+  goal: string,
+  similarPick: boolean,
+): ShoppingItem {
+  const colorLabel = g.color ? `${g.color} ` : "";
+  return {
+    category: g.category,
+    title: row.brand ? `${row.brand} ${row.title}` : row.title,
+    why: similarPick
+      ? `Similar ${colorLabel}${g.garment} from the catalogue — same category and tone as this look.`
+      : `Matches this look — ${colorLabel}${g.garment} aligned with your ${profile.colorSeason} palette and goal to ${goal}.`,
+    priceEur: Number(row.price_eur ?? 0),
+    priceNative: row.price_native != null ? Number(row.price_native) : undefined,
+    currency: row.currency ?? undefined,
+    retailer: row.brand ?? row.source ?? "",
+    url: row.deeplink ?? "#",
+    color: row.color ?? "#CCCCCC",
+    image: row.image_url ?? undefined,
+    productId: row.id,
+    similarPick,
+    matchVersion: LOOK_MATCH_VERSION,
+  };
+}
+
+async function matchItemsForLook(
+  lookTitle: string,
+  lookDescription: string,
+  paletteHints: string,
+  garments: LookGarment[],
+  matchByKey: Map<string, MatchRow[]>,
+  matchKeyFor: (g: LookGarment) => string,
+  profile: StyleProfile,
+  goal: string,
+): Promise<ShoppingItem[]> {
+  const matchSlots: GarmentMatchSlot[] = [];
+  const usedCategories = new Set<string>();
+  let slot = 0;
+
+  for (const g of garments) {
+    if (matchSlots.length >= 6) break;
+    if (usedCategories.has(g.category)) continue;
+    const matchKey = matchKeyFor(g);
+    const rows = topRankedCandidates(matchByKey.get(matchKey) ?? [], g.color, g.garment);
+    if (!rows.length) continue;
+    usedCategories.add(g.category);
+    matchSlots.push({ slot, garment: g, matchKey, rows });
+    slot += 1;
+  }
+
+  if (!matchSlots.length) return [];
+
+  const rerankSlots: RerankGarmentSlot[] = matchSlots.map((s) => ({
+    slot: s.slot,
+    category: s.garment.category,
+    garment: s.garment.garment,
+    color: s.garment.color,
+    clause: s.garment.clause,
+    candidates: s.rows.map((r) => toRerankCandidate(r, s.garment.category)),
+  }));
+
+  const rerankPicks = await rerankLookItemSlots(
+    lookTitle,
+    lookDescription,
+    paletteHints,
+    rerankSlots,
+  );
+
+  const items: ShoppingItem[] = [];
+  const seen = new Set<string>();
+
+  if (rerankPicks?.length) {
+    const slotByIndex = new Map(matchSlots.map((s) => [s.slot, s]));
+    for (const pick of rerankPicks) {
+      if (items.length >= 6) break;
+      if (pick.candidateIndex < 0) continue;
+      const matchSlot = slotByIndex.get(pick.slot);
+      if (!matchSlot) continue;
+      const row = matchSlot.rows[pick.candidateIndex];
+      if (!row || seen.has(row.id)) continue;
+      seen.add(row.id);
+      items.push(
+        shoppingItemFromMatch(
+          row,
+          matchSlot.garment,
+          profile,
+          goal,
+          pick.similarPick,
+        ),
+      );
+    }
+    if (items.length) return items;
+  }
+
+  for (const matchSlot of matchSlots) {
+    if (items.length >= 6) break;
+    const picked = pickBestMatch(
+      matchByKey.get(matchSlot.matchKey) ?? [],
+      matchSlot.garment.color,
+      matchSlot.garment.garment,
+    );
+    if (!picked || seen.has(picked.row.id)) continue;
+    seen.add(picked.row.id);
+    items.push(
+      shoppingItemFromMatch(
+        picked.row,
+        matchSlot.garment,
+        profile,
+        goal,
+        picked.similarPick,
+      ),
+    );
+  }
+
+  return items;
 }
 
 /** Per-look matched products, keyed by the look's index in content.looks. */
@@ -291,7 +482,11 @@ export function lookItemsNeedRefresh(items: LookItems | undefined): boolean {
   if (!items || !Object.keys(items).length) return true;
   return Object.values(items)
     .flat()
-    .some((i) => i.similarPick === undefined);
+    .some(
+      (i) =>
+        i.similarPick === undefined ||
+        i.matchVersion !== LOOK_MATCH_VERSION,
+    );
 }
 
 /**
@@ -318,15 +513,26 @@ export async function matchLookItems(
     const currency = profile.currency;
     const gender = genderFilterFor(profile.demographics.genderPresentation);
 
-    const perLook = content.looks.map((l) => ({
-      garments: decomposeLook(l.description),
-      palette: l.palette?.length
-        ? l.palette.join(", ")
-        : content.colors.best.map((c) => c.name).join(", "),
-    }));
+    const perLook = content.looks.map((l) => {
+      const paletteHints = paletteColorHints(
+        l.palette ?? [],
+        content.colors.best,
+      );
+      const description = [l.title, l.description].filter(Boolean).join(", ");
+      return {
+        title: l.title,
+        description: l.description ?? "",
+        garments: decomposeLook(description),
+        paletteHints,
+      };
+    });
 
-    const keyFor = (category: string, garment: string, color: string | null, palette: string) =>
-      `${category}::${garment}::${color ?? ""}::${palette}`;
+    const keyFor = (
+      category: string,
+      garment: string,
+      color: string | null,
+      lookTitle: string,
+    ) => `${lookTitle}::${category}::${garment}::${color ?? ""}`;
 
     type Query = {
       key: string;
@@ -336,12 +542,24 @@ export async function matchLookItems(
       text: string;
     };
     const queryByKey = new Map<string, Query>();
-    for (const { garments, palette } of perLook) {
+    for (const { title, garments, paletteHints } of perLook) {
       for (const g of garments) {
-        const text = garmentQueryText(g.garment, g.color, g.category, palette);
-        const key = keyFor(g.category, g.garment, g.color, palette);
+        const text = garmentQueryText(g.garment, g.color, g.category, {
+          lookTitle: title,
+          clause: g.clause,
+          paletteHints,
+          colorSeason: profile.colorSeason,
+          gender,
+        });
+        const key = keyFor(g.category, g.garment, g.color, title);
         if (!queryByKey.has(key))
-          queryByKey.set(key, { key, category: g.category, garment: g.garment, color: g.color, text });
+          queryByKey.set(key, {
+            key,
+            category: g.category,
+            garment: g.garment,
+            color: g.color,
+            text,
+          });
       }
     }
     const queries = [...queryByKey.values()];
@@ -370,41 +588,24 @@ export async function matchLookItems(
     );
 
     const result: LookItems = {};
-    perLook.forEach(({ garments, palette }, idx) => {
-      const seen = new Set<string>();
-      const usedCategories = new Set<string>();
-      const items: ShoppingItem[] = [];
-      for (const g of garments) {
-        if (items.length >= 6) break;
-        if (usedCategories.has(g.category)) continue;
-        const key = keyFor(g.category, g.garment, g.color, palette);
-        const picked = pickBestMatch(matchByKey.get(key) ?? [], g.color);
-        if (!picked) continue;
-        const p = picked.row;
-        const id = p.id;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        usedCategories.add(g.category);
-        const colorLabel = g.color ? `${g.color} ` : "";
-        items.push({
-          category: g.category,
-          title: p.brand ? `${p.brand} ${p.title}` : p.title,
-          why: picked.similarPick
-            ? `Similar ${colorLabel}${g.garment} from the catalogue — same category and tone as this look.`
-            : `Matches this look — ${colorLabel}${g.garment} aligned with your ${profile.colorSeason} palette and goal to ${goal}.`,
-          priceEur: Number(p.price_eur ?? 0),
-          priceNative: p.price_native != null ? Number(p.price_native) : undefined,
-          currency: p.currency ?? undefined,
-          retailer: p.brand ?? p.source ?? "",
-          url: p.deeplink ?? "#",
-          color: p.color ?? "#CCCCCC",
-          image: p.image_url ?? undefined,
-          productId: p.id,
-          similarPick: picked.similarPick,
-        });
-      }
+    const lookEntries = await Promise.all(
+      perLook.map(async ({ title, description, garments, paletteHints }, idx) => {
+        const items = await matchItemsForLook(
+          title,
+          description,
+          paletteHints,
+          garments,
+          matchByKey,
+          (g) => keyFor(g.category, g.garment, g.color, title),
+          profile,
+          goal,
+        );
+        return { idx, items };
+      }),
+    );
+    for (const { idx, items } of lookEntries) {
       if (items.length) result[idx] = items;
-    });
+    }
 
     return result;
   } catch {

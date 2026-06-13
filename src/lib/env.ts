@@ -32,10 +32,20 @@ export const env = {
   // Shared secret required to POST scraper results to /api/catalog/import.
   catalogImportKey: process.env.CATALOG_IMPORT_KEY,
 
+  // Payments — PAYMENT_PROVIDER selects stripe | lemon_squeezy (default: lemon).
+  paymentProvider:
+    process.env.PAYMENT_PROVIDER === "stripe" ? "stripe" : "lemon_squeezy",
+
   // Stripe — credit-pack checkout + purchase webhook.
   stripeSecretKey: process.env.STRIPE_SECRET_KEY,
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
   stripePublishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+
+  // Lemon Squeezy — MoR checkout + order_created webhook.
+  lemonSqueezyApiKey: process.env.LEMON_SQUEEZY_API_KEY,
+  lemonSqueezyWebhookSecret: process.env.LEMON_SQUEEZY_WEBHOOK_SECRET,
+  lemonSqueezyStoreId: process.env.LEMON_SQUEEZY_STORE_ID,
+
   // Public site URL for Checkout success/cancel redirects (falls back to the
   // request origin when unset).
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
@@ -52,8 +62,21 @@ export const hasSupabaseAdmin = Boolean(
 export const hasAI = Boolean(env.aiGatewayKey);
 export const hasVTON = Boolean(env.falKey);
 export const hasCatalogImportKey = Boolean(env.catalogImportKey);
-// Checkout needs the secret key; the webhook additionally needs its signing
-// secret. Both are required to safely take money + grant credits.
+
+export type PaymentProvider = "stripe" | "lemon_squeezy";
+
+// Stripe: secret key + webhook signing secret required for checkout + grants.
 export const hasStripe = Boolean(
   env.stripeSecretKey && env.stripeWebhookSecret,
 );
+
+// Lemon Squeezy: API key, store id, webhook secret.
+export const hasLemonSqueezy = Boolean(
+  env.lemonSqueezyApiKey &&
+    env.lemonSqueezyWebhookSecret &&
+    env.lemonSqueezyStoreId,
+);
+
+/** Active provider is fully configured (see PAYMENT_PROVIDER). */
+export const hasPayments =
+  env.paymentProvider === "stripe" ? hasStripe : hasLemonSqueezy;

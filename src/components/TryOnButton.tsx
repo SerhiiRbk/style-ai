@@ -7,6 +7,8 @@ import { ReportZoomImage } from "./ReportZoomImage";
 import { useCredits } from "./CreditsContext";
 import { MAX_TRYON_ITEMS, useTryOnSelection } from "./TryOnContext";
 import { OUTFIT_TRYON_SAVED_EVENT } from "./SavedOutfitTryOns";
+import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
+import { WORKING } from "@/components/luxe/messages";
 
 const LIVE = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -150,12 +152,16 @@ export function TryOnButton({
           }
           className="text-xs text-brass-soft transition-colors hover:text-paper disabled:opacity-50"
         >
-          {state === "loading" ? "Generating try-on…" : "Try this on"}
-          {state !== "loading" && (
-            <span className="text-paper/40">
-              {" "}
-              · {cost} credit{cost === 1 ? "" : "s"} →
-            </span>
+          {state === "loading" ? (
+            <LuxeWorkingLabel message={WORKING.tryon} tone="paper" />
+          ) : (
+            <>
+              Try this on
+              <span className="text-paper/40">
+                {" "}
+                · {cost} credit{cost === 1 ? "" : "s"} →
+              </span>
+            </>
           )}
         </button>
         {selection && (

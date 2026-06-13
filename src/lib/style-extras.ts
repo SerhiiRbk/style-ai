@@ -949,7 +949,7 @@ function keywords(title: string): string[] {
 
 /** Shopping items that appear in a look's description ("shop the look"). */
 export function itemsForLook(look: Look, shopping: ShoppingItem[]): ShoppingItem[] {
-  const garments = decomposeLook(look.description);
+  const garments = decomposeLook(`${look.title}, ${look.description}`);
   if (garments.length) {
     const seen = new Set<string>();
     const items: ShoppingItem[] = [];
@@ -988,20 +988,27 @@ export function itemsForLook(look: Look, shopping: ShoppingItem[]): ShoppingItem
 /* ----------------------------- look decomposition ------------------------- */
 
 /** One garment parsed out of a look description, mapped to a catalogue category. */
-export type LookGarment = { category: string; garment: string; color: string | null };
+export type LookGarment = {
+  category: string;
+  garment: string;
+  color: string | null;
+  /** Source phrase from the look description (for richer catalogue queries). */
+  clause: string;
+};
 
 /** Garment keyword → catalogue CATEGORY. Mirrors catalog.ts CATEGORIES. */
 const GARMENT_CATEGORY: Record<string, string> = {
   blazer: "Outerwear", jacket: "Outerwear", coat: "Outerwear", overcoat: "Outerwear",
   overshirt: "Outerwear", trench: "Outerwear", parka: "Outerwear", bomber: "Outerwear",
   peacoat: "Outerwear", suit: "Outerwear",
-  knit: "Knitwear", sweater: "Knitwear", crewneck: "Knitwear", jumper: "Knitwear",
+  sweater: "Knitwear", hoodie: "Knitwear", vest: "Knitwear", shacket: "Outerwear",
+  knit: "Knitwear", crewneck: "Knitwear", jumper: "Knitwear",
   cardigan: "Knitwear", turtleneck: "Knitwear", rollneck: "Knitwear", pullover: "Knitwear",
   shirt: "Shirts", oxford: "Shirts", tee: "Shirts", polo: "Shirts", henley: "Shirts",
   trousers: "Trousers", chinos: "Trousers", chino: "Trousers", jeans: "Trousers",
   denim: "Trousers", slacks: "Trousers", pants: "Trousers",
-  loafers: "Footwear", boots: "Footwear", boot: "Footwear", sneakers: "Footwear",
-  derbies: "Footwear", derby: "Footwear", oxfords: "Footwear", brogues: "Footwear",
+  loafers: "Footwear", loafer: "Footwear", boots: "Footwear", boot: "Footwear", sneakers: "Footwear",
+  sneaker: "Footwear", derbies: "Footwear", derby: "Footwear", oxfords: "Footwear", brogues: "Footwear",
   chelsea: "Footwear", shoes: "Footwear", trainers: "Footwear", sandals: "Footwear",
   belt: "Accessories", watch: "Accessories", scarf: "Accessories", tie: "Accessories",
   sunglasses: "Accessories", hat: "Accessories", cap: "Accessories", gloves: "Accessories",
@@ -1053,11 +1060,48 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   olive: { family: "green", shade: "dark" }, forest: { family: "green", shade: "dark" },
   emerald: { family: "green", shade: "dark" },
   // red / warm
-  red: { family: "red" }, rust: { family: "red" },
+  red: { family: "red" },   rust: { family: "red" }, terracotta: { family: "red" }, copper: { family: "red" },
   burgundy: { family: "red", shade: "dark" }, maroon: { family: "red", shade: "dark" },
   // other hues
   pink: { family: "pink" }, purple: { family: "purple" }, orange: { family: "orange" },
+  amber: { family: "orange" }, ochre: { family: "yellow" },
   yellow: { family: "yellow" }, mustard: { family: "yellow" },
+};
+
+/** Synonyms used to verify a catalogue title matches the parsed garment. */
+const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
+  blazer: ["blazer", "jacket", "sport coat"],
+  jacket: ["jacket", "blazer"],
+  coat: ["coat", "overcoat"],
+  overshirt: ["overshirt", "shacket", "shirt jacket"],
+  knit: ["knit", "knitwear", "sweater", "jumper", "pullover"],
+  sweater: ["sweater", "jumper", "knit", "pullover", "crewneck"],
+  crewneck: ["crewneck", "crew neck", "sweater", "knit", "jumper"],
+  cardigan: ["cardigan"],
+  shirt: ["shirt", "oxford", "button-down", "button down"],
+  tee: ["tee", "t-shirt", "tshirt"],
+  polo: ["polo"],
+  henley: ["henley"],
+  trousers: ["trouser", "trousers", "pant", "pants", "slack"],
+  chinos: ["chino", "chinos", "trouser", "trousers"],
+  chino: ["chino", "chinos", "trouser", "trousers"],
+  jeans: ["jean", "jeans", "denim"],
+  loafers: ["loafer", "loafers"],
+  loafer: ["loafer", "loafers"],
+  sneakers: ["sneaker", "sneakers", "trainer", "trainers"],
+  sneaker: ["sneaker", "sneakers", "trainer", "trainers"],
+  boots: ["boot", "boots"],
+  boot: ["boot", "boots"],
+  chelsea: ["chelsea", "boot", "boots"],
+  derbies: ["derby", "derbies"],
+  derby: ["derby", "derbies"],
+  oxfords: ["oxford", "oxfords"],
+  brogues: ["brogue", "brogues"],
+  belt: ["belt"],
+  watch: ["watch"],
+  scarf: ["scarf"],
+  tie: ["tie"],
+  sunglasses: ["sunglasses", "sunglass"],
 };
 
 /** Standalone lightness modifiers; override any shade implied by the hue word. */
@@ -1080,10 +1124,66 @@ const GARMENT_KEYS = Object.keys(GARMENT_CATEGORY).sort(
 /** Collapse known two-word colours into a single token before parsing. */
 function normalizeCompoundColors(text: string): string {
   return text
+    .replace(/-/g, " ")
     .replace(/slate\s+blue/g, "slateblue")
     .replace(/powder\s+blue/g, "powderblue")
     .replace(/ice\s+blue/g, "iceblue")
     .replace(/steel\s+blue/g, "steelblue");
+}
+
+function parseHexRgb(hex: string): [number, number, number] | null {
+  const h = hex.trim().replace(/^#/, "");
+  if (h.length === 3) {
+    return [
+      parseInt(h[0]! + h[0], 16),
+      parseInt(h[1]! + h[1], 16),
+      parseInt(h[2]! + h[2], 16),
+    ];
+  }
+  if (h.length === 6 && /^[0-9a-f]+$/i.test(h)) {
+    return [
+      parseInt(h.slice(0, 2), 16),
+      parseInt(h.slice(2, 4), 16),
+      parseInt(h.slice(4, 6), 16),
+    ];
+  }
+  return null;
+}
+
+/** Map a look's hex palette to the nearest named colours from the report. */
+export function paletteColorHints(
+  palette: string[],
+  bestColors: { name: string; hex: string }[],
+): string {
+  if (!palette.length || !bestColors.length) return "";
+  const names: string[] = [];
+  for (const hex of palette) {
+    const rgb = parseHexRgb(hex);
+    if (!rgb) continue;
+    let bestName: string | null = null;
+    let bestDist = Infinity;
+    for (const c of bestColors) {
+      const crgb = parseHexRgb(c.hex);
+      if (!crgb) continue;
+      const dist =
+        (rgb[0] - crgb[0]) ** 2 +
+        (rgb[1] - crgb[1]) ** 2 +
+        (rgb[2] - crgb[2]) ** 2;
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestName = c.name;
+      }
+    }
+    if (bestName) names.push(bestName);
+  }
+  return [...new Set(names)].join(", ");
+}
+
+/** 0–1 whether a catalogue product title mentions the parsed garment type. */
+export function garmentTitleMatchScore(garment: string, title: string): number {
+  const hay = title.toLowerCase();
+  const terms = GARMENT_TITLE_SYNONYMS[garment] ?? [garment];
+  return terms.some((t) => hay.includes(t)) ? 1 : 0;
 }
 
 /** Parse free-text colour into the set of hue families + an implied lightness. */
@@ -1137,43 +1237,80 @@ export function colorMatchScore(
   return 0.8; // hue matches; lightness unknown on one side
 }
 
+function extractGarmentFromClause(clause: string): LookGarment | null {
+  const normalized = clause
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return null;
+  const words = normalized.split(/\s+/).filter(Boolean);
+  let garment: string | null = null;
+  let category: string | null = null;
+  for (const key of GARMENT_KEYS) {
+    if (normalized.includes(key)) {
+      garment = key;
+      category = GARMENT_CATEGORY[key];
+      break;
+    }
+  }
+  if (!garment || !category) return null;
+  const colors = words.filter((w) => COLOR_WORDS.has(w));
+  return {
+    category,
+    garment,
+    color: colors.length ? colors.join(" ") : null,
+    clause: clause.trim(),
+  };
+}
+
+function decomposeFromWholeText(description: string): LookGarment[] {
+  const lower = normalizeCompoundColors(description.toLowerCase());
+  const hits: { index: number; garment: LookGarment }[] = [];
+  for (const key of GARMENT_KEYS) {
+    let from = 0;
+    while (from < lower.length) {
+      const index = lower.indexOf(key, from);
+      if (index === -1) break;
+      const before = lower.slice(Math.max(0, index - 48), index);
+      const clause = `${before} ${key}`.trim();
+      const parsed = extractGarmentFromClause(clause);
+      if (parsed) hits.push({ index, garment: parsed });
+      from = index + key.length;
+    }
+  }
+  hits.sort((a, b) => a.index - b.index);
+  const out: LookGarment[] = [];
+  const seen = new Set<string>();
+  for (const { garment } of hits) {
+    const dedupeKey = `${garment.category}:${garment.color ?? ""}:${garment.garment}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push(garment);
+  }
+  return out;
+}
+
 /**
  * Deterministically split a free-text look description into individual garments,
  * each mapped to a catalogue category with any qualifying colour. Keyword-based
  * (no AI call) so it behaves identically in demo and live mode.
  */
 export function decomposeLook(description: string): LookGarment[] {
-  const clauses = description
-    .toLowerCase()
-    .split(/,|\s+over\s+|\s+and\s+|\s+with\s+/);
+  const clauses = normalizeCompoundColors(description.toLowerCase()).split(
+    /,|\s+over\s+|\s+and\s+|\s+with\s+/,
+  );
   const out: LookGarment[] = [];
   const seen = new Set<string>();
   for (const clause of clauses) {
-    const normalized = clause
-      .replace(/-/g, " ")
-      .replace(/[^a-z\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!normalized) continue;
-    const words = normalized.split(/\s+/).filter(Boolean);
-    let garment: string | null = null;
-    let category: string | null = null;
-    for (const key of GARMENT_KEYS) {
-      if (normalized.includes(key)) {
-        garment = key;
-        category = GARMENT_CATEGORY[key];
-        break;
-      }
-    }
-    if (!garment || !category) continue;
-    const colors = words.filter((w) => COLOR_WORDS.has(w));
-    const color = colors.length ? colors.join(" ") : null;
-    const dedupeKey = `${category}:${color ?? ""}:${garment}`;
+    const parsed = extractGarmentFromClause(clause);
+    if (!parsed) continue;
+    const dedupeKey = `${parsed.category}:${parsed.color ?? ""}:${parsed.garment}`;
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
-    out.push({ category, garment, color });
+    out.push(parsed);
   }
-  return out;
+  if (out.length) return out;
+  return decomposeFromWholeText(description);
 }
 
 export function capsuleMatrix(shopping: ShoppingItem[]): OutfitCombo[] {

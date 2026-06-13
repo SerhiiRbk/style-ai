@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { ButtonLink } from "./Button";
 import { AuthControls } from "./AuthControls";
+import { CreateReportButton } from "./CreateReportButton";
 import { NavbarMenu, type NavLink } from "./NavbarMenu";
 import { ValettiLogo } from "./brand/ValettiLogo";
 import { hasSupabase } from "@/lib/env";
@@ -97,20 +97,15 @@ export async function Navbar() {
               </>
             )}
             <AuthControls className="whitespace-nowrap text-xs text-stone transition-colors hover:text-ink xl:text-sm" />
-            <ButtonLink href="/start" className="!px-3 !py-2 xl:!px-5">
-              <span className="xl:hidden">Create report</span>
-              <span className="hidden xl:inline">Create my report</span>
-            </ButtonLink>
+            <CreateReportButton className="!px-3 !py-2 xl:!px-5" />
           </div>
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5 md:gap-2 lg:hidden">
-          <ButtonLink
-            href="/start"
+          <CreateReportButton
+            compact
             className="!px-2.5 !py-2 sm:!px-3 md:!px-4"
-          >
-            Create report
-          </ButtonLink>
+          />
           <NavbarMenu
             authed={authed}
             isAdmin={isAdmin}

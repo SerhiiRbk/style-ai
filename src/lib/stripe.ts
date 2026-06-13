@@ -1,11 +1,11 @@
 import "server-only";
 import Stripe from "stripe";
 import { env } from "@/lib/env";
-import {
-  CREDIT_PACKAGES,
-  type CreditPackage,
-} from "@/lib/credit-costs";
+import type { CreditPackage } from "@/lib/credit-costs";
 import type { SubCurrency } from "@/lib/currency";
+import { packageById, packageCredits } from "@/lib/payments/packages";
+
+export { packageById, packageCredits };
 
 /**
  * Stripe integration for one-time credit-pack purchases.
@@ -31,15 +31,6 @@ export function getStripe(): Stripe {
     });
   }
   return _stripe;
-}
-
-export function packageById(id: string): CreditPackage | undefined {
-  return CREDIT_PACKAGES.find((p) => p.id === id);
-}
-
-/** Total credits a package grants (base + bonus). */
-export function packageCredits(pkg: CreditPackage): number {
-  return pkg.credits + pkg.bonus;
 }
 
 /** Minor-unit (cents) amount parsed from a package's display price string. */
@@ -92,4 +83,48 @@ export function lineItemFor(
       },
     },
   };
+}
+
+type StripeCheckoutOpts = {
+  pkg: CreditPackage;
+  currency: SubCurrency;
+  userId: string;
+  email?: string;
+  origin: string;
+};
+
+/** Create a Stripe Checkout Session and return its hosted URL. */
+export async function createStripeCheckout(
+  opts: StripeCheckoutOpts,
+): Promise<string> {
+  const { pkg, currency, userId, email, origin } = opts;
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [lineItemFor(pkg, currency)],
+    customer_email: email,
+    client_reference_id: userId,
+    metadata: {
+      userId,
+      packageId: pkg.id,
+      credits: String(packageCredits(pkg)),
+      termsAccepted: "true",
+      digitalDeliveryConsent: "true",
+    },
+    payment_intent_data: {
+      metadata: {
+        userId,
+        packageId: pkg.id,
+        credits: String(packageCredits(pkg)),
+      },
+    },
+    allow_promotion_codes: true,
+    success_url: `${origin}/pricing?checkout=success&pack=${pkg.id}`,
+    cancel_url: `${origin}/pricing?checkout=cancel`,
+  });
+
+  if (!session.url) {
+    throw new Error("Stripe did not return a checkout URL");
+  }
+  return session.url;
 }

@@ -6,6 +6,8 @@ import { MAX_TRYON_ITEMS, useTryOnSelection } from "./TryOnContext";
 import { OUTFIT_TRYON_SAVED_EVENT } from "./SavedOutfitTryOns";
 import { ReportZoomImage } from "./ReportZoomImage";
 import { useCredits } from "./CreditsContext";
+import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
+import { WORKING } from "@/components/luxe/messages";
 
 /**
  * Floating tray for the combined catalog try-on: shows the selected pieces
@@ -128,11 +130,13 @@ export function TryOnTray({
           disabled={state === "loading" || insufficient}
           className="mt-3 w-full rounded-full bg-brass px-4 py-2 text-sm text-ink transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {state === "loading"
-            ? "Rendering your outfit…"
-            : state === "done"
-              ? `Render again · ${cost} credit`
-              : `Try ${items.length === 1 ? "it" : `${items.length} pieces`} on me · ${cost} credit`}
+          {state === "loading" ? (
+            <LuxeWorkingLabel message={WORKING.outfit} tone="ink" />
+          ) : state === "done" ? (
+            `Render again · ${cost} credit`
+          ) : (
+            `Try ${items.length === 1 ? "it" : `${items.length} pieces`} on me · ${cost} credit`
+          )}
         </button>
 
         {creditsApply && insufficient && (

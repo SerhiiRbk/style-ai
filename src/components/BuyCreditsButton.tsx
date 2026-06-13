@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 
 /**
- * Starts Stripe Checkout for a credit pack. Posts to /api/stripe/checkout and
- * redirects to the returned hosted URL. Sends unauthenticated users to /login
+ * Starts hosted checkout for a credit pack. Posts to /api/checkout and
+ * redirects to the returned URL. Sends unauthenticated users to /login
  * (returning to the packages section). When payments aren't configured yet it
  * renders a disabled "coming soon" control.
  */
@@ -43,7 +44,7 @@ export function BuyCreditsButton({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/stripe/checkout", {
+      const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -113,7 +114,11 @@ export function BuyCreditsButton({
             : "border border-paper/30 text-paper hover:bg-paper/10"
         }`}
       >
-        {loading ? "Redirecting…" : "Buy credits"}
+        {loading ? (
+          <LuxeWorkingLabel message="Opening secure checkout…" tone="paper" />
+        ) : (
+          "Buy credits"
+        )}
       </button>
       {error ? <p className="text-xs text-red-300">{error}</p> : null}
     </div>

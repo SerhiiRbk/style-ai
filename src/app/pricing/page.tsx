@@ -7,7 +7,8 @@ import { BuyCreditsButton } from "@/components/BuyCreditsButton";
 import { CheckoutBanner } from "@/components/CheckoutBanner";
 import { PromoRedeemForm } from "@/components/PromoRedeemForm";
 import { CreditsProvider } from "@/components/CreditsContext";
-import { hasStripe, hasSupabase } from "@/lib/env";
+import { hasPayments, hasSupabase } from "@/lib/env";
+import { paymentProviderLabel } from "@/lib/payments";
 import { getGeo } from "@/lib/geo";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getCreditBalance } from "@/lib/credits";
@@ -591,15 +592,15 @@ export default async function PricingPage() {
                     <BuyCreditsButton
                       packageId={pkg.id}
                       featured={featured}
-                      enabled={hasStripe}
+                      enabled={hasPayments}
                     />
                   </div>
                 );
               })}
             </div>
             <p className="mt-6 text-sm text-paper/50">
-              {hasStripe
-                ? `Secure card payment via Stripe. Credits never expire. Every new account also starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`
+              {hasPayments
+                ? `Secure card payment via ${paymentProviderLabel()}. Credits never expire. Every new account also starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`
                 : `Card checkout is rolling out shortly. In the meantime, every new account starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`}
             </p>
             </div>

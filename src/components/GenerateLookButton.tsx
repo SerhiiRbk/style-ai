@@ -5,6 +5,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCredits } from "./CreditsContext";
 import { LOOK_CONTEXTS } from "@/lib/look-contexts";
+import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
+import { WORKING } from "@/components/luxe/messages";
 
 const NOTE_MAX = 160;
 
@@ -117,7 +119,11 @@ export function GenerateLookButton({
           title={insufficient ? "Not enough credits — top up to generate" : undefined}
           className="rounded-full bg-ink px-5 py-2 text-sm text-paper transition-colors hover:bg-ink/90 disabled:opacity-50"
         >
-          {state === "loading" ? "Generating…" : `Generate · ${cost} credits`}
+          {state === "loading" ? (
+            <LuxeWorkingLabel message={WORKING.look} />
+          ) : (
+            `Generate · ${cost} credits`
+          )}
         </button>
         <button
           onClick={() => {

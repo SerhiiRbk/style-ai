@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { BRAND } from "@/lib/brand";
 import { getSiteUrl } from "@/lib/site-url";
+import { LuxeProviders } from "@/components/luxe/LuxeProviders";
+import { ReportGenerationRoot } from "@/components/ReportGenerationRoot";
 
 const fraunces = Fraunces({
   variable: "--font-display",
@@ -62,7 +65,10 @@ export default function RootLayout({
       className={`${fraunces.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-paper text-ink">
-        {children}
+        <LuxeProviders>
+          <ReportGenerationRoot>{children}</ReportGenerationRoot>
+        </LuxeProviders>
+        <Analytics />
       </body>
     </html>
   );

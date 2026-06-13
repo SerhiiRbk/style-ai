@@ -15,6 +15,11 @@ import { REPORT_COST, CREDIT_COSTS, SIGNUP_BONUS } from "@/lib/credit-costs";
 import { BRAND } from "@/lib/brand";
 import { LEGAL } from "@/lib/legal";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
+import { notifyReportGenerationStarted } from "@/components/CreateReportButton";
+import { LuxeBlockingWait } from "@/components/luxe/LuxeBlockingWait";
+import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
+import { WORKING } from "@/components/luxe/messages";
+import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 
 type Tier = "free" | "basic" | "lookbook" | "premium";
 
@@ -256,6 +261,7 @@ export function StartForm({
         throw new Error(data.error ?? "Could not generate report");
       }
       if (!data.id) throw new Error("Report created but no id returned");
+      notifyReportGenerationStarted(data.id);
       router.push(`/report/${data.id}`);
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") {
@@ -301,6 +307,13 @@ export function StartForm({
 
   return (
     <main className="flex-1">
+      {submitting ? (
+        <LuxeBlockingWait
+          eyebrow="Creating report"
+          title="Crafting your report"
+          message={`${BRAND.stylist.first} is analysing your photos and building your personalised style profile. This typically takes one to two minutes.`}
+        />
+      ) : null}
       <div className="border-b hairline bg-paper/80 backdrop-blur-md">
         <div className="container-luxe flex h-16 items-center justify-between">
           <Link href="/" className="font-display text-xl">
@@ -651,9 +664,11 @@ export function StartForm({
               disabled={submitting}
               className="rounded-full bg-ink px-7 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-50"
             >
-              {submitting
-                ? "Analysing photos & building your report… (1–2 min)"
-                : "Generate my report"}
+              {submitting ? (
+                <LuxeWorkingLabel message={WORKING.report} />
+              ) : (
+                "Generate my report"
+              )}
             </button>
           )}
         </div>
@@ -750,11 +765,11 @@ function UploadTile({
           filled ? "bg-ink text-paper" : "bg-sand text-stone"
         }`}
       >
-        {uploading ? "…" : filled ? "✓" : "+"}
+        {uploading ? <LuxeSpinner size="xs" tone="ink" /> : filled ? "✓" : "+"}
       </span>
       <span className="mt-3 text-sm text-ink">{label}</span>
       <span className="mt-1 text-xs text-stone-soft">
-        {uploading ? "Uploading…" : filled ? "Uploaded" : "Click to upload"}
+        {uploading ? WORKING.upload : filled ? "Uploaded" : "Click to upload"}
       </span>
     </label>
   );

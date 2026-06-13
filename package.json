@@ -19,6 +19,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
+    "@vercel/analytics": "^2.0.1",
     "@workflow/next": "^4.0.6",
     "ai": "^6.0.193",
     "csv-parse": "^6.2.1",
@@ -40,6 +41,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "pptxgenjs": "^4.0.1",
+    "sharp": "^0.35.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vercel": "^54.6.1"

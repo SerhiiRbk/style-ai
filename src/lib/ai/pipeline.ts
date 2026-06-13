@@ -163,7 +163,11 @@ export async function recommend(
       ? `- Provide exactly 1 versatile look for everyday wear, with a ` +
         `3–4 colour hex palette and a one-line description of the outfit.\n`
       : `- Provide exactly ${lookCount} looks for different contexts (work, smart-casual, weekend), each with a ` +
-        `3–4 colour hex palette and a one-line description of the outfit.\n`;
+        `3–4 colour hex palette and a one-line description of the outfit.\n` +
+        `- Each look description MUST list every garment with its colour, comma-separated ` +
+        `(e.g. "Rust crewneck knit, olive chinos, brown leather loafers"). Use concrete catalogue words ` +
+        `(blazer, overshirt, crewneck, chinos, trousers, loafers, sneakers) — not vague phrases like ` +
+        `"textured layers" or "warm accents".\n`;
 
   const grounding = rules.length
     ? `Ground every recommendation in these established style rules:\n- ${rules.join("\n- ")}\n`
@@ -248,7 +252,8 @@ export async function generateExtraLook(opts: {
       `Produce exactly ONE look:\n` +
       `- context: "${context}".\n` +
       `- title: a short evocative name (2–4 words).\n` +
-      `- description: ONE line naming each garment concretely (top, bottom, outerwear if relevant, shoes), flattering the "${profile.physical.bodyType}" body type.\n` +
+      `- description: ONE line naming each garment with its colour, comma-separated ` +
+        `(e.g. "Camel crewneck knit, taupe chinos, brown loafers") — concrete catalogue words only.\n` +
       `- palette: 3–4 hex codes aligned with the client's best colours.\n` +
       `Keep the tone refined and practical.`,
   });
