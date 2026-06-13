@@ -181,6 +181,65 @@ export async function spendCredits(
 }
 
 /**
+ * Idempotent spend keyed by (reason, refId). A repeated call for the same
+ * reference (e.g. a retried / double-submitted report generation) is a no-op
+ * that returns the current balance instead of charging again. Throws
+ * {@link InsufficientCreditsError} on the first charge when unaffordable.
+ */
+export async function spendCreditsOnce(
+  admin: AdminClient,
+  opts: { userId: string; amount: number; reason: CreditReason; refId: string },
+): Promise<number> {
+  const { userId, amount, reason, refId } = opts;
+  if (amount <= 0) return creditBalance(admin, userId);
+
+  const { data, error } = await admin.rpc("spend_credits_once", {
+    p_user_id: userId,
+    p_amount: amount,
+    p_reason: reason,
+    p_ref_id: refId,
+  });
+  if (error) {
+    if (/INSUFFICIENT_CREDITS/.test(error.message)) {
+      const balance = await sumLedger(admin, userId);
+      throw new InsufficientCreditsError(balance, amount);
+    }
+    if (!isMissingFunction(error.message)) throw new Error(error.message);
+    // Fallback (non-atomic) until the RPC is applied: emulate the idempotency
+    // guard in TS. The partial unique index is the ultimate backstop.
+    const { data: existing, error: selErr } = await admin
+      .from("credits_ledger")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("reason", reason)
+      .eq("ref_id", refId)
+      .limit(1);
+    if (selErr) throw new Error(selErr.message);
+    if (existing && existing.length > 0) return sumLedger(admin, userId);
+
+    const balance = await sumLedger(admin, userId);
+    if (balance < amount) throw new InsufficientCreditsError(balance, amount);
+    const next = balance - amount;
+    const { error: insErr } = await admin.from("credits_ledger").insert({
+      user_id: userId,
+      delta: -amount,
+      reason,
+      ref_id: refId,
+      balance_after: next,
+    });
+    if (insErr) {
+      // Unique-violation ⇒ a concurrent charge for this ref won the race.
+      if (/duplicate key|unique/i.test(insErr.message)) {
+        return sumLedger(admin, userId);
+      }
+      throw new Error(insErr.message);
+    }
+    return next;
+  }
+  return Number(data) || 0;
+}
+
+/**
  * Refund report credits when generation fails after a successful spend.
  * Idempotent per report — safe to call more than once for the same reportId.
  */

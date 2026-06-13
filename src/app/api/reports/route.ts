@@ -8,13 +8,21 @@ import { LEGAL } from "@/lib/legal";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
   REPORT_COST,
-  spendCredits,
+  spendCreditsOnce,
   refundReportCredits,
   ensureSignupBonus,
   InsufficientCreditsError,
 } from "@/lib/credits";
 
 const TIERS: Tier[] = ["free", "basic", "lookbook", "premium"];
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Client-supplied idempotency key — reused across retries of one submission. */
+function parseReportId(raw: unknown): string | undefined {
+  return typeof raw === "string" && UUID_RE.test(raw) ? raw : undefined;
+}
 
 /** Vision + reasoning + catalogue matching can take 1–2 min; look photos run in `after()`. */
 export const maxDuration = 300;
@@ -72,8 +80,12 @@ export async function POST(request: Request) {
   }
 
   const cost = REPORT_COST[tier];
+  // Stable idempotency key from the client (falls back to a fresh id). Reusing
+  // it across retries / double-submits guarantees the report is charged once.
   const reportId =
-    userId && hasSupabaseAdmin ? randomUUID() : undefined;
+    userId && hasSupabaseAdmin
+      ? (parseReportId(body.reportId) ?? randomUUID())
+      : undefined;
   let creditsCharged = false;
 
   if (userId && hasSupabaseAdmin && cost > 0 && reportId) {
@@ -81,10 +93,10 @@ export async function POST(request: Request) {
     try {
       await ensureSignupBonus(admin, userId);
     } catch {
-      // Non-fatal — spendCredits still guards the balance atomically.
+      // Non-fatal — spendCreditsOnce still guards the balance atomically.
     }
     try {
-      await spendCredits(admin, {
+      await spendCreditsOnce(admin, {
         userId,
         amount: cost,
         reason: "report",

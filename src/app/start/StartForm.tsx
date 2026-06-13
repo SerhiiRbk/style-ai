@@ -107,6 +107,9 @@ export function StartForm({
 
   const supabase = useMemo(() => (LIVE ? createClient() : null), []);
   const sessionIdRef = useRef<string>("");
+  // Stable idempotency key for the report request — reused across retries of the
+  // same submission so a network retry / double-submit never double-charges.
+  const reportIdRef = useRef<string>("");
   const [photoPaths, setPhotoPaths] = useState<{ role: string; path: string }[]>(
     [],
   );
@@ -215,6 +218,9 @@ export function StartForm({
   async function submit() {
     setSubmitting(true);
     setError(null);
+    // Generate once per submission; keep it across retries so a re-send maps to
+    // the same report (server charges credits at most once for this key).
+    if (!reportIdRef.current) reportIdRef.current = crypto.randomUUID();
     const controller = new AbortController();
     const timeout = window.setTimeout(
       () => controller.abort(),
@@ -227,6 +233,7 @@ export function StartForm({
         signal: controller.signal,
         body: JSON.stringify({
           tier,
+          reportId: reportIdRef.current,
           photoPaths,
           biometricConsent: photoPaths.length ? biometricConsent : undefined,
           consentVersion: photoPaths.length ? LEGAL.consentVersion : undefined,

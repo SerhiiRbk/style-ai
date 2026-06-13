@@ -483,7 +483,21 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
     })
     .select("id")
     .single();
-  if (error || !created) throw new Error(error?.message ?? "insert failed");
+  if (error || !created) {
+    // Idempotency: a retry / double-submit reuses the same reportId. The first
+    // request already created the row (and is generating), so return it instead
+    // of inserting a duplicate or failing.
+    if (input.reportId && /duplicate key|unique/i.test(error?.message ?? "")) {
+      const { data: existing } = await admin
+        .from("reports")
+        .select("id")
+        .eq("id", input.reportId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (existing?.id) return existing.id as string;
+    }
+    throw new Error(error?.message ?? "insert failed");
+  }
   const reportId = created.id as string;
 
   try {
