@@ -17,22 +17,36 @@ export function LookTryOn({
   title,
   description,
   palette = [],
+  pieces = [],
+  outfitReferenceUrl,
   lookIndex,
   kind = "look",
-  label = "Try this look on me",
+  label,
+  regenLabel,
   cost = 1,
 }: {
   reportId: string;
   title: string;
   description: string;
   palette?: string[];
+  /** Capsule combo piece titles — used to resolve catalogue garments. */
+  pieces?: string[];
+  /** Pre-rendered capsule outfit image — clothing reference for try-on. */
+  outfitReferenceUrl?: string;
   /** Index into report.looks / look_items (main looks only). */
   lookIndex?: number;
   kind?: "look" | "capsule";
   label?: string;
+  /** Button label after the first render (defaults differ for looks vs capsule mixes). */
+  regenLabel?: string;
   /** Credit cost per render (try-on and re-render are both 1). */
   cost?: number;
 }) {
+  const isCapsule = kind === "capsule";
+  const actionLabelDefault = isCapsule
+    ? "Try this mix on me"
+    : "Try this look on me";
+  const regenLabelDefault = isCapsule ? "Try another mix" : "Render again";
   const { balance, setBalance } = useCredits();
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">(
     "idle",
@@ -85,6 +99,9 @@ export function LookTryOn({
           title,
           description,
           palette,
+          pieces: kind === "capsule" ? pieces : undefined,
+          outfitReferenceUrl:
+            kind === "capsule" ? outfitReferenceUrl : undefined,
           lookIndex,
           kind,
           regen,
@@ -108,10 +125,13 @@ export function LookTryOn({
 
   const actionLabel =
     state === "done"
-      ? "Render again"
-      : label;
+      ? (regenLabel ?? regenLabelDefault)
+      : (label ?? actionLabelDefault);
 
   const loadingMessage = url ? WORKING.regen : WORKING.tryon;
+  const loadingDetail = isCapsule
+    ? "We're dressing your photo in this capsule combination — the same mix of pieces shown above, styled on you."
+    : "We're dressing your photo in this look — fabric, fit, and colours aligned with the outfit above.";
 
   return (
     <div aria-busy={state === "loading"}>
@@ -162,8 +182,7 @@ export function LookTryOn({
             <LuxeSpinner size="lg" tone="brass" />
             <p className="mt-4 font-display text-lg text-ink">{loadingMessage}</p>
             <p className="mt-2 max-w-xs text-sm leading-relaxed text-stone">
-              We&apos;re dressing your photo in this look — fabric, fit, and colours
-              aligned with the outfit above.
+              {loadingDetail}
             </p>
             <p className="mt-3 text-xs text-stone-soft">
               Usually 30–90 seconds · stay on this page

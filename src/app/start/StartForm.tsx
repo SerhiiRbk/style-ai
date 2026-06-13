@@ -12,6 +12,7 @@ import {
 import { COUNTRIES, countryNameFromCode } from "@/lib/countries";
 import { PROFILE_CURRENCIES, type Currency } from "@/lib/currency";
 import { REPORT_COST, CREDIT_COSTS, SIGNUP_BONUS } from "@/lib/credit-costs";
+import { lookCountForTier } from "@/lib/report";
 import { BRAND } from "@/lib/brand";
 import { LEGAL } from "@/lib/legal";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
@@ -74,11 +75,11 @@ const TIERS: { id: Tier; name: string; note: string }[] = [
     note: `1 look · 2 hair previews · try-on ${CREDIT_COSTS.tryon} cr · no share/PDF`,
   },
   { id: "basic", name: "Basic report", note: "3 looks · PDF · share link" },
-  { id: "lookbook", name: "Lookbook", note: "4 looks · capsule, try-on & dual-angle hair" },
+  { id: "lookbook", name: "Lookbook", note: `${lookCountForTier("lookbook")} looks · capsule, try-on & dual-angle hair` },
   {
     id: "premium",
     name: "Premium",
-    note: "6 looks · 4 beard & 4 eyewear previews",
+    note: `${lookCountForTier("premium")} looks · 4 beard & 4 eyewear previews`,
   },
 ];
 

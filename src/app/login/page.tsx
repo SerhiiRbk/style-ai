@@ -2,13 +2,11 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasSupabase } from "@/lib/env";
-import { normalizePromoCode } from "@/lib/promotions";
+import { normalizePromoCode, PENDING_PROMO_COOKIE } from "@/lib/promotions";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { ButtonLink } from "@/components/Button";
 import { LoginForm } from "@/components/LoginForm";
 import { BRAND } from "@/lib/brand";
-
-const PENDING_PROMO_COOKIE = "pending_promo";
 
 export default async function LoginPage({
   searchParams,

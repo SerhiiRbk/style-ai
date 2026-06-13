@@ -278,12 +278,15 @@ export async function generateLookImage(opts: {
     catalogImageUrls?: string[];
   };
   referenceImageUrl?: string;
+  /** Pre-rendered outfit photo (e.g. capsule combo) — clothing reference only. */
+  outfitReferenceImageUrl?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
-    const { profile, look, referenceImageUrl } = opts;
+    const { profile, look, referenceImageUrl, outfitReferenceImageUrl } = opts;
     const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
     const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
+    const hasOutfitRef = Boolean(outfitReferenceImageUrl);
 
     const subject =
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
@@ -302,7 +305,18 @@ export async function generateLookImage(opts: {
     // Describe the role of each input image so identity (person photo) and the
     // garments (catalogue product photos) are not confused.
     let imageRoles = "";
-    if (referenceImageUrl && catalogImageUrls.length) {
+    if (referenceImageUrl && hasOutfitRef && catalogImageUrls.length) {
+      imageRoles =
+        `The FIRST image shows the person — preserve their face, hair and identity exactly. ` +
+        `The SECOND image shows the target outfit to replicate on that person — copy only the ` +
+        `clothing combination, colours and proportions; do not copy the model's face or body. ` +
+        `The remaining ${catalogImageUrls.length} image(s) are catalogue garment references. `;
+    } else if (referenceImageUrl && hasOutfitRef) {
+      imageRoles =
+        `The FIRST image shows the person — preserve their face, hair and identity exactly. ` +
+        `The SECOND image shows the exact outfit to dress them in — copy only the clothing, ` +
+        `colours and proportions; do not copy the model's face or body. `;
+    } else if (referenceImageUrl && catalogImageUrls.length) {
       imageRoles =
         `The FIRST image shows the person — preserve their face, hair and identity exactly. ` +
         `The remaining ${catalogImageUrls.length} image(s) are the actual catalogue garments to dress them in — ` +
@@ -331,6 +345,16 @@ export async function generateLookImage(opts: {
     )[] = [{ type: "text", text: prompt }];
     if (referenceImageUrl) {
       content.push({ type: "image", image: new URL(referenceImageUrl) });
+    }
+    if (outfitReferenceImageUrl) {
+      try {
+        content.push({
+          type: "image",
+          image: new URL(outfitReferenceImageUrl),
+        });
+      } catch {
+        // Skip malformed outfit reference URLs.
+      }
     }
     for (const url of catalogImageUrls) {
       try {

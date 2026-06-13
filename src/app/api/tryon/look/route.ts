@@ -14,6 +14,8 @@ import {
   catalogImageUrlsFromItems,
   catalogPromptFromItems,
   formatLookKey,
+  paletteFromCapsulePieces,
+  resolveCapsuleCatalogItems,
   resolveLookCatalogItems,
   tryonStoragePath,
   type LookTryOnKind,
@@ -125,6 +127,13 @@ export async function POST(request: Request) {
   const palette: string[] = Array.isArray(body?.palette)
     ? body.palette.filter((c: unknown): c is string => typeof c === "string")
     : [];
+  const pieces: string[] = Array.isArray(body?.pieces)
+    ? body.pieces.filter((p: unknown): p is string => typeof p === "string")
+    : [];
+  const outfitReferenceUrl =
+    typeof body?.outfitReferenceUrl === "string"
+      ? body.outfitReferenceUrl
+      : undefined;
   const lookIndex = parseLookIndex(body?.lookIndex);
   const kind = parseKind(body?.kind);
   const isRegen = body?.regen === true;
@@ -166,10 +175,30 @@ export async function POST(request: Request) {
     }
   }
 
+  const shopping = report.shopping as ShoppingItem[];
   const lookItems = report.lookItems as
     | Record<number, ShoppingItem[]>
     | undefined;
-  const catalogItems = resolveLookCatalogItems(lookItems, lookIndex);
+
+  const capsulePieces =
+    pieces.length > 0
+      ? pieces
+      : kind === "capsule"
+        ? description.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+
+  const catalogItems =
+    kind === "capsule"
+      ? resolveCapsuleCatalogItems(capsulePieces, shopping)
+      : resolveLookCatalogItems(lookItems, lookIndex);
+
+  const effectivePalette =
+    palette.length > 0
+      ? palette
+      : kind === "capsule"
+        ? paletteFromCapsulePieces(capsulePieces, shopping)
+        : [];
+
   const catalogContext = catalogPromptFromItems(catalogItems);
   const catalogImageUrls = catalogImageUrlsFromItems(catalogItems);
 
@@ -196,10 +225,19 @@ export async function POST(request: Request) {
 
   const result = await generateLookImage({
     profile,
-    look: { title, description, palette, catalogContext, catalogImageUrls },
+    look: {
+      title,
+      description,
+      palette: effectivePalette,
+      catalogContext,
+      catalogImageUrls,
+    },
     // Identity reference ONLY — the user's own photo, never the report's
     // generated look image (which would copy the original outfit).
     referenceImageUrl: photo.signedUrl,
+    // Capsule combo photo defines the exact outfit to replicate on the user.
+    outfitReferenceImageUrl:
+      kind === "capsule" ? outfitReferenceUrl : undefined,
   });
   if (!result) {
     return NextResponse.json(

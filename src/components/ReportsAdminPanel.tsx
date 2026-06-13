@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { ReportFeedbackStars } from "@/components/ReportFeedbackReadOnly";
 import { reportStatusLabel, tierLabel } from "@/lib/report-labels";
 import type { Tier } from "@/lib/report";
 
@@ -14,6 +15,8 @@ type AdminReportSummary = {
   userId: string;
   userEmail: string | null;
   isPublic: boolean;
+  feedbackRating: number | null;
+  feedbackComment: string | null;
 };
 
 function formatDate(iso: string): string {
@@ -150,6 +153,19 @@ export function ReportsAdminPanel() {
                       <span className="truncate">{r.userEmail}</span>
                     </>
                   )}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <ReportFeedbackStars rating={r.feedbackRating} />
+                  {r.feedbackComment ? (
+                    <span
+                      className="max-w-md truncate text-xs text-stone-soft"
+                      title={r.feedbackComment}
+                    >
+                      “{r.feedbackComment}”
+                    </span>
+                  ) : r.feedbackRating != null ? (
+                    <span className="text-xs text-stone-soft">No written review</span>
+                  ) : null}
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">

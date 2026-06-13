@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
-import { ensureSignupBonus, getCreditBalance } from "@/lib/credits";
+import { getCreditBalance } from "@/lib/credits";
+import { applyWelcomeCredits } from "@/lib/welcome-credits";
 import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
 import { StartForm } from "./StartForm";
 
@@ -24,8 +25,12 @@ export default async function StartPage({
     userId = user.id;
     userEmail = user.email ?? null;
 
-    if (showWelcome && hasSupabaseAdmin) {
-      await ensureSignupBonus(createAdminSupabase(), userId);
+    if (hasSupabaseAdmin) {
+      try {
+        await applyWelcomeCredits(createAdminSupabase(), userId);
+      } catch {
+        // Non-fatal — Navbar and /reports also attempt the grant.
+      }
     }
     creditBalance = await getCreditBalance();
   }

@@ -30,8 +30,8 @@ export const PROBLEM_SOLUTION = {
 export const TIERS_TABLE = [
   ["Starter", "€0", "5 credits", "1 look · colour & hair · try-on"],
   ["Basic", "€10", "10 credits", "3 looks · shopping list · PDF"],
-  ["Lookbook", "€20", "20 credits", "4 looks · capsule · week matrix"],
-  ["Premium", "€35", "35 credits", "6 looks · grooming · accessories"],
+  ["Lookbook", "€20", "20 credits", "6 looks · capsule · week matrix"],
+  ["Premium", "€35", "35 credits", "9 looks · grooming · accessories"],
 ] as const;
 
 export const CREDIT_PACKS = [
@@ -57,9 +57,9 @@ function tierImages(tier: string): number {
     case "Basic":
       return 8;
     case "Lookbook":
-      return 16;
+      return 18;
     case "Premium":
-      return 28;
+      return 31;
     default:
       return 0;
   }

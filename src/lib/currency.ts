@@ -210,7 +210,7 @@ export const TIER_PRICES: Record<
     basic: "€24",
     lookbook: "€44",
     premium: "€89",
-    membership: "€14.99",
+    membership: "from €19.99",
     business: "€99",
   },
   USD: {
@@ -218,7 +218,7 @@ export const TIER_PRICES: Record<
     basic: "$26",
     lookbook: "$48",
     premium: "$96",
-    membership: "$16.99",
+    membership: "from $21.99",
     business: "$109",
   },
 };

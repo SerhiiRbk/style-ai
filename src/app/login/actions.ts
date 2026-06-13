@@ -6,9 +6,11 @@ import { hasSupabaseAdmin } from "@/lib/env";
 import { LEGAL } from "@/lib/legal";
 import { absoluteAuthUrl } from "@/lib/site-url";
 import { redeemPromotion } from "@/lib/promotions";
+import {
+  applyWelcomeCredits,
+  PENDING_PROMO_COOKIE,
+} from "@/lib/welcome-credits";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
-
-const PENDING_PROMO_COOKIE = "pending_promo";
 
 /** Only allow same-origin relative paths (blocks open redirects). */
 function safeRedirectPath(raw: string | null | undefined): string | null {
@@ -31,18 +33,34 @@ export async function signIn(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(error.message)}${qs}`);
   }
 
-  const cookieStore = await cookies();
-  const pendingPromo = cookieStore.get(PENDING_PROMO_COOKIE)?.value;
-  if (pendingPromo && data.user && hasSupabaseAdmin) {
-    cookieStore.delete(PENDING_PROMO_COOKIE);
+  if (data.user && hasSupabaseAdmin) {
+    const admin = createAdminSupabase();
+    const cookieStore = await cookies();
+    const pendingPromo = cookieStore.get(PENDING_PROMO_COOKIE)?.value ?? null;
+    if (pendingPromo) {
+      cookieStore.delete(PENDING_PROMO_COOKIE);
+    }
+
+    if (pendingPromo) {
+      try {
+        const result = await redeemPromotion(admin, data.user.id, pendingPromo);
+        redirect(
+          `/start?promo=ok&credits=${result.credits}&balance=${result.balance}`,
+        );
+      } catch {
+        try {
+          await applyWelcomeCredits(admin, data.user.id);
+        } catch {
+          // Non-fatal
+        }
+        redirect(`/start?promo=failed&code=${encodeURIComponent(pendingPromo)}`);
+      }
+    }
+
     try {
-      const admin = createAdminSupabase();
-      const result = await redeemPromotion(admin, data.user.id, pendingPromo);
-      redirect(
-        `/start?promo=ok&credits=${result.credits}&balance=${result.balance}`,
-      );
+      await applyWelcomeCredits(admin, data.user.id);
     } catch {
-      redirect(`/start?promo=failed&code=${encodeURIComponent(pendingPromo)}`);
+      // Non-fatal — balance reads also attempt the grant.
     }
   }
 

@@ -1,7 +1,10 @@
 import "server-only";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
+import { getReportFeedbackByReportIds } from "@/lib/data/report-feedback";
 import type { Tier } from "@/lib/report";
+
+export type { ReportFeedbackSummary } from "@/lib/data/report-feedback";
 
 export type AdminReportSummary = {
   id: string;
@@ -12,6 +15,8 @@ export type AdminReportSummary = {
   userId: string;
   userEmail: string | null;
   isPublic: boolean;
+  feedbackRating: number | null;
+  feedbackComment: string | null;
 };
 
 const PAGE_SIZE = 50;
@@ -74,19 +79,27 @@ export async function listAdminReports(opts?: {
     }
   }
 
-  const reports: AdminReportSummary[] = rows.map((row) => ({
-    id: row.id as string,
-    createdAt: row.created_at as string,
-    headline: (row.headline as string | null) ?? null,
-    tier: (row.tier as Tier) ?? "basic",
-    status:
-      row.status === "processing" || row.status === "failed"
-        ? row.status
-        : "ready",
-    userId: row.user_id as string,
-    userEmail: emailByUser.get(row.user_id as string) ?? null,
-    isPublic: Boolean(row.is_public),
-  }));
+  const reportIds = rows.map((r) => r.id as string);
+  const feedbackByReport = await getReportFeedbackByReportIds(reportIds);
+
+  const reports: AdminReportSummary[] = rows.map((row) => {
+    const feedback = feedbackByReport.get(row.id as string);
+    return {
+      id: row.id as string,
+      createdAt: row.created_at as string,
+      headline: (row.headline as string | null) ?? null,
+      tier: (row.tier as Tier) ?? "basic",
+      status:
+        row.status === "processing" || row.status === "failed"
+          ? row.status
+          : "ready",
+      userId: row.user_id as string,
+      userEmail: emailByUser.get(row.user_id as string) ?? null,
+      isPublic: Boolean(row.is_public),
+      feedbackRating: feedback?.rating ?? null,
+      feedbackComment: feedback?.comment ?? null,
+    };
+  });
 
   const total = count ?? 0;
   return {

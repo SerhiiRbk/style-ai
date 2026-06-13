@@ -72,3 +72,40 @@ export function resolveLookCatalogItems(
   if (typeof lookIndex !== "number" || !lookItems) return [];
   return lookItems[lookIndex] ?? [];
 }
+
+/** Match capsule combo piece labels back to shopping-list catalogue rows. */
+export function resolveCapsuleCatalogItems(
+  pieces: string[],
+  shopping: ShoppingItem[],
+): ShoppingItem[] {
+  const items: ShoppingItem[] = [];
+  const seen = new Set<string>();
+  for (const piece of pieces) {
+    const key = piece.trim();
+    if (!key) continue;
+    const match =
+      shopping.find((s) => s.title === key) ??
+      shopping.find(
+        (s) =>
+          key.toLowerCase().includes(s.title.toLowerCase()) ||
+          s.title.toLowerCase().includes(key.toLowerCase()),
+      );
+    if (!match) continue;
+    const id = match.productId ?? match.title;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    items.push(match);
+  }
+  return items;
+}
+
+/** Hex palette from shopping-list colours for capsule piece titles. */
+export function paletteFromCapsulePieces(
+  pieces: string[],
+  shopping: ShoppingItem[],
+): string[] {
+  const colorByTitle = new Map(shopping.map((s) => [s.title, s.color]));
+  return pieces
+    .map((p) => colorByTitle.get(p))
+    .filter((c): c is string => Boolean(c && c !== "#CCCCCC"));
+}

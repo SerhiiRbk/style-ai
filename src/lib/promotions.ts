@@ -4,6 +4,9 @@ import type { createAdminSupabase } from "@/lib/supabase/server";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
+/** Cookie set from /login?promo=CODE until the code is redeemed on sign-in. */
+export const PENDING_PROMO_COOKIE = "pending_promo";
+
 export type PromotionRow = {
   id: string;
   code: string;
@@ -38,6 +41,20 @@ export function generatePromoCode(): string {
 
 export function normalizePromoCode(code: string): string {
   return code.trim().toUpperCase();
+}
+
+/** True when the user redeemed any promo (welcome pack via invite / manual code). */
+export async function userHasPromoRedemption(
+  admin: AdminClient,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("promotion_redemptions")
+    .select("id")
+    .eq("user_id", userId)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return Boolean(data?.length);
 }
 
 export function promoErrorMessage(code: string): string {

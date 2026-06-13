@@ -22,9 +22,9 @@ export function lookCountForTier(tier: Tier): number {
     case "basic":
       return 3;
     case "lookbook":
-      return 4;
-    case "premium":
       return 6;
+    case "premium":
+      return 9;
   }
 }
 

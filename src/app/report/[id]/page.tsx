@@ -8,6 +8,8 @@ import { TryOnSelectionProvider } from "@/components/TryOnContext";
 import { TryOnTray } from "@/components/TryOnTray";
 import { SavedOutfitTryOns } from "@/components/SavedOutfitTryOns";
 import { LookTryOn } from "@/components/LookTryOn";
+import { ReportFeedback } from "@/components/ReportFeedback";
+import { ReportFeedbackReadOnly } from "@/components/ReportFeedbackReadOnly";
 import { CreditsProvider } from "@/components/CreditsContext";
 import { getCreditBalance } from "@/lib/credits";
 import { Footer } from "@/components/Footer";
@@ -135,7 +137,7 @@ export default async function ReportPage({
   ]);
   if (!view) notFound();
 
-  const { report, isOwner, isPublic } = view;
+  const { report, isOwner, isPublic, isAdmin, ownerFeedback } = view;
   const { profile, intake } = report;
   const tierLabel = report.tier.charAt(0).toUpperCase() + report.tier.slice(1);
 
@@ -951,6 +953,13 @@ export default async function ReportPage({
           <TipsStrip />
 
           <ReportTierUpsell tier={report.tier} reportId={report.id} />
+
+          {isOwner && isLiveReport && !generation?.pending ? (
+            <ReportFeedback reportId={report.id} isOwner={isOwner} />
+          ) : null}
+          {isAdmin && !isOwner && isLiveReport ? (
+            <ReportFeedbackReadOnly feedback={ownerFeedback} adminView />
+          ) : null}
         </section>
       </main>
       <Footer />

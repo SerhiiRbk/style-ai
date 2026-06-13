@@ -372,9 +372,10 @@ export function CapsuleMatrix({
                     reportId={reportId}
                     title={c.context}
                     description={c.pieces.join(", ")}
+                    pieces={c.pieces}
+                    outfitReferenceUrl={c.image}
                     lookIndex={i}
                     kind="capsule"
-                    label="Try on me"
                   />
                 </div>
               )}

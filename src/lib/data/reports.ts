@@ -2,6 +2,10 @@ import "server-only";
 import { cache } from "react";
 import { after } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
+import {
+  getReportOwnerFeedback,
+  type ReportOwnerFeedback,
+} from "@/lib/data/report-feedback";
 import { isDemoReportId } from "@/lib/demo-report";
 import { LEGAL } from "@/lib/legal";
 import {
@@ -593,6 +597,8 @@ export type ReportView = {
   report: StyleReport;
   isOwner: boolean;
   isPublic: boolean;
+  isAdmin: boolean;
+  ownerFeedback: ReportOwnerFeedback | null;
 };
 
 /** Map hair storage paths to stable same-origin proxy URLs (no signing I/O). */
@@ -707,12 +713,24 @@ async function fetchReportView(
   if (isDemoReportId(id)) {
     const report = getMockReport(id);
     if (!report) return null;
-    return { report, isOwner: false, isPublic: true };
+    return {
+      report,
+      isOwner: false,
+      isPublic: true,
+      isAdmin: false,
+      ownerFeedback: null,
+    };
   }
   if (!hasSupabase) {
     const report = getMockReport(id);
     if (!report) return null;
-    return { report, isOwner: false, isPublic: false };
+    return {
+      report,
+      isOwner: false,
+      isPublic: false,
+      isAdmin: false,
+      ownerFeedback: null,
+    };
   }
 
   const sb = await createServerSupabase();
@@ -865,7 +883,10 @@ async function fetchReportView(
     outfitTryons,
   });
 
-  return { report, isOwner, isPublic };
+  const ownerFeedback =
+    isAdmin && !isDemoReportId(id) ? await getReportOwnerFeedback(id) : null;
+
+  return { report, isOwner, isPublic, isAdmin, ownerFeedback };
 }
 
 /**

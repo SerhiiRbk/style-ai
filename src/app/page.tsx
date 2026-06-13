@@ -11,6 +11,7 @@ import {
   CREDIT_PACKAGES,
   SIGNUP_BONUS,
 } from "@/lib/credit-costs";
+import { lookCountForTier } from "@/lib/report";
 import { BRAND } from "@/lib/brand";
 import { absoluteUrl } from "@/lib/site-url";
 
@@ -195,7 +196,7 @@ function HeroVisual() {
             autumn · warm · low contrast
           </span>
           <span className="hidden rounded-full border hairline bg-paper px-4 py-2 text-xs text-stone shadow-sm sm:inline-block">
-            6 looks · PDF · shopping list
+            {lookCountForTier("premium")} looks · PDF · shopping list
           </span>
         </div>
       </div>
@@ -568,7 +569,7 @@ async function Pricing() {
       cadence: "credits",
       features: [
         "Everything in Basic",
-        "4 photorealistic looks",
+        `${lookCountForTier("lookbook")} photorealistic looks`,
         "Capsule wardrobe + week matrix",
         `Virtual try-on (${CREDIT_COSTS.tryon} credit each)`,
         "Good · Better · Best buying plan",
@@ -584,7 +585,7 @@ async function Pricing() {
       cadence: "credits",
       features: [
         "Everything in Lookbook",
-        "6 photorealistic looks",
+        `${lookCountForTier("premium")} photorealistic looks`,
         "4 facial-hair previews on your photo",
         "2 optical + 2 sunglasses previews",
         "Deeper grooming guidance",

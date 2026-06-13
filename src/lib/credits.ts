@@ -1,5 +1,6 @@
 import "server-only";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
+import { userHasPromoRedemption } from "@/lib/promotions";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { SIGNUP_BONUS } from "@/lib/credit-costs";
 import type { CreditReason } from "@/lib/credit-costs";
@@ -209,13 +210,16 @@ export async function refundReportCredits(
 }
 
 /**
- * Grant the one-time signup bonus the first time it's needed (idempotent —
- * only grants when no prior signup_bonus row exists for the user).
+ * Grant the one-time signup bonus the first time it's needed (idempotent).
+ * Skipped when the user already redeemed a promo — registration welcome is
+ * either signup credits OR promo credits, not both.
  */
 export async function ensureSignupBonus(
   admin: AdminClient,
   userId: string,
 ): Promise<void> {
+  if (await userHasPromoRedemption(admin, userId)) return;
+
   const { data, error } = await admin
     .from("credits_ledger")
     .select("id")
@@ -249,7 +253,13 @@ export async function getCreditBalance(): Promise<number | null> {
     if (!user) return null;
 
     if (hasSupabaseAdmin) {
-      return await creditBalance(createAdminSupabase(), user.id);
+      const admin = createAdminSupabase();
+      try {
+        await ensureSignupBonus(admin, user.id);
+      } catch {
+        // Non-fatal — still return whatever balance we can read.
+      }
+      return await creditBalance(admin, user.id);
     }
     // Owner can read their own ledger rows under RLS.
     const { data, error } = await sb

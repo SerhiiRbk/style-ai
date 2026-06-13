@@ -33,6 +33,8 @@ export const env = {
   catalogImportKey: process.env.CATALOG_IMPORT_KEY,
 
   // Payments — PAYMENT_PROVIDER selects stripe | lemon_squeezy (default: lemon).
+  /** Master switch: checkout is off unless PAYMENTS_ENABLED=true (default: off). */
+  paymentsEnabled: envFlag(process.env.PAYMENTS_ENABLED),
   paymentProvider:
     process.env.PAYMENT_PROVIDER === "stripe" ? "stripe" : "lemon_squeezy",
 
@@ -77,6 +79,7 @@ export const hasLemonSqueezy = Boolean(
     env.lemonSqueezyStoreId,
 );
 
-/** Active provider is fully configured (see PAYMENT_PROVIDER). */
+/** Active provider is fully configured and payments are enabled (see PAYMENTS_ENABLED). */
 export const hasPayments =
-  env.paymentProvider === "stripe" ? hasStripe : hasLemonSqueezy;
+  env.paymentsEnabled &&
+  (env.paymentProvider === "stripe" ? hasStripe : hasLemonSqueezy);

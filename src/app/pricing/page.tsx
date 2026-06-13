@@ -87,7 +87,7 @@ const TIERS: TierCard[] = [
     tagline: "Add the wardrobe system & try-on.",
     features: [
       "Everything in Basic",
-      "4 photorealistic looks",
+      `${lookCountForTier("lookbook")} photorealistic looks`,
       "Capsule wardrobe + week-of-outfits matrix",
       `Virtual try-on on your photo (${CREDIT_COSTS.tryon} credit each)`,
       "Good · Better · Best buying plan",
@@ -104,7 +104,7 @@ const TIERS: TierCard[] = [
     tagline: "The deepest, most personal report.",
     features: [
       "Everything in Lookbook",
-      "6 photorealistic looks",
+      `${lookCountForTier("premium")} photorealistic looks`,
       "4 facial-hair previews on your photo",
       "2 optical + 2 sunglasses previews",
       "2 accessory previews (scarves, neckwear, ties)",
