@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
-import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
+import { countryNameFromCode } from "@/lib/countries";
 import { getCreditBalance } from "@/lib/credits";
+import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
+import { getGeoPrefill } from "@/lib/geo";
 import { applyWelcomeCredits } from "@/lib/welcome-credits";
 import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
 import { StartForm } from "./StartForm";
@@ -35,12 +37,19 @@ export default async function StartPage({
     creditBalance = await getCreditBalance();
   }
 
+  const geo = await getGeoPrefill();
+
   return (
     <StartForm
       userId={userId}
       showWelcome={showWelcome}
       userEmail={userEmail}
       creditBalance={creditBalance}
+      initialGeo={{
+        city: geo.city ?? "",
+        countryName: countryNameFromCode(geo.country) ?? "",
+        currency: geo.currency,
+      }}
     />
   );
 }

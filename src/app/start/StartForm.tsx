@@ -13,7 +13,7 @@ import {
   type HairColorId,
   type EyeColorId,
 } from "@/lib/style-profile";
-import { COUNTRIES, countryNameFromCode } from "@/lib/countries";
+import { COUNTRIES } from "@/lib/countries";
 import { PROFILE_CURRENCIES, type Currency } from "@/lib/currency";
 import { REPORT_COST, CREDIT_COSTS, SIGNUP_BONUS } from "@/lib/credit-costs";
 import { lookCountForTier } from "@/lib/report";
@@ -146,11 +146,17 @@ export function StartForm({
   showWelcome: initialWelcome = false,
   userEmail = null,
   creditBalance = null,
+  initialGeo,
 }: {
   userId: string | null;
   showWelcome?: boolean;
   userEmail?: string | null;
   creditBalance?: number | null;
+  initialGeo?: {
+    city?: string;
+    countryName?: string;
+    currency?: Currency;
+  };
 }) {
   const router = useRouter();
   const [showWelcome, setShowWelcome] = useState(initialWelcome);
@@ -194,9 +200,9 @@ export function StartForm({
   const [photos, setPhotos] = useState<string[]>([]);
   const [age, setAge] = useState(40);
   const [gender, setGender] = useState("male");
-  const [city, setCity] = useState("");
-  const [country, setCountry] = useState("");
-  const [currency, setCurrency] = useState<Currency>("EUR");
+  const [city, setCity] = useState(initialGeo?.city ?? "");
+  const [country, setCountry] = useState(initialGeo?.countryName ?? "");
+  const [currency, setCurrency] = useState<Currency>(initialGeo?.currency ?? "EUR");
   const [height, setHeight] = useState(180);
   const [weight, setWeight] = useState("");
   const [bodyType, setBodyType] = useState<BodyTypeId | "">("");
@@ -221,24 +227,6 @@ export function StartForm({
   const knownBalance = creditBalance != null ? creditBalance : null;
   const insufficientCredits =
     knownBalance != null && reportCost > 0 && knownBalance < reportCost;
-
-  // Prefill country/city/currency from Vercel geolocation (best-effort).
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/geo")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((g) => {
-        if (cancelled || !g) return;
-        const name = countryNameFromCode(g.country);
-        if (name) setCountry((c) => c || name);
-        if (g.city) setCity((c) => c || g.city);
-        if (g.currency) setCurrency(g.currency);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const measurements = useMemo(
     () => ({
