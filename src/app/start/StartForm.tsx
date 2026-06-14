@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -28,10 +29,22 @@ import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 
 type Tier = "free" | "basic" | "lookbook" | "premium";
 
-const PHOTO_ROLES: { role: string; label: string }[] = [
-  { role: "face", label: "Front portrait" },
-  { role: "full", label: "Full length" },
-  { role: "profile", label: "Profile (optional)" },
+const PHOTO_ROLES: { role: string; label: string; desc: string }[] = [
+  {
+    role: "face",
+    label: "Front portrait",
+    desc: "Face, hairline and natural colouring. No sunglasses or heavy filter.",
+  },
+  {
+    role: "full",
+    label: "Full length",
+    desc: "Head-to-toe proportions. A mirror photo is fine if the camera is level.",
+  },
+  {
+    role: "profile",
+    label: "Profile (optional)",
+    desc: "Side angle for haircut, beard, glasses and posture recommendations.",
+  },
 ];
 
 const GOALS = [
@@ -416,51 +429,45 @@ export function StartForm({
             <Section
               eyebrow="Step 2"
               title="Upload your photos"
-              subtitle="Photos are processed privately and never sold or shared."
+              subtitle="Better photos make the colour, haircut and fit analysis more accurate. They are processed privately and never sold or shared."
             >
-              <div className="mb-6 grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-brass/30 bg-brass/5 p-4">
-                  <div className="flex items-center gap-2 font-display text-sm text-ink">
-                    <svg className="h-4 w-4 text-brass" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Good photos
+              <PhotoQualityGuide />
+              <div className="mb-6 mt-6 rounded-2xl border hairline bg-paper p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h3 className="font-display text-xl">What each photo is for</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-stone">
+                      Upload at least portrait and full length. The profile shot
+                      is optional, but improves hair, beard, eyewear and posture.
+                    </p>
                   </div>
-                  <ul className="mt-2 space-y-1.5 text-xs text-stone">
-                    <li>• Natural daylight (face facing window)</li>
-                    <li>• Clear view of your face and hair</li>
-                    <li>• Full length mirror selfie works perfectly</li>
-                  </ul>
+                  <span className="rounded-full bg-cream px-3 py-1.5 text-[11px] uppercase tracking-wide text-stone-soft">
+                    JPG, PNG or HEIC
+                  </span>
                 </div>
-                <div className="rounded-xl border border-line bg-paper p-4 opacity-80">
-                  <div className="flex items-center gap-2 font-display text-sm text-ink">
-                    <svg className="h-4 w-4 text-stone-soft" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    Avoid
-                  </div>
-                  <ul className="mt-2 space-y-1.5 text-xs text-stone-soft">
-                    <li>• Sunglasses or heavy filters</li>
-                    <li>• Group photos or busy backgrounds</li>
-                    <li>• Dark rooms or extreme low angles</li>
-                  </ul>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  {PHOTO_ROLES.map(({ role, label, desc }) => (
+                    <PhotoRoleCard key={role} label={label} desc={desc} />
+                  ))}
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-3">
                 {LIVE
-                  ? PHOTO_ROLES.map(({ role, label }) => (
+                  ? PHOTO_ROLES.map(({ role, label, desc }) => (
                       <UploadTile
                         key={role}
                         label={label}
+                        desc={desc}
                         filled={photoPaths.some((p) => p.role === role)}
                         uploading={uploadingRole === role}
                         onFile={(file) => uploadPhoto(role, file)}
                       />
                     ))
-                  : PHOTO_ROLES.map(({ label }) => (
+                  : PHOTO_ROLES.map(({ label, desc }) => (
                       <PhotoTile
                         key={label}
                         label={label}
+                        desc={desc}
                         filled={photos.includes(label)}
                         onClick={() =>
                           setPhotos((p) =>
@@ -471,6 +478,12 @@ export function StartForm({
                         }
                       />
                     ))}
+              </div>
+              <div className="mt-5 rounded-xl border border-brass/25 bg-brass/5 p-4 text-sm leading-relaxed text-stone">
+                <span className="font-medium text-ink">Photo not perfect?</span>{" "}
+                Continue if your face and body are clear. If lighting is poor or
+                the outfit hides your shape, upload the best available photos now
+                and replace them before generating a final paid report.
               </div>
               <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border hairline bg-cream/40 p-4">
                 <input
@@ -885,20 +898,118 @@ function Section({
   );
 }
 
+function PhotoQualityGuide() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <PhotoExampleCard
+        tone="good"
+        title="Best result"
+        imageSrc="/images/photo-example-good.png"
+        imageAlt="Good portrait example — natural daylight, clear face and hair"
+        items={[
+          "Natural daylight, face turned to a window",
+          "Clear view of face, hair and shoulders",
+          "Full-length photo taken from chest height",
+        ]}
+      />
+      <PhotoExampleCard
+        tone="avoid"
+        title="Hard to analyse"
+        imageSrc="/images/photo-example-bad.png"
+        imageAlt="Poor portrait example — sunglasses, hat, harsh flash, busy background"
+        items={[
+          "Sunglasses, hat, heavy filter or strong shadow",
+          "Group photo, busy background or cropped body",
+          "Low angle, dark room or mirror flash over the face",
+        ]}
+      />
+    </div>
+  );
+}
+
+function PhotoExampleCard({
+  tone,
+  title,
+  imageSrc,
+  imageAlt,
+  items,
+}: {
+  tone: "good" | "avoid";
+  title: string;
+  imageSrc: string;
+  imageAlt: string;
+  items: string[];
+}) {
+  const good = tone === "good";
+  return (
+    <div
+      className={`rounded-2xl border p-4 ${
+        good ? "border-brass/30 bg-brass/5" : "border-line bg-paper"
+      }`}
+    >
+      <div className="grid gap-4 sm:grid-cols-[108px_1fr] sm:items-start">
+        <div
+          className={`relative mx-auto aspect-[3/4] w-[108px] overflow-hidden rounded-xl border ${
+            good ? "border-brass/30" : "border-line"
+          }`}
+        >
+          <Image
+            src={imageSrc}
+            alt={imageAlt}
+            fill
+            sizes="108px"
+            className="object-cover object-top"
+          />
+          <span
+            className={`absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-xs shadow-sm ${
+              good ? "bg-brass text-paper" : "bg-stone-soft text-paper"
+            }`}
+          >
+            {good ? "✓" : "×"}
+          </span>
+        </div>
+        <div>
+          <div className="font-display text-lg text-ink">{title}</div>
+          <ul
+            className={`mt-2 space-y-1.5 text-xs leading-relaxed ${
+              good ? "text-stone" : "text-stone-soft"
+            }`}
+          >
+            {items.map((item) => (
+              <li key={item}>• {item}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PhotoRoleCard({ label, desc }: { label: string; desc: string }) {
+  return (
+    <div className="rounded-xl border hairline bg-cream/30 p-4">
+      <div className="font-display text-base text-ink">{label}</div>
+      <p className="mt-1.5 text-xs leading-relaxed text-stone">{desc}</p>
+    </div>
+  );
+}
+
 function UploadTile({
   label,
+  desc,
   filled,
   uploading,
   onFile,
 }: {
   label: string;
+  desc: string;
   filled: boolean;
   uploading: boolean;
   onFile: (file: File) => void;
 }) {
   return (
     <label
-      className={`flex aspect-[3/4] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed text-center transition-colors ${
+      className={`flex min-h-[13rem] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-5 text-center transition-colors ${
         filled ? "border-ink bg-cream/60" : "border-line bg-cream/20 hover:border-ink/40"
       }`}
     >
@@ -922,23 +1033,28 @@ function UploadTile({
       <span className="mt-1 text-xs text-stone-soft">
         {uploading ? WORKING.upload : filled ? "Uploaded" : "Click to upload"}
       </span>
+      <span className="mt-3 max-w-[13rem] text-xs leading-relaxed text-stone-soft">
+        {desc}
+      </span>
     </label>
   );
 }
 
 function PhotoTile({
   label,
+  desc,
   filled,
   onClick,
 }: {
   label: string;
+  desc: string;
   filled: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex aspect-[3/4] flex-col items-center justify-center rounded-xl border border-dashed text-center transition-colors ${
+      className={`flex min-h-[13rem] flex-col items-center justify-center rounded-xl border border-dashed px-4 py-5 text-center transition-colors ${
         filled
           ? "border-ink bg-cream/60"
           : "border-line bg-cream/20 hover:border-ink/40"
@@ -954,6 +1070,9 @@ function PhotoTile({
       <span className="mt-3 text-sm text-ink">{label}</span>
       <span className="mt-1 text-xs text-stone-soft">
         {filled ? "Added" : "Click to add"}
+      </span>
+      <span className="mt-3 max-w-[13rem] text-xs leading-relaxed text-stone-soft">
+        {desc}
       </span>
     </button>
   );
