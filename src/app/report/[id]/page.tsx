@@ -311,9 +311,11 @@ export default async function ReportPage({
         </div>
       </header>
 
+      <ReportSectionNav />
+
       <main className="flex-1">
         {/* Profile snapshot */}
-        <section className="border-b hairline bg-cream/40">
+        <section id="overview" className="scroll-mt-24 border-b hairline bg-cream/40">
           <div className="container-luxe grid grid-cols-2 gap-px overflow-hidden py-0 sm:grid-cols-3 lg:grid-cols-6">
             <Snapshot
               label="Season"
@@ -339,7 +341,7 @@ export default async function ReportPage({
         </section>
 
         {/* Start here — 3 highest-impact moves */}
-        <section className="container-luxe py-20">
+        <section id="start-here" className="container-luxe scroll-mt-24 py-20">
           <SectionHead
             title="Start here"
             sub="If you change only three things, change these. The rest of the report builds on them."
@@ -371,7 +373,7 @@ export default async function ReportPage({
         </section>
 
         {/* Colours */}
-        <section className="border-t hairline container-luxe py-20">
+        <section id="colours" className="border-t hairline container-luxe scroll-mt-24 py-20">
           <SectionHead
             n="01"
             title="Your colour story"
@@ -430,7 +432,7 @@ export default async function ReportPage({
         </section>
 
         {/* Hair */}
-        <section className="border-y hairline bg-cream/40">
+        <section id="grooming" className="scroll-mt-24 border-y hairline bg-cream/40">
           <div className="container-luxe py-20">
             <SectionHead
               n="02"
@@ -665,7 +667,7 @@ export default async function ReportPage({
         </section>
 
         {/* Silhouette */}
-        <section className="container-luxe py-20">
+        <section id="fit" className="container-luxe scroll-mt-24 py-20">
           <div className="max-w-3xl">
             <div>
               <SectionHead n="03" title="Silhouette & fit" />
@@ -695,7 +697,7 @@ export default async function ReportPage({
         </section>
 
         {/* Looks */}
-        <section className="container-luxe py-20">
+        <section id="looks" className="container-luxe scroll-mt-24 py-20">
           <SectionHead
             n="04"
             title="Your looks"
@@ -771,7 +773,7 @@ export default async function ReportPage({
         </section>
 
         {/* Capsule & buying plan */}
-        <section className="border-t hairline container-luxe py-20">
+        <section id="capsule" className="border-t hairline container-luxe scroll-mt-24 py-20">
           <SectionHead
             n="05"
             title="Capsule & buying plan"
@@ -800,7 +802,7 @@ export default async function ReportPage({
         </section>
 
         {/* Shopping list */}
-        <section className="border-y hairline bg-ink text-paper">
+        <section id="shopping" className="scroll-mt-24 border-y hairline bg-ink text-paper">
           <div className="container-luxe py-20">
             <div className="flex items-end justify-between">
               <div>
@@ -919,7 +921,7 @@ export default async function ReportPage({
         </section>
 
         {/* Patterns, accessories & shoes */}
-        <section className="border-b hairline bg-cream/40">
+        <section id="details" className="scroll-mt-24 border-b hairline bg-cream/40">
           <div className="container-luxe py-20">
             <SectionHead
               n="07"
@@ -936,7 +938,7 @@ export default async function ReportPage({
         </section>
 
         {/* How to wear, care & scent */}
-        <section className="container-luxe py-20">
+        <section id="care" className="container-luxe scroll-mt-24 py-20">
           <SectionHead
             n="08"
             title="How to wear it, and make it last"
@@ -952,7 +954,7 @@ export default async function ReportPage({
         </section>
 
         {/* Do / Don't */}
-        <section className="border-t hairline container-luxe py-20">
+        <section id="dos-donts" className="border-t hairline container-luxe scroll-mt-24 py-20">
           <SectionHead n="09" title="Do & don't" />
           <div className="mt-10 grid gap-8 md:grid-cols-2">
             <ListCard title="Do" items={report.doList} good />
@@ -980,6 +982,43 @@ export default async function ReportPage({
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const REPORT_NAV_ITEMS = [
+  ["overview", "Overview"],
+  ["start-here", "Start"],
+  ["colours", "Colour"],
+  ["grooming", "Hair"],
+  ["fit", "Fit"],
+  ["looks", "Looks"],
+  ["capsule", "Capsule"],
+  ["shopping", "Shopping"],
+  ["details", "Details"],
+  ["care", "Care"],
+  ["dos-donts", "Do / Don't"],
+] as const;
+
+function ReportSectionNav() {
+  return (
+    <nav
+      aria-label="Report sections"
+      className="sticky top-0 z-30 border-b hairline bg-paper/95 backdrop-blur-md"
+    >
+      <div className="container-luxe">
+        <div className="flex gap-2 overflow-x-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {REPORT_NAV_ITEMS.map(([id, label]) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              className="shrink-0 rounded-full border border-line bg-cream/40 px-3.5 py-1.5 text-xs text-stone transition-colors hover:border-ink/30 hover:bg-paper hover:text-ink"
+            >
+              {label}
+            </a>
+          ))}
+        </div>
+      </div>
+    </nav>
+  );
 }
 
 function AddonUnlockCard({
