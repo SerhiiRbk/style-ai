@@ -359,12 +359,20 @@ export function CapsuleMatrix({
                 </div>
               )}
               <ul className={`${visual ? "" : "mt-2"} space-y-1`}>
-                {c.pieces.map((p) => (
-                  <li key={p} className="flex items-center gap-2 text-sm">
-                    <span className="h-1 w-1 rounded-full bg-stone-soft" />
-                    {p}
-                  </li>
-                ))}
+                {c.pieces.map((p) => {
+                  const owned = c.owned?.includes(p);
+                  return (
+                    <li key={p} className="flex items-center gap-2 text-sm">
+                      <span className="h-1 w-1 rounded-full bg-stone-soft" />
+                      <span>{p}</span>
+                      {owned && (
+                        <span className="rounded-full bg-cream px-2 py-0.5 text-[10px] uppercase tracking-wide text-stone-soft">
+                          from your wardrobe
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
               {reportId && (
                 <div className="mt-3 border-t hairline pt-3">

@@ -20,6 +20,145 @@ export const ColorSeason = z.enum([
   "autumn",
 ]);
 
+/** 12-subseason colour analysis (3 per season, by depth / chroma / temperature). */
+export const Subseason = z.enum([
+  "deep-winter",
+  "cool-winter",
+  "bright-winter",
+  "bright-spring",
+  "warm-spring",
+  "light-spring",
+  "light-summer",
+  "cool-summer",
+  "soft-summer",
+  "soft-autumn",
+  "warm-autumn",
+  "deep-autumn",
+]);
+export type SubseasonId = z.infer<typeof Subseason>;
+
+export const SUBSEASON_LABELS: Record<SubseasonId, string> = {
+  "deep-winter": "Deep Winter",
+  "cool-winter": "Cool Winter",
+  "bright-winter": "Bright Winter",
+  "bright-spring": "Bright Spring",
+  "warm-spring": "Warm Spring",
+  "light-spring": "Light Spring",
+  "light-summer": "Light Summer",
+  "cool-summer": "Cool Summer",
+  "soft-summer": "Soft Summer",
+  "soft-autumn": "Soft Autumn",
+  "warm-autumn": "Warm Autumn",
+  "deep-autumn": "Deep Autumn",
+};
+
+export const SUBSEASON_BY_SEASON: Record<
+  z.infer<typeof ColorSeason>,
+  SubseasonId[]
+> = {
+  winter: ["cool-winter", "deep-winter", "bright-winter"],
+  spring: ["warm-spring", "bright-spring", "light-spring"],
+  summer: ["cool-summer", "soft-summer", "light-summer"],
+  autumn: ["warm-autumn", "deep-autumn", "soft-autumn"],
+};
+
+export const HairColor = z.enum([
+  "black",
+  "dark-brown",
+  "brown",
+  "blonde",
+  "red",
+  "gray",
+  "other",
+]);
+export type HairColorId = z.infer<typeof HairColor>;
+
+export const HAIR_COLOR_LABELS: Record<HairColorId, string> = {
+  black: "Black",
+  "dark-brown": "Dark brown",
+  brown: "Brown",
+  blonde: "Blonde",
+  red: "Red / auburn",
+  gray: "Gray / white",
+  other: "Other",
+};
+
+export const EyeColor = z.enum([
+  "brown",
+  "hazel",
+  "amber",
+  "green",
+  "blue",
+  "gray",
+  "other",
+]);
+export type EyeColorId = z.infer<typeof EyeColor>;
+
+export const EYE_COLOR_LABELS: Record<EyeColorId, string> = {
+  brown: "Brown",
+  hazel: "Hazel",
+  amber: "Amber",
+  green: "Green",
+  blue: "Blue",
+  gray: "Gray",
+  other: "Other",
+};
+
+/** Coarse depth signal from hair + eye colouring, falling back to facial contrast. */
+function depthFromColouring(
+  contrast: "low" | "medium" | "high",
+  hairColor?: string | null,
+  eyeColor?: string | null,
+): "deep" | "light" | "medium" {
+  const hair = (hairColor ?? "").toLowerCase();
+  const eye = (eyeColor ?? "").toLowerCase();
+  const darkHair = /black|dark|jet|espresso|deep/.test(hair);
+  const lightHair = /blond|light|platinum|gray|grey|white|silver/.test(hair);
+  const darkEye = /brown|black|dark|amber/.test(eye);
+  const lightEye = /blue|gray|grey|green|light/.test(eye);
+
+  if (darkHair && darkEye) return "deep";
+  if (lightHair && lightEye) return "light";
+  if (contrast === "high") return "deep";
+  if (contrast === "low") return "light";
+  return "medium";
+}
+
+/**
+ * Map the 4-season base + temperature/contrast (and optional hair/eye colour)
+ * onto one of the 12 subseasons. Deterministic — a richer classification than a
+ * plain "warm/deep" prefix, grounded in the strongest available signals.
+ */
+export function classifySubseason(opts: {
+  season: z.infer<typeof ColorSeason>;
+  undertone: "warm" | "cool" | "neutral";
+  contrast: "low" | "medium" | "high";
+  hairColor?: string | null;
+  eyeColor?: string | null;
+}): SubseasonId {
+  const { season, undertone, contrast, hairColor, eyeColor } = opts;
+  const depth = depthFromColouring(contrast, hairColor, eyeColor);
+
+  switch (season) {
+    case "winter":
+      if (depth === "deep") return "deep-winter";
+      if (undertone === "cool") return "cool-winter";
+      return "bright-winter";
+    case "spring":
+      if (depth === "light") return "light-spring";
+      if (contrast === "high") return "bright-spring";
+      return "warm-spring";
+    case "summer":
+      if (depth === "light") return "light-summer";
+      if (depth === "deep" || contrast === "high") return "cool-summer";
+      return "soft-summer";
+    case "autumn":
+      if (depth === "deep") return "deep-autumn";
+      if (depth === "light" || contrast === "low") return "soft-autumn";
+      return "warm-autumn";
+  }
+}
+
 export const Currency = z.enum(["EUR", "USD", "CZK", "PLN"]);
 
 export const BodyType = z.enum([
@@ -98,6 +237,9 @@ export const intakeSchema = z.object({
   weightKg: z.number().int().min(30).max(300).optional(),
   bodyType: BodyType.optional(),
   measurements: measurementsSchema.optional(),
+  // Self-reported colouring — sharpens the seasonal colour analysis (optional).
+  hairColor: HairColor.optional(),
+  eyeColor: EyeColor.optional(),
   occupation: z.string().min(1),
   lifestyle: z.array(z.string()).default([]),
   goals: z.array(z.string()).min(1),
@@ -157,8 +299,12 @@ export const styleProfileSchema = z.object({
     heightCm: z.number(),
     weightKg: z.number().optional(),
     measurements: measurementsSchema.optional(),
+    hairColor: z.string().optional(),
+    eyeColor: z.string().optional(),
   }),
   colorSeason: ColorSeason,
+  /** 12-subseason classification (optional — older reports may lack it). */
+  colorSubseason: Subseason.optional(),
   currency: Currency.default("EUR"),
   goals: z.array(z.string()),
   boldness: Boldness,

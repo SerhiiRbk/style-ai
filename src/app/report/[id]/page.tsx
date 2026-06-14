@@ -68,6 +68,7 @@ import { buildExtras, investmentLevel, itemsForLook } from "@/lib/style-extras";
 import {
   isBodyType,
   BODY_TYPE_LABELS,
+  SUBSEASON_LABELS,
   type Measurements as MeasurementsT,
 } from "@/lib/style-profile";
 
@@ -138,7 +139,7 @@ export default async function ReportPage({
   if (!view) notFound();
 
   const { report, isOwner, isPublic, isAdmin, ownerFeedback } = view;
-  const { profile, intake } = report;
+  const { profile } = report;
   const tierLabel = report.tier.charAt(0).toUpperCase() + report.tier.slice(1);
 
   const grouped = report.shopping.reduce<Record<string, ShoppingItem[]>>(
@@ -274,7 +275,8 @@ export default async function ReportPage({
                 {tierLabel} report
               </span>
               <span>
-                {intake.city}, {intake.country} · {profile.demographics.climate} climate
+                {profile.demographics.city}, {profile.demographics.country} ·{" "}
+                {profile.demographics.climate} climate
               </span>
             </div>
             <h1 className="mt-5 max-w-2xl font-display text-4xl leading-tight sm:text-5xl">
@@ -313,7 +315,14 @@ export default async function ReportPage({
         {/* Profile snapshot */}
         <section className="border-b hairline bg-cream/40">
           <div className="container-luxe grid grid-cols-2 gap-px overflow-hidden py-0 sm:grid-cols-3 lg:grid-cols-6">
-            <Snapshot label="Season" value={cap(profile.colorSeason)} />
+            <Snapshot
+              label="Season"
+              value={
+                profile.colorSubseason
+                  ? SUBSEASON_LABELS[profile.colorSubseason]
+                  : cap(profile.colorSeason)
+              }
+            />
             <Snapshot label="Undertone" value={cap(profile.physical.undertone)} />
             <Snapshot label="Contrast" value={cap(profile.physical.contrast)} />
             <Snapshot label="Face shape" value={cap(profile.physical.faceShape)} />

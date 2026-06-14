@@ -405,7 +405,7 @@ async function generateReportImages(input: ImageJobInput) {
 
   if (tier === "lookbook" || tier === "premium") {
     const colorByTitle = new Map(shopping.map((s) => [s.title, s.color]));
-    const matrix = capsuleMatrix(shopping);
+    const matrix = capsuleMatrix(shopping, profile);
     const capsulePaths = await Promise.all(
       matrix.map(async (combo, i) => {
         const img = await generateLookImage({
@@ -615,6 +615,34 @@ export type ReportView = {
   ownerFeedback: ReportOwnerFeedback | null;
 };
 
+/**
+ * A `reports` row as read for a view. The public path reads the column-whitelist
+ * view `reports_public_v`, so `intake` (and `user_id`) are absent for non-owners.
+ */
+type ReportRow = {
+  id: string;
+  user_id: string;
+  created_at: string;
+  tier: Tier;
+  status: string;
+  is_public: boolean;
+  intake?: StyleReport["intake"];
+  profile: StyleReport["profile"];
+  headline: string | null;
+  summary: string | null;
+  colors: StyleReport["colors"] | null;
+  hair: { recommend: HairRec[]; avoid: HairRec[] } | null;
+  silhouette: StyleReport["silhouette"] | null;
+  shopping: ShoppingItem[] | null;
+  do_list: string[] | null;
+  dont_list: string[] | null;
+  look_items: Record<number, ShoppingItem[]> | null;
+  facial_hair: FacialHairRec[] | null;
+  eyewear: EyewearRec[] | null;
+  accessories: AccessoryRec[] | null;
+  capsule_images: (string | null)[] | null;
+};
+
 /** Map hair storage paths to stable same-origin proxy URLs (no signing I/O). */
 function attachHairImages(hair: {
   recommend: HairRec[];
@@ -754,15 +782,50 @@ async function fetchReportView(
   const isAdmin = Boolean(user && isAdminEmail(user.email));
   const adminDb = isAdmin && hasSupabaseAdmin ? createAdminSupabase() : null;
 
-  const { data: row } = adminDb
-    ? await adminDb.from("reports").select("*").eq("id", id).single()
-    : await sb.from("reports").select("*").eq("id", id).single();
+  // Admin sees everything; otherwise the owner reads the full base row (RLS),
+  // and anyone else can only read the public whitelist VIEW (no intake/user_id).
+  let row: ReportRow | null = null;
+  let isOwner = false;
+  let isPublic = false;
+
+  if (adminDb) {
+    const { data } = await adminDb.from("reports").select("*").eq("id", id).single();
+    row = (data as unknown as ReportRow) ?? null;
+  } else {
+    const { data: ownRow } = await sb
+      .from("reports")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (ownRow) {
+      row = ownRow as unknown as ReportRow;
+      isOwner = Boolean(user && row.user_id === user.id);
+    } else {
+      // Not the owner — fall back to the public, column-whitelisted view
+      // (no intake / user_id; free tier filtered out by the view).
+      const { data: pubRow } = await sb
+        .from("reports_public_v")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+      if (pubRow) {
+        row = pubRow as unknown as ReportRow;
+        isPublic = true;
+      }
+    }
+  }
+
   if (!row) return null;
 
-  const isOwner = Boolean(user && row.user_id === user.id);
   const tier = row.tier as Tier;
-  const isPublic =
-    canShareReport(tier) && Boolean(row.is_public);
+  if (adminDb) {
+    isOwner = Boolean(user && row.user_id === user.id);
+  }
+  // Owner/admin read the base row → derive share state from is_public. The
+  // public-view branch already set isPublic = true.
+  if (isOwner || adminDb) {
+    isPublic = canShareReport(tier) && Boolean(row.is_public);
+  }
   if (!isOwner && !isPublic && !isAdmin) return null;
 
   const db = isOwner || isAdmin ? (adminDb ?? sb) : sb;

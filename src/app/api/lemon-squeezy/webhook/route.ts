@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { hasLemonSqueezy, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { grantCreditsExternal } from "@/lib/credits";
+import { captureError, captureWarning } from "@/lib/observability";
 import {
   verifyLemonWebhookSignature,
   type LemonWebhookPayload,
@@ -54,6 +55,14 @@ export async function POST(request: Request) {
   const orderId = event.data?.id;
 
   if (!userId || !Number.isFinite(credits) || credits <= 0 || !orderId) {
+    // Paid but unbookable: ack with 200 so Lemon stops retrying, but alert —
+    // a real order came in that we can't turn into credits.
+    captureWarning("[lemon webhook] paid order with missing/invalid custom_data", {
+      provider: "lemon_squeezy",
+      orderId: orderId ?? null,
+      userId: userId ?? null,
+      credits: event.meta?.custom_data?.credits ?? null,
+    });
     return NextResponse.json(
       { received: true, error: "Missing/invalid custom_data" },
       { status: 200 },
@@ -61,6 +70,12 @@ export async function POST(request: Request) {
   }
 
   if (!hasSupabaseAdmin) {
+    captureWarning("[lemon webhook] paid order but Supabase admin not configured", {
+      provider: "lemon_squeezy",
+      orderId,
+      userId,
+      credits,
+    });
     return NextResponse.json(
       { error: "Supabase admin not configured" },
       { status: 503 },
@@ -77,6 +92,13 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ received: true, granted: credits, balance });
   } catch (e) {
+    captureError(e, {
+      provider: "lemon_squeezy",
+      stage: "grantCreditsExternal",
+      orderId,
+      userId,
+      credits,
+    });
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "grant failed" },
       { status: 500 },

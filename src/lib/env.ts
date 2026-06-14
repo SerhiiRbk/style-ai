@@ -48,6 +48,9 @@ export const env = {
   lemonSqueezyWebhookSecret: process.env.LEMON_SQUEEZY_WEBHOOK_SECRET,
   lemonSqueezyStoreId: process.env.LEMON_SQUEEZY_STORE_ID,
 
+  // Error tracking (Sentry). Inert unless a DSN is set — see instrumentation.ts.
+  sentryDsn: process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN,
+
   // Public site URL for Checkout success/cancel redirects (falls back to the
   // request origin when unset).
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
@@ -64,6 +67,7 @@ export const hasSupabaseAdmin = Boolean(
 export const hasAI = Boolean(env.aiGatewayKey);
 export const hasVTON = Boolean(env.falKey);
 export const hasCatalogImportKey = Boolean(env.catalogImportKey);
+export const hasSentry = Boolean(env.sentryDsn);
 
 export type PaymentProvider = "stripe" | "lemon_squeezy";
 

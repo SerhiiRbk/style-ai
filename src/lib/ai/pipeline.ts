@@ -16,6 +16,11 @@ import {
   reportContentSchema,
   lookContentSchema,
   inferBodyTypeFromMeasurements,
+  classifySubseason,
+  HAIR_COLOR_LABELS,
+  EYE_COLOR_LABELS,
+  type HairColorId,
+  type EyeColorId,
   type Intake,
   type StyleProfile,
   type ReportContent,
@@ -40,6 +45,10 @@ const visionSchema = z.object({
   contrast: z.enum(["low", "medium", "high"]),
   faceShape: z.string().describe("e.g. oval, round, square, oblong, heart"),
   bodyType: z.string().describe("e.g. rectangle, triangle, inverted-triangle"),
+  hairColor: z
+    .string()
+    .describe("natural hair colour, e.g. 'dark brown', 'blonde', 'gray'"),
+  eyeColor: z.string().describe("eye colour, e.g. 'brown', 'blue', 'green'"),
   colorSeason: z.enum(["winter", "spring", "summer", "autumn"]),
 });
 
@@ -61,15 +70,29 @@ export async function analyzeProfile(
             type: "text",
             text:
               `Analyse these photos of a person for a professional, respectful style consultation. ` +
-              `Determine skin tone, undertone, facial contrast, face shape and body type, and assign a ` +
-              `seasonal colour analysis. Be objective and tactful — never judgmental. ` +
-              `Context: age ${intake.age}, height ${intake.heightCm}cm, ${intake.genderPresentation}.`,
+              `Determine skin tone, undertone, facial contrast, face shape, body type, natural hair colour ` +
+              `and eye colour, and assign a seasonal colour analysis. Be objective and tactful — never judgmental. ` +
+              `Context: age ${intake.age}, height ${intake.heightCm}cm, ${intake.genderPresentation}.` +
+              (intake.hairColor
+                ? ` Self-reported hair: ${HAIR_COLOR_LABELS[intake.hairColor]}.`
+                : "") +
+              (intake.eyeColor
+                ? ` Self-reported eyes: ${EYE_COLOR_LABELS[intake.eyeColor]}.`
+                : ""),
           },
           ...photos.map((p) => ({ type: "image" as const, image: new URL(p.url) })),
         ],
       },
     ],
   });
+
+  // Self-report takes precedence over the vision estimate for colouring.
+  const hairColor = intake.hairColor
+    ? HAIR_COLOR_LABELS[intake.hairColor as HairColorId]
+    : output.hairColor;
+  const eyeColor = intake.eyeColor
+    ? EYE_COLOR_LABELS[intake.eyeColor as EyeColorId]
+    : output.eyeColor;
 
   return {
     version: "1.0",
@@ -96,8 +119,17 @@ export async function analyzeProfile(
       heightCm: intake.heightCm,
       weightKg: intake.weightKg,
       measurements: intake.measurements,
+      hairColor,
+      eyeColor,
     },
     colorSeason: output.colorSeason,
+    colorSubseason: classifySubseason({
+      season: output.colorSeason,
+      undertone: output.undertone,
+      contrast: output.contrast,
+      hairColor,
+      eyeColor,
+    }),
     currency: intake.currency,
     goals: intake.goals,
     boldness: intake.boldness,
@@ -186,6 +218,11 @@ export async function recommend(
       `${grounding}\n` +
       `Produce an explainable style report. Requirements:\n` +
       `- For every colour (best AND avoid) include a hex code and a concrete "why" tied to the profile.\n` +
+      (profile.colorSubseason
+        ? `- Calibrate the palette to the client's ${profile.colorSubseason.replace("-", " ")} colouring ` +
+          `(hair: ${profile.physical.hairColor ?? "n/a"}, eyes: ${profile.physical.eyeColor ?? "n/a"}) — ` +
+          `respect its depth, temperature and chroma.\n`
+        : "") +
       `- For hair: exactly ${hairRecommend} recommended hairstyles and exactly ${hairAvoid} styles to avoid, ` +
       `each with a concrete reason tied to face shape (${profile.physical.faceShape}).\n` +
       `- Tailor the silhouette "fit" line and all 3 rules specifically to the "${profile.physical.bodyType}" body type: ` +

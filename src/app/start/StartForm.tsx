@@ -7,7 +7,11 @@ import { createClient } from "@/lib/supabase/client";
 import { BodyTypePicker } from "@/components/BodyTypePicker";
 import {
   inferBodyTypeFromMeasurements,
+  HAIR_COLOR_LABELS,
+  EYE_COLOR_LABELS,
   type BodyTypeId,
+  type HairColorId,
+  type EyeColorId,
 } from "@/lib/style-profile";
 import { COUNTRIES, countryNameFromCode } from "@/lib/countries";
 import { PROFILE_CURRENCIES, type Currency } from "@/lib/currency";
@@ -87,6 +91,56 @@ const STEPS = ["About you", "Photos", "Goals", "Package"];
 
 const LIVE = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
+/** Representative hair swatches (CSS gradients — crisp at any DPI, no assets). */
+const HAIR_SWATCH_CSS: Record<HairColorId, string> = {
+  black: "linear-gradient(145deg,#2b2724,#141210)",
+  "dark-brown": "linear-gradient(145deg,#4a2f1d,#2a1810)",
+  brown: "linear-gradient(145deg,#7d5132,#553620)",
+  blonde: "linear-gradient(145deg,#ead09a,#c39e5b)",
+  red: "linear-gradient(145deg,#aa5630,#7a3318)",
+  gray: "linear-gradient(145deg,#dcd9d3,#9b9893)",
+  other: "linear-gradient(145deg,#bcb5a9,#8a8275)",
+};
+
+/** Iris swatches with a dark pupil centre, approximating each eye colour. */
+const EYE_SWATCH_CSS: Record<EyeColorId, string> = {
+  brown:
+    "radial-gradient(circle at 50% 50%,#161210 20%,#5a3a22 24%,#7d5132 60%,#2e1c10 100%)",
+  hazel:
+    "radial-gradient(circle at 50% 50%,#161210 20%,#6e5a2b 24%,#7d8a4a 58%,#4a3a1f 100%)",
+  amber:
+    "radial-gradient(circle at 50% 50%,#161210 20%,#9a5e1c 24%,#c98a3a 60%,#6b3f10 100%)",
+  green:
+    "radial-gradient(circle at 50% 50%,#141310 20%,#3f6a3a 24%,#6b9a5a 58%,#2f4a2c 100%)",
+  blue:
+    "radial-gradient(circle at 50% 50%,#141310 20%,#3f6f9a 24%,#7aa6c9 58%,#2f4f72 100%)",
+  gray:
+    "radial-gradient(circle at 50% 50%,#141310 20%,#6a7176 24%,#9aa1a6 58%,#566066 100%)",
+  other:
+    "radial-gradient(circle at 50% 50%,#161210 20%,#8a8275 24%,#bcb5a9 60%,#6a6256 100%)",
+};
+
+type SwatchOption = { id: string; label: string; css?: string };
+
+/** "From photo" detect chip first, then each labelled swatch. */
+const HAIR_SWATCH_OPTIONS: SwatchOption[] = [
+  { id: "", label: "From photo" },
+  ...(Object.keys(HAIR_COLOR_LABELS) as HairColorId[]).map((id) => ({
+    id,
+    label: HAIR_COLOR_LABELS[id],
+    css: HAIR_SWATCH_CSS[id],
+  })),
+];
+
+const EYE_SWATCH_OPTIONS: SwatchOption[] = [
+  { id: "", label: "From photo" },
+  ...(Object.keys(EYE_COLOR_LABELS) as EyeColorId[]).map((id) => ({
+    id,
+    label: EYE_COLOR_LABELS[id],
+    css: EYE_SWATCH_CSS[id],
+  })),
+];
+
 export function StartForm({
   userId,
   showWelcome: initialWelcome = false,
@@ -147,6 +201,8 @@ export function StartForm({
   const [weight, setWeight] = useState("");
   const [bodyType, setBodyType] = useState<BodyTypeId | "">("");
   const [bodyTypeManual, setBodyTypeManual] = useState(false);
+  const [hairColor, setHairColor] = useState<HairColorId | "">("");
+  const [eyeColor, setEyeColor] = useState<EyeColorId | "">("");
   const [shoulderCm, setShoulderCm] = useState("");
   const [chestCm, setChestCm] = useState("");
   const [waistCm, setWaistCm] = useState("");
@@ -159,6 +215,12 @@ export function StartForm({
   const [budget, setBudget] = useState(1);
   const [tier, setTier] = useState<Tier>("lookbook");
   const [biometricConsent, setBiometricConsent] = useState(false);
+
+  // Credit gating for the Package step (balance is the server snapshot at load).
+  const reportCost = REPORT_COST[tier];
+  const knownBalance = creditBalance != null ? creditBalance : null;
+  const insufficientCredits =
+    knownBalance != null && reportCost > 0 && knownBalance < reportCost;
 
   // Prefill country/city/currency from Vercel geolocation (best-effort).
   useEffect(() => {
@@ -249,6 +311,8 @@ export function StartForm({
             measurements: Object.values(measurements).some((v) => v != null)
               ? measurements
               : undefined,
+            hairColor: hairColor || undefined,
+            eyeColor: eyeColor || undefined,
             occupation,
             lifestyle,
             goals,
@@ -360,8 +424,36 @@ export function StartForm({
             <Section
               eyebrow="Step 2"
               title="Upload your photos"
-              subtitle="A clear front portrait and a full-length shot work best. Profile and a current outfit are optional. Photos are processed privately and never sold."
+              subtitle="Photos are processed privately and never sold or shared."
             >
+              <div className="mb-6 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-brass/30 bg-brass/5 p-4">
+                  <div className="flex items-center gap-2 font-display text-sm text-ink">
+                    <svg className="h-4 w-4 text-brass" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Good photos
+                  </div>
+                  <ul className="mt-2 space-y-1.5 text-xs text-stone">
+                    <li>• Natural daylight (face facing window)</li>
+                    <li>• Clear view of your face and hair</li>
+                    <li>• Full length mirror selfie works perfectly</li>
+                  </ul>
+                </div>
+                <div className="rounded-xl border border-line bg-paper p-4 opacity-80">
+                  <div className="flex items-center gap-2 font-display text-sm text-ink">
+                    <svg className="h-4 w-4 text-stone-soft" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Avoid
+                  </div>
+                  <ul className="mt-2 space-y-1.5 text-xs text-stone-soft">
+                    <li>• Sunglasses or heavy filters</li>
+                    <li>• Group photos or busy backgrounds</li>
+                    <li>• Dark rooms or extreme low angles</li>
+                  </ul>
+                </div>
+              </div>
               <div className="grid gap-4 sm:grid-cols-3">
                 {LIVE
                   ? PHOTO_ROLES.map(({ role, label }) => (
@@ -491,6 +583,34 @@ export function StartForm({
                 </Field>
               </div>
 
+              <Label className="mt-8">Colouring — optional</Label>
+              <p className="mt-1 text-xs text-stone-soft">
+                Hair and eye colour sharpen your seasonal colour analysis. Leave
+                them on “From photo” to read them from your uploads.
+              </p>
+              <div className="mt-4 space-y-5">
+                <div>
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-stone-soft">
+                    Hair
+                  </div>
+                  <ColourSwatchPicker
+                    value={hairColor}
+                    onChange={(v) => setHairColor(v as HairColorId | "")}
+                    options={HAIR_SWATCH_OPTIONS}
+                  />
+                </div>
+                <div>
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-stone-soft">
+                    Eyes
+                  </div>
+                  <ColourSwatchPicker
+                    value={eyeColor}
+                    onChange={(v) => setEyeColor(v as EyeColorId | "")}
+                    options={EYE_SWATCH_OPTIONS}
+                  />
+                </div>
+              </div>
+
               <Label className="mt-8">Measurements — optional</Label>
               <p className="mt-1 text-xs text-stone-soft">
                 Girth in centimetres. Shoulder, waist and hip girth set your
@@ -603,8 +723,22 @@ export function StartForm({
               title="Choose your package"
               subtitle="Sign in required. New accounts get signup credits; the Starter Report uses credits like paid tiers."
             >
+              {knownBalance != null && (
+                <div className="mb-5 flex items-center justify-between rounded-xl border border-line bg-cream/40 px-5 py-3">
+                  <span className="text-sm text-stone">Your balance</span>
+                  <span className="font-display text-lg text-ink">
+                    {knownBalance} {knownBalance === 1 ? "credit" : "credits"}
+                  </span>
+                </div>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
-                {TIERS.map((t) => (
+                {TIERS.map((t) => {
+                  const tierCost = REPORT_COST[t.id];
+                  const unaffordable =
+                    knownBalance != null &&
+                    tierCost > 0 &&
+                    knownBalance < tierCost;
+                  return (
                   <button
                     key={t.id}
                     onClick={() => {
@@ -626,12 +760,18 @@ export function StartForm({
                     </div>
                     <div className="text-right">
                       <div className="font-display text-2xl">
-                        {REPORT_COST[t.id]}
+                        {tierCost}
                       </div>
                       <div className="text-[11px] text-stone-soft">credits</div>
+                      {unaffordable && (
+                        <div className="mt-1 text-[11px] text-[#9E5C3C]">
+                          need {tierCost - (knownBalance as number)} more
+                        </div>
+                      )}
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
               <p className="mt-5 text-xs text-stone-soft">
                 Sign up for {SIGNUP_BONUS} free credits — your Starter Report is{" "}
@@ -642,6 +782,17 @@ export function StartForm({
                 </Link>
                 .
               </p>
+              {insufficientCredits && (
+                <p className="mt-4 rounded-xl border border-[#9E5C3C]/30 bg-[#9E5C3C]/5 px-5 py-3 text-sm text-[#9E5C3C]">
+                  You have {knownBalance}{" "}
+                  {knownBalance === 1 ? "credit" : "credits"} — this package needs{" "}
+                  {reportCost}. Pick a smaller package above or{" "}
+                  <Link href="/pricing" className="underline hover:text-ink">
+                    top up your credits
+                  </Link>
+                  .
+                </p>
+              )}
               {error && (
                 <p className="mt-4 text-sm text-[#9E5C3C]">{error}</p>
               )}
@@ -669,7 +820,7 @@ export function StartForm({
           ) : (
             <button
               onClick={submit}
-              disabled={submitting}
+              disabled={submitting || insufficientCredits}
               className="rounded-full bg-ink px-7 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-50"
             >
               {submitting ? (
@@ -883,6 +1034,57 @@ function Select({
         </option>
       ))}
     </select>
+  );
+}
+
+/** Visual swatch picker for hair / eye colour. Empty id ("") = detect-from-photo. */
+function ColourSwatchPicker({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: SwatchOption[];
+}) {
+  return (
+    <div className="flex flex-wrap gap-2.5">
+      {options.map((o) => {
+        const selected = value === o.id;
+        return (
+          <button
+            key={o.id || "detect"}
+            type="button"
+            onClick={() => onChange(o.id)}
+            aria-pressed={selected}
+            title={o.label}
+            className={`flex w-[64px] flex-col items-center gap-1.5 rounded-xl border px-1.5 py-2 text-center transition-colors ${
+              selected
+                ? "border-ink bg-cream/60"
+                : "border-line hover:border-ink/40"
+            }`}
+          >
+            <span
+              className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                o.css
+                  ? "ring-1 ring-black/10"
+                  : "border border-dashed border-stone/50"
+              } ${selected ? "ring-2 ring-ink ring-offset-1 ring-offset-paper" : ""}`}
+              style={o.css ? { background: o.css } : undefined}
+            >
+              {!o.css && (
+                <span className="text-[9px] uppercase tracking-wide text-stone-soft">
+                  Auto
+                </span>
+              )}
+            </span>
+            <span className="text-[11px] leading-tight text-stone">
+              {o.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

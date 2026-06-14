@@ -4,6 +4,7 @@ import { env, hasStripe, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
 import { grantCreditsExternal } from "@/lib/credits";
+import { captureError, captureWarning } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,7 +64,15 @@ export async function POST(request: Request) {
       : (session.payment_intent?.id ?? session.id);
 
   if (!userId || !Number.isFinite(credits) || credits <= 0) {
-    // Malformed metadata — ack to avoid infinite retries, but flag for logs.
+    // Paid but unbookable: ack with 200 so Stripe stops retrying, but alert —
+    // a real payment came in that we can't turn into credits.
+    captureWarning("[stripe webhook] paid checkout with missing/invalid metadata", {
+      provider: "stripe",
+      sessionId: session.id,
+      paymentIntent: refExt,
+      userId: userId ?? null,
+      credits: session.metadata?.credits ?? null,
+    });
     return NextResponse.json(
       { received: true, error: "Missing/invalid metadata" },
       { status: 200 },
@@ -72,6 +81,12 @@ export async function POST(request: Request) {
 
   if (!hasSupabaseAdmin) {
     // Can't grant without the service role; ask Stripe to retry later.
+    captureWarning("[stripe webhook] paid checkout but Supabase admin not configured", {
+      provider: "stripe",
+      paymentIntent: refExt,
+      userId,
+      credits,
+    });
     return NextResponse.json(
       { error: "Supabase admin not configured" },
       { status: 503 },
@@ -89,6 +104,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true, granted: credits, balance });
   } catch (e) {
     // Transient DB error — 5xx so Stripe retries (grant stays idempotent).
+    captureError(e, {
+      provider: "stripe",
+      stage: "grantCreditsExternal",
+      paymentIntent: refExt,
+      userId,
+      credits,
+    });
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "grant failed" },
       { status: 500 },

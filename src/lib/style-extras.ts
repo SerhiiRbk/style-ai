@@ -5,7 +5,11 @@
  * the model's structured-output contract.
  */
 import type { ColorRec, Look, ShoppingItem, StyleReport } from "@/lib/report";
-import type { StyleProfile } from "@/lib/style-profile";
+import {
+  classifySubseason,
+  SUBSEASON_LABELS,
+  type StyleProfile,
+} from "@/lib/style-profile";
 
 export type FrameShapeId =
   | "rectangle"
@@ -48,7 +52,13 @@ export type ColorDNA = {
   contrastRule: string;
 };
 
-export type OutfitCombo = { context: string; pieces: string[]; image?: string };
+export type OutfitCombo = {
+  context: string;
+  pieces: string[];
+  /** Subset of `pieces` that are assumed wardrobe basics, not curated catalogue. */
+  owned?: string[];
+  image?: string;
+};
 
 export type PriceTier = {
   category: string;
@@ -730,14 +740,21 @@ const CATEGORY_PRIORITY: Record<string, number> = {
   Accessories: 5,
 };
 
-function capsuleFrom(shopping: ShoppingItem[]): CapsulePlan {
+function capsuleFrom(shopping: ShoppingItem[], profile: StyleProfile): CapsulePlan {
   const count = (cats: string[]) =>
     shopping.filter((i) => cats.includes(i.category)).length;
-  // Assume one pair of trousers and one pair of denim already owned → +1 each.
-  const tops = count(["Knitwear", "Shirts"]) + 1; // + a layering blazer
-  const bottoms = Math.max(1, count(["Trousers"])) + 1; // + owned denim/chinos
-  const shoes = Math.max(1, count(["Footwear"]));
-  const outfits = Math.min(40, tops * bottoms * shoes);
+
+  // Build the outfit count from the *real* curated catalogue. Empty slots are
+  // filled with the same assumed wardrobe basics the matrix uses (2 bottoms,
+  // 1 shoe) — never silently padded with extra catalogue items.
+  const basics = assumedBasics(profile);
+  const realTops = count(["Knitwear", "Shirts"]);
+  const topsN = realTops + (count(["Outerwear"]) > 0 ? 1 : 0); // + a layer option
+  const realBottoms = count(["Trousers"]);
+  const bottomsN = realBottoms > 0 ? realBottoms : basics.bottoms.length;
+  const realShoes = count(["Footwear"]);
+  const shoesN = realShoes > 0 ? realShoes : basics.shoes.length;
+  const outfits = topsN > 0 ? Math.min(40, topsN * bottomsN * shoesN) : 0;
 
   const sorted = [...shopping].sort(
     (a, b) =>
@@ -872,19 +889,24 @@ function archetypeFor(profile: StyleProfile): Archetype {
 /* -------------------------------- colour DNA ------------------------------ */
 
 function colorDNAFor(profile: StyleProfile, best: ColorRec[]): ColorDNA {
-  const season = cap(profile.colorSeason);
-  const contrast = lc(profile.physical.contrast);
-  const undertone = lc(profile.physical.undertone);
-  const prefix =
-    contrast === "low"
-      ? "Soft"
-      : contrast === "high"
-        ? "Deep"
-        : undertone === "warm"
-          ? "Warm"
-          : undertone === "cool"
-            ? "Cool"
-            : "True";
+  const contrast = lc(profile.physical.contrast) as "low" | "medium" | "high";
+  const undertone = lc(profile.physical.undertone) as
+    | "warm"
+    | "cool"
+    | "neutral";
+
+  // Real 12-subseason classification (stored on the profile when available),
+  // falling back to a fresh classification from the profile's signals.
+  const subId =
+    profile.colorSubseason ??
+    classifySubseason({
+      season: profile.colorSeason,
+      undertone,
+      contrast,
+      hairColor: profile.physical.hairColor,
+      eyeColor: profile.physical.eyeColor,
+    });
+  const subseason = SUBSEASON_LABELS[subId];
 
   const neutrals = best
     .filter((c) => hexToHsl(c.hex).s < 0.32)
@@ -922,7 +944,7 @@ function colorDNAFor(profile: StyleProfile, best: ColorRec[]): ColorDNA {
         : "Moderate contrast suits you — one clear light/dark step, not a stark jump.";
 
   return {
-    subseason: `${prefix} ${season}`,
+    subseason,
     neutrals: neutrals.length ? neutrals : best.slice(0, 3),
     bestWhite,
     bestDenim,
@@ -1313,34 +1335,98 @@ export function decomposeLook(description: string): LookGarment[] {
   return decomposeFromWholeText(description);
 }
 
-export function capsuleMatrix(shopping: ShoppingItem[]): OutfitCombo[] {
+/** Palette-aware wardrobe staples assumed already owned (clearly labelled in UI). */
+function assumedBasics(profile: StyleProfile): {
+  bottoms: string[];
+  shoes: string[];
+} {
+  const u = lc(profile.physical.undertone);
+  const jeans =
+    u === "warm"
+      ? "Mid-indigo jeans"
+      : u === "cool"
+        ? "Blue-grey jeans"
+        : "Indigo jeans";
+  const chinos =
+    u === "warm"
+      ? "Stone chinos"
+      : u === "cool"
+        ? "Grey chinos"
+        : "Taupe chinos";
+  const shoe = u === "cool" ? "Black leather derbies" : "Brown leather derbies";
+  return { bottoms: [jeans, chinos], shoes: [shoe] };
+}
+
+/** Outfit contexts tied to the client's stated goals (with a sensible default mix). */
+function contextsForGoals(profile: StyleProfile): string[] {
+  const hay = `${profile.goals.join(" ")} ${profile.boldness}`.toLowerCase();
+  const out: string[] = [];
+  const add = (...cs: string[]) => {
+    for (const c of cs) if (!out.includes(c)) out.push(c);
+  };
+  if (/work|profession|office|career|business|promot|lead|manage|interview/.test(hay))
+    add("Boardroom", "Client meeting");
+  if (/confiden|date|dating|social|attract|impress|romance/.test(hay))
+    add("Dinner", "Date night");
+  if (/casual|weekend|comfort|relax|everyday|natural|simple/.test(hay))
+    add("Weekend", "Travel day");
+  if (/versatile|capsule|minimal|polished|elevate/.test(hay))
+    add("Smart casual", "Everyday");
+  // Always have at least six contexts available.
+  add("Smart casual", "Weekend", "Client meeting", "Dinner", "Travel day", "Everyday");
+  return out;
+}
+
+/**
+ * Mix-and-match outfit matrix built ONLY from the curated catalogue (`shopping`).
+ * When a slot has no catalogue item (e.g. no trousers / shoes), it is filled with
+ * clearly-labelled assumed wardrobe basics rather than fabricated catalogue picks.
+ * Contexts are tied to the client's goals. Deterministic so the generated capsule
+ * images (ordered to match this output) stay aligned.
+ */
+export function capsuleMatrix(
+  shopping: ShoppingItem[],
+  profile: StyleProfile,
+): OutfitCombo[] {
   const pick = (cats: string[]) =>
     shopping.filter((i) => cats.includes(i.category)).map((i) => i.title);
-  const layers = pick(["Outerwear"]);
-  const tops = [...pick(["Knitwear", "Shirts"])];
-  const bottoms = [...pick(["Trousers"]), "Dark indigo denim", "Taupe chinos"];
-  const shoes = pick(["Footwear"]);
-  const t = (layers[0] ? [layers[0], ...tops] : tops).slice(0, 3);
-  const s = shoes.length ? shoes : ["Brown derbies"];
+  const basics = assumedBasics(profile);
+  const owned = new Set<string>();
 
-  const contexts = [
-    "Boardroom",
-    "Client lunch",
-    "Smart casual",
-    "Weekend",
-    "Dinner",
-    "Travel day",
-  ];
+  const layers = pick(["Outerwear"]);
+  const catTops = pick(["Knitwear", "Shirts"]);
+  const tops = (layers[0] ? [layers[0], ...catTops] : catTops).slice(0, 3);
+  if (!tops.length) return [];
+
+  let bottoms = pick(["Trousers"]);
+  if (!bottoms.length) {
+    bottoms = basics.bottoms;
+    basics.bottoms.forEach((b) => owned.add(b));
+  }
+  let shoes = pick(["Footwear"]);
+  if (!shoes.length) {
+    shoes = basics.shoes;
+    basics.shoes.forEach((s) => owned.add(s));
+  }
+
+  const contexts = contextsForGoals(profile);
   const combos: OutfitCombo[] = [];
+  const seen = new Set<string>();
   let ci = 0;
-  for (let i = 0; i < t.length && combos.length < 6; i++) {
+  for (let i = 0; i < tops.length && combos.length < 6; i++) {
     for (let j = 0; j < bottoms.length && combos.length < 6; j++) {
-      const top = t[i];
+      const top = tops[i];
       const bottom = bottoms[(i + j) % bottoms.length];
-      const shoe = s[(i + j) % s.length];
+      const shoe = shoes.length ? shoes[(i + j) % shoes.length] : undefined;
+      const pieces = [top, bottom, ...(shoe ? [shoe] : [])];
+      const key = pieces.join("|").toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const ownedHere = pieces.filter((p) => owned.has(p));
       combos.push({
         context: contexts[ci % contexts.length],
-        pieces: [top, bottom, shoe],
+        pieces,
+        ...(ownedHere.length ? { owned: ownedHere } : {}),
       });
       ci++;
     }
@@ -1387,8 +1473,8 @@ export function buildExtras(report: StyleReport): StyleExtras {
     fitBlueprint: fitBlueprint(profile),
     pairings: colorPairings(report.colors.best),
     fabrics: fabricsFor(profile),
-    capsule: capsuleFrom(report.shopping),
-    matrix: capsuleMatrix(report.shopping),
+    capsule: capsuleFrom(report.shopping, profile),
+    matrix: capsuleMatrix(report.shopping, profile),
     priceTiers: priceTiersFrom(report.shopping),
     grooming: groomingFor(profile),
     styling: STYLING_MECHANICS,

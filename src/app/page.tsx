@@ -55,6 +55,7 @@ export default function Home() {
         <Understand />
         <HowItWorks />
         <SampleReport />
+        <CapsulePreview />
         <Audience />
         <Pricing />
         <Principles />
@@ -463,6 +464,78 @@ function SampleReport() {
   );
 }
 
+function CapsulePreview() {
+  return (
+    <section className="border-y hairline bg-cream/20">
+      <div className="container-luxe py-24">
+        <div className="max-w-2xl">
+          <p className="eyebrow">The Wardrobe Matrix</p>
+          <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
+            We don&apos;t just give you outfits. We build a mathematical wardrobe.
+          </h2>
+          <p className="mt-5 text-lg leading-relaxed text-stone">
+            Most apps generate random looks. We pick 5–10 core pieces and map out exactly how they combine into a full week of outfits, ensuring every item pulls its weight using the 60/30/10 proportion rule.
+          </p>
+        </div>
+
+        <div className="mt-14 grid gap-8 lg:grid-cols-[1fr_1.3fr]">
+          {/* Proportions */}
+          <div className="rounded-2xl border hairline bg-paper p-8 shadow-sm">
+            <h3 className="font-display text-2xl">The 60/30/10 Rule</h3>
+            <p className="mt-3 text-sm leading-relaxed text-stone">
+              Every look is balanced by proportion, not just palette. 60% dominant base, 30% secondary anchor, 10% accent. This is how you mix colours without looking loud.
+            </p>
+            <div className="mt-8 flex h-14 w-full overflow-hidden rounded-xl border border-ink/10 shadow-sm">
+              <div className="flex w-[60%] items-center justify-center bg-[#27324A] px-2 text-center text-[10px] uppercase tracking-widest text-white/90">
+                60% Base
+              </div>
+              <div className="flex w-[30%] items-center justify-center bg-[#EFE6D3] px-2 text-center text-[10px] uppercase tracking-widest text-ink/80">
+                30% Anchor
+              </div>
+              <div className="flex w-[10%] items-center justify-center bg-[#9E5C3C] px-2 text-center text-[10px] uppercase tracking-widest text-white/90">
+                10%
+              </div>
+            </div>
+            <ul className="mt-6 space-y-2 text-xs text-stone-soft">
+              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#27324A]" /> Navy trousers & blazer</li>
+              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#EFE6D3]" /> Cream merino crewneck</li>
+              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#9E5C3C]" /> Brown leather loafers</li>
+            </ul>
+          </div>
+
+          {/* Matrix */}
+          <div className="rounded-2xl border hairline bg-paper p-8 shadow-sm">
+            <h3 className="font-display text-2xl">5 pieces = 4 outfits</h3>
+            <p className="mt-3 text-sm leading-relaxed text-stone">
+              Your custom capsule matrix shows you exactly what to wear for every context. No guessing, no standalone pieces that only work in one outfit.
+            </p>
+            <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {[
+                { ctx: "Boardroom", pieces: ["Navy blazer", "White shirt", "Charcoal trousers"] },
+                { ctx: "Dinner", pieces: ["Navy blazer", "Taupe knit", "Charcoal trousers"] },
+                { ctx: "Smart Casual", pieces: ["Taupe knit", "White shirt", "Indigo denim"] },
+                { ctx: "Weekend", pieces: ["Taupe knit", "Indigo denim", "Brown loafers"] },
+              ].map((c) => (
+                <div key={c.ctx} className="rounded-xl border hairline bg-cream/30 p-4">
+                  <div className="text-[10px] uppercase tracking-wider text-brass">{c.ctx}</div>
+                  <ul className="mt-3 space-y-1.5">
+                    {c.pieces.map((p) => (
+                      <li key={p} className="flex items-start gap-1.5 text-[11px] leading-tight text-stone">
+                        <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-stone-soft" />
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Audience() {
   return (
     <section id="audience" className="container-luxe py-24">
@@ -683,28 +756,29 @@ function Principles() {
   ];
   return (
     <section className="container-luxe py-24">
-      <div className="grid gap-12 md:grid-cols-[1fr_1.4fr]">
-        <div>
-          <p className="eyebrow">Principles</p>
-          <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
-            Quality over wow-effect.
-          </h2>
-          <p className="mt-4 leading-relaxed text-stone">
-            AI imagery matters — but it should never replace a genuine analysis.
-            This is a consultant, not a toy.
-          </p>
-          <div className="relative mt-8 aspect-[4/3] overflow-hidden rounded-2xl border hairline">
-            <Image
-              src={BRAND.stylist.atelier}
-              alt="Editorial atelier scene — the world of Valetti"
-              fill
-              sizes="(max-width: 768px) 100vw, 420px"
-              className="object-cover"
-            />
-            <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-3 py-1.5 text-[11px] text-ink backdrop-blur-sm">
-              The Valetti atelier
-            </span>
-          </div>
+      <div className="max-w-2xl">
+        <p className="eyebrow">Principles</p>
+        <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
+          Quality over wow-effect.
+        </h2>
+        <p className="mt-4 text-lg leading-relaxed text-stone">
+          AI imagery matters — but it should never replace a genuine analysis.
+          This is a consultant, not a toy.
+        </p>
+      </div>
+
+      <div className="mt-14 grid items-center gap-12 md:grid-cols-[1fr_1.4fr]">
+        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border hairline">
+          <Image
+            src={BRAND.stylist.atelier}
+            alt="Editorial atelier scene — the world of Valetti"
+            fill
+            sizes="(max-width: 768px) 100vw, 420px"
+            className="object-cover"
+          />
+          <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-3 py-1.5 text-[11px] text-ink backdrop-blur-sm">
+            The Valetti atelier
+          </span>
         </div>
         <div className="grid gap-px overflow-hidden rounded-2xl border hairline bg-line sm:grid-cols-2">
           {items.map(([t, b]) => (

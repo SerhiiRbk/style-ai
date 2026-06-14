@@ -72,12 +72,24 @@ export function MeetStylist() {
             ))}
           </div>
 
-          <p className="mt-8 font-display text-xl italic text-stone">
-            &ldquo;Elegance is knowing what to leave out.&rdquo;
-          </p>
-          <p className="mt-2 text-sm text-stone-soft">
-            — {BRAND.stylist.signature} · {BRAND.tagline}
-          </p>
+          <div className="mt-10 flex gap-5 rounded-2xl border border-brass/30 bg-brass/5 p-7">
+            <svg
+              className="h-8 w-8 shrink-0 text-brass-soft"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h4v10h-10z" />
+            </svg>
+            <div>
+              <p className="font-display text-xl leading-relaxed text-ink">
+                Good style isn&apos;t about fashion. It&apos;s the removal of
+                visual noise between who you are and how you are perceived.
+              </p>
+              <p className="mt-3 text-xs font-medium uppercase tracking-wider text-stone">
+                — {BRAND.stylist.signature}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </section>

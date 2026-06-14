@@ -1,5 +1,10 @@
 import {
   inferBodyTypeFromMeasurements,
+  classifySubseason,
+  HAIR_COLOR_LABELS,
+  EYE_COLOR_LABELS,
+  type HairColorId,
+  type EyeColorId,
   type Intake,
   type StyleProfile,
   type ReportContent,
@@ -170,7 +175,8 @@ export type StyleReport = {
   id: string;
   tier: Tier;
   createdAt: string;
-  intake: Intake;
+  /** Raw questionnaire — owner/admin only; omitted from publicly shared views. */
+  intake?: Intake;
   profile: StyleProfile;
   headline: string;
   summary: string;
@@ -232,8 +238,25 @@ export function mockStyleProfile(intake: Intake): StyleProfile {
       heightCm: intake.heightCm,
       weightKg: intake.weightKg,
       measurements: intake.measurements,
+      hairColor: intake.hairColor
+        ? HAIR_COLOR_LABELS[intake.hairColor as HairColorId]
+        : undefined,
+      eyeColor: intake.eyeColor
+        ? EYE_COLOR_LABELS[intake.eyeColor as EyeColorId]
+        : undefined,
     },
     colorSeason: "autumn",
+    colorSubseason: classifySubseason({
+      season: "autumn",
+      undertone: "warm",
+      contrast: "low",
+      hairColor: intake.hairColor
+        ? HAIR_COLOR_LABELS[intake.hairColor as HairColorId]
+        : undefined,
+      eyeColor: intake.eyeColor
+        ? EYE_COLOR_LABELS[intake.eyeColor as EyeColorId]
+        : undefined,
+    }),
     currency: intake.currency,
     goals: intake.goals,
     boldness: intake.boldness,
@@ -552,7 +575,7 @@ export function mockShopping(): ShoppingItem[] {
 
 /** Assemble a full StyleReport from a profile + content + shopping (real or mock). */
 export function assembleReport(opts: {
-  intake: Intake;
+  intake?: Intake;
   tier: Tier;
   profile: StyleProfile;
   content: ReportContent;

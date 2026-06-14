@@ -4,7 +4,13 @@ import { isAdminEmail } from "@/lib/admin";
 import { isDemoReportId } from "@/lib/demo-report";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
-import { canShareReport, type HairRec, type Tier } from "@/lib/report";
+import {
+  canShareReport,
+  type EyewearRec,
+  type FacialHairRec,
+  type HairRec,
+  type Tier,
+} from "@/lib/report";
 
 export async function GET(
   _request: Request,
@@ -27,29 +33,64 @@ export async function GET(
   const isAdmin = Boolean(user && isAdminEmail(user.email));
   const adminDb = isAdmin && hasSupabaseAdmin ? createAdminSupabase() : null;
 
-  const { data: row, error } = adminDb
-    ? await adminDb
-        .from("reports")
-        .select(
-          "status, tier, capsule_images, hair, facial_hair, eyewear, user_id, is_public",
-        )
-        .eq("id", id)
-        .single()
-    : await sb
-        .from("reports")
-        .select(
-          "status, tier, capsule_images, hair, facial_hair, eyewear, user_id, is_public",
-        )
-        .eq("id", id)
-        .single();
+  const ownerCols =
+    "status, tier, capsule_images, hair, facial_hair, eyewear, user_id, is_public";
+  // Public view omits user_id (and intake) — read it for non-owners.
+  const publicCols =
+    "status, tier, capsule_images, hair, facial_hair, eyewear, is_public";
 
-  if (error || !row) {
+  type StatusRow = {
+    status?: string | null;
+    tier?: string | null;
+    capsule_images?: (string | null)[] | null;
+    hair?: { recommend: HairRec[]; avoid: HairRec[] } | null;
+    facial_hair?: FacialHairRec[] | null;
+    eyewear?: EyewearRec[] | null;
+    user_id?: string;
+    is_public?: boolean;
+  };
+
+  let row: StatusRow | null = null;
+  let isOwner = false;
+  let isPublic = false;
+
+  if (adminDb) {
+    const { data } = await adminDb
+      .from("reports")
+      .select(ownerCols)
+      .eq("id", id)
+      .single();
+    row = (data as unknown as StatusRow) ?? null;
+    if (row) {
+      isOwner = Boolean(user && row.user_id === user.id);
+      isPublic = canShareReport(row.tier as Tier) && Boolean(row.is_public);
+    }
+  } else {
+    const { data: own } = await sb
+      .from("reports")
+      .select(ownerCols)
+      .eq("id", id)
+      .maybeSingle();
+    if (own) {
+      row = own as unknown as StatusRow;
+      isOwner = Boolean(user && row.user_id === user.id);
+    } else {
+      const { data: pub } = await sb
+        .from("reports_public_v")
+        .select(publicCols)
+        .eq("id", id)
+        .maybeSingle();
+      if (pub) {
+        row = pub as unknown as StatusRow;
+        isPublic = true;
+      }
+    }
+  }
+
+  if (!row) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const isOwner = Boolean(user && row.user_id === user.id);
-  const isPublic =
-    canShareReport(row.tier as Tier) && Boolean(row.is_public);
   if (!isOwner && !isPublic && !isAdmin) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
