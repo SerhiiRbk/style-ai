@@ -2,8 +2,9 @@ import "server-only";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { userHasPromoRedemption } from "@/lib/promotions";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
-import { SIGNUP_BONUS } from "@/lib/credit-costs";
+import { REPORT_COST, SIGNUP_BONUS } from "@/lib/credit-costs";
 import type { CreditReason } from "@/lib/credit-costs";
+import type { Tier } from "@/lib/report";
 
 /**
  * Credit economy. Credits are the real spendable currency of the product:
@@ -237,6 +238,48 @@ export async function spendCreditsOnce(
     return next;
   }
   return Number(data) || 0;
+}
+
+export type ReportCreditRecovery = {
+  creditCost: number;
+  wasCharged: boolean;
+  wasRefunded: boolean;
+};
+
+/** Ledger state for a report charge / refund — drives the failed-generation recovery UI. */
+export async function getReportCreditRecovery(
+  admin: AdminClient,
+  userId: string,
+  reportId: string,
+  tier: Tier,
+): Promise<ReportCreditRecovery> {
+  const creditCost = REPORT_COST[tier] ?? 0;
+  if (creditCost <= 0) {
+    return { creditCost: 0, wasCharged: false, wasRefunded: false };
+  }
+
+  const [{ data: charge }, { data: refund }] = await Promise.all([
+    admin
+      .from("credits_ledger")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("reason", "report")
+      .eq("ref_id", reportId)
+      .limit(1),
+    admin
+      .from("credits_ledger")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("reason", "report_refund")
+      .eq("ref_id", reportId)
+      .limit(1),
+  ]);
+
+  return {
+    creditCost,
+    wasCharged: (charge?.length ?? 0) > 0,
+    wasRefunded: (refund?.length ?? 0) > 0,
+  };
 }
 
 /**

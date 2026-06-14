@@ -165,10 +165,27 @@ export type Look = {
   image: string;
 };
 
+/** What the user still has after a failed generation — shown in the recovery banner. */
+export type ReportRecoveryInfo = {
+  creditCost: number;
+  /** `true` when credits were refunded; `false` if charged but not yet refunded; `null` when no charge applied. */
+  creditsRefunded: boolean | null;
+  saved: {
+    questionnaire: boolean;
+    photos: boolean;
+    writtenGuidance: boolean;
+    colors: boolean;
+    looks: number;
+  };
+  canRetry: boolean;
+};
+
 export type ReportGenerationState = {
   status: "processing" | "ready" | "failed";
   pending: boolean;
   phase: "report" | "hair" | "grooming" | "images" | "capsule" | null;
+  /** Owner-only — populated when `status === "failed"`. */
+  recovery?: ReportRecoveryInfo;
 };
 
 export type StyleReport = {

@@ -329,9 +329,21 @@ export function StartForm({
       const data = (await res.json().catch(() => ({}))) as {
         id?: string;
         error?: string;
+        reportId?: string;
+        refunded?: boolean;
+        creditCost?: number;
       };
       if (!res.ok) {
-        throw new Error(data.error ?? "Could not generate report");
+        if (data.reportId) {
+          notifyReportGenerationStarted(data.reportId);
+          router.push(`/report/${data.reportId}`);
+          return;
+        }
+        const refundNote =
+          data.refunded && data.creditCost
+            ? ` ${data.creditCost} credits were returned to your balance.`
+            : "";
+        throw new Error((data.error ?? "Could not generate report") + refundNote);
       }
       if (!data.id) throw new Error("Report created but no id returned");
       notifyReportGenerationStarted(data.id);

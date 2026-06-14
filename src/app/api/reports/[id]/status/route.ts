@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { reportGenerationState } from "@/lib/data/reports";
+import { reportGenerationState, buildReportRecoveryInfo } from "@/lib/data/reports";
 import { isAdminEmail } from "@/lib/admin";
 import { isDemoReportId } from "@/lib/demo-report";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
@@ -11,6 +11,7 @@ import {
   type HairRec,
   type Tier,
 } from "@/lib/report";
+import type { Intake } from "@/lib/style-profile";
 
 export async function GET(
   _request: Request,
@@ -34,7 +35,7 @@ export async function GET(
   const adminDb = isAdmin && hasSupabaseAdmin ? createAdminSupabase() : null;
 
   const ownerCols =
-    "status, tier, capsule_images, hair, facial_hair, eyewear, user_id, is_public";
+    "status, tier, capsule_images, hair, facial_hair, eyewear, user_id, is_public, intake, headline, summary, colors";
   // Public view omits user_id (and intake) — read it for non-owners.
   const publicCols =
     "status, tier, capsule_images, hair, facial_hair, eyewear, is_public";
@@ -48,6 +49,10 @@ export async function GET(
     eyewear?: EyewearRec[] | null;
     user_id?: string;
     is_public?: boolean;
+    intake?: unknown;
+    headline?: string | null;
+    summary?: string | null;
+    colors?: { best: unknown[]; avoid: unknown[] } | null;
   };
 
   let row: StatusRow | null = null;
@@ -119,6 +124,22 @@ export async function GET(
       [...hair.recommend, ...hair.avoid].some((h) => Boolean(h.imagePath));
   }
 
-  const state = reportGenerationState(row, looks ?? [], { hasReferencePhoto });
+  let state = reportGenerationState(row, looks ?? [], { hasReferencePhoto });
+
+  if (state.status === "failed" && isOwner && hasSupabaseAdmin && row.user_id) {
+    const recovery = await buildReportRecoveryInfo(createAdminSupabase(), {
+      userId: row.user_id,
+      reportId: id,
+      tier: row.tier as Tier,
+      intake: row.intake as Intake | null | undefined,
+      headline: row.headline,
+      summary: row.summary,
+      colors: row.colors,
+      lookCount: looks?.length ?? 0,
+      hasPhotos: hasReferencePhoto,
+    });
+    state = { ...state, recovery };
+  }
+
   return NextResponse.json(state);
 }

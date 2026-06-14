@@ -39,6 +39,8 @@ import {
   type FacialHairRec,
   type HairRec,
   type ReportGenerationState,
+  type ReportRecoveryInfo,
+  mockStyleProfile,
   type ShoppingItem,
   type StyleReport,
   type Tier,
@@ -66,6 +68,10 @@ import {
   matchShopping,
   matchLookItems,
 } from "@/lib/data/catalog";
+import {
+  getReportCreditRecovery,
+  type ReportCreditRecovery,
+} from "@/lib/credits";
 import type { Intake, ReportContent, StyleProfile } from "@/lib/style-profile";
 
 type CreateInput = {
@@ -142,6 +148,82 @@ export function reportGenerationState(
     return { status, pending: true, phase: "capsule" };
   }
   return { status, pending: false, phase: null };
+}
+
+function recoveryFromCredit(
+  credit: ReportCreditRecovery,
+  opts: {
+    intake?: Intake | null;
+    hasPhotos: boolean;
+    headline?: string | null;
+    summary?: string | null;
+    colors?: { best: unknown[]; avoid: unknown[] } | null;
+    lookCount: number;
+  },
+): ReportRecoveryInfo {
+  return {
+    creditCost: credit.creditCost,
+    creditsRefunded: credit.wasCharged ? credit.wasRefunded : null,
+    saved: {
+      questionnaire: Boolean(opts.intake),
+      photos: opts.hasPhotos,
+      writtenGuidance: Boolean(opts.headline || opts.summary),
+      colors: Boolean(opts.colors?.best?.length),
+      looks: opts.lookCount,
+    },
+    canRetry: Boolean(opts.intake),
+  };
+}
+
+/** Owner-only recovery metadata for a failed report. */
+export async function buildReportRecoveryInfo(
+  admin: ReturnType<typeof createAdminSupabase>,
+  opts: {
+    userId: string;
+    reportId: string;
+    tier: Tier;
+    intake?: Intake | null;
+    headline?: string | null;
+    summary?: string | null;
+    colors?: { best: unknown[]; avoid: unknown[] } | null;
+    lookCount: number;
+    hasPhotos: boolean;
+  },
+): Promise<ReportRecoveryInfo> {
+  const credit = await getReportCreditRecovery(
+    admin,
+    opts.userId,
+    opts.reportId,
+    opts.tier,
+  );
+  return recoveryFromCredit(credit, opts);
+}
+
+async function latestPhotoUrlsForUser(
+  admin: ReturnType<typeof createAdminSupabase>,
+  userId: string,
+): Promise<PhotoInput[]> {
+  const { data: photoRows } = await admin
+    .from("photos")
+    .select("role, storage_path")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const byRole = new Map<string, string>();
+  for (const row of photoRows ?? []) {
+    const role = row.role as string;
+    if (!byRole.has(role)) byRole.set(role, row.storage_path as string);
+  }
+
+  const photos: PhotoInput[] = [];
+  for (const [role, path] of byRole.entries()) {
+    const { data } = await admin.storage
+      .from("photos")
+      .createSignedUrl(path, 600);
+    if (data?.signedUrl) photos.push({ role, url: data.signedUrl });
+  }
+  return photos;
 }
 
 type ImageJobInput = {
@@ -438,6 +520,163 @@ async function generateReportImages(input: ImageJobInput) {
   }
 }
 
+async function executeReportGeneration(
+  admin: ReturnType<typeof createAdminSupabase>,
+  opts: {
+    reportId: string;
+    userId: string;
+    tier: Tier;
+    intake: Intake;
+    photos: PhotoInput[];
+  },
+): Promise<void> {
+  const { reportId, userId, tier, intake, photos } = opts;
+
+  const lookCount = lookCountForTier(tier);
+  const { profile, content } = await generateReportContent(
+    intake,
+    photos,
+    lookCount,
+    tier,
+  );
+  if (content.looks.length > lookCount) {
+    content.looks = content.looks.slice(0, lookCount);
+  }
+  content.hair = clampHairForTier(content.hair, tier);
+  const shopping = await matchShopping(profile, content);
+  if (isMockShopping(shopping)) {
+    console.error(
+      "[report] shopping used demo fallback — verify catalog seed, AI keys, and match_products RPC (migration 0005)",
+    );
+  }
+  const lookItems = await matchLookItems(profile, content);
+
+  await admin
+    .from("reports")
+    .update({
+      status: "ready",
+      profile,
+      headline: content.headline,
+      summary: content.summary,
+      colors: content.colors,
+      hair: content.hair,
+      silhouette: content.silhouette,
+      shopping,
+      do_list: content.doList,
+      dont_list: content.dontList,
+      ...(tier === "premium"
+        ? {
+            facial_hair: facialHairFor(profile).slice(
+              0,
+              PREMIUM_FACIAL_HAIR_GEN_LIMIT,
+            ),
+            eyewear: premiumEyewearPicks(profile)
+              .slice(0, PREMIUM_EYEWEAR_GEN_LIMIT)
+              .map((f) => ({
+                name: f.name,
+                why: f.why,
+                shape: f.shape,
+                kind: f.kind,
+              })),
+          }
+        : {}),
+    })
+    .eq("id", reportId);
+
+  if (Object.keys(lookItems).length) {
+    await admin
+      .from("reports")
+      .update({ look_items: lookItems })
+      .eq("id", reportId);
+  }
+
+  await admin.from("looks").insert(
+    content.looks.map((l) => ({
+      report_id: reportId,
+      user_id: userId,
+      context: l.context,
+      title: l.title,
+      description: l.description,
+      palette: l.palette,
+      image_path: null,
+    })),
+  );
+
+  const imageJob: ImageJobInput = {
+    reportId,
+    userId,
+    tier,
+    profile,
+    content,
+    photos,
+    shopping,
+  };
+  after(() =>
+    generateReportImages(imageJob).catch((err) => {
+      console.error("[report images]", err);
+    }),
+  );
+}
+
+async function clearPartialReport(
+  admin: ReturnType<typeof createAdminSupabase>,
+  reportId: string,
+): Promise<void> {
+  await admin.from("looks").delete().eq("report_id", reportId);
+  await admin
+    .from("reports")
+    .update({
+      status: "processing",
+      profile: null,
+      headline: null,
+      summary: null,
+      colors: null,
+      hair: null,
+      silhouette: null,
+      shopping: null,
+      do_list: null,
+      dont_list: null,
+      look_items: null,
+      facial_hair: null,
+      eyewear: null,
+      accessories: null,
+      capsule_images: null,
+    })
+    .eq("id", reportId);
+}
+
+/** Re-run generation for a failed report using stored intake and latest photos. */
+export async function retryFailedReport(
+  reportId: string,
+  userId: string,
+): Promise<string> {
+  const admin = createAdminSupabase();
+  const { data: row, error } = await admin
+    .from("reports")
+    .select("id, user_id, tier, status, intake")
+    .eq("id", reportId)
+    .eq("user_id", userId)
+    .single();
+  if (error || !row) throw new Error("Report not found");
+  if (row.status !== "failed") throw new Error("Report is not in a failed state");
+  if (!row.intake) throw new Error("Missing questionnaire for this report");
+
+  const tier = row.tier as Tier;
+  const intake = row.intake as Intake;
+
+  await clearPartialReport(admin, reportId);
+  const photos = await latestPhotoUrlsForUser(admin, userId);
+
+  try {
+    await executeReportGeneration(admin, { reportId, userId, tier, intake, photos });
+  } catch (e) {
+    await admin.from("reports").update({ status: "failed" }).eq("id", reportId);
+    throw e;
+  }
+
+  return reportId;
+}
+
 /** Create a report, run the pipeline, persist. Live mode if Supabase configured. */
 export async function createAndRunReport(input: CreateInput): Promise<string> {
   const { intake, tier, userId } = input;
@@ -490,18 +729,22 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
     if (input.reportId && /duplicate key|unique/i.test(error?.message ?? "")) {
       const { data: existing } = await admin
         .from("reports")
-        .select("id")
+        .select("id, status")
         .eq("id", input.reportId)
         .eq("user_id", userId)
         .maybeSingle();
-      if (existing?.id) return existing.id as string;
+      if (existing?.id) {
+        if (existing.status === "failed") {
+          await retryFailedReport(existing.id as string, userId);
+        }
+        return existing.id as string;
+      }
     }
     throw new Error(error?.message ?? "insert failed");
   }
   const reportId = created.id as string;
 
   try {
-    // Sign photo URLs so the vision model can read them.
     const photos: PhotoInput[] = [];
     for (const p of input.photoPaths ?? []) {
       const { data } = await admin.storage
@@ -510,95 +753,13 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
       if (data?.signedUrl) photos.push({ role: p.role, url: data.signedUrl });
     }
 
-    const lookCount = lookCountForTier(tier);
-    const { profile, content } = await generateReportContent(
-      intake,
-      photos,
-      lookCount,
-      tier,
-    );
-    // Belt-and-suspenders: enforce caps even if the model (or mock) returns extra.
-    if (content.looks.length > lookCount) {
-      content.looks = content.looks.slice(0, lookCount);
-    }
-    content.hair = clampHairForTier(content.hair, tier);
-    const shopping = await matchShopping(profile, content);
-    if (isMockShopping(shopping)) {
-      console.error(
-        "[report] shopping used demo fallback — verify catalog seed, AI keys, and match_products RPC (migration 0005)",
-      );
-    }
-    const lookItems = await matchLookItems(profile, content);
-
-    await admin
-      .from("reports")
-      .update({
-        status: "ready",
-        profile,
-        headline: content.headline,
-        summary: content.summary,
-        colors: content.colors,
-        hair: content.hair,
-        silhouette: content.silhouette,
-        shopping,
-        do_list: content.doList,
-        dont_list: content.dontList,
-        ...(tier === "premium"
-          ? {
-              facial_hair: facialHairFor(profile).slice(
-                0,
-                PREMIUM_FACIAL_HAIR_GEN_LIMIT,
-              ),
-              eyewear: premiumEyewearPicks(profile)
-                .slice(0, PREMIUM_EYEWEAR_GEN_LIMIT)
-                .map((f) => ({
-                  name: f.name,
-                  why: f.why,
-                  shape: f.shape,
-                  kind: f.kind,
-                })),
-            }
-          : {}),
-      })
-      .eq("id", reportId);
-
-    // Persisted separately so an older schema missing the column never fails the
-    // whole report — per-look "Shop the Look" just falls back to keyword matching.
-    if (Object.keys(lookItems).length) {
-      await admin
-        .from("reports")
-        .update({ look_items: lookItems })
-        .eq("id", reportId);
-    }
-
-    await admin.from("looks").insert(
-      content.looks.map((l) => ({
-        report_id: reportId,
-        user_id: userId,
-        context: l.context,
-        title: l.title,
-        description: l.description,
-        palette: l.palette,
-        image_path: null,
-      })),
-    );
-
-    // Image generation is the slowest step (3+ model calls). Run after the
-    // response so the client is not left waiting on a single long HTTP request.
-    const imageJob: ImageJobInput = {
+    await executeReportGeneration(admin, {
       reportId,
       userId,
       tier,
-      profile,
-      content,
+      intake,
       photos,
-      shopping,
-    };
-    after(() =>
-      generateReportImages(imageJob).catch((err) => {
-        console.error("[report images]", err);
-      }),
-    );
+    });
   } catch (e) {
     await admin.from("reports").update({ status: "failed" }).eq("id", reportId);
     throw e;
@@ -924,7 +1085,7 @@ async function fetchReportView(
       ? await loadSavedOutfitTryons(id, row.user_id as string)
       : undefined;
 
-  const generation = reportGenerationState(
+  let generation = reportGenerationState(
     {
       status: row.status,
       tier: row.tier,
@@ -938,12 +1099,29 @@ async function fetchReportView(
     { hasReferencePhoto },
   );
 
+  if (generation.status === "failed" && isOwner && hasSupabaseAdmin) {
+    const recovery = await buildReportRecoveryInfo(createAdminSupabase(), {
+      userId: row.user_id as string,
+      reportId: id,
+      tier: row.tier as Tier,
+      intake: row.intake,
+      headline: row.headline,
+      summary: row.summary,
+      colors: row.colors,
+      lookCount: looks?.length ?? 0,
+      hasPhotos: hasReferencePhoto,
+    });
+    generation = { ...generation, recovery };
+  }
+
   const report = assembleReport({
     id: row.id,
     createdAt: row.created_at,
     intake: row.intake,
     tier: row.tier,
-    profile: row.profile,
+    profile:
+      row.profile ??
+      mockStyleProfile(row.intake as Intake),
     generation,
     personalizedHairPending:
       hasReferencePhoto &&

@@ -132,6 +132,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ id, tier }, { status: 201 });
   } catch (e) {
+    let refunded = false;
     if (creditsCharged && userId && hasSupabaseAdmin && reportId && cost > 0) {
       try {
         await refundReportCredits(createAdminSupabase(), {
@@ -139,12 +140,18 @@ export async function POST(request: Request) {
           amount: cost,
           reportId,
         });
+        refunded = true;
       } catch (refundErr) {
         console.error("[report] credit refund failed", refundErr);
       }
     }
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Generation failed" },
+      {
+        error: e instanceof Error ? e.message : "Generation failed",
+        reportId,
+        creditCost: cost,
+        refunded,
+      },
       { status: 500 },
     );
   }
