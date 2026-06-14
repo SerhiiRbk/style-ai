@@ -4,6 +4,7 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { MeetStylist } from "@/components/MeetStylist";
 import { ButtonLink } from "@/components/Button";
+import { ImageComparisonSlider } from "@/components/ImageComparisonSlider";
 import { getGeo } from "@/lib/geo";
 import {
   REPORT_COST,
@@ -53,6 +54,7 @@ export default function Home() {
         <Problem />
         <MeetStylist />
         <Understand />
+        <ImpactOfColour />
         <HowItWorks />
         <SampleReport />
         <CapsulePreview />
@@ -331,6 +333,78 @@ function Understand() {
               <p className="mt-3 text-stone leading-relaxed">{body}</p>
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ImpactOfColour() {
+  return (
+    <section className="container-luxe py-24">
+      <div className="grid gap-14 lg:grid-cols-[1.1fr_1fr] items-center">
+        {/* Text Side */}
+        <div className="order-2 lg:order-1">
+          <p className="eyebrow">The Science of Colour</p>
+          <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
+            The wrong palette drains you.<br />
+            The right one does the heavy lifting.
+          </h2>
+          <div className="mt-6 space-y-5 text-lg leading-relaxed text-stone">
+            <p>
+              Most men default to black, pure white, or stark navy. But if your
+              natural colouring is warm and muted (like our model here), optic
+              white and black will overpower you. They drain the skin, highlight
+              fatigue, and make you look washed out.
+            </p>
+            <p>
+              When you wear colours engineered for your specific 12-season
+              profile — in this case, a Soft Autumn — the clothes harmonize
+              with your undertone. Your skin looks healthier, your features are
+              in focus, and your style reads as effortlessly expensive.
+            </p>
+          </div>
+          
+          <div className="mt-8 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl border border-line bg-paper p-5 opacity-80">
+              <div className="flex items-center gap-2 font-display text-sm text-ink">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-stone/10 text-stone-soft">✕</span>
+                The Default (Wrong)
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-stone-soft">
+                Cold light, stark contrast. Overpowers warm skin tones and highlights imperfections.
+              </p>
+            </div>
+            <div className="rounded-xl border border-brass/30 bg-brass/5 p-5">
+              <div className="flex items-center gap-2 font-display text-sm text-ink">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brass/20 text-brass">✓</span>
+                The Valetti Palette
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-stone">
+                Warm ecru and tobacco brown. Matches his DNA. Skin looks healthy, features are in focus.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Visual Side (Slider) */}
+        <div className="order-1 lg:order-2">
+          <div className="relative mx-auto w-full max-w-[460px]">
+            <div className="relative aspect-[4/5] w-full rounded-2xl border hairline shadow-sm">
+              <ImageComparisonSlider
+                beforeImage="/images/hero-editorial-bad-palette.png"
+                afterImage="/images/hero-editorial.png"
+                beforeAlt="Incorrect cold high-contrast palette"
+                afterAlt="Correct warm soft autumn palette"
+              />
+            </div>
+            {/* Context Badge */}
+            <div className="absolute -bottom-5 right-4 z-10 rounded-xl border hairline bg-paper/95 px-4 py-2 shadow-sm backdrop-blur-sm sm:-right-4">
+              <div className="text-[10px] uppercase tracking-widest text-stone-soft">Profile</div>
+              <div className="mt-1 font-display text-sm text-ink">Soft Autumn</div>
+              <div className="text-xs text-stone">Warm undertone · Low contrast</div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
