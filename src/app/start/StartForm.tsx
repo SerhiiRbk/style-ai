@@ -349,6 +349,10 @@ export function StartForm({
   }
 
   function handleBack() {
+    if (step > 0) {
+      setStep((s) => s - 1);
+      return;
+    }
     if (cameFromWelcome) {
       backToWelcome();
       return;
@@ -576,8 +580,8 @@ export function StartForm({
                 Hair and eye colour sharpen your seasonal colour analysis. Leave
                 them on “From photo” to read them from your uploads.
               </p>
-              <div className="mt-4 space-y-5">
-                <div>
+              <div className="mt-4 grid gap-6 sm:grid-cols-2 sm:items-start">
+                <div className="min-w-0">
                   <div className="mb-2 text-xs font-medium uppercase tracking-wide text-stone-soft">
                     Hair
                   </div>
@@ -587,7 +591,7 @@ export function StartForm({
                     options={HAIR_SWATCH_OPTIONS}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="mb-2 text-xs font-medium uppercase tracking-wide text-stone-soft">
                     Eyes
                   </div>
@@ -1036,7 +1040,7 @@ function ColourSwatchPicker({
   options: SwatchOption[];
 }) {
   return (
-    <div className="flex flex-wrap gap-2.5">
+    <div className="flex flex-wrap gap-2">
       {options.map((o) => {
         const selected = value === o.id;
         return (
@@ -1046,14 +1050,14 @@ function ColourSwatchPicker({
             onClick={() => onChange(o.id)}
             aria-pressed={selected}
             title={o.label}
-            className={`flex w-[64px] flex-col items-center gap-1.5 rounded-xl border px-1.5 py-2 text-center transition-colors ${
+            className={`flex min-w-[4.75rem] max-w-[5.5rem] flex-col items-center gap-1.5 rounded-xl border px-2 py-2 text-center transition-colors ${
               selected
                 ? "border-ink bg-cream/60"
                 : "border-line hover:border-ink/40"
             }`}
           >
             <span
-              className={`flex h-8 w-8 items-center justify-center rounded-full ${
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
                 o.css
                   ? "ring-1 ring-black/10"
                   : "border border-dashed border-stone/50"
@@ -1066,9 +1070,7 @@ function ColourSwatchPicker({
                 </span>
               )}
             </span>
-            <span className="text-[11px] leading-tight text-stone">
-              {o.label}
-            </span>
+            <span className="text-[10px] leading-snug text-stone">{o.label}</span>
           </button>
         );
       })}
