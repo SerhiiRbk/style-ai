@@ -250,7 +250,7 @@ function Marquee() {
     "Photorealistic looks",
     "Real shopping links",
     "Virtual try-on",
-    "GDPR-first",
+
   ];
   return (
     <div className="border-y hairline bg-ink text-paper">

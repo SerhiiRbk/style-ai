@@ -32,9 +32,8 @@ export async function GET(
   const exp = searchParams.get("exp");
   const sig = searchParams.get("sig");
 
-  const allowed =
-    verifySignedAssetProxyUrl(storagePath, exp, sig) ||
-    (await canAccessAssetPath(storagePath));
+  const signedOk = verifySignedAssetProxyUrl(storagePath, exp, sig);
+  const allowed = signedOk || (await canAccessAssetPath(storagePath));
 
   if (!allowed) {
     return new Response("Forbidden", { status: 403 });
@@ -45,11 +44,15 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
+  // Signed URLs are self-contained auth — safe to cache at the edge and in-browser.
+  const cacheControl = signedOk
+    ? "public, max-age=86400, stale-while-revalidate=604800"
+    : "private, max-age=86400, stale-while-revalidate=604800";
+
   return new Response(bytes as BodyInit, {
     headers: {
       "Content-Type": contentTypeForAssetPath(storagePath),
-      "Cache-Control":
-        "private, max-age=86400, stale-while-revalidate=604800",
+      "Cache-Control": cacheControl,
       "Content-Length": String(bytes.byteLength),
     },
   });

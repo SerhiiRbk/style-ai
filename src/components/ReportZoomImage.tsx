@@ -70,6 +70,7 @@ export function ReportZoomImage({
             sizes={sizes}
             className={className}
             priority={priority}
+            fetchPriority={priority ? "high" : "auto"}
             loading={priority ? undefined : "lazy"}
             unoptimized={skipImageOptimizer}
           />
@@ -80,6 +81,7 @@ export function ReportZoomImage({
             alt={alt}
             className={className}
             loading={priority ? "eager" : "lazy"}
+            fetchPriority={priority ? "high" : "auto"}
             decoding="async"
           />
         )}

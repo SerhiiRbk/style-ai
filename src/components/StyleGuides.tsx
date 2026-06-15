@@ -33,10 +33,12 @@ function MoodboardPhoto({
   src,
   alt,
   zoomable,
+  priority = false,
 }: {
   src: string;
   alt: string;
   zoomable?: boolean;
+  priority?: boolean;
 }) {
   if (!src) {
     return (
@@ -50,6 +52,7 @@ function MoodboardPhoto({
       <ReportZoomImage
         src={src}
         alt={alt}
+        priority={priority}
         wrapperClassName="relative block h-full w-full"
         className="h-full w-full object-cover object-top"
       />
@@ -87,6 +90,7 @@ export function Moodboard({
           src={portrait}
           alt="Your look on your photo"
           zoomable={zoomable}
+          priority
         />
         <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
           Your look

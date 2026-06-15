@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { preload } from "react-dom";
 import { getReportView } from "@/lib/data/reports";
 import { reportOgMetadataImageUrl } from "@/lib/data/report-og";
 import { TryOnButton } from "@/components/TryOnButton";
@@ -187,6 +188,12 @@ export default async function ReportPage({
   const moodboardLook = isDemo
     ? report.looks[0]?.image || "/images/look-work.png"
     : lookImages.find((src) => src !== moodboardPortrait) || "";
+
+  for (const src of [heroPortrait, moodboardPortrait]) {
+    if (src && isGeneratedReportImage(src)) {
+      preload(src, { as: "image", fetchPriority: "high" });
+    }
+  }
 
   return (
     <CreditsProvider initialBalance={balance}>

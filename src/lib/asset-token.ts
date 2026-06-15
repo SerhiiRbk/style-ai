@@ -6,6 +6,9 @@ import { env } from "@/lib/env";
 /** Matches `Cache-Control: max-age=86400` on `/api/assets`. */
 export const ASSET_URL_TTL_SEC = 86_400;
 
+/** Hourly buckets keep signed URLs stable so browsers and the CDN can cache them. */
+export const ASSET_SIGNATURE_BUCKET_SEC = 3_600;
+
 function signingKey(): string | null {
   return process.env.ASSET_URL_SECRET ?? env.supabaseServiceKey ?? null;
 }
@@ -18,13 +21,22 @@ function signPayload(storagePath: string, exp: number): string {
     .digest("base64url");
 }
 
+/** Expiry aligned to hourly buckets — same asset path reuses the same URL within a bucket. */
+export function assetSignatureExpirySec(
+  nowSec = Math.floor(Date.now() / 1000),
+): number {
+  const bucketStart =
+    Math.floor(nowSec / ASSET_SIGNATURE_BUCKET_SEC) * ASSET_SIGNATURE_BUCKET_SEC;
+  return bucketStart + ASSET_URL_TTL_SEC;
+}
+
 /** Same-origin asset URL with a short-lived HMAC so Next/Image can fetch without cookies. */
 export function signedAssetProxyUrl(storagePath: string): string {
   const base = assetProxyUrl(storagePath);
   const key = signingKey();
   if (!key) return base;
 
-  const exp = Math.floor(Date.now() / 1000) + ASSET_URL_TTL_SEC;
+  const exp = assetSignatureExpirySec();
   const sig = signPayload(storagePath, exp);
   return `${base}?exp=${exp}&sig=${encodeURIComponent(sig)}`;
 }
