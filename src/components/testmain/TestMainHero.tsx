@@ -18,8 +18,9 @@ export function TestMainHero() {
       <div className="container-luxe py-6">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brass/30 bg-brass/5 px-4 py-3 text-sm">
           <span className="text-stone">
-            <span className="font-medium text-ink">Test landing</span> — social
-            proof &amp; credibility concept. Production home unchanged.
+            <span className="font-medium text-ink">Test landing</span> — men&apos;s
+            styling · social proof concept. Production home also updated for men&apos;s
+            focus.
           </span>
           <Link href="/" className="text-ink underline underline-offset-2 hover:text-brass">
             Back to live homepage
@@ -33,15 +34,16 @@ export function TestMainHero() {
             {BRAND.eyebrow} · {BRAND.tagline}
           </p>
           <h1 className="mt-5 font-display text-[2.7rem] leading-[1.05] tracking-tight sm:text-6xl">
-            Style advice you can{" "}
+            Men&apos;s style advice you can{" "}
             <em className="not-italic text-brass">trust</em> — with the reason
             behind every call.
           </h1>
           <p className="mt-6 max-w-md text-lg leading-relaxed text-stone">
-            {BRAND.name} is a personal style atelier.{" "}
+            {BRAND.name} is a men&apos;s personal style atelier.{" "}
             <span className="text-ink">{BRAND.stylist.name}</span> is our brand
-            face — the voice that presents your plan. See the methodology, read
-            real demo excerpts, and judge the quality before you sign up.
+            face — the voice behind tailored fit, grooming, colour and shopping
+            for your wardrobe. See the methodology, read real demo excerpts, and
+            judge the quality before you sign up.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-4">
             <ButtonLink href={DEMO_REPORT_HREF}>See demo report</ButtonLink>

@@ -8,8 +8,8 @@ import { BRAND } from "@/lib/brand";
 export function MeetStylist() {
   const credentials = [
     [
-      "Stylist persona",
-      "The calm, considered voice behind every Valetti report — European quiet luxury",
+      "Men's styling",
+      "Tailoring, grooming and menswear — the calm voice behind every Valetti report",
     ],
     [
       "Quiet luxury",
@@ -46,7 +46,7 @@ export function MeetStylist() {
         <div>
           <p className="eyebrow">Meet Carlo · the voice of Valetti</p>
           <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
-            I&apos;m {BRAND.stylist.first}. I help you find your own style —
+            I&apos;m {BRAND.stylist.first}. I help men find their own style —
             not the latest trend.
           </h2>
           <div className="mt-6 space-y-5 text-lg leading-relaxed text-stone">

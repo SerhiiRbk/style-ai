@@ -21,9 +21,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Valetti — personal style atelier",
+  title: "Valetti — men's personal style atelier",
   description:
-    "AI-assisted personal styling from Valetti. Carlo Valetti — our lead stylist persona — guides you through a calm, practical plan: hair, colours, clothing, silhouettes, and a precise shopping list, with the reason behind every call.",
+    "AI-assisted men's personal styling from Valetti. Carlo Valetti — our lead stylist persona — guides you through a calm, practical plan: hair, colours, tailoring, silhouettes, and a precise shopping list, with the reason behind every call.",
   metadataBase: getSiteUrl(),
   alternates: { canonical: "/" },
   icons: {
@@ -31,9 +31,9 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-icon.svg", type: "image/svg+xml" }],
   },
   openGraph: {
-    title: "Valetti — personal style atelier",
+    title: "Valetti — men's personal style atelier",
     description:
-      "AI-assisted personal styling — Carlo Valetti is Valetti's lead stylist persona. Explainable recommendations, photorealistic looks, and a precise shopping plan.",
+      "AI-assisted men's personal styling — Carlo Valetti is Valetti's lead stylist persona. Explainable recommendations, photorealistic looks, and a precise shopping plan.",
     type: "website",
     siteName: BRAND.name,
     images: [

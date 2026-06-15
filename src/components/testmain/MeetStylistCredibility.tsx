@@ -29,16 +29,16 @@ export function MeetStylistCredibility() {
         <div>
           <p className="eyebrow">Credibility, not lore</p>
           <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
-            {BRAND.stylist.first} is how {BRAND.name} speaks — clearly and
-            honestly.
+            {BRAND.stylist.first} is how {BRAND.name} speaks to men — clearly
+            and honestly.
           </h2>
           <div className="mt-6 space-y-5 text-lg leading-relaxed text-stone">
             <p>
               We don&apos;t ask you to trust a celebrity stylist. We ask you to
               trust a{" "}
-              <span className="text-ink">method</span>: structured analysis,
-              explainable calls, real products — presented in a calm European
-              voice.
+              <span className="text-ink">method for men&apos;s wardrobes</span>:
+              structured analysis, explainable calls, real menswear products —
+              presented in a calm European voice.
             </p>
             <p>
               Share photos and honest answers; the engine builds your Style
@@ -49,6 +49,7 @@ export function MeetStylistCredibility() {
 
           <ul className="mt-8 space-y-2 text-sm text-stone">
             {[
+              "Men's styling · fit, tailoring & grooming",
               "Brand face · inspired by Carlo Valetti",
               "Styling rules shaped with human input (SRE)",
               "GDPR-first · photos deletable anytime",

@@ -126,18 +126,18 @@ export function TestMainProblem() {
         <div>
           <p className="eyebrow">The problem</p>
           <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
-            You want to look better — but generic advice doesn&apos;t explain
+            You want to look sharper — but generic advice doesn&apos;t explain
             why.
           </h2>
           <div className="mt-6 space-y-5 text-lg leading-relaxed text-stone">
             <p>
               A human stylist is expensive and opaque. Fashion apps show pretty
-              pictures without tying them to your colouring or proportions.
-              ChatGPT gives paragraphs — not a plan, not products, not your
+              pictures without tying them to your colouring or build. ChatGPT
+              gives paragraphs — not a menswear plan, not products, not your
               face.
             </p>
             <p>
-              Valetti is built for people who need{" "}
+              Valetti is built for men who need{" "}
               <span className="text-ink">reasons</span>, not hype — and who
               want to see proof before they share a photo.
             </p>

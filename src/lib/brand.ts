@@ -10,11 +10,13 @@ export const BRAND = {
   /** Legal / footer name. */
   legalName: "Valetti",
   /** Small descriptor that sits under the wordmark. */
-  eyebrow: "Personal style atelier",
+  eyebrow: "Men's style atelier",
   /** Honest, understated AI disclosure. */
   tagline: "AI-assisted personal styling",
   /** Privacy, terms, and data-subject requests. */
   legalContactEmail: "privacy@valetti.app",
+  /** General contact (footer, support). */
+  contactEmail: "contact@system.valetti.fit",
 
   /** Open Graph / social share card (flat lay men's essentials). */
   ogImage: "/images/flatlay-essentials.png",

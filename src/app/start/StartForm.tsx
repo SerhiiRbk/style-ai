@@ -528,7 +528,7 @@ export function StartForm({
             <Section
               eyebrow="Step 1"
               title="A little about you"
-              subtitle="This grounds every recommendation in your real life — age, climate, profession and frame."
+              subtitle="Men's styling grounded in your real life — age, climate, profession and frame."
             >
               <div className="grid gap-6 sm:grid-cols-2">
                 <Field label={`Age — ${age}`}>
@@ -558,16 +558,17 @@ export function StartForm({
                     placeholder="e.g. 82"
                   />
                 </Field>
-                <Field label="Gender presentation">
+                <Field label="Gender">
                   <Select
                     value={gender}
                     onChange={setGender}
-                    options={[
-                      ["male", "Male"],
-                      ["female", "Female"],
-                      ["non-binary", "Non-binary"],
-                    ]}
+                    disabled
+                    options={[["male", "Male"]]}
                   />
+                  <p className="mt-2 text-xs text-stone-soft">
+                    Valetti is built for men&apos;s styling — fit, tailoring and
+                    grooming rules are calibrated for a male wardrobe.
+                  </p>
                 </Field>
                 <Field label="Occupation">
                   <Select
@@ -1140,16 +1141,21 @@ function Select({
   value,
   onChange,
   options,
+  disabled = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: [string, string][];
+  disabled?: boolean;
 }) {
   return (
     <select
       value={value}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-lg border border-line bg-paper px-4 py-2.5 text-sm text-ink outline-none transition-colors focus:border-ink"
+      className={`w-full rounded-lg border border-line bg-paper px-4 py-2.5 text-sm text-ink outline-none transition-colors focus:border-ink ${
+        disabled ? "cursor-not-allowed opacity-70" : ""
+      }`}
     >
       {options.map(([v, l]) => (
         <option key={v} value={v}>

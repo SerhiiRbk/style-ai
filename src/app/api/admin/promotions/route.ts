@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { env, hasSupabaseAdmin } from "@/lib/env";
+import { hasSupabaseAdmin } from "@/lib/env";
+import { getSiteUrl } from "@/lib/site-url";
 import { requireAdminApi } from "@/lib/admin-api";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { createPromotion, listPromotions } from "@/lib/promotions";
@@ -18,11 +19,11 @@ export async function GET() {
   try {
     const admin = createAdminSupabase();
     const promotions = await listPromotions(admin);
-    const siteUrl = env.siteUrl ?? "";
+    const siteUrl = getSiteUrl().origin;
     return NextResponse.json({
       promotions: promotions.map((p) => ({
         ...p,
-        inviteUrl: siteUrl ? `${siteUrl}/login?promo=${encodeURIComponent(p.code)}` : null,
+        inviteUrl: `${siteUrl}/login?promo=${encodeURIComponent(p.code)}`,
         remaining: Math.max(0, p.max_activations - p.activations_count),
         expired: new Date(p.expires_at).getTime() < Date.now(),
       })),
@@ -86,13 +87,11 @@ export async function POST(request: Request) {
       code: typeof b.code === "string" ? b.code : undefined,
       createdBy: gate.user.id,
     });
-    const siteUrl = env.siteUrl ?? "";
+    const siteUrl = getSiteUrl().origin;
     return NextResponse.json({
       promotion: {
         ...promo,
-        inviteUrl: siteUrl
-          ? `${siteUrl}/login?promo=${encodeURIComponent(promo.code)}`
-          : null,
+        inviteUrl: `${siteUrl}/login?promo=${encodeURIComponent(promo.code)}`,
       },
     });
   } catch (e) {

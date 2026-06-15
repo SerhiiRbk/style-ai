@@ -45,7 +45,7 @@ export function Footer() {
             ["Privacy", "/privacy"],
             ["Terms", "/terms"],
             ["Impressum", "/impressum"],
-            ["Contact", `mailto:${BRAND.legalContactEmail}`],
+            [BRAND.contactEmail, `mailto:${BRAND.contactEmail}`],
           ]}
         />
       </div>

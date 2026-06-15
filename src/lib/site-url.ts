@@ -9,10 +9,30 @@ function normalizeHost(host: string): string {
   return host.split(":")[0]!.toLowerCase();
 }
 
+function isVercelDeploymentHost(host: string): boolean {
+  return host.endsWith(".vercel.app");
+}
+
 /** Production site origin for metadata, OG tags, and absolute asset URLs. */
 export function getSiteUrl(): URL {
   const explicit = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  if (explicit) return new URL(explicit);
+  if (explicit) {
+    try {
+      const url = new URL(explicit);
+      const host = normalizeHost(url.host);
+      // Stale NEXT_PUBLIC_SITE_URL often points at a *.vercel.app deployment —
+      // never use that as the public site when we're on production.
+      if (
+        process.env.VERCEL_ENV === "production" &&
+        isVercelDeploymentHost(host)
+      ) {
+        return new URL(CANONICAL_SITE_URL);
+      }
+      return url;
+    } catch {
+      /* fall through */
+    }
+  }
 
   // Production must not use VERCEL_URL — deployment subdomains are often SSO-gated
   // and return HTML 401 to OG crawlers instead of image/png.

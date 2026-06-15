@@ -8,11 +8,12 @@ export function MethodologySection() {
       <div className="max-w-2xl">
         <p className="eyebrow">Methodology</p>
         <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
-          How {BRAND.stylist.first} works — and what the engine actually does.
+          How {BRAND.stylist.first} works for men — and what the engine does.
         </h2>
         <p className="mt-4 text-lg leading-relaxed text-stone">
-          We prove quality through method, not mystery. Here is the path from
-          your photos to a shopping list you can act on.
+          Tailoring, grooming and menswear rules — proven through method, not
+          mystery. Here is the path from your photos to a shopping list you can
+          act on.
         </p>
       </div>
 
