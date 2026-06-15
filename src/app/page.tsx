@@ -687,14 +687,34 @@ function CapsulePreview() {
   return (
     <section className="border-y hairline bg-cream/20">
       <div className="container-luxe py-24">
-        <div className="max-w-2xl">
-          <p className="eyebrow">The Wardrobe Matrix</p>
-          <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
-            We don&apos;t just give you outfits. We build a mathematical wardrobe.
-          </h2>
-          <p className="mt-5 text-lg leading-relaxed text-stone">
-            Most apps generate random looks. We pick 5–10 core pieces and map out exactly how they combine into a full week of outfits, ensuring every item pulls its weight using the 60/30/10 proportion rule.
-          </p>
+        <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+          <div className="max-w-2xl">
+            <p className="eyebrow">The Wardrobe Matrix</p>
+            <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
+              We don&apos;t just give you outfits. We build a mathematical wardrobe.
+            </h2>
+            <p className="mt-5 text-lg leading-relaxed text-stone">
+              Most apps generate random looks. We pick 5–10 core pieces and map out exactly how they combine into a full week of outfits, ensuring every item pulls its weight using the 60/30/10 proportion rule.
+            </p>
+          </div>
+
+          <blockquote className="rounded-2xl border border-brass/30 bg-brass/5 p-6 lg:ml-auto lg:max-w-md">
+            <svg
+              className="h-6 w-6 text-brass-soft"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h4v10h-10z" />
+            </svg>
+            <p className="mt-4 font-display text-lg leading-relaxed text-ink">
+              Good style isn&apos;t about fashion. It&apos;s the removal of
+              visual noise between who you are and how you are perceived.
+            </p>
+            <footer className="mt-4 text-xs font-medium uppercase tracking-wider text-stone">
+              — {BRAND.stylist.signature}
+            </footer>
+          </blockquote>
         </div>
 
         <div className="mt-14 grid gap-8 lg:grid-cols-[1fr_1.3fr]">
