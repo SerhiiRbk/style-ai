@@ -61,16 +61,23 @@ export async function POST(request: Request) {
 
   const admin = createAdminSupabase();
 
-  const { data: row } = await admin
-    .from("reports")
-    .select("id, user_id, intake, profile, colors, look_items")
-    .eq("id", reportId)
-    .single();
+  const [{ data: row }, { data: intakeRow }] = await Promise.all([
+    admin
+      .from("reports")
+      .select("id, user_id, profile, colors, look_items")
+      .eq("id", reportId)
+      .single(),
+    admin
+      .from("report_intake")
+      .select("intake")
+      .eq("report_id", reportId)
+      .maybeSingle(),
+  ]);
   if (!row || row.user_id !== user.id) {
     return NextResponse.json({ error: "Report not found" }, { status: 404 });
   }
   const profile = row.profile as StyleProfile | null;
-  const intake = row.intake as Intake | null;
+  const intake = (intakeRow?.intake as Intake | null) ?? null;
   if (!profile || !intake) {
     return NextResponse.json({ error: "Report not ready" }, { status: 409 });
   }

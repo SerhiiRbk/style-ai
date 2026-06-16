@@ -8,6 +8,7 @@ export async function exportUserData(userId: string) {
   const [
     profileRes,
     reportsRes,
+    intakesRes,
     photosRes,
     consentsRes,
     creditsRes,
@@ -16,11 +17,13 @@ export async function exportUserData(userId: string) {
     admin.from("profiles").select("*").eq("id", userId).maybeSingle(),
     admin
       .from("reports")
-      .select(
-        "id, tier, status, intake, headline, summary, created_at, is_public",
-      )
+      .select("id, tier, status, headline, summary, created_at, is_public")
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
+    admin
+      .from("report_intake")
+      .select("report_id, intake")
+      .eq("user_id", userId),
     admin
       .from("photos")
       .select("id, role, storage_path, status, created_at")
@@ -43,11 +46,19 @@ export async function exportUserData(userId: string) {
       .order("created_at", { ascending: false }),
   ]);
 
+  const intakeByReport = new Map(
+    (intakesRes.data ?? []).map((row) => [row.report_id as string, row.intake]),
+  );
+  const reportsWithIntake = (reportsRes.data ?? []).map((row) => ({
+    ...row,
+    intake: intakeByReport.get(row.id as string) ?? null,
+  }));
+
   return {
     exportedAt: new Date().toISOString(),
     format: "valetti-gdpr-export-v1",
     profile: profileRes.data ?? null,
-    reports: reportsRes.data ?? [],
+    reports: reportsWithIntake,
     photos: (photosRes.data ?? []).map((p) => ({
       id: p.id,
       role: p.role,

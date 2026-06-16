@@ -651,18 +651,25 @@ export async function retryFailedReport(
   userId: string,
 ): Promise<string> {
   const admin = createAdminSupabase();
-  const { data: row, error } = await admin
-    .from("reports")
-    .select("id, user_id, tier, status, intake")
-    .eq("id", reportId)
-    .eq("user_id", userId)
-    .single();
+  const [{ data: row, error }, { data: intakeRow }] = await Promise.all([
+    admin
+      .from("reports")
+      .select("id, user_id, tier, status")
+      .eq("id", reportId)
+      .eq("user_id", userId)
+      .single(),
+    admin
+      .from("report_intake")
+      .select("intake")
+      .eq("report_id", reportId)
+      .maybeSingle(),
+  ]);
   if (error || !row) throw new Error("Report not found");
   if (row.status !== "failed") throw new Error("Report is not in a failed state");
-  if (!row.intake) throw new Error("Missing questionnaire for this report");
+  if (!intakeRow?.intake) throw new Error("Missing questionnaire for this report");
 
   const tier = row.tier as Tier;
-  const intake = row.intake as Intake;
+  const intake = intakeRow.intake as Intake;
 
   await clearPartialReport(admin, reportId);
   const photos = await latestPhotoUrlsForUser(admin, userId);
@@ -718,7 +725,6 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
       user_id: userId,
       tier,
       status: "processing",
-      intake,
     })
     .select("id")
     .single();
@@ -743,6 +749,16 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
     throw new Error(error?.message ?? "insert failed");
   }
   const reportId = created.id as string;
+
+  const { error: intakeErr } = await admin.from("report_intake").insert({
+    report_id: reportId,
+    user_id: userId,
+    intake,
+  });
+  if (intakeErr) {
+    await admin.from("reports").delete().eq("id", reportId);
+    throw new Error(intakeErr.message ?? "intake insert failed");
+  }
 
   try {
     const photos: PhotoInput[] = [];
@@ -778,7 +794,8 @@ export type ReportView = {
 
 /**
  * A `reports` row as read for a view. The public path reads the column-whitelist
- * view `reports_public_v`, so `intake` (and `user_id`) are absent for non-owners.
+ * view `reports_public_v` (security invoker), so `intake` (and `user_id`) are
+ * absent for non-owners. Intake lives in `report_intake` (owner-only RLS).
  */
 type ReportRow = {
   id: string;
@@ -989,6 +1006,17 @@ async function fetchReportView(
   }
   if (!isOwner && !isPublic && !isAdmin) return null;
 
+  const intakeClient = adminDb ?? sb;
+  let reportIntake: Intake | undefined;
+  if (isOwner || isAdmin) {
+    const { data: intakeRow } = await intakeClient
+      .from("report_intake")
+      .select("intake")
+      .eq("report_id", id)
+      .maybeSingle();
+    reportIntake = (intakeRow?.intake as Intake | undefined) ?? undefined;
+  }
+
   const db = isOwner || isAdmin ? (adminDb ?? sb) : sb;
 
   // Looks + the owner's reference-photo check are independent — run together.
@@ -1104,7 +1132,7 @@ async function fetchReportView(
       userId: row.user_id as string,
       reportId: id,
       tier: row.tier as Tier,
-      intake: row.intake,
+      intake: reportIntake,
       headline: row.headline,
       summary: row.summary,
       colors: row.colors,
@@ -1117,11 +1145,11 @@ async function fetchReportView(
   const report = assembleReport({
     id: row.id,
     createdAt: row.created_at,
-    intake: row.intake,
+    intake: reportIntake,
     tier: row.tier,
     profile:
       row.profile ??
-      mockStyleProfile(row.intake as Intake),
+      (reportIntake ? mockStyleProfile(reportIntake) : mockStyleProfile({} as Intake)),
     generation,
     personalizedHairPending:
       hasReferencePhoto &&
