@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CreateReportButton } from "./CreateReportButton";
+import { useNavSession } from "./NavSession";
 import { createClient } from "@/lib/supabase/client";
 
 export type NavLink = {
@@ -40,32 +41,19 @@ function MenuIcon({ open }: { open: boolean }) {
 }
 
 export function NavbarMenu({
-  authed,
-  isAdmin = false,
   primaryLinks,
   secondaryLinks,
-  balance = null,
 }: {
-  authed: boolean;
-  isAdmin?: boolean;
   primaryLinks: NavLink[];
   secondaryLinks: NavLink[];
-  balance?: number | null;
 }) {
   const router = useRouter();
+  const { authed, isAdmin, balance } = useNavSession();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!LIVE) return;
-    createClient()
-      .auth.getUser()
-      .then(({ data }) => setEmail(data.user?.email ?? null));
   }, []);
 
   useEffect(() => {
@@ -165,7 +153,7 @@ export function NavbarMenu({
           </ul>
 
           <div className="mt-8 space-y-3 border-t hairline pt-6">
-            {LIVE && email ? (
+            {LIVE && authed ? (
               <button
                 type="button"
                 onClick={async () => {

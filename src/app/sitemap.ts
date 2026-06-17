@@ -5,12 +5,14 @@ import { getSiteUrl } from "@/lib/site-url";
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = getSiteUrl().origin;
   const now = new Date();
+  // Only publicly reachable, indexable URLs. `/start` is auth-gated (redirects
+  // to /login) and `/report/demo` is a redirect to the canonical slug below —
+  // both are intentionally excluded.
   const entries: { path: string; priority: number; freq: "weekly" | "monthly" }[] = [
     { path: "/", priority: 1, freq: "weekly" },
     { path: "/pricing", priority: 0.8, freq: "monthly" },
     { path: "/catalog", priority: 0.7, freq: "weekly" },
     { path: "/report/valetti-style-prospect-demo", priority: 0.6, freq: "monthly" },
-    { path: "/start", priority: 0.6, freq: "monthly" },
     { path: "/privacy", priority: 0.4, freq: "monthly" },
     { path: "/terms", priority: 0.4, freq: "monthly" },
     { path: "/impressum", priority: 0.3, freq: "monthly" },

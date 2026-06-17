@@ -5,7 +5,7 @@ import { Footer } from "@/components/Footer";
 import { MeetStylist } from "@/components/MeetStylist";
 import { ButtonLink } from "@/components/Button";
 import { ImageComparisonSlider } from "@/components/ImageComparisonSlider";
-import { getGeo } from "@/lib/geo";
+import { SubCurrencyPrice } from "@/components/SubCurrencyPrice";
 import {
   REPORT_COST,
   CREDIT_COSTS,
@@ -84,7 +84,7 @@ function JsonLd() {
         "@id": `${site}#organization`,
         name: BRAND.name,
         url: site,
-        logo: absoluteUrl(BRAND.ogImage),
+        logo: absoluteUrl(BRAND.logo),
         description:
           "AI-assisted personal styling — explainable recommendations, photorealistic looks, and a precise shopping plan.",
       },
@@ -833,8 +833,7 @@ function Card({
   );
 }
 
-async function Pricing() {
-  const { subCurrency } = await getGeo();
+function Pricing() {
   const tiers: {
     name: string;
     price: string;
@@ -920,7 +919,8 @@ async function Pricing() {
             {BRAND.name} runs on credits — a report costs credits by tier, and
             each virtual try-on or re-render is {CREDIT_COSTS.tryon} credit. New
             accounts get {SIGNUP_BONUS} free credits, and packs start at{" "}
-            {starter.price[subCurrency]} for {starter.credits} credits.{" "}
+            <SubCurrencyPrice prices={starter.price} /> for {starter.credits}{" "}
+            credits.{" "}
             <Link href="/pricing" className="text-brass hover:text-ink">
               See full pricing &amp; credit packs →
             </Link>

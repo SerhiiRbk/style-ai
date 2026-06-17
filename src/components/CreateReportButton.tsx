@@ -11,11 +11,13 @@ import {
 } from "react";
 import { Button, ButtonLink } from "./Button";
 import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
+import { createClient } from "@/lib/supabase/client";
 import type { ReportGenerationState } from "@/lib/report";
 
 const POLL_MS = 5_000;
 const READY_TOAST_MS = 15_000;
 const START_EVENT = "valetti:report-generation-started";
+const LIVE = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
 type GeneratingResponse = {
   pending: boolean;
@@ -41,23 +43,34 @@ function useReportGenerationNav() {
 }
 
 export function ReportGenerationNavProvider({
-  authed,
-  initialPending = null,
   children,
 }: {
-  authed: boolean;
-  initialPending: { reportId: string; pending: boolean } | null;
   children: ReactNode;
 }) {
-  const [pending, setPending] = useState(initialPending?.pending ?? false);
-  const [reportId, setReportId] = useState<string | null>(
-    initialPending?.reportId ?? null,
-  );
+  const [authed, setAuthed] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [reportId, setReportId] = useState<string | null>(null);
   const [readyNotice, setReadyNotice] = useState<{
     reportId: string;
   } | null>(null);
   const wasPendingRef = useRef(pending);
   const reportIdRef = useRef<string | null>(reportId);
+
+  useEffect(() => {
+    if (!LIVE) return;
+    let cancelled = false;
+    createClient()
+      .auth.getUser()
+      .then(({ data }) => {
+        if (!cancelled) setAuthed(Boolean(data.user));
+      })
+      .catch(() => {
+        /* treat as signed out */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     reportIdRef.current = reportId;

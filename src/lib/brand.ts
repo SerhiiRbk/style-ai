@@ -18,6 +18,8 @@ export const BRAND = {
   /** General contact (footer, support). */
   contactEmail: "contact@system.valetti.fit",
 
+  /** Square brand logo (schema.org Organization.logo, PWA icon). */
+  logo: "/images/valetti-logo-512.png",
   /** Open Graph / social share card (flat lay men's essentials). */
   ogImage: "/images/flatlay-essentials.png",
   ogImageWidth: 1536,

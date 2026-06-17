@@ -97,15 +97,24 @@ export async function generateMetadata({
     : `Your Style Report · ${BRAND.name}`;
   const description = ogDescription(report.summary || report.headline);
   const ogImage = await reportOgMetadataImageUrl(id);
+  const canonicalPath = `/report/${id}`;
+  // Only the public demo is meant for the index; real reports (owner-private or
+  // link-shared) must never be indexed even if their URL leaks.
+  const isDemo = isDemoReportId(id);
 
   return {
     title,
     description,
+    alternates: { canonical: canonicalPath },
+    robots: isDemo
+      ? undefined
+      : { index: false, follow: false, googleBot: { index: false, follow: false } },
     openGraph: {
       title,
       description,
       type: "article",
       siteName: BRAND.name,
+      url: canonicalPath,
       images: [
         {
           url: ogImage,

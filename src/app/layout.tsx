@@ -1,11 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { BRAND } from "@/lib/brand";
 import { getSiteUrl } from "@/lib/site-url";
 import { LuxeProviders } from "@/components/luxe/LuxeProviders";
-import { ReportGenerationRoot } from "@/components/ReportGenerationRoot";
+import { ReportGenerationNavProvider } from "@/components/CreateReportButton";
 
 const fraunces = Fraunces({
   variable: "--font-display",
@@ -35,6 +35,8 @@ export const metadata: Metadata = {
     description:
       "AI-assisted men's personal styling — Carlo Valetti is Valetti's lead stylist persona. Explainable recommendations, photorealistic looks, and a precise shopping plan.",
     type: "website",
+    url: "/",
+    locale: "en_US",
     siteName: BRAND.name,
     images: [
       {
@@ -54,6 +56,10 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  themeColor: "#15120d",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -66,7 +72,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-paper text-ink">
         <LuxeProviders>
-          <ReportGenerationRoot>{children}</ReportGenerationRoot>
+          <ReportGenerationNavProvider>{children}</ReportGenerationNavProvider>
         </LuxeProviders>
         <Analytics />
       </body>
