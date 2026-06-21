@@ -3,25 +3,44 @@ import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import {
-  CatalogProductCard,
   CatalogTryOnHint,
   type CatalogProduct,
 } from "@/components/CatalogProductCard";
 import { CatalogTryOnShell } from "@/components/CatalogTryOnShell";
-import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
-import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
-import { getCreditBalance } from "@/lib/credits";
+import { CatalogProductGrid } from "@/components/CatalogProductGrid";
+import { hasSupabaseAdmin } from "@/lib/env";
+import { createAdminSupabase } from "@/lib/supabase/server";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
-import { getGeo } from "@/lib/geo";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: "Catalog — shoppable menswear picks · Valetti",
   description:
     "Browse the Valetti catalogue — curated menswear matched to quiet-luxury, European style. Real products with disclosed affiliate links.",
   alternates: { canonical: "/catalog" },
+  openGraph: {
+    title: "Valetti catalogue — shoppable menswear picks",
+    description:
+      "Browse curated menswear matched to quiet-luxury, European style. Real products with disclosed affiliate links.",
+    url: "/catalog",
+    type: "website",
+    images: [
+      {
+        url: BRAND.ogImage,
+        width: BRAND.ogImageWidth,
+        height: BRAND.ogImageHeight,
+        alt: "Men's style essentials flat lay — Valetti personal style atelier",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Valetti catalogue — shoppable menswear picks",
+    description:
+      "Browse curated menswear matched to quiet-luxury, European style.",
+    images: [BRAND.ogImage],
+  },
 };
-
-export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 24;
 
@@ -118,13 +137,6 @@ export default async function CatalogPage({
     );
   }
 
-  const { currency } = await getGeo();
-  const sb = await createServerSupabase();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  const canTryOn = Boolean(hasSupabase && user);
-  const balance = canTryOn ? await getCreditBalance() : null;
   const admin = createAdminSupabase();
 
   let query = admin
@@ -168,10 +180,7 @@ export default async function CatalogPage({
       </section>
 
       <section className="container-luxe py-10">
-        <CatalogTryOnShell
-          initialBalance={balance}
-          tryOnCost={CREDIT_COSTS.tryon}
-        >
+        <CatalogTryOnShell tryOnCost={CREDIT_COSTS.tryon}>
         {/* Filters */}
         <form
           method="get"
@@ -240,11 +249,7 @@ export default async function CatalogPage({
           </div>
         </form>
 
-        <CatalogTryOnHint
-          canTryOn={canTryOn}
-          cost={CREDIT_COSTS.tryon}
-          balance={balance}
-        />
+        <CatalogTryOnHint cost={CREDIT_COSTS.tryon} />
 
         {/* Result meta */}
         <div className="mt-6 flex items-center justify-between text-sm text-stone-soft">
@@ -263,18 +268,7 @@ export default async function CatalogPage({
         </div>
 
         {/* Grid */}
-        {products.length > 0 && (
-          <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
-            {products.map((p) => (
-              <CatalogProductCard
-                key={p.id}
-                product={p}
-                currency={currency}
-                canTryOn={canTryOn}
-              />
-            ))}
-          </div>
-        )}
+        {products.length > 0 && <CatalogProductGrid products={products} />}
 
         {/* Pagination */}
         {totalPages > 1 && (

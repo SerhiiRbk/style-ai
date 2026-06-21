@@ -28,6 +28,8 @@ import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { RegenPhotoHint } from "@/components/RegenPhotoHint";
 import { BRAND } from "@/lib/brand";
 import { DEMO_CAPSULE_IMAGES, isDemoReportId } from "@/lib/demo-report";
+import { DemoReportJsonLd } from "@/components/DemoReportJsonLd";
+import { absoluteUrl } from "@/lib/site-url";
 import {
   isMockShopping,
   reportUpsellForTier,
@@ -206,6 +208,13 @@ export default async function ReportPage({
 
   return (
     <CreditsProvider initialBalance={balance}>
+      {isDemo ? (
+        <DemoReportJsonLd
+          headline={report.headline}
+          summary={report.summary}
+          imageUrl={absoluteUrl(BRAND.ogImage)}
+        />
+      ) : null}
       {generation?.pending || generation?.status === "failed" ? (
         <ReportGenerationBanner reportId={report.id} initial={generation} />
       ) : null}

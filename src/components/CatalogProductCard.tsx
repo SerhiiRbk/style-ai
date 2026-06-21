@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ProductImage } from "@/components/ProductImage";
 import { MAX_TRYON_ITEMS, useTryOnSelection } from "@/components/TryOnContext";
+import { useNavSession } from "@/components/NavSession";
 import { formatProductPrice, type Currency } from "@/lib/currency";
 
 export type CatalogProduct = {
@@ -138,16 +139,10 @@ export function CatalogProductCard({
   );
 }
 
-export function CatalogTryOnHint({
-  canTryOn,
-  cost,
-  balance,
-}: {
-  canTryOn: boolean;
-  cost: number;
-  balance: number | null;
-}) {
-  if (!canTryOn) {
+export function CatalogTryOnHint({ cost }: { cost: number }) {
+  const { authed, balance } = useNavSession();
+
+  if (!authed) {
     return (
       <div className="mt-6 rounded-2xl border hairline bg-cream/40 px-4 py-3 text-sm text-stone">
         <Link href="/login" className="text-ink underline decoration-brass/50 underline-offset-2">
