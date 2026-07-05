@@ -76,6 +76,30 @@ function first(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : v) ?? "";
 }
 
+async function listCatalogBrands(
+  admin: ReturnType<typeof createAdminSupabase>,
+): Promise<string[]> {
+  const brands = new Set<string>();
+  const size = 1000;
+  for (let from = 0; ; from += size) {
+    const { data, error } = await admin
+      .from("products")
+      .select("brand")
+      .eq("source_type", "scraper")
+      .eq("hidden", false)
+      .not("brand", "is", null)
+      .order("id", { ascending: true })
+      .range(from, from + size - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    for (const row of data) {
+      if (typeof row.brand === "string" && row.brand) brands.add(row.brand);
+    }
+    if (data.length < size) break;
+  }
+  return [...brands].sort((a, b) => a.localeCompare(b));
+}
+
 function buildHref(base: SP, patch: Record<string, string | number | null>) {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(base)) {
@@ -108,6 +132,7 @@ export default async function CatalogPage({
   const sp = await searchParams;
   const q = first(sp.q).trim();
   const category = first(sp.category);
+  const brand = first(sp.brand);
   const market = first(sp.market);
   const gender = first(sp.gender);
   const inStockOnly = first(sp.instock) === "1";
@@ -139,6 +164,8 @@ export default async function CatalogPage({
 
   const admin = createAdminSupabase();
 
+  const brands = await listCatalogBrands(admin);
+
   let query = admin
     .from("products")
     .select(
@@ -147,6 +174,7 @@ export default async function CatalogPage({
     );
 
   if (category) query = query.eq("category", category);
+  if (brand) query = query.eq("brand", brand);
   if (market) query = query.eq("market", market);
   if (gender) query = query.eq("gender", gender);
   if (inStockOnly) query = query.eq("in_stock", true);
@@ -184,14 +212,14 @@ export default async function CatalogPage({
         {/* Filters */}
         <form
           method="get"
-          className="grid gap-3 rounded-2xl border hairline bg-paper p-4 sm:grid-cols-2 lg:grid-cols-6"
+          className="grid gap-3 rounded-2xl border hairline bg-paper p-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8"
         >
           <input
             type="text"
             name="q"
             defaultValue={q}
             placeholder="Search title or brand…"
-            className="rounded-lg border hairline bg-cream/30 px-3 py-2 text-sm lg:col-span-2"
+            className="rounded-lg border hairline bg-cream/30 px-3 py-2 text-sm sm:col-span-2 xl:col-span-2"
           />
           <select
             name="category"
@@ -202,6 +230,18 @@ export default async function CatalogPage({
             {CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {c}
+              </option>
+            ))}
+          </select>
+          <select
+            name="brand"
+            defaultValue={brand}
+            className="rounded-lg border hairline bg-cream/30 px-3 py-2 text-sm"
+          >
+            <option value="">All brands</option>
+            {brands.map((b) => (
+              <option key={b} value={b}>
+                {b}
               </option>
             ))}
           </select>
@@ -229,7 +269,7 @@ export default async function CatalogPage({
               </option>
             ))}
           </select>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 sm:col-span-2 xl:col-span-2">
             <label className="flex items-center gap-2 text-sm text-stone">
               <input
                 type="checkbox"
@@ -260,7 +300,7 @@ export default async function CatalogPage({
                 ? "No products match your filters yet."
                 : `${total.toLocaleString("en-US")} product${total === 1 ? "" : "s"}`}
           </span>
-          {(q || category || market || gender || inStockOnly) && (
+          {(q || category || brand || market || gender || inStockOnly) && (
             <Link href="/catalog" className="text-brass hover:text-ink">
               Clear filters
             </Link>

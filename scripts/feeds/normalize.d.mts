@@ -1,3 +1,6 @@
+export function sanitizeScraperNulls(
+  raw: Record<string, unknown>,
+): Record<string, unknown>;
 export function mapCategory(rawCategory: unknown, title?: string): string;
 export function toEur(
   price: number,

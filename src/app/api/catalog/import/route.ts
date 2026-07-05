@@ -13,6 +13,7 @@ import {
   inferCountry,
   toEur,
   dedupeProducts,
+  sanitizeScraperNulls,
 } from "../../../../../scripts/feeds/normalize.mjs";
 import { env, hasCatalogImportKey, hasSupabaseAdmin, hasAI } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
@@ -34,6 +35,9 @@ const GENDERS = ["men", "women", "unisex", "kids"];
 // country when the row itself doesn't state one and the currency is shared (EUR).
 const SOURCE_DEFAULT_COUNTRY: { match: RegExp; country: string }[] = [
   { match: /zara/i, country: "ES" },
+  { match: /marks.?spencer-de|markspencer-de|m&s-de/i, country: "DE" },
+  { match: /marks.?spencer-fr|markspencer-fr|m&s-fr/i, country: "FR" },
+  { match: /marks.?spencer|markspencer|m&s/i, country: "ES" },
 ];
 
 function defaultCountryForSource(source: unknown): string | undefined {
@@ -53,9 +57,9 @@ function defaultCountryForSource(source: unknown): string | undefined {
  */
 function normalizeRaw(raw: unknown, defaultSource?: string): unknown {
   if (!raw || typeof raw !== "object") return raw;
-  const r = { ...(raw as Record<string, unknown>) };
+  const r = sanitizeScraperNulls(raw as Record<string, unknown>);
 
-  if (defaultSource && !r.source) r.source = defaultSource;
+  if (defaultSource) r.source = defaultSource;
 
   if (typeof r.category !== "string" || !CATEGORIES.includes(r.category)) {
     r.category = mapCategory(

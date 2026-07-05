@@ -102,7 +102,14 @@ function offerRow(productId, p, sourceType) {
  */
 export async function embedAndUpsert(
   products,
-  { model, batchSize = 100, onProgress, sourceType = "feed", unhide = false } = {},
+  {
+    model,
+    batchSize = 100,
+    onProgress,
+    sourceType = "feed",
+    unhide = false,
+    skipEmbed = false,
+  } = {},
 ) {
   const sb = getSupabase();
   const { products: unique } = dedupeProducts(products);
@@ -127,7 +134,7 @@ export async function embedAndUpsert(
       const { data, error } = await sb
         .from("products")
         .select(
-          "id, product_key, brand, title, category, color, gender, description",
+          "id, product_key, brand, title, category, color, gender, description, embedding",
         )
         .in("product_key", pks);
       if (error) throw new Error(error.message);
@@ -144,7 +151,7 @@ export async function embedAndUpsert(
       const { data, error } = await sb
         .from("products")
         .select(
-          "id, source, external_id, color_key, brand, title, category, color, gender, description",
+          "id, source, external_id, color_key, brand, title, category, color, gender, description, embedding",
         )
         .in("source", sources)
         .in("external_id", extIds);
@@ -152,15 +159,24 @@ export async function embedAndUpsert(
       for (const r of data ?? []) variantPrev.set(productVariantKey(r), r);
     }
 
-    // Decide which identities need a (re)embed, then embed them in one batch.
     const needEmbed = [];
-    for (const [pk, items] of groups) {
-      const rep = items[0];
-      const prev = byPk.get(pk) ?? variantPrev.get(productVariantKey(rep));
-      if (!(prev && embedText(prev) === embedText(rep))) needEmbed.push(pk);
+    if (!skipEmbed) {
+      for (const [pk, items] of groups) {
+        const rep = items[0];
+        const prev = byPk.get(pk) ?? variantPrev.get(productVariantKey(rep));
+        if (
+          !(
+            prev &&
+            embedText(prev) === embedText(rep) &&
+            prev.embedding != null
+          )
+        )
+          needEmbed.push(pk);
+      }
     }
     const embByPk = new Map();
     if (needEmbed.length) {
+      if (!model) throw new Error("Embedding model required");
       const reps = needEmbed.map((pk) => groups.get(pk)[0]);
       const { embeddings } = await embedMany({ model, values: reps.map(embedText) });
       reps.forEach((rep, j) => embByPk.set(rep.__pk, embeddings[j]));

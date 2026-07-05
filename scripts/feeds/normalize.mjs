@@ -23,6 +23,16 @@ const KEYWORDS = [
   ["Suits", ["suit", "tuxedo", "anzug", "completo"]],
 ];
 
+/** Drop JSON `null` on optional scraper fields so Zod `.optional()` accepts rows. */
+export function sanitizeScraperNulls(raw) {
+  if (!raw || typeof raw !== "object") return raw;
+  const r = { ...(raw) };
+  for (const [k, v] of Object.entries(r)) {
+    if (v === null) delete r[k];
+  }
+  return r;
+}
+
 export function mapCategory(rawCategory, title = "") {
   const hay = `${rawCategory ?? ""} ${title ?? ""}`.toLowerCase();
   for (const [cat, words] of KEYWORDS) {
