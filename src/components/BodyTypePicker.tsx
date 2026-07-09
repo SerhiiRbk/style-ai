@@ -2,6 +2,16 @@
 
 import { BODY_TYPE_LABELS as LABELS, type BodyTypeId } from "@/lib/style-profile";
 
+/** Plain-language cue for each body type, shown under the label in the picker. */
+const BODY_TYPE_DESC: Record<BodyTypeId, string> = {
+  rectangle: "Shoulders, waist & hips in line",
+  trapezoid: "Broad shoulders, trim waist",
+  triangle: "Hips wider than shoulders",
+  "inverted-triangle": "Shoulders wider than hips",
+  hourglass: "Balanced shoulders & hips, defined waist",
+  oval: "Fuller through the midsection",
+};
+
 type Shape = { s: number; w: number; h: number };
 
 /** Half-widths (from centre) at shoulder / waist / hip for each body type. */
@@ -60,29 +70,39 @@ function Silhouette({
   active: boolean;
   className?: string;
 }) {
+  const gradientId = `bt-fill-${id}`;
   return (
     <svg
       viewBox="0 0 100 150"
-      className={`transition-colors ${className} ${
-        active ? "text-ink" : "text-stone-soft"
+      className={`transition-colors duration-300 ${className} ${
+        active ? "text-brass" : "text-stone-soft"
       }`}
       aria-hidden
     >
+      {active && (
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="currentColor" stopOpacity={0.18} />
+            <stop offset="100%" stopColor="currentColor" stopOpacity={0.08} />
+          </linearGradient>
+        </defs>
+      )}
       <circle
         cx={CX}
         cy={18}
         r={9}
-        fill={active ? "currentColor" : "none"}
+        fill={active ? `url(#${gradientId})` : "none"}
         stroke="currentColor"
-        strokeWidth={2}
+        strokeWidth={active ? 2.4 : 1.6}
+        strokeLinejoin="round"
       />
       <path
         d={bodyPath(SHAPES[id])}
-        fill={active ? "currentColor" : "none"}
+        fill={active ? `url(#${gradientId})` : "none"}
         stroke="currentColor"
-        strokeWidth={2}
+        strokeWidth={active ? 2.4 : 1.6}
         strokeLinejoin="round"
-        opacity={active ? 0.92 : 1}
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -115,7 +135,7 @@ export function BodyTypePicker({
 }) {
   const ids = SETS[gender] ?? SETS.male;
   return (
-    <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5">
+    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {ids.map((id) => {
         const active = value === id;
         return (
@@ -124,17 +144,39 @@ export function BodyTypePicker({
             type="button"
             onClick={() => onChange(id)}
             aria-pressed={active}
-            className={`flex flex-col items-center rounded-xl border p-3 transition-colors ${
+            className={`group relative flex flex-col items-center overflow-hidden rounded-2xl border px-3 pb-4 pt-5 text-center transition-all duration-300 ${
               active
-                ? "border-ink bg-cream/60"
-                : "border-line hover:border-ink/40"
+                ? "border-brass bg-cream/70 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)]"
+                : "border-line hover:border-ink/30 hover:bg-cream/30"
             }`}
           >
-            <Silhouette id={id} active={active} />
             <span
-              className={`mt-1 text-xs ${active ? "text-ink" : "text-stone-soft"}`}
+              className={`pointer-events-none absolute inset-x-0 top-0 h-px transition-opacity duration-300 ${
+                active
+                  ? "bg-gradient-to-r from-transparent via-brass to-transparent opacity-100"
+                  : "opacity-0"
+              }`}
+            />
+            <div
+              className={`flex h-24 w-full items-end justify-center rounded-xl transition-colors duration-300 ${
+                active ? "bg-paper/60" : "bg-transparent group-hover:bg-paper/40"
+              }`}
+            >
+              <Silhouette id={id} active={active} className="h-24 w-auto" />
+            </div>
+            <span
+              className={`mt-3 font-display text-[15px] leading-none transition-colors duration-300 ${
+                active ? "text-ink" : "text-stone"
+              }`}
             >
               {LABELS[id]}
+            </span>
+            <span
+              className={`mt-1.5 text-[10px] leading-snug tracking-wide transition-colors duration-300 ${
+                active ? "text-stone" : "text-stone-soft"
+              }`}
+            >
+              {BODY_TYPE_DESC[id]}
             </span>
           </button>
         );

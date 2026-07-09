@@ -8,7 +8,8 @@ import {
   PricingCreditPackages,
   PricingRoadmap,
 } from "@/components/pricing/PricingInteractive";
-import { hasSupabase } from "@/lib/env";
+import { hasPayments, hasSupabase } from "@/lib/env";
+import { paymentProviderLabel } from "@/lib/payments";
 import {
   REPORT_COST,
   CREDIT_COSTS,
@@ -507,7 +508,10 @@ export default function PricingPage() {
 
         {/* Credit packages */}
         <section id="packages" className="border-y hairline bg-ink text-paper">
-          <PricingCreditPackages />
+          <PricingCreditPackages
+            paymentsEnabled={hasPayments}
+            paymentProvider={paymentProviderLabel()}
+          />
         </section>
 
         {/* Coming soon */}

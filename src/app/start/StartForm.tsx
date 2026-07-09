@@ -629,54 +629,10 @@ export function StartForm({
                 </div>
               </div>
 
-              <Label className="mt-8">Measurements — optional</Label>
-              <p className="mt-1 text-xs text-stone-soft">
-                Girth in centimetres. Shoulder, waist and hip girth set your
-                body type automatically — you can still adjust it below.
-              </p>
-              <div className="mt-3 grid gap-4 sm:grid-cols-3">
-                <Field label="Shoulders (cm)">
-                  <Input
-                    value={shoulderCm}
-                    onChange={(v) => setShoulderCm(v.replace(/[^0-9]/g, ""))}
-                    placeholder="e.g. 118"
-                  />
-                </Field>
-                <Field label="Chest (cm)">
-                  <Input
-                    value={chestCm}
-                    onChange={(v) => setChestCm(v.replace(/[^0-9]/g, ""))}
-                    placeholder="e.g. 102"
-                  />
-                </Field>
-                <Field label="Waist (cm)">
-                  <Input
-                    value={waistCm}
-                    onChange={(v) => setWaistCm(v.replace(/[^0-9]/g, ""))}
-                    placeholder="e.g. 90"
-                  />
-                </Field>
-                <Field label="Hips (cm)">
-                  <Input
-                    value={hipCm}
-                    onChange={(v) => setHipCm(v.replace(/[^0-9]/g, ""))}
-                    placeholder="e.g. 100"
-                  />
-                </Field>
-                <Field label="Sleeve: shoulder → thumb base (cm)">
-                  <Input
-                    value={sleeveCm}
-                    onChange={(v) => setSleeveCm(v.replace(/[^0-9]/g, ""))}
-                    placeholder="e.g. 86"
-                  />
-                </Field>
-              </div>
-
               <Label className="mt-8">Body type — optional</Label>
               <p className="mt-1 text-xs text-stone-soft">
-                {effectiveBodyType && !bodyTypeManual
-                  ? "Pre-selected from your measurements — tap to change."
-                  : "Pick the silhouette closest to you. It helps us recommend the most flattering fits — you can skip this."}
+                Pick the silhouette closest to you. It helps us recommend the
+                most flattering fits — you can skip this.
               </p>
               <BodyTypePicker
                 gender={gender}

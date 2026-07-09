@@ -7,8 +7,7 @@ import { PromoRedeemForm } from "@/components/PromoRedeemForm";
 import { CreditsProvider } from "@/components/CreditsContext";
 import { useNavSession } from "@/components/NavSession";
 import { SubCurrencyPrice } from "@/components/SubCurrencyPrice";
-import { hasPayments, hasSupabase } from "@/lib/env";
-import { paymentProviderLabel } from "@/lib/payments";
+import { hasSupabase } from "@/lib/env";
 import { TIER_PRICES } from "@/lib/currency";
 import {
   CREDIT_PACKAGES,
@@ -60,7 +59,13 @@ export function PricingPromoPanel() {
   );
 }
 
-export function PricingCreditPackages() {
+export function PricingCreditPackages({
+  paymentsEnabled,
+  paymentProvider,
+}: {
+  paymentsEnabled: boolean;
+  paymentProvider: string;
+}) {
   const { authed, balance } = useNavSession();
 
   return (
@@ -118,15 +123,15 @@ export function PricingCreditPackages() {
                 <BuyCreditsButton
                   packageId={pkg.id}
                   featured={featured}
-                  enabled={hasPayments}
+                  enabled={paymentsEnabled}
                 />
               </div>
             );
           })}
         </div>
         <p className="mt-6 text-sm text-paper/50">
-          {hasPayments
-            ? `Secure card payment via ${paymentProviderLabel()}. Credits never expire. Every new account also starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`
+          {paymentsEnabled
+            ? `Secure card payment via ${paymentProvider}. Credits never expire. Every new account also starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`
             : `Card checkout is rolling out shortly. In the meantime, every new account starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`}
         </p>
       </div>
