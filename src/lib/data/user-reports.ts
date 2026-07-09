@@ -12,7 +12,7 @@ export type UserReportSummary = {
   status: "processing" | "ready" | "failed";
 };
 
-/** Fetch the signed-in user's reports (RLS-scoped). Returns null if unauthenticated. */
+/** Fetch the signed-in user's reports. Filtered by user_id — RLS also allows reading other users' shared reports. */
 export async function getUserReports(): Promise<UserReportSummary[] | null> {
   if (!hasSupabase) return null;
 
@@ -25,6 +25,7 @@ export async function getUserReports(): Promise<UserReportSummary[] | null> {
   const { data, error } = await sb
     .from("reports")
     .select("id, created_at, headline, tier, status")
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
