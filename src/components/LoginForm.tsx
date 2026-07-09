@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { signIn, signUp } from "@/app/login/actions";
+import { GoogleContinueButton } from "@/components/GoogleContinueButton";
 
 type AuthAction = "signIn" | "signUp";
 
@@ -64,7 +65,16 @@ export function LoginForm({ next }: { next?: string }) {
     next && next.startsWith("/") && !next.startsWith("//") ? next : undefined;
 
   return (
-    <form className="mt-7 space-y-4">
+    <div className="mt-7 space-y-6">
+      <GoogleContinueButton next={safeNext} />
+
+      <div className="flex items-center gap-4">
+        <div className="h-px flex-1 bg-line" />
+        <span className="text-xs uppercase tracking-wider text-stone-soft">or</span>
+        <div className="h-px flex-1 bg-line" />
+      </div>
+
+      <form className="space-y-4">
       {safeNext ? <input type="hidden" name="next" value={safeNext} /> : null}
       <Input name="email" type="email" placeholder="you@email.com" label="Email" />
       <Input
@@ -132,6 +142,7 @@ export function LoginForm({ next }: { next?: string }) {
         requires separate consent when you upload images to generate a report.
       </p>
     </form>
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
+import { LEGAL } from "@/lib/legal";
 import { applyWelcomeCredits, PENDING_PROMO_COOKIE } from "@/lib/welcome-credits";
 import { redeemPromotion } from "@/lib/promotions";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
@@ -41,6 +42,25 @@ export async function GET(request: Request) {
     } = await supabase.auth.getUser();
     if (user) {
       const admin = createAdminSupabase();
+
+      try {
+        const { data: termsConsent } = await admin
+          .from("consents")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("type", "terms")
+          .maybeSingle();
+        if (!termsConsent) {
+          await admin.from("consents").insert({
+            user_id: user.id,
+            type: "terms",
+            version: LEGAL.termsVersion,
+          });
+        }
+      } catch {
+        // Non-fatal — account access still works; terms can be re-verified later.
+      }
+
       const cookieStore = await cookies();
       const pendingPromo = cookieStore.get(PENDING_PROMO_COOKIE)?.value ?? null;
       if (pendingPromo) {
