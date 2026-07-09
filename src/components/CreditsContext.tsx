@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect } from "react";
+import { useNavSession } from "@/components/NavSession";
 
 type CreditsValue = {
   /** Current balance, or null when credits don't apply (demo / not signed in). */
@@ -12,7 +13,7 @@ const CreditsContext = createContext<CreditsValue | null>(null);
 
 /**
  * Shares the signed-in user's live credit balance across the report's try-on
- * controls, so spending in one place updates the cost UI everywhere at once.
+ * controls and the global navbar via NavSession.
  */
 export function CreditsProvider({
   initialBalance,
@@ -21,7 +22,14 @@ export function CreditsProvider({
   initialBalance: number | null;
   children: React.ReactNode;
 }) {
-  const [balance, setBalance] = useState<number | null>(initialBalance);
+  const { balance, setBalance } = useNavSession();
+
+  useEffect(() => {
+    if (initialBalance !== null) {
+      setBalance(initialBalance);
+    }
+  }, [initialBalance, setBalance]);
+
   return (
     <CreditsContext.Provider value={{ balance, setBalance }}>
       {children}

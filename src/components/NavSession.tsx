@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -15,11 +17,24 @@ type NavSessionValue = {
   balance: number | null;
   /** True once the client has resolved the session (or there is nothing to resolve). */
   ready: boolean;
+  setBalance: (next: number | null) => void;
 };
 
 const LIVE = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
 const NavSessionContext = createContext<NavSessionValue | null>(null);
+
+type NavPayload = {
+  authed?: boolean;
+  isAdmin?: boolean;
+  balance?: number | null;
+};
+
+async function fetchNavSession(): Promise<NavPayload | null> {
+  const res = await fetch("/api/nav", { cache: "no-store" });
+  if (!res.ok) return null;
+  return (await res.json()) as NavPayload;
+}
 
 /**
  * Resolves per-visitor navbar state on the client via /api/nav.
@@ -29,43 +44,48 @@ const NavSessionContext = createContext<NavSessionValue | null>(null);
  * server-side auth check.
  */
 export function NavSessionProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<NavSessionValue>({
-    authed: false,
-    isAdmin: false,
-    balance: null,
-    ready: !LIVE,
-  });
+  const pathname = usePathname();
+  const [authed, setAuthed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [balance, setBalanceState] = useState<number | null>(null);
+  const [ready, setReady] = useState(!LIVE);
+
+  const setBalance = useCallback((next: number | null) => {
+    setBalanceState(next);
+  }, []);
+
+  const applyPayload = useCallback((data: NavPayload | null) => {
+    if (!data) {
+      setReady(true);
+      return;
+    }
+    setAuthed(Boolean(data.authed));
+    setIsAdmin(Boolean(data.isAdmin));
+    setBalanceState(typeof data.balance === "number" ? data.balance : null);
+    setReady(true);
+  }, []);
 
   useEffect(() => {
     if (!LIVE) return;
     let cancelled = false;
 
-    fetch("/api/nav", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
+    fetchNavSession()
       .then((data) => {
-        if (cancelled) return;
-        if (data) {
-          setState({
-            authed: Boolean(data.authed),
-            isAdmin: Boolean(data.isAdmin),
-            balance: typeof data.balance === "number" ? data.balance : null,
-            ready: true,
-          });
-        } else {
-          setState((s) => ({ ...s, ready: true }));
-        }
+        if (!cancelled) applyPayload(data);
       })
       .catch(() => {
-        if (!cancelled) setState((s) => ({ ...s, ready: true }));
+        if (!cancelled) setReady(true);
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pathname, applyPayload]);
 
   return (
-    <NavSessionContext.Provider value={state}>
+    <NavSessionContext.Provider
+      value={{ authed, isAdmin, balance, ready, setBalance }}
+    >
       {children}
     </NavSessionContext.Provider>
   );
@@ -78,6 +98,7 @@ export function useNavSession(): NavSessionValue {
       isAdmin: false,
       balance: null,
       ready: false,
+      setBalance: () => {},
     }
   );
 }
