@@ -16,6 +16,7 @@ import { getCreditBalance } from "@/lib/credits";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { StylistNote } from "@/components/StylistNote";
+import { ReportSectionNav } from "@/components/ReportSectionNav";
 import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
 import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
 import { isGeneratedReportImage } from "@/lib/asset-url";
@@ -1032,43 +1033,6 @@ export default async function ReportPage({
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-const REPORT_NAV_ITEMS = [
-  ["overview", "Overview"],
-  ["start-here", "Start"],
-  ["colours", "Colour"],
-  ["grooming", "Hair"],
-  ["fit", "Fit"],
-  ["looks", "Looks"],
-  ["capsule", "Capsule"],
-  ["shopping", "Shopping"],
-  ["details", "Details"],
-  ["care", "Care"],
-  ["dos-donts", "Do / Don't"],
-] as const;
-
-function ReportSectionNav() {
-  return (
-    <nav
-      aria-label="Report sections"
-      className="sticky top-0 z-30 border-b hairline bg-paper/95 backdrop-blur-md"
-    >
-      <div className="container-luxe">
-        <div className="flex gap-2 overflow-x-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {REPORT_NAV_ITEMS.map(([id, label]) => (
-            <a
-              key={id}
-              href={`#${id}`}
-              className="shrink-0 rounded-full border border-line bg-cream/40 px-3.5 py-1.5 text-xs text-stone transition-colors hover:border-ink/30 hover:bg-paper hover:text-ink"
-            >
-              {label}
-            </a>
-          ))}
-        </div>
-      </div>
-    </nav>
-  );
 }
 
 function AddonUnlockCard({
