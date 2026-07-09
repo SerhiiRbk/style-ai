@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { ReportGenerationState, ReportRecoveryInfo } from "@/lib/report";
 import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 
-const POLL_MS = 8_000;
+const POLL_MS = 5_000;
 
 function messageFor(phase: ReportGenerationState["phase"]): string {
   if (phase === "report") {
@@ -166,9 +166,9 @@ export function ReportGenerationBanner({
         const next = (await res.json()) as ReportGenerationState;
         if (cancelled) return;
         setState(next);
-        if (!next.pending) {
-          router.refresh();
-        }
+        // Re-fetch server components on every tick so incremental image saves
+        // (hair, looks, capsule) appear without a manual page refresh.
+        router.refresh();
       } catch {
         /* keep banner visible; user can refresh manually */
       }

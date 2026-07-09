@@ -22,7 +22,7 @@ import {
 } from "@/lib/look-tryon";
 import type { StyleProfile } from "@/lib/style-profile";
 import type { ShoppingItem } from "@/lib/report";
-import { getFullLengthPhotoUrl } from "@/lib/photo-tryon";
+import { getReportReferencePhotos } from "@/lib/photo-tryon";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 /** Look rendering + fal polling can exceed the default Vercel function timeout. */
@@ -215,7 +215,11 @@ export async function POST(request: Request) {
 
   const admin = createAdminSupabase();
 
-  const photo = await getFullLengthPhotoUrl(admin, user.id);
+  const photo = await getReportReferencePhotos(
+    admin,
+    user.id,
+    report.createdAt,
+  );
   if (!photo.ok) {
     return NextResponse.json(
       { error: photo.error, code: photo.code },
@@ -234,7 +238,8 @@ export async function POST(request: Request) {
     },
     // Identity reference ONLY — the user's own photo, never the report's
     // generated look image (which would copy the original outfit).
-    referenceImageUrl: photo.signedUrl,
+    referenceImageUrl: photo.fullUrl,
+    faceReferenceImageUrl: photo.faceUrl,
     // Capsule combo photo defines the exact outfit to replicate on the user.
     outfitReferenceImageUrl:
       kind === "capsule" ? outfitReferenceUrl : undefined,

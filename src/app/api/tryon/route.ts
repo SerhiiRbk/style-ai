@@ -146,7 +146,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const photo = await getFullLengthPhotoUrl(admin, user.id);
+  let reportCreatedAt: string | undefined;
+  if (reportId) {
+    const { data: reportRow } = await admin
+      .from("reports")
+      .select("created_at, user_id")
+      .eq("id", reportId)
+      .maybeSingle();
+    if (reportRow?.user_id === user.id) {
+      reportCreatedAt = reportRow.created_at as string;
+    }
+  }
+
+  const photo = await getFullLengthPhotoUrl(admin, user.id, {
+    reportCreatedAt,
+  });
   if (!photo.ok) {
     return NextResponse.json(
       { error: photo.error, code: photo.code },

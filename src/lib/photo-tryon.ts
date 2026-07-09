@@ -10,11 +10,98 @@ export type FullPhotoResult =
       code: "no_photos" | "needs_full_photo";
     };
 
+export type ReportReferencePhotos =
+  | { ok: true; fullUrl: string; faceUrl?: string }
+  | {
+      ok: false;
+      error: string;
+      code: "no_photos" | "needs_full_photo";
+    };
+
+/** Small slack so photos inserted just before the report row are still included. */
+const REPORT_PHOTO_CUTOFF_MS = 120_000;
+
+/**
+ * Reference photos tied to a specific report — photos uploaded at submission time,
+ * not the user's latest upload (which may belong to a different session/person).
+ */
+export async function getReportReferencePhotos(
+  admin: AdminClient,
+  userId: string,
+  reportCreatedAt: string,
+): Promise<ReportReferencePhotos> {
+  const cutoff = new Date(
+    new Date(reportCreatedAt).getTime() + REPORT_PHOTO_CUTOFF_MS,
+  ).toISOString();
+
+  const { data: photos } = await admin
+    .from("photos")
+    .select("storage_path, role, created_at")
+    .eq("user_id", userId)
+    .lte("created_at", cutoff)
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  const byRole = new Map<string, string>();
+  for (const row of photos ?? []) {
+    const role = row.role as string;
+    if (!byRole.has(role)) byRole.set(role, row.storage_path as string);
+  }
+
+  const fullPath = byRole.get("full");
+  if (!fullPath) {
+    const hasAny = Boolean(photos?.length);
+    return {
+      ok: false,
+      code: "needs_full_photo",
+      error: hasAny
+        ? "Virtual try-on needs a full-length photo (head to toe). A front portrait alone is not enough."
+        : "Upload a full-length photo (head to toe) to use virtual try-on.",
+    };
+  }
+
+  const sign = async (path: string) => {
+    const { data } = await admin.storage
+      .from("photos")
+      .createSignedUrl(path, 600);
+    return data?.signedUrl ?? null;
+  };
+
+  const fullUrl = await sign(fullPath);
+  if (!fullUrl) {
+    return {
+      ok: false,
+      code: "no_photos",
+      error: "Could not read your photo",
+    };
+  }
+
+  const facePath = byRole.get("face");
+  const faceUrl = facePath ? await sign(facePath) : null;
+
+  return {
+    ok: true,
+    fullUrl,
+    ...(faceUrl ? { faceUrl } : {}),
+  };
+}
+
 /** Pick the latest full-length photo — never fall back to a portrait. */
 export async function getFullLengthPhotoUrl(
   admin: AdminClient,
   userId: string,
+  opts?: { reportCreatedAt?: string },
 ): Promise<FullPhotoResult> {
+  if (opts?.reportCreatedAt) {
+    const refs = await getReportReferencePhotos(
+      admin,
+      userId,
+      opts.reportCreatedAt,
+    );
+    if (!refs.ok) return refs;
+    return { ok: true, signedUrl: refs.fullUrl };
+  }
+
   const { data: photos } = await admin
     .from("photos")
     .select("storage_path, role")

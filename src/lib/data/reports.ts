@@ -114,16 +114,13 @@ export function reportGenerationState(
 
   const hair = row.hair ?? { recommend: [], avoid: [] };
   const lookRows = looks ?? [];
-  const looksStarted = lookRows.some((l) => l.image_path);
   const hairPending =
     opts?.hasReferencePhoto === true &&
-    !looksStarted &&
     hairGenerationPending(hair, row.tier as Tier | undefined);
 
   const groomingPending =
     row.tier === "premium" &&
     opts?.hasReferencePhoto === true &&
-    !looksStarted &&
     !hairPending &&
     premiumGroomingPending(row.facial_hair, row.eyewear, row.accessories);
 

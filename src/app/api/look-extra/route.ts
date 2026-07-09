@@ -14,6 +14,7 @@ import { lookContextById } from "@/lib/look-contexts";
 import type { Intake, ReportContent, StyleProfile } from "@/lib/style-profile";
 import type { ShoppingItem } from "@/lib/report";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
+import { getReportReferencePhotos } from "@/lib/photo-tryon";
 
 export const maxDuration = 300;
 
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
   const [{ data: row }, { data: intakeRow }] = await Promise.all([
     admin
       .from("reports")
-      .select("id, user_id, profile, colors, look_items")
+      .select("id, user_id, profile, colors, look_items, created_at")
       .eq("id", reportId)
       .single(),
     admin
@@ -98,25 +99,14 @@ export async function POST(request: Request) {
     }
   }
 
-  // The owner's reference photo — keeps identity consistent across looks.
-  const { data: photos } = await admin
-    .from("photos")
-    .select("storage_path, role, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(20);
-  const chosen = photos?.find((p) => p.role === "full") ?? photos?.[0] ?? null;
-  if (!chosen) {
-    return NextResponse.json(
-      { error: "Upload a photo to generate looks on yourself" },
-      { status: 422 },
-    );
-  }
-  const { data: signed } = await admin.storage
-    .from("photos")
-    .createSignedUrl(chosen.storage_path, 600);
-  if (!signed?.signedUrl) {
-    return NextResponse.json({ error: "Could not read photo" }, { status: 500 });
+  // Reference photos from when this report was created — not the user's latest upload.
+  const refs = await getReportReferencePhotos(
+    admin,
+    user.id,
+    row.created_at as string,
+  );
+  if (!refs.ok) {
+    return NextResponse.json({ error: refs.error }, { status: 422 });
   }
 
   // Existing looks define the append index and what to avoid repeating.
@@ -144,7 +134,8 @@ export async function POST(request: Request) {
   const img = await generateLookImage({
     profile,
     look,
-    referenceImageUrl: signed.signedUrl,
+    referenceImageUrl: refs.fullUrl,
+    faceReferenceImageUrl: refs.faceUrl,
   });
   if (!img) {
     return NextResponse.json({ error: "Generation failed" }, { status: 502 });

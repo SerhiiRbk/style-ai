@@ -315,15 +315,28 @@ export async function generateLookImage(opts: {
     catalogImageUrls?: string[];
   };
   referenceImageUrl?: string;
+  /** Portrait anchor for identity when a separate full-length photo is also provided. */
+  faceReferenceImageUrl?: string;
   /** Pre-rendered outfit photo (e.g. capsule combo) — clothing reference only. */
   outfitReferenceImageUrl?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
-    const { profile, look, referenceImageUrl, outfitReferenceImageUrl } = opts;
+    const {
+      profile,
+      look,
+      referenceImageUrl,
+      faceReferenceImageUrl,
+      outfitReferenceImageUrl,
+    } = opts;
     const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
     const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
     const hasOutfitRef = Boolean(outfitReferenceImageUrl);
+    const hasFace = Boolean(faceReferenceImageUrl);
+    const hasFull = Boolean(referenceImageUrl);
+    const personImageCount = (hasFace ? 1 : 0) + (hasFull ? 1 : 0);
+    const ordinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"];
+    const ordinal = (n: number) => ordinals[n - 1] ?? `${n}TH`;
 
     const subject =
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
@@ -342,30 +355,40 @@ export async function generateLookImage(opts: {
     // Describe the role of each input image so identity (person photo) and the
     // garments (catalogue product photos) are not confused.
     let imageRoles = "";
-    if (referenceImageUrl && hasOutfitRef && catalogImageUrls.length) {
-      imageRoles =
-        `The FIRST image shows the person — preserve their face, hair and identity exactly. ` +
-        `The SECOND image shows the target outfit to replicate on that person — copy only the ` +
-        `clothing combination, colours and proportions; do not copy the model's face or body. ` +
-        `The remaining ${catalogImageUrls.length} image(s) are catalogue garment references. `;
-    } else if (referenceImageUrl && hasOutfitRef) {
-      imageRoles =
-        `The FIRST image shows the person — preserve their face, hair and identity exactly. ` +
-        `The SECOND image shows the exact outfit to dress them in — copy only the clothing, ` +
+    if (personImageCount > 0) {
+      if (hasFace && hasFull) {
+        imageRoles +=
+          `The ${ordinal(1)} image is a close-up portrait — match this person's face, hair and identity exactly. ` +
+          `The ${ordinal(2)} image is a full-length photo of the same person — use for body proportions and pose only. `;
+      } else {
+        imageRoles +=
+          `The ${ordinal(1)} image shows the person — preserve their face, hair and identity exactly. `;
+      }
+    }
+    if (hasOutfitRef) {
+      const outfitIdx = personImageCount + 1;
+      imageRoles +=
+        `The ${ordinal(outfitIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
         `colours and proportions; do not copy the model's face or body. `;
-    } else if (referenceImageUrl && catalogImageUrls.length) {
-      imageRoles =
-        `The FIRST image shows the person — preserve their face, hair and identity exactly. ` +
-        `The remaining ${catalogImageUrls.length} image(s) are the actual catalogue garments to dress them in — ` +
-        `reproduce those exact garments on the person. `;
-    } else if (referenceImageUrl) {
-      imageRoles = `Preserve the face and identity of the person in the provided photo. `;
-    } else if (catalogImageUrls.length) {
+    }
+    if (catalogImageUrls.length) {
+      const catalogStart = personImageCount + (hasOutfitRef ? 1 : 0) + 1;
+      if (catalogImageUrls.length === 1) {
+        imageRoles +=
+          `The ${ordinal(catalogStart)} image is the actual catalogue garment to dress them in — ` +
+          `reproduce that exact garment on the person. `;
+      } else {
+        imageRoles +=
+          `Images ${ordinal(catalogStart)} through ${ordinal(catalogStart + catalogImageUrls.length - 1)} are catalogue garment references — ` +
+          `reproduce those exact garments on the person. `;
+      }
+    }
+    if (!personImageCount && !catalogImageUrls.length) {
+      imageRoles = `Do not show identifiable facial features. `;
+    } else if (!personImageCount && catalogImageUrls.length) {
       imageRoles =
         `The provided image(s) are the actual catalogue garments to render as the outfit. ` +
         `Do not show identifiable facial features. `;
-    } else {
-      imageRoles = `Do not show identifiable facial features. `;
     }
 
     const prompt =
@@ -380,6 +403,9 @@ export async function generateLookImage(opts: {
       | { type: "text"; text: string }
       | { type: "image"; image: URL }
     )[] = [{ type: "text", text: prompt }];
+    if (faceReferenceImageUrl) {
+      content.push({ type: "image", image: new URL(faceReferenceImageUrl) });
+    }
     if (referenceImageUrl) {
       content.push({ type: "image", image: new URL(referenceImageUrl) });
     }

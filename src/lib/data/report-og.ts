@@ -105,8 +105,32 @@ export function reportOgImageUrl(id: string): string {
   return absoluteUrl(`/api/og/report/${id}`);
 }
 
-/** Pick metadata OG image: API route when a public hero exists, else static flatlay. */
+/**
+ * Whether a report may be shown on a public share card — the demo, or a
+ * link-shared report on a shareable tier. Gates personal data in the OG image.
+ */
+export async function isShareableReport(id: string): Promise<boolean> {
+  if (isDemoReportId(id)) return true;
+
+  if (!hasSupabaseAdmin) {
+    return Boolean(getMockReport(id));
+  }
+
+  const admin = createAdminSupabase();
+  const { data } = await admin
+    .from("reports")
+    .select("is_public, tier")
+    .eq("id", id)
+    .maybeSingle();
+
+  return Boolean(
+    data?.is_public && canShareReport((data.tier as Tier | null) ?? "free"),
+  );
+}
+
+/** Pick metadata OG image: branded share card for shareable reports, else static flatlay. */
 export async function reportOgMetadataImageUrl(id: string): Promise<string> {
-  const heroPath = await getReportHeroStoragePath(id);
-  return heroPath ? reportOgImageUrl(id) : reportOgFallbackImageUrl();
+  return (await isShareableReport(id))
+    ? reportOgImageUrl(id)
+    : reportOgFallbackImageUrl();
 }
