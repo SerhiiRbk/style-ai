@@ -1,4 +1,5 @@
 import { isGeneratedReportImage } from "@/lib/asset-url";
+import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
 import { RegenPhotoHint } from "@/components/RegenPhotoHint";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { RegenPhotoButton } from "@/components/RegenPhotoButton";
@@ -35,14 +36,21 @@ function MoodboardPhoto({
   alt,
   zoomable,
   priority = false,
+  generating = false,
 }: {
   src: string;
   alt: string;
   zoomable?: boolean;
   priority?: boolean;
+  generating?: boolean;
 }) {
   if (!src) {
-    return (
+    return generating ? (
+      <ReportImageGenerating
+        label="Styling your look"
+        detail="Photorealistic preview on your photo"
+      />
+    ) : (
       <div className="flex h-full w-full items-center justify-center text-sm text-stone-soft">
         Generating…
       </div>
@@ -73,6 +81,7 @@ export function Moodboard({
   archetypeName,
   archetypeLine,
   zoomable,
+  generating = false,
 }: {
   portrait: string;
   look?: string;
@@ -81,6 +90,7 @@ export function Moodboard({
   archetypeName: string;
   archetypeLine?: string;
   zoomable?: boolean;
+  generating?: boolean;
 }) {
   // Only show the second photo when it's a genuinely different image.
   const showSecondLook = Boolean(look) && look !== portrait;
@@ -92,20 +102,36 @@ export function Moodboard({
           alt="Your look on your photo"
           zoomable={zoomable}
           priority
+          generating={generating}
         />
         <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
           Your look
         </span>
       </figure>
 
-      {showSecondLook && (
+      {showSecondLook ? (
         <figure className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-sand">
-          <MoodboardPhoto src={look!} alt="A second look" zoomable={zoomable} />
+          <MoodboardPhoto
+            src={look!}
+            alt="A second look"
+            zoomable={zoomable}
+            generating={generating}
+          />
           <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
             Another look
           </span>
         </figure>
-      )}
+      ) : generating ? (
+        <figure className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-sand">
+          <ReportImageGenerating
+            label="Another look"
+            detail="Building your second outfit"
+          />
+          <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
+            Another look
+          </span>
+        </figure>
+      ) : null}
 
       <div className="relative flex aspect-[4/5] flex-col overflow-hidden rounded-2xl">
         {palette.slice(0, 5).map((hex) => (
@@ -321,12 +347,14 @@ export function ShopTheLook({
 export function CapsuleMatrix({
   combos,
   reportId,
+  generating = false,
 }: {
   combos: OutfitCombo[];
   reportId?: string;
+  generating?: boolean;
 }) {
   if (!combos.length) return null;
-  const visual = combos.some((c) => c.image);
+  const visual = combos.some((c) => c.image) || generating;
   return (
     <div className="mt-10">
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
@@ -350,6 +378,11 @@ export function CapsuleMatrix({
                     alt={`${c.context} outfit`}
                     wrapperClassName="relative block h-full w-full"
                     className="h-full w-full object-cover object-top"
+                  />
+                ) : generating ? (
+                  <ReportImageGenerating
+                    label={c.context}
+                    detail="Week-of-outfits preview"
                   />
                 ) : null}
                 <span className="absolute left-3 top-3 rounded-full bg-ink/70 px-2.5 py-1 text-[11px] text-paper backdrop-blur-sm">
@@ -774,6 +807,7 @@ function GroomingPreviewCard({
   fallbackSrc,
   label,
   regen,
+  generating = false,
 }: {
   item: FacialHairRec | EyewearRec | AccessoryRec;
   alt: string;
@@ -784,9 +818,11 @@ function GroomingPreviewCard({
     kind: "facial_hair" | "eyewear" | "accessories";
     index: number;
   };
+  generating?: boolean;
 }) {
   const src = item.image ?? fallbackSrc;
   const canRegen = Boolean(regen) && isGeneratedReportImage(item.image);
+  const showGenerating = generating && !src;
   return (
     <article className="overflow-hidden rounded-2xl border hairline bg-paper">
       <div className="relative aspect-[4/5] bg-sand">
@@ -801,6 +837,11 @@ function GroomingPreviewCard({
             alt={alt}
             wrapperClassName="relative block h-full w-full"
             className="h-full w-full object-cover"
+          />
+        ) : showGenerating ? (
+          <ReportImageGenerating
+            label={item.name}
+            detail="Rendering on your photo"
           />
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-stone-soft">
@@ -828,10 +869,12 @@ export function FacialHairGuide({
   items,
   reportId,
   owner = false,
+  generating = false,
 }: {
   items: FacialHairRec[];
   reportId?: string;
   owner?: boolean;
+  generating?: boolean;
 }) {
   if (!items.length) return null;
   const canRegen = owner && Boolean(reportId);
@@ -856,6 +899,7 @@ export function FacialHairGuide({
                 ? { reportId: reportId!, kind: "facial_hair", index: i }
                 : undefined
             }
+            generating={generating}
           />
         ))}
       </div>
@@ -867,10 +911,12 @@ export function PremiumEyewearGuide({
   items,
   reportId,
   owner = false,
+  generating = false,
 }: {
   items: EyewearRec[];
   reportId?: string;
   owner?: boolean;
+  generating?: boolean;
 }) {
   if (!items.length) return null;
   const canRegen = owner && Boolean(reportId);
@@ -912,6 +958,7 @@ export function PremiumEyewearGuide({
                   ? { reportId: reportId!, kind: "eyewear", index: idx }
                   : undefined
               }
+              generating={generating}
             />
           ))}
         </div>
@@ -943,10 +990,12 @@ export function AccessoriesGuide({
   items,
   reportId,
   owner = false,
+  generating = false,
 }: {
   items: AccessoryRec[];
   reportId?: string;
   owner?: boolean;
+  generating?: boolean;
 }) {
   if (!items.length) return null;
   const canRegen = owner && Boolean(reportId);
@@ -980,6 +1029,7 @@ export function AccessoriesGuide({
                 ? { reportId: reportId!, kind: "accessories", index: i }
                 : undefined
             }
+            generating={generating}
           />
         ))}
       </div>

@@ -17,6 +17,7 @@ import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { StylistNote } from "@/components/StylistNote";
 import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
+import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
 import { isGeneratedReportImage } from "@/lib/asset-url";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { ShareReportButton } from "@/components/ShareReportButton";
@@ -185,6 +186,7 @@ export default async function ReportPage({
     : extras.matrix;
 
   const generation = report.generation;
+  const imagesGenerating = Boolean(generation?.pending);
   const isDemo = isDemoReportId(report.id);
   const firstLookImage = report.looks.map((l) => l.image).find(Boolean);
   const heroPortrait = isDemo
@@ -333,6 +335,13 @@ export default async function ReportPage({
                 priority
               />
             </div>
+          ) : imagesGenerating ? (
+            <div className="relative hidden aspect-[4/5] overflow-hidden rounded-2xl border border-paper/15 md:block">
+              <ReportImageGenerating
+                label="Your first look"
+                detail="Photorealistic style direction"
+              />
+            </div>
           ) : null}
         </div>
       </header>
@@ -393,6 +402,7 @@ export default async function ReportPage({
                 archetypeName={extras.archetype.name}
                 archetypeLine={extras.archetype.line}
                 zoomable
+                generating={imagesGenerating}
               />
             </div>
           </div>
@@ -483,6 +493,7 @@ export default async function ReportPage({
                     group="recommend"
                     index={i}
                     owner={canRegen}
+                    generating={imagesGenerating}
                   />
                 ))}
               </div>
@@ -501,6 +512,7 @@ export default async function ReportPage({
                     group="avoid"
                     index={i}
                     owner={canRegen}
+                    generating={imagesGenerating}
                   />
                 ))}
               </div>
@@ -515,6 +527,7 @@ export default async function ReportPage({
                       items={report.facialHair}
                       reportId={report.id}
                       owner={canRegen}
+                      generating={imagesGenerating}
                     />
                     {isOwner && isLiveReport ? (
                       <GenerateMoreButton
@@ -553,6 +566,7 @@ export default async function ReportPage({
                       items={report.eyewear}
                       reportId={report.id}
                       owner={canRegen}
+                      generating={imagesGenerating}
                     />
                     {isOwner && isLiveReport ? (
                       <GenerateMoreButton
@@ -587,6 +601,7 @@ export default async function ReportPage({
                       items={report.accessories}
                       reportId={report.id}
                       owner={canRegen}
+                      generating={imagesGenerating}
                     />
                     {isOwner && isLiveReport ? (
                       <GenerateMoreButton
@@ -641,6 +656,7 @@ export default async function ReportPage({
                       items={report.facialHair}
                       reportId={report.id}
                       owner={canRegen}
+                      generating={imagesGenerating}
                     />
                   ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
@@ -658,6 +674,7 @@ export default async function ReportPage({
                       items={report.eyewear}
                       reportId={report.id}
                       owner={canRegen}
+                      generating={imagesGenerating}
                     />
                   ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
@@ -675,6 +692,7 @@ export default async function ReportPage({
                       items={report.accessories}
                       reportId={report.id}
                       owner={canRegen}
+                      generating={imagesGenerating}
                     />
                   ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
@@ -743,6 +761,11 @@ export default async function ReportPage({
                       fill
                       sizes="(max-width: 768px) 100vw, 33vw"
                       className="object-cover object-top"
+                    />
+                  ) : imagesGenerating ? (
+                    <ReportImageGenerating
+                      label={look.title}
+                      detail="Styling this look on your photo"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center px-4 text-center text-sm text-stone-soft">
@@ -816,6 +839,7 @@ export default async function ReportPage({
               <CapsuleMatrix
                 combos={matrix}
                 reportId={canTryOn ? report.id : undefined}
+                generating={imagesGenerating}
               />
               <div className="mt-12 border-t hairline pt-10">
                 <h3 className="text-sm uppercase tracking-wider text-stone-soft">
@@ -1280,6 +1304,7 @@ function HairCard({
   group,
   index,
   owner = false,
+  generating = false,
 }: {
   h: HairRec;
   good?: boolean;
@@ -1288,11 +1313,12 @@ function HairCard({
   group?: "recommend" | "avoid";
   index?: number;
   owner?: boolean;
+  generating?: boolean;
 }) {
   const showDual = dualAngle && good;
   const hasFront = Boolean(h.image);
   const hasSide = Boolean(h.imageSide);
-  const showSplit = showDual && (hasFront || hasSide);
+  const showSplit = showDual && (hasFront || hasSide || generating);
   const canRegen =
     owner && Boolean(reportId) && group != null && index != null;
   const frontGenerated = canRegen && isGeneratedReportImage(h.image);
@@ -1311,6 +1337,8 @@ function HairCard({
                   wrapperClassName="relative block h-full w-full"
                   className="h-full w-full object-cover"
                 />
+              ) : generating ? (
+                <ReportImageGenerating label="Front view" detail={h.name} />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-xs text-stone-soft">
                   <span>Front</span>
@@ -1338,6 +1366,8 @@ function HairCard({
                   wrapperClassName="relative block h-full w-full"
                   className="h-full w-full object-cover"
                 />
+              ) : generating ? (
+                <ReportImageGenerating label="Side view" detail={h.name} />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-xs text-stone-soft">
                   <span>Side</span>
@@ -1368,6 +1398,11 @@ function HairCard({
                 className={`h-full w-full object-cover ${
                   good ? "" : "opacity-95 grayscale-[35%]"
                 }`}
+              />
+            ) : generating ? (
+              <ReportImageGenerating
+                label={h.name}
+                detail="Hairstyle preview on your photo"
               />
             ) : (
               <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-stone-soft">
