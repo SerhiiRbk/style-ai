@@ -16,6 +16,7 @@ import { formatMoneyPdf } from "@/lib/currency";
 import { BODY_TYPE_LABELS, isBodyType } from "@/lib/style-profile";
 import { capsuleMatrixImageAt } from "@/lib/demo-report";
 import { buildExtras, investmentLevel, itemsForLook } from "@/lib/style-extras";
+import { humanizeProductTitle } from "@/lib/product-title";
 
 // A4 in points.
 const PAGE_W = 595.28;
@@ -920,7 +921,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   for (const item of report.shopping) {
     shopGallery.push({
       img: await product(item.image),
-      title: item.title,
+      title: humanizeProductTitle(item.title),
       sub: item.why,
       meta: `${item.retailer}  ·  ${formatMoneyPdf(item.priceEur, cur)} · ${investmentLevel(item)}`,
     });

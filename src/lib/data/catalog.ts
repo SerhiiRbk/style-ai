@@ -2,6 +2,7 @@ import "server-only";
 import { embed, embedMany } from "ai";
 import { env, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
+import { formatCatalogProductTitle } from "@/lib/product-title";
 import { mockShopping, type ShoppingItem } from "@/lib/report";
 import { marketForCurrency } from "@/lib/currency";
 import { colorMatchScore, decomposeLook, garmentTitleMatchScore, paletteColorHints, type LookGarment } from "@/lib/style-extras";
@@ -222,7 +223,7 @@ export async function matchShopping(
         added++;
         items.push({
           category,
-          title: p.brand ? `${p.brand} ${p.title}` : p.title,
+          title: formatCatalogProductTitle(p.brand, p.title),
           why: shoppingReason(category, added - 1, profile, goal),
           priceEur: Number(p.price_eur ?? 0),
           priceNative: p.price_native != null ? Number(p.price_native) : undefined,
@@ -365,7 +366,7 @@ function shoppingItemFromMatch(
   const colorLabel = g.color ? `${g.color} ` : "";
   return {
     category: g.category,
-    title: row.brand ? `${row.brand} ${row.title}` : row.title,
+    title: formatCatalogProductTitle(row.brand, row.title),
     why: similarPick
       ? `Similar ${colorLabel}${g.garment} from the catalogue — same category and tone as this look.`
       : `Matches this look — ${colorLabel}${g.garment} aligned with your ${profile.colorSeason} palette and goal to ${goal}.`,

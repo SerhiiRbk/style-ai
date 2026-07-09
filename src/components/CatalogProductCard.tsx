@@ -5,6 +5,7 @@ import { ProductImage } from "@/components/ProductImage";
 import { MAX_TRYON_ITEMS, useTryOnSelection } from "@/components/TryOnContext";
 import { useNavSession } from "@/components/NavSession";
 import { formatProductPrice, type Currency } from "@/lib/currency";
+import { formatCatalogProductTitle, humanizeProductTitle } from "@/lib/product-title";
 
 export type CatalogProduct = {
   id: string;
@@ -37,7 +38,7 @@ export function CatalogProductCard({
   canTryOn: boolean;
 }) {
   const selection = useTryOnSelection();
-  const name = product.brand ? `${product.brand} ${product.title}` : product.title;
+  const name = formatCatalogProductTitle(product.brand, product.title);
   const inSet = selection?.isSelected(product.id) ?? false;
   const setFull = Boolean(selection?.full) && !inSet;
 
@@ -102,7 +103,9 @@ export function CatalogProductCard({
             {product.brand}
           </div>
         )}
-        <div className="mt-1 line-clamp-2 text-sm text-ink">{product.title}</div>
+        <div className="mt-1 line-clamp-2 text-sm text-ink">
+          {humanizeProductTitle(product.title)}
+        </div>
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="font-display text-sm leading-snug sm:text-base">
             {product.price_eur != null

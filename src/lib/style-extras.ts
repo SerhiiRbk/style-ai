@@ -10,6 +10,7 @@ import {
   SUBSEASON_LABELS,
   type StyleProfile,
 } from "@/lib/style-profile";
+import { humanizeProductTitle } from "@/lib/product-title";
 
 export type FrameShapeId =
   | "rectangle"
@@ -857,7 +858,7 @@ function priorityMoves(
     },
     {
       n: "03",
-      title: `Invest in your hero piece — ${hero.toLowerCase()}`,
+      title: `Invest in your hero piece — ${humanizeProductTitle(hero)}`,
       why: "One high-impact layer raises the perceived quality of everything you already own.",
     },
   ];

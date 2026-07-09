@@ -4,6 +4,7 @@ import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { formatMoney, formatOfferPrice } from "@/lib/currency";
 import type { Currency } from "@/lib/currency";
+import { humanizeProductTitle } from "@/lib/product-title";
 import { LookTryOn } from "./LookTryOn";
 import type {
   ShoppingItem,
@@ -294,7 +295,7 @@ export function ShopTheLook({
             className="group flex items-center gap-2 rounded-full border border-line bg-paper py-1 pl-1 pr-3 transition-colors hover:border-ink/30"
           >
             <ShoppingItemThumb item={it} />
-            <span className="text-xs text-ink">{it.title}</span>
+            <span className="text-xs text-ink">{humanizeProductTitle(it.title)}</span>
             {it.similarPick ? (
               <span className="rounded-full bg-cream px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-stone">
                 Similar
@@ -698,7 +699,7 @@ function PriorityColumn({
           >
             <span className="flex min-w-0 items-center gap-3">
               <ShoppingItemThumb item={i} />
-              <span className="truncate text-sm">{i.title}</span>
+              <span className="truncate text-sm">{humanizeProductTitle(i.title)}</span>
             </span>
             <span className="shrink-0 font-display text-sm text-stone">
               {formatOfferPrice({

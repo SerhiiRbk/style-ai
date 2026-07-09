@@ -68,6 +68,7 @@ import {
   FinishingTouches,
 } from "@/components/StyleGuides";
 import { buildExtras, investmentLevel, itemsForLook } from "@/lib/style-extras";
+import { humanizeProductTitle } from "@/lib/product-title";
 import {
   isBodyType,
   BODY_TYPE_LABELS,
@@ -885,7 +886,7 @@ export default async function ReportPage({
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
                                 src={item.image}
-                                alt={item.title}
+                                alt={humanizeProductTitle(item.title)}
                                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
                               />
                             ) : (
@@ -904,7 +905,7 @@ export default async function ReportPage({
                             </span>
                           </div>
                           <div className="p-5">
-                            <h4 className="text-paper">{item.title}</h4>
+                            <h4 className="text-paper">{humanizeProductTitle(item.title)}</h4>
                             <p className="mt-1.5 text-sm leading-relaxed text-paper/55">
                               {item.why}
                             </p>
@@ -922,7 +923,7 @@ export default async function ReportPage({
                               productId={item.productId}
                               reportId={report.id}
                               imageUrl={item.image}
-                              title={item.title}
+                              title={humanizeProductTitle(item.title)}
                             />
                           </div>
                         ) : null}
