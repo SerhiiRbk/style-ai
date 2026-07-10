@@ -48,6 +48,7 @@ import {
 import { getReport as getMockReport, saveReport } from "@/lib/store";
 import {
   generateReportContent,
+  generateCoverImage,
   generateLookImage,
   generateHairImage,
   generateFacialHairImage,
@@ -440,10 +441,43 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
   }
 }
 
+/**
+ * Bespoke editorial PDF cover — a single full-length hero shot of the person.
+ * Generated for every paid (PDF-eligible) tier; skipped when there's no
+ * reference photo (the PDF falls back to the default editorial cover).
+ */
+async function generateCoverImageJob(input: ImageJobInput) {
+  if (input.tier === "free") return;
+
+  const admin = createAdminSupabase();
+  const { reportId, userId, profile, content, photos } = input;
+
+  const referenceImageUrl =
+    photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
+  if (!referenceImageUrl) return;
+
+  const img = await generateCoverImage({
+    profile,
+    palette: (content.colors?.best ?? []).map((c) => c.name).filter(Boolean),
+    referenceImageUrl,
+  });
+  if (!img) return;
+
+  const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
+  const path = `${userId}/${reportId}/cover.${ext}`;
+  const { error: upErr } = await admin.storage
+    .from("assets")
+    .upload(path, img.bytes, { contentType: img.mediaType, upsert: true });
+  if (!upErr) {
+    await admin.from("reports").update({ cover_image: path }).eq("id", reportId);
+  }
+}
+
 /** Look + capsule photos — slow; runs after the HTTP response via `after()`. */
 async function generateReportImages(input: ImageJobInput) {
   await generateHairImages(input);
   await generatePremiumGroomingImages(input);
+  await generateCoverImageJob(input);
 
   const admin = createAdminSupabase();
   const { reportId, userId, tier, profile, content, photos, shopping } = input;
@@ -816,6 +850,7 @@ type ReportRow = {
   eyewear: EyewearRec[] | null;
   accessories: AccessoryRec[] | null;
   capsule_images: (string | null)[] | null;
+  cover_image: string | null;
 };
 
 /** Map hair storage paths to stable same-origin proxy URLs (no signing I/O). */
@@ -1043,6 +1078,9 @@ async function fetchReportView(
     (looks ?? []).map((l) => l.image_path as string | null | undefined),
   );
   const capsuleImages = signedAssetProxyUrls(capsulePaths);
+  const coverImage = row.cover_image
+    ? signedAssetProxyUrl(row.cover_image)
+    : undefined;
   const signedHair = attachHairImages(rawHair);
   const signedFacialHair = rawFacialHair
     ? attachGroomingImages(rawFacialHair)
@@ -1159,6 +1197,7 @@ async function fetchReportView(
     shopping: shopping.length ? shopping : mockShopping(),
     lookImages,
     capsuleImages,
+    coverImage,
     lookItems,
     outfitTryons,
   });

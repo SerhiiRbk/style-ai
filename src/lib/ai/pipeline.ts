@@ -442,6 +442,59 @@ export async function generateLookImage(opts: {
   }
 }
 
+/**
+ * Generate a bespoke "magazine cover" photo for the report PDF cover — a single
+ * full-length editorial hero shot of the person, styled in their palette, with
+ * clean negative space for the masthead. Generated once at report time.
+ */
+export async function generateCoverImage(opts: {
+  profile: StyleProfile;
+  palette?: string[];
+  archetype?: string;
+  referenceImageUrl?: string;
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI) return null;
+  try {
+    const { profile, referenceImageUrl } = opts;
+    const palette = (opts.palette ?? []).filter(Boolean);
+
+    const prompt =
+      `Cover photograph for a luxury men's style magazine — a single striking ` +
+      `full-length editorial hero shot. ` +
+      `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
+      `${profile.physical.bodyType} build, dressed in refined, well-tailored clothing` +
+      (palette.length ? ` in a ${palette.join(", ")} colour palette. ` : ". ") +
+      (opts.archetype ? `Overall mood: ${opts.archetype}. ` : "") +
+      `Confident, poised stance, editorial fashion energy. Cinematic soft directional ` +
+      `light, refined minimalist studio backdrop with a subtle warm tone. ` +
+      `Vertical full-length cover framing (taller than wide), the subject centred with ` +
+      `generous clean empty space above the head and below the feet so a magazine ` +
+      `masthead and cover lines can be overlaid later. Sharp focus, high-end retouching, ` +
+      `magazine cover quality. ` +
+      (referenceImageUrl
+        ? `Preserve the face, hair, skin tone and identity of the person in the provided ` +
+          `photo exactly — this is a portrait of that same person.`
+        : `Do not show identifiable facial features.`) +
+      NO_TEXT_RULE;
+
+    const content = referenceImageUrl
+      ? [
+          { type: "text" as const, text: prompt },
+          { type: "image" as const, image: new URL(referenceImageUrl) },
+        ]
+      : [{ type: "text" as const, text: prompt }];
+
+    const result = await generateText({
+      model: env.modelImage,
+      messages: [{ role: "user", content }],
+    });
+    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
+    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+  } catch {
+    return null;
+  }
+}
+
 export type CatalogTryOnGarment = {
   title: string;
   category: string;

@@ -630,12 +630,23 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
 
   /* -------------------------------- cover -------------------------------- */
   const coverPage = d.doc.addPage([PAGE_W, PAGE_H]);
-  const hero = await embedImage(d.doc, "/images/hero-editorial.png", {
-    w: PAGE_W,
-    h: PAGE_H,
-    px: 1400,
-    position: "top",
-  });
+  // Bespoke per-report cover when generated; otherwise the default editorial hero.
+  const coverSrc = report.coverImage || "/images/hero-editorial.png";
+  const hero =
+    (await embedImage(d.doc, coverSrc, {
+      w: PAGE_W,
+      h: PAGE_H,
+      px: 1400,
+      position: "top",
+    })) ??
+    (report.coverImage
+      ? await embedImage(d.doc, "/images/hero-editorial.png", {
+          w: PAGE_W,
+          h: PAGE_H,
+          px: 1400,
+          position: "top",
+        })
+      : null);
   if (hero) {
     coverPage.drawImage(hero, { x: 0, y: 0, width: PAGE_W, height: PAGE_H });
   } else {
