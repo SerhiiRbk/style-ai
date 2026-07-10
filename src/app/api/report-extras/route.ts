@@ -33,7 +33,7 @@ import {
 } from "@/lib/report";
 import type { StyleProfile } from "@/lib/style-profile";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
-import { getReportReferencePhotos } from "@/lib/photo-tryon";
+import { getReportGroomingPhotoUrl } from "@/lib/photo-tryon";
 
 export const maxDuration = 300;
 
@@ -301,17 +301,18 @@ export async function POST(request: Request) {
     }
   }
 
-  // Use the photos tied to THIS report (uploaded around its creation), not the
-  // user's most recent upload — which may belong to a different report/person.
-  const refs = await getReportReferencePhotos(
+  // Prefer the photos tied to THIS report (uploaded around its creation) so the
+  // preview matches the report's subject; fall back to the user's latest photo
+  // when the report has none (e.g. older reports whose photos were replaced).
+  const ref = await getReportGroomingPhotoUrl(
     admin,
     user.id,
     row.created_at as string,
   );
-  if (!refs.ok) {
-    return NextResponse.json({ error: refs.error }, { status: 422 });
+  if (!ref.ok) {
+    return NextResponse.json({ error: ref.error }, { status: 422 });
   }
-  const referenceImageUrl = refs.faceUrl ?? refs.fullUrl;
+  const referenceImageUrl = ref.url;
 
   const merged: PreviewItem[] = [...existing];
   let anyGenerated = false;

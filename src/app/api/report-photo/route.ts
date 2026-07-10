@@ -18,7 +18,7 @@ import {
 import type { HairRec } from "@/lib/report";
 import type { StyleProfile } from "@/lib/style-profile";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
-import { getReportReferencePhotos } from "@/lib/photo-tryon";
+import { getReportGroomingPhotoUrl } from "@/lib/photo-tryon";
 
 export const maxDuration = 120;
 const SIGNED_TTL = 3600;
@@ -98,15 +98,15 @@ export async function POST(request: Request) {
     }
   }
 
-  const refs = await getReportReferencePhotos(
+  const ref = await getReportGroomingPhotoUrl(
     admin,
     user.id,
     row.created_at as string,
   );
-  if (!refs.ok) {
-    return NextResponse.json({ error: refs.error }, { status: 422 });
+  if (!ref.ok) {
+    return NextResponse.json({ error: ref.error }, { status: 422 });
   }
-  const referenceImageUrl = refs.faceUrl ?? refs.fullUrl;
+  const referenceImageUrl = ref.url;
 
   let newPath: string | null = null;
   let oldPath: string | null = null;

@@ -214,19 +214,30 @@ async function latestPhotoUrlsForUser(
    * (with a small slack), not the user's latest upload for another report. */
   reportCreatedAt?: string,
 ): Promise<PhotoInput[]> {
-  let query = admin
-    .from("photos")
-    .select("role, storage_path")
-    .eq("user_id", userId);
-  if (reportCreatedAt) {
-    const cutoff = new Date(
-      new Date(reportCreatedAt).getTime() + 120_000,
-    ).toISOString();
-    query = query.lte("created_at", cutoff);
+  const fetchRows = async (useCutoff: boolean) => {
+    let query = admin
+      .from("photos")
+      .select("role, storage_path")
+      .eq("user_id", userId);
+    if (useCutoff && reportCreatedAt) {
+      const cutoff = new Date(
+        new Date(reportCreatedAt).getTime() + 120_000,
+      ).toISOString();
+      query = query.lte("created_at", cutoff);
+    }
+    const { data } = await query
+      .order("created_at", { ascending: false })
+      .limit(20);
+    return data ?? [];
+  };
+
+  // Prefer the report's contemporaneous photos, but fall back to the user's
+  // latest upload when the report has none (older reports, replaced photos) so
+  // resumed image generation still runs instead of silently doing nothing.
+  let photoRows = await fetchRows(true);
+  if (reportCreatedAt && photoRows.length === 0) {
+    photoRows = await fetchRows(false);
   }
-  const { data: photoRows } = await query
-    .order("created_at", { ascending: false })
-    .limit(20);
 
   const byRole = new Map<string, string>();
   for (const row of photoRows ?? []) {

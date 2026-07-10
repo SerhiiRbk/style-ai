@@ -86,6 +86,77 @@ export async function getReportReferencePhotos(
   };
 }
 
+export type GroomingPhotoResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string; code: "no_photos" };
+
+/**
+ * A single reference photo for HEAD / UPPER-BODY previews (hair, facial hair,
+ * eyewear, accessories, headwear). Unlike virtual try-on these don't need a
+ * full-length shot, so prefer a face portrait, then a full-length, then any
+ * photo. Prefers photos uploaded around the report's creation, but falls back to
+ * the user's latest upload when the report has no contemporaneous photos (e.g.
+ * old reports whose original photos were later replaced) so generation still
+ * works instead of failing silently.
+ */
+export async function getReportGroomingPhotoUrl(
+  admin: AdminClient,
+  userId: string,
+  reportCreatedAt?: string,
+): Promise<GroomingPhotoResult> {
+  const pickPath = (
+    rows: { role: string | null; storage_path: string }[] | null | undefined,
+  ): string | null => {
+    const byRole = new Map<string, string>();
+    for (const row of rows ?? []) {
+      const role = (row.role as string) ?? "";
+      if (!byRole.has(role)) byRole.set(role, row.storage_path);
+    }
+    return byRole.get("face") ?? byRole.get("full") ?? rows?.[0]?.storage_path ?? null;
+  };
+
+  let path: string | null = null;
+
+  if (reportCreatedAt) {
+    const cutoff = new Date(
+      new Date(reportCreatedAt).getTime() + REPORT_PHOTO_CUTOFF_MS,
+    ).toISOString();
+    const { data: scoped } = await admin
+      .from("photos")
+      .select("storage_path, role, created_at")
+      .eq("user_id", userId)
+      .lte("created_at", cutoff)
+      .order("created_at", { ascending: false })
+      .limit(40);
+    path = pickPath(scoped as { role: string | null; storage_path: string }[]);
+  }
+
+  // Fallback: no photos around the report's creation — use the latest upload.
+  if (!path) {
+    const { data: latest } = await admin
+      .from("photos")
+      .select("storage_path, role, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(40);
+    path = pickPath(latest as { role: string | null; storage_path: string }[]);
+  }
+
+  if (!path) {
+    return {
+      ok: false,
+      code: "no_photos",
+      error: "Upload a photo to generate previews on yourself.",
+    };
+  }
+
+  const { data } = await admin.storage.from("photos").createSignedUrl(path, 600);
+  if (!data?.signedUrl) {
+    return { ok: false, code: "no_photos", error: "Could not read your photo." };
+  }
+  return { ok: true, url: data.signedUrl };
+}
+
 /** Pick the latest full-length photo — never fall back to a portrait. */
 export async function getFullLengthPhotoUrl(
   admin: AdminClient,
