@@ -210,11 +210,21 @@ export async function buildReportRecoveryInfo(
 async function latestPhotoUrlsForUser(
   admin: ReturnType<typeof createAdminSupabase>,
   userId: string,
+  /** When set, only consider photos uploaded around this report's creation
+   * (with a small slack), not the user's latest upload for another report. */
+  reportCreatedAt?: string,
 ): Promise<PhotoInput[]> {
-  const { data: photoRows } = await admin
+  let query = admin
     .from("photos")
     .select("role, storage_path")
-    .eq("user_id", userId)
+    .eq("user_id", userId);
+  if (reportCreatedAt) {
+    const cutoff = new Date(
+      new Date(reportCreatedAt).getTime() + 120_000,
+    ).toISOString();
+    query = query.lte("created_at", cutoff);
+  }
+  const { data: photoRows } = await query
     .order("created_at", { ascending: false })
     .limit(20);
 
@@ -699,7 +709,7 @@ export async function resumeReportImages(
   const admin = createAdminSupabase();
   const { data: row } = await admin
     .from("reports")
-    .select("id, user_id, tier, status, profile, colors, hair, shopping")
+    .select("id, user_id, tier, status, profile, colors, hair, shopping, created_at")
     .eq("id", reportId)
     .single();
 
@@ -711,7 +721,11 @@ export async function resumeReportImages(
 
   const userId = row.user_id as string;
   const tier = (row.tier as Tier) ?? "basic";
-  const photos = await latestPhotoUrlsForUser(admin, userId);
+  const photos = await latestPhotoUrlsForUser(
+    admin,
+    userId,
+    row.created_at as string,
+  );
 
   const content = {
     hair: (row.hair as { recommend: HairRec[]; avoid: HairRec[] } | null) ?? {
@@ -966,6 +980,7 @@ export async function retryFailedReport(
   const intake = intakeRow.intake as Intake;
 
   await clearPartialReport(admin, reportId);
+  // Retry may follow a fresh re-upload, so use the user's latest photos here.
   const photos = await latestPhotoUrlsForUser(admin, userId);
 
   try {

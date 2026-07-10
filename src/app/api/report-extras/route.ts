@@ -33,6 +33,7 @@ import {
 } from "@/lib/report";
 import type { StyleProfile } from "@/lib/style-profile";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
+import { getReportReferencePhotos } from "@/lib/photo-tryon";
 
 export const maxDuration = 300;
 
@@ -226,7 +227,9 @@ export async function POST(request: Request) {
 
   const { data: row } = await admin
     .from("reports")
-    .select("id, user_id, tier, profile, accessories, headwear, eyewear, facial_hair")
+    .select(
+      "id, user_id, tier, profile, accessories, headwear, eyewear, facial_hair, created_at",
+    )
     .eq("id", reportId)
     .single();
   if (!row || row.user_id !== user.id) {
@@ -298,31 +301,23 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data: photos } = await admin
-    .from("photos")
-    .select("storage_path, role, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(20);
-  const chosen = photos?.find((p) => p.role === "full") ?? photos?.[0] ?? null;
-  if (!chosen) {
-    return NextResponse.json(
-      { error: "Upload a photo to generate previews on yourself" },
-      { status: 422 },
-    );
+  // Use the photos tied to THIS report (uploaded around its creation), not the
+  // user's most recent upload — which may belong to a different report/person.
+  const refs = await getReportReferencePhotos(
+    admin,
+    user.id,
+    row.created_at as string,
+  );
+  if (!refs.ok) {
+    return NextResponse.json({ error: refs.error }, { status: 422 });
   }
-  const { data: signed } = await admin.storage
-    .from("photos")
-    .createSignedUrl(chosen.storage_path, 600);
-  if (!signed?.signedUrl) {
-    return NextResponse.json({ error: "Could not read photo" }, { status: 500 });
-  }
+  const referenceImageUrl = refs.faceUrl ?? refs.fullUrl;
 
   const merged: PreviewItem[] = [...existing];
   let anyGenerated = false;
   for (let i = 0; i < picks.length; i++) {
     const item = picks[i]!;
-    const img = await generateImage(type, profile, item, signed.signedUrl);
+    const img = await generateImage(type, profile, item, referenceImageUrl);
     if (img) {
       const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
       const idx = merged.length;
