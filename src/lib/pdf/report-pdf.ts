@@ -75,7 +75,12 @@ async function loadBytes(src: string): Promise<Uint8Array | null> {
   }
 }
 
-/** Cover-crop source bytes to box aspect (w:h) and re-encode as JPEG for pdf-lib. */
+/**
+ * Cover-crop source bytes to box aspect (w:h) and re-encode as JPEG for pdf-lib.
+ * Returns null if `sharp` is unavailable (e.g. native libvips fails to load in
+ * the serverless runtime) so the caller can fall back to a raw embed instead of
+ * failing the whole PDF.
+ */
 async function cropToBoxJpeg(
   bytes: Uint8Array,
   box: { w: number; h: number; px?: number; position?: string },
@@ -84,7 +89,12 @@ async function cropToBoxJpeg(
   const targetW = px;
   const targetH = Math.round((px * box.h) / box.w);
   const position = box.position ?? "centre";
-  const { default: sharp } = await import("sharp");
+  let sharp: typeof import("sharp").default;
+  try {
+    ({ default: sharp } = await import("sharp"));
+  } catch {
+    return null;
+  }
   const resizeOpts = {
     width: targetW,
     height: targetH,
@@ -114,6 +124,8 @@ async function cropToBoxJpeg(
  * Embed an image from a public path or remote URL, cover-cropped to the target
  * box aspect (w:h) and re-encoded to JPEG. Cropping is required because pdf-lib
  * cannot clip overflow, stretches uncropped bitmaps, and JPEG keeps the PDF small.
+ * If cropping is unavailable (sharp missing), fall back to embedding the raw
+ * bytes so the PDF still renders — never fail the whole export over one image.
  */
 async function embedImage(
   doc: PDFDocument,
@@ -124,11 +136,24 @@ async function embedImage(
   const bytes = await loadBytes(src);
   if (!bytes) return null;
   const jpeg = await cropToBoxJpeg(bytes, box);
-  if (!jpeg) return null;
+  if (jpeg) {
+    try {
+      return await doc.embedJpg(jpeg);
+    } catch {
+      // fall through to raw embed below
+    }
+  }
   try {
-    return await doc.embedJpg(jpeg);
+    if (bytes[0] === 0x89 && bytes[1] === 0x50) {
+      return await doc.embedPng(bytes);
+    }
+    return await doc.embedJpg(bytes);
   } catch {
-    return null;
+    try {
+      return await doc.embedPng(bytes);
+    } catch {
+      return null;
+    }
   }
 }
 
