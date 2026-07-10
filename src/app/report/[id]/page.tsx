@@ -35,6 +35,7 @@ import { absoluteUrl } from "@/lib/site-url";
 import {
   isMockShopping,
   reportUpsellForTier,
+  tierHasCapsule,
   PREMIUM_ACCESSORY_GEN_LIMIT,
   PREMIUM_EYEWEAR_GEN_LIMIT,
   PREMIUM_FACIAL_HAIR_GEN_LIMIT,
@@ -837,7 +838,7 @@ export default async function ReportPage({
             title="Capsule & buying plan"
             sub="A small, deliberate set of pieces that multiply into many outfits — bought in the order that pays off fastest."
           />
-          {isFree ? (
+          {!tierHasCapsule(report.tier) ? (
             <UpgradeLock
               title="The capsule wardrobe is a paid feature"
               body="See your full mix-and-match capsule, the week-of-outfits matrix, and a Good · Better · Best buying plan — included from the Lookbook tier."

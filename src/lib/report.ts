@@ -38,6 +38,15 @@ export function canShareReport(tier: Tier): boolean {
   return tier !== "free";
 }
 
+/**
+ * Whether the tier includes the capsule wardrobe, week-of-outfits matrix and
+ * Good · Better · Best buying plan. Lookbook & Premium only — Basic is the
+ * written consultation without the wardrobe system (see pricing matrix).
+ */
+export function tierHasCapsule(tier: Tier): boolean {
+  return tier === "lookbook" || tier === "premium";
+}
+
 export type ReportUpsell = {
   title: string;
   body: string;
