@@ -16,6 +16,7 @@ import { getCreditBalance } from "@/lib/credits";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
+import { RegenerateCoverButton } from "@/components/RegenerateCoverButton";
 import { StylistNote } from "@/components/StylistNote";
 import { ReportSectionNav } from "@/components/ReportSectionNav";
 import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
@@ -200,9 +201,11 @@ export default async function ReportPage({
     Boolean(generation?.pending && generation.phase === "capsule");
   const isDemo = isDemoReportId(report.id);
   const firstLookImage = report.looks.map((l) => l.image).find(Boolean);
+  // Prefer the bespoke editorial cover; fall back to the first look photo.
+  const heroIsCover = !isDemo && Boolean(report.coverImage);
   const heroPortrait = isDemo
     ? "/images/hero-editorial.png"
-    : firstLookImage || null;
+    : report.coverImage || firstLookImage || null;
   const lookImages = report.looks
     .map((l) => l.image)
     .filter((src): src is string => Boolean(src));
@@ -339,9 +342,15 @@ export default async function ReportPage({
                 alt="Your style direction"
                 fill
                 sizes="(max-width: 768px) 0px, 33vw"
-                className="object-cover object-top"
+                className={`object-cover ${heroIsCover ? "object-center" : "object-top"}`}
                 priority
               />
+              {canRegen && !imagesGenerating ? (
+                <RegenerateCoverButton
+                  reportId={report.id}
+                  cost={CREDIT_COSTS.cover_regen}
+                />
+              ) : null}
             </div>
           ) : imagesGenerating ? (
             <div className="relative hidden aspect-[4/5] overflow-hidden rounded-2xl border border-paper/15 md:block">
