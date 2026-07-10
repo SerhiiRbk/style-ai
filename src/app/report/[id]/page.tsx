@@ -650,7 +650,9 @@ export default async function ReportPage({
             ) : null}
 
             {report.tier === "premium" &&
-            (report.headwear?.length || generation?.pending) ? (
+            (report.headwear?.length ||
+              generation?.pending ||
+              (isOwner && isLiveReport)) ? (
               <div className="mt-12 border-t hairline pt-12">
                 {report.headwear?.length ? (
                   <>
@@ -678,6 +680,18 @@ export default async function ReportPage({
                       Hats, caps and bandanas on your photo are being generated.
                     </p>
                   </div>
+                ) : isOwner && isLiveReport ? (
+                  // Existing premium report created before headwear was included —
+                  // let the owner generate the base set on demand (no charge).
+                  <AddonUnlockCard
+                    title="Headwear"
+                    desc="Two headwear previews (hats, caps, bandanas) on your photo — included with Premium."
+                    reportId={report.id}
+                    type="headwear"
+                    cost={0}
+                    included
+                    label="Generate 2 headwear previews"
+                  />
                 ) : null}
               </div>
             ) : null}
@@ -1112,6 +1126,7 @@ function AddonUnlockCard({
   type,
   cost,
   label,
+  included = false,
 }: {
   title: string;
   desc: string;
@@ -1119,6 +1134,8 @@ function AddonUnlockCard({
   type: "accessories" | "headwear" | "facial_hair" | "eyewear";
   cost: number;
   label: string;
+  /** Premium already covers this preview — generate the base set for free. */
+  included?: boolean;
 }) {
   return (
     <div className="rounded-2xl border hairline bg-cream/30 p-6">
@@ -1129,6 +1146,7 @@ function AddonUnlockCard({
         type={type}
         cost={cost}
         label={label}
+        included={included}
       />
     </div>
   );

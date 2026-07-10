@@ -16,18 +16,21 @@ export function UnlockAddonButton({
   type,
   cost,
   label,
+  included = false,
 }: {
   reportId: string;
   type: "accessories" | "headwear" | "facial_hair" | "eyewear";
   cost: number;
   label: string;
+  /** When true the preview is already covered (Premium) — no credit charge. */
+  included?: boolean;
 }) {
   const router = useRouter();
   const { balance, setBalance } = useCredits();
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [msg, setMsg] = useState<string | null>(null);
 
-  const creditsApply = balance !== null;
+  const creditsApply = balance !== null && !included;
   const insufficient = creditsApply && (balance ?? 0) < cost;
 
   async function run() {
@@ -66,7 +69,9 @@ export function UnlockAddonButton({
       >
         {state === "loading"
           ? "Generating… this can take a minute"
-          : `${label} · ${cost} credits`}
+          : included
+            ? `${label} · included`
+            : `${label} · ${cost} credits`}
       </button>
       {creditsApply ? (
         <p className="mt-2 text-[11px] text-stone-soft">

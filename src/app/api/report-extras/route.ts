@@ -249,24 +249,30 @@ export async function POST(request: Request) {
   let picks: PreviewItem[];
 
   if (isPremium) {
-    // Already topped up — never double-charge.
-    if (existing.length > config.base) {
+    if (existing.length === 0) {
+      // Premium report created before this preview was included by default —
+      // backfill the base set on the user's photo for free (Premium covers it).
+      cost = 0;
+      picks = basePicks(type, profile);
+    } else if (existing.length > config.base) {
+      // Already topped up — never double-charge.
       const items = await signItems(admin, existing);
       return NextResponse.json({ items, balance: null, alreadyOwned: true });
+    } else {
+      // Base previews must be fully generated first.
+      const baseReady =
+        existing.length >= config.base &&
+        existing.slice(0, config.base).every((i) => i.imagePath);
+      if (!baseReady) {
+        return NextResponse.json(
+          { error: "Base previews are still generating — try again shortly." },
+          { status: 409 },
+        );
+      }
+      cost = config.extraCost;
+      const existingNames = new Set(existing.map((i) => i.name));
+      picks = extraPicks(type, profile).filter((p) => !existingNames.has(p.name));
     }
-    // Base previews must be fully generated first.
-    const baseReady =
-      existing.length >= config.base &&
-      existing.slice(0, config.base).every((i) => i.imagePath);
-    if (!baseReady) {
-      return NextResponse.json(
-        { error: "Base previews are still generating — try again shortly." },
-        { status: 409 },
-      );
-    }
-    cost = config.extraCost;
-    const existingNames = new Set(existing.map((i) => i.name));
-    picks = extraPicks(type, profile).filter((p) => !existingNames.has(p.name));
   } else {
     // Already unlocked on this non-premium report.
     if (existing.length > 0) {
@@ -277,7 +283,7 @@ export async function POST(request: Request) {
     picks = basePicks(type, profile);
   }
 
-  if (hasSupabaseAdmin) {
+  if (hasSupabaseAdmin && cost > 0) {
     const balance = await creditBalance(admin, user.id);
     if (balance < cost) {
       return NextResponse.json(
@@ -344,7 +350,7 @@ export async function POST(request: Request) {
     .eq("id", reportId);
 
   let balance: number | null = null;
-  if (hasSupabaseAdmin) {
+  if (hasSupabaseAdmin && cost > 0) {
     try {
       balance = await spendCredits(admin, {
         userId: user.id,
