@@ -15,6 +15,7 @@ import { CreditsProvider } from "@/components/CreditsContext";
 import { getCreditBalance } from "@/lib/credits";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
+import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { StylistNote } from "@/components/StylistNote";
 import { ReportSectionNav } from "@/components/ReportSectionNav";
 import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
@@ -273,13 +274,10 @@ export default async function ReportPage({
                 Upgrade for PDF
               </Link>
             ) : (
-              <a
-                href={`/api/reports/${report.id}/pdf`}
-                download
-                className="rounded-full border border-paper/25 px-5 py-2 text-sm text-paper/90 transition-colors hover:bg-paper hover:text-ink"
-              >
-                Download PDF
-              </a>
+              <DownloadPdfButton
+                reportId={report.id}
+                className="rounded-full border border-paper/25 px-5 py-2 text-sm text-paper/90 transition-colors hover:bg-paper hover:text-ink disabled:cursor-wait disabled:opacity-60"
+              />
             )}
             {isOwner && isLiveReport ? (
               <DeleteReportButton
@@ -1097,13 +1095,10 @@ function ReportTierUpsell({
             Upgrade for PDF
           </Link>
         ) : (
-          <a
-            href={`/api/reports/${reportId}/pdf`}
-            download
-            className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
-          >
-            Download PDF
-          </a>
+          <DownloadPdfButton
+            reportId={reportId}
+            className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-60"
+          />
         )}
       </div>
     </div>
