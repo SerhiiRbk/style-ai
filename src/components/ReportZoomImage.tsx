@@ -46,23 +46,39 @@ export function ReportZoomImage({
   }, [open, close]);
 
   const isAssetProxy = src.startsWith(ASSET_PROXY_PREFIX);
-  const hasSignedToken = isAssetProxy && src.includes("sig=");
-  /** Full-quality previews skip Next/Image resize/WebP; default uses optimizer. */
-  const skipImageOptimizer =
-    env.reportPreviewFullQuality || (isAssetProxy && !hasSignedToken);
   const useFill =
     fill ??
     (wrapperClassName.includes("relative") && wrapperClassName.includes("h-full"));
+  const resolvedWrapper =
+    useFill && fill === true
+      ? "absolute inset-0 block"
+      : wrapperClassName;
+  /** Next/Image optimizer rejects /api/assets URLs (400) — load them directly. */
+  const useNativeImg = isAssetProxy || !src.startsWith("/");
+  const skipImageOptimizer =
+    env.reportPreviewFullQuality || isAssetProxy;
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`${wrapperClassName} cursor-zoom-in text-left`}
+        className={`${resolvedWrapper} cursor-zoom-in text-left`}
         aria-label={`View full size: ${alt}`}
       >
-        {useFill && (src.startsWith("/") || isAssetProxy) ? (
+        {useNativeImg ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt={alt}
+            className={
+              useFill ? `h-full w-full ${className}` : className
+            }
+            loading={priority ? "eager" : "lazy"}
+            fetchPriority={priority ? "high" : "auto"}
+            decoding="async"
+          />
+        ) : useFill ? (
           <Image
             src={src}
             alt={alt}

@@ -84,21 +84,30 @@ async function cropToBoxJpeg(
   const targetW = px;
   const targetH = Math.round((px * box.h) / box.w);
   const position = box.position ?? "centre";
-  try {
-    const { default: sharp } = await import("sharp");
-    return await sharp(bytes, { failOn: "none" })
-      .rotate()
-      .resize({
-        width: targetW,
-        height: targetH,
-        fit: "cover",
-        position,
-      })
-      .jpeg({ quality: 78 })
-      .toBuffer();
-  } catch {
-    return null;
+  const { default: sharp } = await import("sharp");
+  const resizeOpts = {
+    width: targetW,
+    height: targetH,
+    fit: "cover" as const,
+    position,
+  };
+  const attempts = [
+    () =>
+      sharp(bytes, { failOn: "none" })
+        .rotate()
+        .resize(resizeOpts)
+        .jpeg({ quality: 78 })
+        .toBuffer(),
+    () => sharp(bytes).resize(resizeOpts).jpeg({ quality: 78 }).toBuffer(),
+  ];
+  for (const run of attempts) {
+    try {
+      return await run();
+    } catch {
+      // try next pipeline
+    }
   }
+  return null;
 }
 
 /**
