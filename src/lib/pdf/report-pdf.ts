@@ -566,12 +566,14 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
 
   const portrait = (src?: string) =>
     embedImage(d.doc, src, { w: 100, h: 125, px: 500, position: "top" });
+  /** AI look / capsule photos are generated at 9:16 — keep embed + gallery ratio in sync. */
+  const LOOK_RATIO = 16 / 9;
   const tall = (src?: string) =>
-    embedImage(d.doc, src, { w: 100, h: 140, px: 520, position: "top" });
+    embedImage(d.doc, src, { w: 9, h: 16, px: 520, position: "top" });
   const product = (src?: string) =>
     embedImage(d.doc, src, { w: 100, h: 115, px: 380, position: "centre" });
   const matrixOutfit = (src?: string) =>
-    embedImage(d.doc, src, { w: 100, h: 178, px: 520, position: "top" });
+    embedImage(d.doc, src, { w: 9, h: 16, px: 520, position: "top" });
 
   /* -------------------------------- cover -------------------------------- */
   const coverPage = d.doc.addPage([PAGE_W, PAGE_H]);
@@ -857,7 +859,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       label: l.context,
     });
   }
-  d.gallery(lookItems, { cols: 2, ratio: 1.4 });
+  d.gallery(lookItems, { cols: 2, ratio: LOOK_RATIO });
 
   /* -------------------------- capsule & buying plan ---------------------- */
   d.heading("Chapter 05", "Capsule & buying plan");
@@ -899,10 +901,20 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       { color: STONE, lineGap: 5 },
     );
     d.gap(4);
-    d.gallerySection("Outfit matrix — mix & match", matrixItems, {
-      cols: 2,
-      ratio: 16 / 9,
-    });
+    const matrixWithPhotos = matrixItems.filter((it) => it.img);
+    if (matrixWithPhotos.length) {
+      d.gallerySection("Outfit matrix — mix & match", matrixWithPhotos, {
+        cols: 2,
+        ratio: LOOK_RATIO,
+      });
+    } else {
+      d.subhead("Outfit matrix — mix & match");
+      for (const c of extras.matrix) {
+        d.text(`${c.context}`, { font: d.bold, size: 9.5 });
+        d.text(c.pieces.join("  +  "), { color: STONE });
+        d.gap(3);
+      }
+    }
   }
   d.gap(4);
   d.subhead("Good / Better / Best — where to spend", { keepWith: 28 });

@@ -354,7 +354,8 @@ export function CapsuleMatrix({
   generating?: boolean;
 }) {
   if (!combos.length) return null;
-  const visual = combos.some((c) => c.image) || generating;
+  const hasPhotos = combos.some((c) => c.image);
+  const visual = hasPhotos || generating;
   return (
     <div className="mt-10">
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
@@ -370,21 +371,22 @@ export function CapsuleMatrix({
             key={i}
             className="overflow-hidden rounded-2xl border hairline bg-paper"
           >
-            {visual && (
-              <div className="relative aspect-[9/16] bg-sand">
+            {(c.image || generating) && (
+              <div className="relative aspect-[9/16] overflow-hidden bg-sand">
                 {c.image ? (
                   <ReportZoomImage
                     src={c.image}
                     alt={`${c.context} outfit`}
-                    wrapperClassName="relative block h-full w-full"
-                    className="h-full w-full object-cover object-top"
+                    fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    className="object-cover object-top"
                   />
-                ) : generating ? (
+                ) : (
                   <ReportImageGenerating
                     label={c.context}
                     detail="Week-of-outfits preview"
                   />
-                ) : null}
+                )}
                 <span className="absolute left-3 top-3 rounded-full bg-ink/70 px-2.5 py-1 text-[11px] text-paper backdrop-blur-sm">
                   {c.context}
                 </span>

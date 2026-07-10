@@ -179,15 +179,23 @@ export default async function ReportPage({
   const balance = isOwner && isLiveReport ? balanceRaw : null;
   const catalogShopping = isLiveReport && !isMockShopping(report.shopping);
 
-  const capsuleImages = isDemoReportId(report.id)
-    ? [...DEMO_CAPSULE_IMAGES]
-    : report.capsuleImages;
-  const matrix = capsuleImages
-    ? extras.matrix.map((c, i) => ({ ...c, image: capsuleImages[i] ?? undefined }))
-    : extras.matrix;
+  const matrix = isDemoReportId(report.id)
+    ? extras.matrix.map((c, i) => ({
+        ...c,
+        image: DEMO_CAPSULE_IMAGES[i] ?? undefined,
+      }))
+    : extras.matrix.map((c, i) => ({
+        ...c,
+        image: report.capsuleImages?.[i] ?? undefined,
+      }));
 
   const generation = report.generation;
   const imagesGenerating = Boolean(generation?.pending);
+  const expectsCapsuleImages =
+    report.tier === "lookbook" || report.tier === "premium";
+  const capsuleGenerating =
+    expectsCapsuleImages &&
+    Boolean(generation?.pending && generation.phase === "capsule");
   const isDemo = isDemoReportId(report.id);
   const firstLookImage = report.looks.map((l) => l.image).find(Boolean);
   const heroPortrait = isDemo
@@ -754,7 +762,7 @@ export default async function ReportPage({
                 key={look.title}
                 className="overflow-hidden rounded-2xl border hairline bg-cream/30"
               >
-                <div className="relative aspect-[9/16] bg-sand">
+                <div className="relative aspect-[9/16] overflow-hidden bg-sand">
                   {look.image ? (
                     <ReportZoomImage
                       src={look.image}
@@ -840,7 +848,7 @@ export default async function ReportPage({
               <CapsuleMatrix
                 combos={matrix}
                 reportId={canTryOn ? report.id : undefined}
-                generating={imagesGenerating}
+                generating={capsuleGenerating}
               />
               <div className="mt-12 border-t hairline pt-10">
                 <h3 className="text-sm uppercase tracking-wider text-stone-soft">
