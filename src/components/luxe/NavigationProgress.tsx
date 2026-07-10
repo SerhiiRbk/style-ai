@@ -21,13 +21,18 @@ export function NavigationProgress() {
       const anchor = (e.target as Element).closest("a");
       if (!anchor || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       if (anchor.target === "_blank") return;
+      // File downloads (e.g. Download PDF) don't change the route, so the
+      // pending state would never clear — skip them entirely.
+      if (anchor.hasAttribute("download")) return;
 
       const href = anchor.getAttribute("href");
       if (
         !href ||
         href.startsWith("#") ||
         href.startsWith("mailto:") ||
-        href.startsWith("tel:")
+        href.startsWith("tel:") ||
+        // API routes are downloads/redirects, not client navigations.
+        href.startsWith("/api/")
       ) {
         return;
       }
