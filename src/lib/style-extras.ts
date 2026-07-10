@@ -412,6 +412,102 @@ export function accessoryExtraPicksFor(profile: StyleProfile): AccessoryPick[] {
   ];
 }
 
+/* -------------------------------- headwear -------------------------------- */
+
+/** One headwear styling pick (hat / cap / beanie / bandana). */
+export type HeadwearPick = {
+  name: string;
+  why: string;
+  kind: "hat" | "cap" | "beanie" | "bandana";
+};
+
+/**
+ * Two headwear picks chosen for the user's face shape (brim balances the
+ * proportions of the face) and climate (a warmer beanie vs. a lighter cap).
+ * Pure + deterministic, like the other stylist-layer helpers.
+ */
+export function headwearPicksFor(profile: StyleProfile): HeadwearPick[] {
+  const f = lc(profile.physical.faceShape);
+  const climate = lc(profile.demographics.climate);
+  const cold = /(cold|nordic|maritime|temperate)/.test(climate);
+
+  const picks: HeadwearPick[] = [];
+
+  // 1) A brimmed hat tuned to face shape — the brim shapes the proportions.
+  if (f.includes("round")) {
+    picks.push({
+      name: "Structured fedora",
+      why: "A defined brim and a higher crown add angles and vertical length that flatter a round face.",
+      kind: "hat",
+    });
+  } else if (f.includes("square")) {
+    picks.push({
+      name: "Soft-brim felt hat",
+      why: "A rounded, softer brim takes the edge off a strong, angular jaw.",
+      kind: "hat",
+    });
+  } else if (f.includes("oblong") || f.includes("rectang") || f.includes("long")) {
+    picks.push({
+      name: "Wide-brim hat",
+      why: "A wider brim adds horizontal balance and visually shortens a longer face.",
+      kind: "hat",
+    });
+  } else if (f.includes("heart") || f.includes("triang")) {
+    picks.push({
+      name: "Medium-brim trilby",
+      why: "A medium brim balances a wider forehead without overwhelming a narrower chin.",
+      kind: "hat",
+    });
+  } else {
+    picks.push({
+      name: "Classic brimmed hat",
+      why: "A balanced brim suits an oval face — versatile and easy to wear in your palette.",
+      kind: "hat",
+    });
+  }
+
+  // 2) A casual cap or beanie tuned to climate.
+  picks.push(
+    cold
+      ? {
+          name: "Ribbed wool beanie",
+          why: "A fitted beanie in a neutral from your palette adds warmth and a clean, modern casual finish.",
+          kind: "beanie",
+        }
+      : {
+          name: "Baseball cap",
+          why: "A structured cap in a palette neutral is the easy, versatile casual option for warmer days.",
+          kind: "cap",
+        },
+  );
+
+  return picks;
+}
+
+/** Two ADDITIONAL headwear picks for the one-time paid "generate 2 more" add-on. */
+export function headwearExtraPicksFor(profile: StyleProfile): HeadwearPick[] {
+  const climate = lc(profile.demographics.climate);
+  const cold = /(cold|nordic|maritime|temperate)/.test(climate);
+  return [
+    cold
+      ? {
+          name: "Wool flat cap",
+          why: "A wool flat cap reads smart-casual and pairs cleanly with overcoats and knitwear.",
+          kind: "cap",
+        }
+      : {
+          name: "Bucket hat",
+          why: "A relaxed bucket hat in a palette neutral is an easy warm-weather cover-up.",
+          kind: "hat",
+        },
+    {
+      name: "Bandana",
+      why: "A folded bandana in your palette adds a confident accent — worn as a headband or knotted at the neck.",
+      kind: "bandana",
+    },
+  ];
+}
+
 /** Named facial-hair styles for premium photo previews (up to 4). */
 export function facialHairFor(
   profile: StyleProfile,

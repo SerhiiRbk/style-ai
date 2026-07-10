@@ -884,6 +884,17 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     });
   }
 
+  if (report.headwear?.length) {
+    const items: GalleryItem[] = [];
+    for (const item of report.headwear) {
+      items.push({ img: await portrait(item.image), title: item.name, sub: item.why });
+    }
+    d.gallerySection("Headwear", items, {
+      cols: 2,
+      ratio: PORTRAIT_RATIO,
+    });
+  }
+
   /* ---------------------------- silhouette & fit ------------------------- */
   chapter("Silhouette & fit");
   const bt = report.profile.physical.bodyType;

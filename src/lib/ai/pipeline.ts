@@ -775,6 +775,62 @@ export async function generateAccessoryImage(opts: {
   }
 }
 
+/**
+ * Render headwear (hat / cap / beanie / bandana) on the user's own photo,
+ * preserving identity (image-to-image), framed so the full headwear and the top
+ * of the head are visible.
+ */
+export async function generateHeadwearImage(opts: {
+  profile: StyleProfile;
+  headwear: {
+    name: string;
+    why: string;
+    kind?: "hat" | "cap" | "beanie" | "bandana";
+  };
+  referenceImageUrl?: string;
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI) return null;
+  try {
+    const { profile, headwear, referenceImageUrl } = opts;
+    const piece =
+      headwear.kind === "cap"
+        ? "a baseball cap worn on the head"
+        : headwear.kind === "beanie"
+          ? "a knitted beanie worn on the head"
+          : headwear.kind === "bandana"
+            ? "a bandana worn on the head"
+            : "a brimmed hat (fedora / felt hat) worn on the head";
+    const prompt =
+      `Editorial headwear styling photo for a premium style report. ` +
+      HEADSHOT_FRAMING +
+      `Headwear: ${headwear.name} — ${piece}. ${headwear.why} ` +
+      `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
+      `${profile.physical.faceShape} face shape. ` +
+      `Frame so the full headwear and the top of the head are clearly visible (leave headroom above the hat), ` +
+      `neutral soft studio backdrop, natural soft light, sharp focus on the face and headwear, magazine quality, tasteful and respectful. ` +
+      (referenceImageUrl
+        ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add the headwear and a simple complementary outfit.`
+        : `Do not show identifiable facial features.`) +
+      NO_TEXT_RULE;
+
+    const content = referenceImageUrl
+      ? [
+          { type: "text" as const, text: prompt },
+          { type: "image" as const, image: new URL(referenceImageUrl) },
+        ]
+      : [{ type: "text" as const, text: prompt }];
+
+    const result = await generateText({
+      model: env.modelImage,
+      messages: [{ role: "user", content }],
+    });
+    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
+    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Full text/analysis pipeline (no images / catalogue yet). */
 export async function generateReportContent(
   intake: Intake,

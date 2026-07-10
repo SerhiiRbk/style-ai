@@ -7,6 +7,7 @@ import {
   generateFacialHairImage,
   generateEyewearImage,
   generateAccessoryImage,
+  generateHeadwearImage,
 } from "@/lib/ai/pipeline";
 import {
   CREDIT_COSTS,
@@ -22,16 +23,17 @@ import { getReportReferencePhotos } from "@/lib/photo-tryon";
 export const maxDuration = 120;
 const SIGNED_TTL = 3600;
 
-type Kind = "hair" | "facial_hair" | "eyewear" | "accessories";
+type Kind = "hair" | "facial_hair" | "eyewear" | "accessories" | "headwear";
 type PreviewItem = HairRec & { kind?: string; shape?: string };
 
 const GROOMING: Record<
   Exclude<Kind, "hair">,
-  { column: "facial_hair" | "eyewear" | "accessories"; prefix: string }
+  { column: "facial_hair" | "eyewear" | "accessories" | "headwear"; prefix: string }
 > = {
   facial_hair: { column: "facial_hair", prefix: "facial-hair" },
   eyewear: { column: "eyewear", prefix: "eyewear" },
   accessories: { column: "accessories", prefix: "accessory" },
+  headwear: { column: "headwear", prefix: "headwear" },
 };
 
 /**
@@ -72,7 +74,9 @@ export async function POST(request: Request) {
   const admin = createAdminSupabase();
   const { data: row } = await admin
     .from("reports")
-    .select("id, user_id, profile, hair, facial_hair, eyewear, accessories, created_at")
+    .select(
+      "id, user_id, profile, hair, facial_hair, eyewear, accessories, headwear, created_at",
+    )
     .eq("id", reportId)
     .single();
   if (!row || row.user_id !== user.id) {
@@ -172,13 +176,23 @@ export async function POST(request: Request) {
         },
         referenceImageUrl,
       });
-    } else {
+    } else if (kind === "accessories") {
       img = await generateAccessoryImage({
         profile,
         accessory: {
           name: item.name,
           why: item.why,
           kind: item.kind as "scarf" | "neckwear" | "tie" | undefined,
+        },
+        referenceImageUrl,
+      });
+    } else {
+      img = await generateHeadwearImage({
+        profile,
+        headwear: {
+          name: item.name,
+          why: item.why,
+          kind: item.kind as "hat" | "cap" | "beanie" | "bandana" | undefined,
         },
         referenceImageUrl,
       });

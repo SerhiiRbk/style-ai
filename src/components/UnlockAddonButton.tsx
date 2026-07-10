@@ -18,7 +18,7 @@ export function UnlockAddonButton({
   label,
 }: {
   reportId: string;
-  type: "accessories" | "facial_hair" | "eyewear";
+  type: "accessories" | "headwear" | "facial_hair" | "eyewear";
   cost: number;
   label: string;
 }) {

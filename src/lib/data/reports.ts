@@ -27,6 +27,7 @@ import {
   hairRecommendGenLimit,
   lookCountForTier,
   PREMIUM_ACCESSORY_GEN_LIMIT,
+  PREMIUM_HEADWEAR_GEN_LIMIT,
   PREMIUM_EYEWEAR_GEN_LIMIT,
   PREMIUM_FACIAL_HAIR_GEN_LIMIT,
   hairGenerationPending,
@@ -35,6 +36,7 @@ import {
   isStaleShoppingCopy,
   mockShopping,
   type AccessoryRec,
+  type HeadwearRec,
   type EyewearRec,
   type FacialHairRec,
   type HairRec,
@@ -54,10 +56,12 @@ import {
   generateFacialHairImage,
   generateEyewearImage,
   generateAccessoryImage,
+  generateHeadwearImage,
   type PhotoInput,
 } from "@/lib/ai/pipeline";
 import {
   accessoryPicksFor,
+  headwearPicksFor,
   capsuleMatrix,
   facialHairFor,
   premiumEyewearPicks,
@@ -97,6 +101,7 @@ export function reportGenerationState(
     facial_hair?: FacialHairRec[] | null;
     eyewear?: EyewearRec[] | null;
     accessories?: AccessoryRec[] | null;
+    headwear?: HeadwearRec[] | null;
   },
   looks: { image_path?: string | null }[] | null,
   opts?: { hasReferencePhoto?: boolean },
@@ -123,7 +128,12 @@ export function reportGenerationState(
     row.tier === "premium" &&
     opts?.hasReferencePhoto === true &&
     !hairPending &&
-    premiumGroomingPending(row.facial_hair, row.eyewear, row.accessories);
+    premiumGroomingPending(
+      row.facial_hair,
+      row.eyewear,
+      row.accessories,
+      row.headwear,
+    );
 
   const imagesPending =
     lookRows.length > 0 && lookRows.some((l) => !l.image_path);
@@ -387,7 +397,7 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
 
   const { data: row } = await admin
     .from("reports")
-    .select("facial_hair, eyewear, accessories")
+    .select("facial_hair, eyewear, accessories, headwear")
     .eq("id", reportId)
     .single();
 
@@ -406,6 +416,10 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
     accessoryPicksFor(profile)
       .slice(0, PREMIUM_ACCESSORY_GEN_LIMIT)
       .map((a) => ({ name: a.name, why: a.why, kind: a.kind }));
+  const pickHeadwear = () =>
+    headwearPicksFor(profile)
+      .slice(0, PREMIUM_HEADWEAR_GEN_LIMIT)
+      .map((h) => ({ name: h.name, why: h.why, kind: h.kind }));
 
   const mergeByName = <T extends { name: string }>(
     existing: T[] | null | undefined,
@@ -431,19 +445,27 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
     existingAccessories && existingAccessories.length > PREMIUM_ACCESSORY_GEN_LIMIT
       ? existingAccessories
       : mergeByName(existingAccessories, pickAccessories());
+  // Headwear is included by default too — same "never shrink an add-on" rule.
+  const existingHeadwear = row?.headwear as HeadwearRec[] | null;
+  const headwear: HeadwearRec[] =
+    existingHeadwear && existingHeadwear.length > PREMIUM_HEADWEAR_GEN_LIMIT
+      ? existingHeadwear
+      : mergeByName(existingHeadwear, pickHeadwear());
 
   const needsSeed =
     !row?.facial_hair ||
     !row?.eyewear ||
     !row?.accessories ||
+    !row?.headwear ||
     (row.facial_hair as FacialHairRec[]).length < PREMIUM_FACIAL_HAIR_GEN_LIMIT ||
     (row.eyewear as EyewearRec[]).length < PREMIUM_EYEWEAR_GEN_LIMIT ||
-    (row.accessories as AccessoryRec[]).length < PREMIUM_ACCESSORY_GEN_LIMIT;
+    (row.accessories as AccessoryRec[]).length < PREMIUM_ACCESSORY_GEN_LIMIT ||
+    (row.headwear as HeadwearRec[]).length < PREMIUM_HEADWEAR_GEN_LIMIT;
 
   if (needsSeed) {
     await admin
       .from("reports")
-      .update({ facial_hair: facialHair, eyewear, accessories })
+      .update({ facial_hair: facialHair, eyewear, accessories, headwear })
       .eq("id", reportId);
   }
 
@@ -452,7 +474,7 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
   // column write per chunk, chunks never overlap).
   async function generateColumn<T extends { imagePath?: string | null }>(
     items: T[],
-    column: "facial_hair" | "eyewear" | "accessories",
+    column: "facial_hair" | "eyewear" | "accessories" | "headwear",
     pathPrefix: string,
     gen: (item: T) => Promise<{ bytes: Uint8Array; mediaType: string } | null>,
   ) {
@@ -502,6 +524,9 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
   );
   await generateColumn(accessories, "accessories", "accessory", (item) =>
     generateAccessoryImage({ profile, accessory: item, referenceImageUrl }),
+  );
+  await generateColumn(headwear, "headwear", "headwear", (item) =>
+    generateHeadwearImage({ profile, headwear: item, referenceImageUrl }),
   );
 }
 
@@ -738,7 +763,7 @@ export async function finishIncompleteReports(opts?: {
   const { data: rows } = await admin
     .from("reports")
     .select(
-      "id, user_id, status, tier, capsule_images, hair, facial_hair, eyewear, accessories",
+      "id, user_id, status, tier, capsule_images, hair, facial_hair, eyewear, accessories, headwear",
     )
     .eq("status", "ready")
     .gte("created_at", since)
@@ -843,6 +868,9 @@ async function executeReportGeneration(
                 shape: f.shape,
                 kind: f.kind,
               })),
+            headwear: headwearPicksFor(profile)
+              .slice(0, PREMIUM_HEADWEAR_GEN_LIMIT)
+              .map((h) => ({ name: h.name, why: h.why, kind: h.kind })),
           }
         : {}),
     })
@@ -905,6 +933,7 @@ async function clearPartialReport(
       facial_hair: null,
       eyewear: null,
       accessories: null,
+      headwear: null,
       capsule_images: null,
     })
     .eq("id", reportId);
@@ -1083,6 +1112,7 @@ type ReportRow = {
   facial_hair: FacialHairRec[] | null;
   eyewear: EyewearRec[] | null;
   accessories: AccessoryRec[] | null;
+  headwear: HeadwearRec[] | null;
   capsule_images: (string | null)[] | null;
   cover_image: string | null;
 };
@@ -1307,6 +1337,7 @@ async function fetchReportView(
   const rawEyewear = (row.eyewear as EyewearRec[] | null) ?? undefined;
   const rawAccessories =
     (row.accessories as AccessoryRec[] | null) ?? undefined;
+  const rawHeadwear = (row.headwear as HeadwearRec[] | null) ?? undefined;
 
   const lookImages = signedAssetProxyUrls(
     (looks ?? []).map((l) => l.image_path as string | null | undefined),
@@ -1324,6 +1355,9 @@ async function fetchReportView(
     : undefined;
   const signedAccessories = rawAccessories
     ? attachGroomingImages(rawAccessories)
+    : undefined;
+  const signedHeadwear = rawHeadwear
+    ? attachGroomingImages(rawHeadwear)
     : undefined;
 
   const hasReferencePhoto =
@@ -1391,6 +1425,7 @@ async function fetchReportView(
       facial_hair: rawFacialHair ?? null,
       eyewear: rawEyewear ?? null,
       accessories: rawAccessories ?? null,
+      headwear: rawHeadwear ?? null,
     },
     looks ?? [],
     { hasReferencePhoto },
@@ -1427,6 +1462,7 @@ async function fetchReportView(
     facialHair: signedFacialHair,
     eyewear: signedEyewear,
     accessories: signedAccessories,
+    headwear: signedHeadwear,
     content,
     shopping: shopping.length ? shopping : mockShopping(),
     lookImages,

@@ -49,6 +49,8 @@ export const CREDIT_COSTS = {
   premium_addon: 3,
   /** One-time "generate 2 more" accessory previews on a premium report. */
   accessory_extra: 2,
+  /** One-time "generate 2 more" headwear previews on a premium report. */
+  headwear_extra: 2,
   /** One-time "generate 2 more" facial-hair previews on a premium report. */
   facialhair_extra: 2,
   /** One-time "generate 2 optical + 2 sunglasses" extra eyewear previews. */
@@ -61,6 +63,7 @@ export const CREDIT_COSTS = {
   facialhair_addon: 10,
   eyewear_addon: 10,
   accessory_addon: 5,
+  headwear_addon: 5,
 } as const;
 
 /** Credits granted once on signup — Starter Report (5) + one try-on (1). */

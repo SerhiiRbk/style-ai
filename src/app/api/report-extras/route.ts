@@ -5,11 +5,14 @@ import {
   generateAccessoryImage,
   generateEyewearImage,
   generateFacialHairImage,
+  generateHeadwearImage,
 } from "@/lib/ai/pipeline";
 import { isDemoReportId } from "@/lib/demo-report";
 import {
   accessoryExtraPicksFor,
   accessoryPicksFor,
+  headwearExtraPicksFor,
+  headwearPicksFor,
   facialHairExtraFor,
   facialHairFor,
   premiumEyewearExtraPicks,
@@ -23,6 +26,7 @@ import {
 } from "@/lib/credits";
 import {
   PREMIUM_ACCESSORY_GEN_LIMIT,
+  PREMIUM_HEADWEAR_GEN_LIMIT,
   PREMIUM_EYEWEAR_GEN_LIMIT,
   PREMIUM_FACIAL_HAIR_GEN_LIMIT,
   type HairRec,
@@ -34,13 +38,13 @@ export const maxDuration = 300;
 
 const SIGNED_TTL = 3600;
 
-type ExtraType = "accessories" | "facial_hair" | "eyewear";
+type ExtraType = "accessories" | "headwear" | "facial_hair" | "eyewear";
 type PreviewItem = HairRec & { kind?: string; shape?: string };
 
 const CONFIG: Record<
   ExtraType,
   {
-    column: "accessories" | "facial_hair" | "eyewear";
+    column: "accessories" | "headwear" | "facial_hair" | "eyewear";
     base: number;
     /** Premium one-time top-up cost ("generate more"). */
     extraCost: number;
@@ -55,6 +59,13 @@ const CONFIG: Record<
     extraCost: CREDIT_COSTS.accessory_extra,
     unlockCost: CREDIT_COSTS.accessory_addon,
     prefix: "accessory",
+  },
+  headwear: {
+    column: "headwear",
+    base: PREMIUM_HEADWEAR_GEN_LIMIT,
+    extraCost: CREDIT_COSTS.headwear_extra,
+    unlockCost: CREDIT_COSTS.headwear_addon,
+    prefix: "headwear",
   },
   facial_hair: {
     column: "facial_hair",
@@ -79,6 +90,11 @@ function basePicks(type: ExtraType, profile: StyleProfile): PreviewItem[] {
       .slice(0, PREMIUM_ACCESSORY_GEN_LIMIT)
       .map((a) => ({ name: a.name, why: a.why, kind: a.kind }));
   }
+  if (type === "headwear") {
+    return headwearPicksFor(profile)
+      .slice(0, PREMIUM_HEADWEAR_GEN_LIMIT)
+      .map((h) => ({ name: h.name, why: h.why, kind: h.kind }));
+  }
   if (type === "facial_hair") {
     return facialHairFor(profile)
       .slice(0, PREMIUM_FACIAL_HAIR_GEN_LIMIT)
@@ -95,6 +111,13 @@ function extraPicks(type: ExtraType, profile: StyleProfile): PreviewItem[] {
       name: a.name,
       why: a.why,
       kind: a.kind,
+    }));
+  }
+  if (type === "headwear") {
+    return headwearExtraPicksFor(profile).map((h) => ({
+      name: h.name,
+      why: h.why,
+      kind: h.kind,
     }));
   }
   if (type === "facial_hair") {
@@ -121,6 +144,17 @@ async function generateImage(
         name: item.name,
         why: item.why,
         kind: item.kind as "scarf" | "neckwear" | "tie" | undefined,
+      },
+      referenceImageUrl,
+    });
+  }
+  if (type === "headwear") {
+    return generateHeadwearImage({
+      profile,
+      headwear: {
+        name: item.name,
+        why: item.why,
+        kind: item.kind as "hat" | "cap" | "beanie" | "bandana" | undefined,
       },
       referenceImageUrl,
     });
@@ -192,7 +226,7 @@ export async function POST(request: Request) {
 
   const { data: row } = await admin
     .from("reports")
-    .select("id, user_id, tier, profile, accessories, eyewear, facial_hair")
+    .select("id, user_id, tier, profile, accessories, headwear, eyewear, facial_hair")
     .eq("id", reportId)
     .single();
   if (!row || row.user_id !== user.id) {

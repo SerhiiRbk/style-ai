@@ -8,6 +8,8 @@ import {
   canShareReport,
   type EyewearRec,
   type FacialHairRec,
+  type AccessoryRec,
+  type HeadwearRec,
   type HairRec,
   type Tier,
 } from "@/lib/report";
@@ -35,10 +37,10 @@ export async function GET(
   const adminDb = isAdmin && hasSupabaseAdmin ? createAdminSupabase() : null;
 
   const ownerCols =
-    "status, tier, capsule_images, hair, facial_hair, eyewear, user_id, is_public, intake, headline, summary, colors";
+    "status, tier, capsule_images, hair, facial_hair, eyewear, accessories, headwear, user_id, is_public, intake, headline, summary, colors";
   // Public view omits user_id (and intake) — read it for non-owners.
   const publicCols =
-    "status, tier, capsule_images, hair, facial_hair, eyewear, is_public";
+    "status, tier, capsule_images, hair, facial_hair, eyewear, accessories, headwear, is_public";
 
   type StatusRow = {
     status?: string | null;
@@ -47,6 +49,8 @@ export async function GET(
     hair?: { recommend: HairRec[]; avoid: HairRec[] } | null;
     facial_hair?: FacialHairRec[] | null;
     eyewear?: EyewearRec[] | null;
+    accessories?: AccessoryRec[] | null;
+    headwear?: HeadwearRec[] | null;
     user_id?: string;
     is_public?: boolean;
     intake?: unknown;

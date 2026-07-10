@@ -12,6 +12,7 @@ import type {
   EyewearRec,
   FacialHairRec,
   AccessoryRec,
+  HeadwearRec,
 } from "@/lib/report";
 import type {
   Archetype as ArchetypeT,
@@ -812,13 +813,13 @@ function GroomingPreviewCard({
   regen,
   generating = false,
 }: {
-  item: FacialHairRec | EyewearRec | AccessoryRec;
+  item: FacialHairRec | EyewearRec | AccessoryRec | HeadwearRec;
   alt: string;
   fallbackSrc?: string;
   label?: string;
   regen?: {
     reportId: string;
-    kind: "facial_hair" | "eyewear" | "accessories";
+    kind: "facial_hair" | "eyewear" | "accessories" | "headwear";
     index: number;
   };
   generating?: boolean;
@@ -1031,6 +1032,59 @@ export function AccessoriesGuide({
             regen={
               canRegen
                 ? { reportId: reportId!, kind: "accessories", index: i }
+                : undefined
+            }
+            generating={generating}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function HeadwearGuide({
+  items,
+  reportId,
+  owner = false,
+  generating = false,
+}: {
+  items: HeadwearRec[];
+  reportId?: string;
+  owner?: boolean;
+  generating?: boolean;
+}) {
+  if (!items.length) return null;
+  const canRegen = owner && Boolean(reportId);
+  const label = (k?: string) =>
+    k === "hat"
+      ? "Hat"
+      : k === "cap"
+        ? "Cap"
+        : k === "beanie"
+          ? "Beanie"
+          : k === "bandana"
+            ? "Bandana"
+            : undefined;
+  return (
+    <div>
+      <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+        Headwear
+      </h3>
+      <p className="mt-2 text-sm leading-relaxed text-stone">
+        Hats, caps and bandanas chosen for your face shape and colouring —
+        previewed on your own photo.
+      </p>
+      {canRegen ? <RegenPhotoHint className="mt-3" /> : null}
+      <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {items.map((item, i) => (
+          <GroomingPreviewCard
+            key={item.name}
+            item={item}
+            alt={`${item.name} — headwear recommendation`}
+            label={label(item.kind)}
+            regen={
+              canRegen
+                ? { reportId: reportId!, kind: "headwear", index: i }
                 : undefined
             }
             generating={generating}

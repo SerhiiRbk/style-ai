@@ -39,6 +39,7 @@ import {
   reportUpsellForTier,
   tierHasCapsule,
   PREMIUM_ACCESSORY_GEN_LIMIT,
+  PREMIUM_HEADWEAR_GEN_LIMIT,
   PREMIUM_EYEWEAR_GEN_LIMIT,
   PREMIUM_FACIAL_HAIR_GEN_LIMIT,
   type ColorRec,
@@ -64,6 +65,7 @@ import {
   FacialHairGuide,
   PremiumEyewearGuide,
   AccessoriesGuide,
+  HeadwearGuide,
   FitBlueprint,
   Capsule,
   CapsuleMatrix,
@@ -647,21 +649,55 @@ export default async function ReportPage({
               </div>
             ) : null}
 
+            {report.tier === "premium" &&
+            (report.headwear?.length || generation?.pending) ? (
+              <div className="mt-12 border-t hairline pt-12">
+                {report.headwear?.length ? (
+                  <>
+                    <HeadwearGuide
+                      items={report.headwear}
+                      reportId={report.id}
+                      owner={canRegen}
+                      generating={imagesGenerating}
+                    />
+                    {isOwner && isLiveReport ? (
+                      <GenerateMoreButton
+                        reportId={report.id}
+                        type="headwear"
+                        cost={CREDIT_COSTS.headwear_extra}
+                        count={report.headwear.filter((i) => i.image).length}
+                        baseCount={PREMIUM_HEADWEAR_GEN_LIMIT}
+                        label="Generate 2 more"
+                      />
+                    ) : null}
+                  </>
+                ) : generation?.pending ? (
+                  <div className="rounded-2xl border hairline bg-cream/30 p-6 text-sm leading-relaxed text-stone">
+                    <p className="font-display text-lg text-ink">Headwear</p>
+                    <p className="mt-2">
+                      Hats, caps and bandanas on your photo are being generated.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {report.tier !== "premium" &&
             ((isOwner && isLiveReport) ||
               Boolean(
                 report.facialHair?.length ||
                   report.eyewear?.length ||
-                  report.accessories?.length,
+                  report.accessories?.length ||
+                  report.headwear?.length,
               )) ? (
               <div className="mt-12 border-t hairline pt-12">
                 <h3 className="text-sm uppercase tracking-wider text-stone-soft">
                   See it on your photo
                 </h3>
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-stone">
-                  Generate photorealistic previews of facial hair, eyewear and
-                  accessories on your own photo — available as add-ons for this
-                  report.{" "}
+                  Generate photorealistic previews of facial hair, eyewear,
+                  accessories and headwear on your own photo — available as
+                  add-ons for this report.{" "}
                   <Link href="/pricing" className="text-brass hover:text-ink">
                     All included with Premium.
                   </Link>
@@ -719,6 +755,24 @@ export default async function ReportPage({
                       type="accessories"
                       cost={CREDIT_COSTS.accessory_addon}
                       label="Generate 2 accessory previews"
+                    />
+                  ) : null}
+
+                  {report.headwear?.length ? (
+                    <HeadwearGuide
+                      items={report.headwear}
+                      reportId={report.id}
+                      owner={canRegen}
+                      generating={imagesGenerating}
+                    />
+                  ) : isOwner && isLiveReport ? (
+                    <AddonUnlockCard
+                      title="Headwear"
+                      desc="Two headwear previews (hats, caps, bandanas) on your photo."
+                      reportId={report.id}
+                      type="headwear"
+                      cost={CREDIT_COSTS.headwear_addon}
+                      label="Generate 2 headwear previews"
                     />
                   ) : null}
                 </div>
@@ -1062,7 +1116,7 @@ function AddonUnlockCard({
   title: string;
   desc: string;
   reportId: string;
-  type: "accessories" | "facial_hair" | "eyewear";
+  type: "accessories" | "headwear" | "facial_hair" | "eyewear";
   cost: number;
   label: string;
 }) {

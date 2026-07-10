@@ -4,6 +4,7 @@ import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server
 import { reportGenerationState } from "@/lib/data/reports";
 import type {
   AccessoryRec,
+  HeadwearRec,
   EyewearRec,
   FacialHairRec,
   HairRec,
@@ -35,6 +36,7 @@ type SummaryRow = {
   facial_hair: FacialHairRec[] | null;
   eyewear: EyewearRec[] | null;
   accessories: AccessoryRec[] | null;
+  headwear: HeadwearRec[] | null;
   capsule_images: (string | null)[] | null;
 };
 
@@ -59,7 +61,7 @@ export async function getUserReports(): Promise<UserReportSummary[] | null> {
   const { data, error } = await db
     .from("reports")
     .select(
-      "id, created_at, headline, tier, status, hair, facial_hair, eyewear, accessories, capsule_images",
+      "id, created_at, headline, tier, status, hair, facial_hair, eyewear, accessories, headwear, capsule_images",
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
@@ -95,6 +97,7 @@ export async function getUserReports(): Promise<UserReportSummary[] | null> {
         facial_hair: row.facial_hair,
         eyewear: row.eyewear,
         accessories: row.accessories,
+        headwear: row.headwear,
       },
       looksByReport.get(row.id) ?? [],
       { hasReferencePhoto },

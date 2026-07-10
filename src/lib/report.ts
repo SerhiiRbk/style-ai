@@ -119,6 +119,8 @@ export const PREMIUM_FACIAL_HAIR_GEN_LIMIT = 4;
 export const PREMIUM_EYEWEAR_GEN_LIMIT = 4;
 /** Accessory styling previews generated per premium add-on purchase. */
 export const PREMIUM_ACCESSORY_GEN_LIMIT = 2;
+/** Headwear previews generated per premium report (and per add-on purchase). */
+export const PREMIUM_HEADWEAR_GEN_LIMIT = 2;
 
 export type HairRec = {
   name: string;
@@ -146,6 +148,11 @@ export type EyewearRec = HairRec & {
 /** Premium paid add-on — accessory styling preview (scarf / neckwear / tie) on the user's photo. */
 export type AccessoryRec = HairRec & {
   kind?: "scarf" | "neckwear" | "tie";
+};
+
+/** Headwear preview (hat / cap / beanie / bandana) chosen for face shape & colour, on the user's photo. */
+export type HeadwearRec = HairRec & {
+  kind?: "hat" | "cap" | "beanie" | "bandana";
 };
 export type ShoppingItem = {
   category: string;
@@ -214,6 +221,8 @@ export type StyleReport = {
   eyewear?: EyewearRec[];
   /** Premium paid add-on — accessory styling previews (scarves / neckwear / ties). */
   accessories?: AccessoryRec[];
+  /** Headwear previews (hats / caps / beanies / bandanas) on the user's photo. */
+  headwear?: HeadwearRec[];
   silhouette: { fit: string; rules: string[] };
   looks: Look[];
   shopping: ShoppingItem[];
@@ -524,16 +533,18 @@ export function hairGenerationPending(
   return false;
 }
 
-/** True when premium facial-hair / eyewear / accessory previews still await generation. */
+/** True when premium facial-hair / eyewear / accessory / headwear previews still await generation. */
 export function premiumGroomingPending(
   facialHair: FacialHairRec[] | null | undefined,
   eyewear: EyewearRec[] | null | undefined,
   accessories?: AccessoryRec[] | null | undefined,
+  headwear?: HeadwearRec[] | null | undefined,
 ): boolean {
   const targets = [
     ...(facialHair ?? []).slice(0, PREMIUM_FACIAL_HAIR_GEN_LIMIT),
     ...(eyewear ?? []).slice(0, PREMIUM_EYEWEAR_GEN_LIMIT),
     ...(accessories ?? []).slice(0, PREMIUM_ACCESSORY_GEN_LIMIT),
+    ...(headwear ?? []).slice(0, PREMIUM_HEADWEAR_GEN_LIMIT),
   ];
   if (targets.length === 0) return false;
   return targets.some((item) => !item.imagePath);
@@ -618,6 +629,7 @@ export function assembleReport(opts: {
   facialHair?: FacialHairRec[];
   eyewear?: EyewearRec[];
   accessories?: AccessoryRec[];
+  headwear?: HeadwearRec[];
   id?: string;
   createdAt?: string;
 }): StyleReport {
@@ -646,6 +658,7 @@ export function assembleReport(opts: {
     facialHair: opts.facialHair,
     eyewear: opts.eyewear,
     accessories: opts.accessories,
+    headwear: opts.headwear,
     silhouette: opts.content.silhouette,
     looks,
     shopping: opts.shopping,

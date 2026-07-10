@@ -6,7 +6,7 @@ import { useCredits } from "./CreditsContext";
 import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 import { WORKING } from "@/components/luxe/messages";
 
-type Kind = "hair" | "facial_hair" | "eyewear" | "accessories";
+type Kind = "hair" | "facial_hair" | "eyewear" | "accessories" | "headwear";
 
 import { CREDIT_COSTS } from "@/lib/credit-costs";
 
