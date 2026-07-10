@@ -63,6 +63,8 @@ export function ReportsAdminPanel() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const [finishMsg, setFinishMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +96,31 @@ export function ReportsAdminPanel() {
     setPage(1);
   }
 
+  async function finishReports() {
+    if (finishing) return;
+    setFinishing(true);
+    setFinishMsg(null);
+    try {
+      const res = await fetch("/api/admin/finish-reports", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not finish reports");
+      const resumed = data.resumed?.length ?? 0;
+      setFinishMsg(
+        `Scanned ${data.scanned ?? 0}, ${data.incomplete ?? 0} incomplete, resumed ${resumed}.` +
+          (data.incomplete > resumed
+            ? " Run again to continue the backlog."
+            : ""),
+      );
+      await load();
+    } catch (e) {
+      setFinishMsg(
+        e instanceof Error ? e.message : "Could not finish reports",
+      );
+    } finally {
+      setFinishing(false);
+    }
+  }
+
   return (
     <div>
       <form onSubmit={onSearch} className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -117,9 +144,40 @@ export function ReportsAdminPanel() {
         </button>
       </form>
 
-      <p className="mt-4 text-sm text-stone">
-        {loading ? "Loading…" : `${total} report${total === 1 ? "" : "s"} total`}
-      </p>
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-stone">
+          {loading ? "Loading…" : `${total} report${total === 1 ? "" : "s"} total`}
+        </p>
+        <div className="flex flex-col items-start gap-1 sm:items-end">
+          <button
+            type="button"
+            onClick={finishReports}
+            disabled={finishing}
+            title="Scan recent reports still missing images and resume generation for the missing ones."
+            className="inline-flex items-center gap-2 rounded-full border border-brass/40 bg-brass/5 px-4 py-2 text-sm text-ink transition-colors hover:border-brass/60 hover:bg-brass/10 disabled:opacity-50"
+          >
+            {finishing ? (
+              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-brass/40 border-t-brass" />
+            ) : (
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden>
+                <path
+                  d="M4 12a8 8 0 0 1 13.7-5.7L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.7L4 16M4 20v-4h4"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+            {finishing ? "Finishing…" : "Finish incomplete reports"}
+          </button>
+          {finishMsg && (
+            <span className="max-w-xs text-right text-xs text-stone-soft">
+              {finishMsg}
+            </span>
+          )}
+        </div>
+      </div>
 
       {error && (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">

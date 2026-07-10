@@ -1,32 +1,30 @@
 import { NextResponse } from "next/server";
-import { getUserPendingReport } from "@/lib/data/user-pending-report";
 import { hasSupabase } from "@/lib/env";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { getUserReports } from "@/lib/data/user-reports";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Whether the signed-in user has a report still generating. */
+/**
+ * Lightweight status feed for the signed-in user's reports, used by the global
+ * "report is ready" notifier to detect when a generating report finishes.
+ */
 export async function GET() {
   if (!hasSupabase) {
-    return NextResponse.json({ pending: false });
+    return NextResponse.json({ reports: [] });
   }
 
-  const sb = await createServerSupabase();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ pending: false });
-  }
-
-  const pending = await getUserPendingReport();
-  if (!pending) {
-    return NextResponse.json({ pending: false });
+  const reports = await getUserReports();
+  if (!reports) {
+    return NextResponse.json({ reports: [] }, { status: 200 });
   }
 
   return NextResponse.json({
-    pending: true,
-    reportId: pending.reportId,
-    state: pending.state,
+    reports: reports.map((r) => ({
+      id: r.id,
+      headline: r.headline,
+      status: r.status,
+      generating: r.generating,
+    })),
   });
 }

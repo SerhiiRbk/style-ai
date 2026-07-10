@@ -10,7 +10,7 @@ import {
 } from "@/lib/credits";
 import type { Tier } from "@/lib/report";
 
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 export async function POST(
   _request: Request,

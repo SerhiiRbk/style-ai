@@ -234,7 +234,61 @@ type ImageJobInput = {
   shopping: ShoppingItem[];
 };
 
-const HAIR_GEN_DELAY_MS = 400;
+/**
+ * Max images generated in parallel. Image generation is the wall-clock
+ * bottleneck: doing it sequentially blew past the route's `maxDuration` for
+ * richer tiers (premium generates ~35 images), so the background `after()` task
+ * was killed mid-way, leaving reports permanently half-generated. Bounded
+ * concurrency keeps us well inside the budget without hammering the image API.
+ */
+const IMAGE_CONCURRENCY = 4;
+
+/**
+ * Run `worker` over `items` in sequential chunks of `size`, awaiting each chunk
+ * in parallel. `onChunk` runs after every chunk with that chunk's results —
+ * used to persist progress incrementally (so a timeout only loses the last
+ * in-flight chunk) while keeping writes to shared JSON columns race-free
+ * (chunks never overlap).
+ */
+async function processInChunks<T, R>(
+  items: T[],
+  size: number,
+  worker: (item: T, index: number) => Promise<R>,
+  onChunk: (results: R[]) => Promise<void>,
+): Promise<void> {
+  for (let start = 0; start < items.length; start += size) {
+    const slice = items.slice(start, start + size);
+    const results = await Promise.all(
+      slice.map((item, i) => worker(item, start + i)),
+    );
+    await onChunk(results);
+  }
+}
+
+/**
+ * Run `worker` over `items` with at most `limit` in flight at once. Use when
+ * each task persists its own independent row (no shared-column write races).
+ */
+async function mapPool<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const runners = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (true) {
+        const i = cursor++;
+        if (i >= items.length) return;
+        results[i] = await worker(items[i]!, i);
+      }
+    },
+  );
+  await Promise.all(runners);
+  return results;
+}
 
 /** Personalized hairstyle headshots — runs before look images in `after()`. */
 async function generateHairImages(input: ImageJobInput) {
@@ -266,39 +320,58 @@ async function generateHairImages(input: ImageJobInput) {
     slots.push({ list: "avoid", index: i, angle: "front" });
   }
 
-  for (const { list, index, angle = "front" } of slots) {
+  // Only generate slots whose image is still missing (idempotent — safe to
+  // re-run to fill gaps left by an interrupted earlier pass).
+  const pending = slots.filter(({ list, index, angle = "front" }) => {
     const item = hair[list][index]!;
-    const isSide = angle !== "front";
-    if (isSide && item.imagePathSide) continue;
-    if (!isSide && item.imagePath) continue;
+    return angle !== "front" ? !item.imagePathSide : !item.imagePath;
+  });
 
-    const img = await generateHairImage({
-      profile,
-      hair: item,
-      recommend: list === "recommend",
-      referenceImageUrl,
-      angle,
-    });
-    if (img) {
+  type HairOutcome = {
+    list: "recommend" | "avoid";
+    index: number;
+    isSide: boolean;
+    path: string;
+  } | null;
+
+  await processInChunks<Slot, HairOutcome>(
+    pending,
+    IMAGE_CONCURRENCY,
+    async ({ list, index, angle = "front" }) => {
+      const item = hair[list][index]!;
+      const isSide = angle !== "front";
+      const img = await generateHairImage({
+        profile,
+        hair: item,
+        recommend: list === "recommend",
+        referenceImageUrl,
+        angle,
+      });
+      if (!img) return null;
       const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
       const path = isSide
         ? `${userId}/${reportId}/hair-${list}-${index}-side.${ext}`
         : `${userId}/${reportId}/hair-${list}-${index}.${ext}`;
       const { error: upErr } = await admin.storage
         .from("assets")
-        .upload(path, img.bytes, {
-          contentType: img.mediaType,
-          upsert: true,
-        });
-      if (!upErr) {
-        hair[list][index] = isSide
-          ? { ...item, imagePathSide: path }
-          : { ...item, imagePath: path };
+        .upload(path, img.bytes, { contentType: img.mediaType, upsert: true });
+      return upErr ? null : { list, index, isSide, path };
+    },
+    async (outcomes) => {
+      let changed = false;
+      for (const o of outcomes) {
+        if (!o) continue;
+        const item = hair[o.list][o.index]!;
+        hair[o.list][o.index] = o.isSide
+          ? { ...item, imagePathSide: o.path }
+          : { ...item, imagePath: o.path };
+        changed = true;
+      }
+      if (changed) {
         await admin.from("reports").update({ hair }).eq("id", reportId);
       }
-    }
-    await new Promise((r) => setTimeout(r, HAIR_GEN_DELAY_MS));
-  }
+    },
+  );
 }
 
 /** Premium facial-hair & eyewear headshots — after hair, before look images. */
@@ -374,71 +447,62 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
       .eq("id", reportId);
   }
 
-  for (let i = 0; i < facialHair.length; i++) {
-    const item = facialHair[i]!;
-    if (item.imagePath) continue;
-    const img = await generateFacialHairImage({
-      profile,
-      style: item,
-      referenceImageUrl,
-    });
-    if (img) {
-      const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
-      const path = `${userId}/${reportId}/facial-hair-${i}.${ext}`;
-      const { error: upErr } = await admin.storage
-        .from("assets")
-        .upload(path, img.bytes, { contentType: img.mediaType, upsert: true });
-      if (!upErr) {
-        facialHair[i] = { ...item, imagePath: path };
-        await admin.from("reports").update({ facial_hair: facialHair }).eq("id", reportId);
-      }
-    }
-    await new Promise((r) => setTimeout(r, HAIR_GEN_DELAY_MS));
+  // Generate each grooming column in parallel (bounded), skipping items that
+  // already have an image and persisting progress per chunk (race-free — one
+  // column write per chunk, chunks never overlap).
+  async function generateColumn<T extends { imagePath?: string | null }>(
+    items: T[],
+    column: "facial_hair" | "eyewear" | "accessories",
+    pathPrefix: string,
+    gen: (item: T) => Promise<{ bytes: Uint8Array; mediaType: string } | null>,
+  ) {
+    const pendingIdx = items
+      .map((_, i) => i)
+      .filter((i) => !items[i]!.imagePath);
+
+    await processInChunks<number, { i: number; path: string } | null>(
+      pendingIdx,
+      IMAGE_CONCURRENCY,
+      async (i) => {
+        const item = items[i]!;
+        const img = await gen(item);
+        if (!img) return null;
+        const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
+        const path = `${userId}/${reportId}/${pathPrefix}-${i}.${ext}`;
+        const { error: upErr } = await admin.storage
+          .from("assets")
+          .upload(path, img.bytes, {
+            contentType: img.mediaType,
+            upsert: true,
+          });
+        return upErr ? null : { i, path };
+      },
+      async (outcomes) => {
+        let changed = false;
+        for (const o of outcomes) {
+          if (!o) continue;
+          items[o.i] = { ...items[o.i]!, imagePath: o.path };
+          changed = true;
+        }
+        if (changed) {
+          await admin
+            .from("reports")
+            .update({ [column]: items })
+            .eq("id", reportId);
+        }
+      },
+    );
   }
 
-  for (let i = 0; i < eyewear.length; i++) {
-    const item = eyewear[i]!;
-    if (item.imagePath) continue;
-    const img = await generateEyewearImage({
-      profile,
-      frame: item,
-      referenceImageUrl,
-    });
-    if (img) {
-      const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
-      const path = `${userId}/${reportId}/eyewear-${i}.${ext}`;
-      const { error: upErr } = await admin.storage
-        .from("assets")
-        .upload(path, img.bytes, { contentType: img.mediaType, upsert: true });
-      if (!upErr) {
-        eyewear[i] = { ...item, imagePath: path };
-        await admin.from("reports").update({ eyewear }).eq("id", reportId);
-      }
-    }
-    await new Promise((r) => setTimeout(r, HAIR_GEN_DELAY_MS));
-  }
-
-  for (let i = 0; i < accessories.length; i++) {
-    const item = accessories[i]!;
-    if (item.imagePath) continue;
-    const img = await generateAccessoryImage({
-      profile,
-      accessory: item,
-      referenceImageUrl,
-    });
-    if (img) {
-      const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
-      const path = `${userId}/${reportId}/accessory-${i}.${ext}`;
-      const { error: upErr } = await admin.storage
-        .from("assets")
-        .upload(path, img.bytes, { contentType: img.mediaType, upsert: true });
-      if (!upErr) {
-        accessories[i] = { ...item, imagePath: path };
-        await admin.from("reports").update({ accessories }).eq("id", reportId);
-      }
-    }
-    await new Promise((r) => setTimeout(r, HAIR_GEN_DELAY_MS));
-  }
+  await generateColumn(facialHair, "facial_hair", "facial-hair", (item) =>
+    generateFacialHairImage({ profile, style: item, referenceImageUrl }),
+  );
+  await generateColumn(eyewear, "eyewear", "eyewear", (item) =>
+    generateEyewearImage({ profile, frame: item, referenceImageUrl }),
+  );
+  await generateColumn(accessories, "accessories", "accessory", (item) =>
+    generateAccessoryImage({ profile, accessory: item, referenceImageUrl }),
+  );
 }
 
 /**
@@ -455,6 +519,14 @@ async function generateCoverImageJob(input: ImageJobInput) {
   const referenceImageUrl =
     photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
   if (!referenceImageUrl) return;
+
+  // Idempotent: skip if the cover already exists (resume passes only fill gaps).
+  const { data: existing } = await admin
+    .from("reports")
+    .select("cover_image")
+    .eq("id", reportId)
+    .single();
+  if (existing?.cover_image) return;
 
   const img = await generateCoverImage({
     profile,
@@ -480,47 +552,73 @@ async function generateReportImages(input: ImageJobInput) {
   await generateCoverImageJob(input);
 
   const admin = createAdminSupabase();
-  const { reportId, userId, tier, profile, content, photos, shopping } = input;
+  const { reportId, userId, tier, profile, photos, shopping } = input;
 
   const referenceImageUrl =
     photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
 
+  // Look photos — DB-driven and idempotent: read the look rows (ordered so each
+  // keeps a stable storage index), skip rows that already have an image, and
+  // generate the rest in parallel. Each row is an independent update, so writes
+  // are persisted immediately without racing.
   const { data: lookRows } = await admin
     .from("looks")
-    .select("id")
+    .select("id, image_path, context, title, description, palette")
     .eq("report_id", reportId)
     .order("created_at", { ascending: true });
 
-  for (let i = 0; i < content.looks.length; i++) {
-    const l = content.looks[i];
-    const rowId = lookRows?.[i]?.id;
-    let imagePath: string | null = null;
+  const lookTasks = (lookRows ?? [])
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => !row.image_path);
+
+  await mapPool(lookTasks, IMAGE_CONCURRENCY, async ({ row, index }) => {
     const img = await generateLookImage({
       profile,
-      look: l,
+      look: {
+        title: (row.title as string | null) ?? "",
+        description: (row.description as string | null) ?? "",
+        palette: (row.palette as string[] | null) ?? [],
+      },
       referenceImageUrl,
     });
-    if (img) {
-      const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
-      const path = `${userId}/${reportId}/look-${i}.${ext}`;
-      const { error: upErr } = await admin.storage
-        .from("assets")
-        .upload(path, img.bytes, {
-          contentType: img.mediaType,
-          upsert: true,
-        });
-      if (!upErr) imagePath = path;
+    if (!img) return;
+    const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
+    const path = `${userId}/${reportId}/look-${index}.${ext}`;
+    const { error: upErr } = await admin.storage
+      .from("assets")
+      .upload(path, img.bytes, { contentType: img.mediaType, upsert: true });
+    if (!upErr) {
+      await admin
+        .from("looks")
+        .update({ image_path: path })
+        .eq("id", row.id as string);
     }
-    if (rowId) {
-      await admin.from("looks").update({ image_path: imagePath }).eq("id", rowId);
-    }
-  }
+  });
 
   if (tier === "lookbook" || tier === "premium") {
     const colorByTitle = new Map(shopping.map((s) => [s.title, s.color]));
     const matrix = capsuleMatrix(shopping, profile);
-    const capsulePaths = await Promise.all(
-      matrix.map(async (combo, i) => {
+
+    // Preserve any capsule slots already rendered; only fill the gaps.
+    const { data: capsuleRow } = await admin
+      .from("reports")
+      .select("capsule_images")
+      .eq("id", reportId)
+      .single();
+    const existingCapsule =
+      (capsuleRow?.capsule_images as (string | null)[] | null) ?? [];
+    const capsulePaths: (string | null)[] = matrix.map(
+      (_, i) => existingCapsule[i] ?? null,
+    );
+
+    const capsuleTasks = matrix
+      .map((combo, i) => ({ combo, i }))
+      .filter(({ i }) => !capsulePaths[i]);
+
+    await processInChunks<(typeof capsuleTasks)[number], { i: number; path: string } | null>(
+      capsuleTasks,
+      IMAGE_CONCURRENCY,
+      async ({ combo, i }) => {
         const img = await generateLookImage({
           profile,
           look: {
@@ -541,14 +639,150 @@ async function generateReportImages(input: ImageJobInput) {
             contentType: img.mediaType,
             upsert: true,
           });
-        return upErr ? null : path;
-      }),
+        return upErr ? null : { i, path };
+      },
+      async (outcomes) => {
+        let changed = false;
+        for (const o of outcomes) {
+          if (!o) continue;
+          capsulePaths[o.i] = o.path;
+          changed = true;
+        }
+        if (changed) {
+          await admin
+            .from("reports")
+            .update({ capsule_images: capsulePaths })
+            .eq("id", reportId);
+        }
+      },
     );
-    await admin
-      .from("reports")
-      .update({ capsule_images: capsulePaths })
-      .eq("id", reportId);
   }
+}
+
+/**
+ * Rebuild an image job from the persisted report and fill any missing images.
+ * Idempotent (every generator skips work already done), so this safely
+ * completes reports whose background `after()` task was interrupted by a
+ * timeout or crash. Returns why it was skipped, if it was.
+ */
+export async function resumeReportImages(
+  reportId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!hasSupabaseAdmin) return { ok: false, reason: "admin-unconfigured" };
+  if (isDemoReportId(reportId)) return { ok: false, reason: "demo" };
+
+  const admin = createAdminSupabase();
+  const { data: row } = await admin
+    .from("reports")
+    .select("id, user_id, tier, status, profile, colors, hair, shopping")
+    .eq("id", reportId)
+    .single();
+
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.status !== "ready") return { ok: false, reason: `status-${row.status}` };
+
+  const profile = row.profile as StyleProfile | null;
+  if (!profile) return { ok: false, reason: "no-profile" };
+
+  const userId = row.user_id as string;
+  const tier = (row.tier as Tier) ?? "basic";
+  const photos = await latestPhotoUrlsForUser(admin, userId);
+
+  const content = {
+    hair: (row.hair as { recommend: HairRec[]; avoid: HairRec[] } | null) ?? {
+      recommend: [],
+      avoid: [],
+    },
+    colors: (row.colors as { best: { name: string }[]; avoid: unknown[] } | null) ?? {
+      best: [],
+      avoid: [],
+    },
+    looks: [],
+  } as unknown as ReportContent;
+
+  const shopping = (row.shopping as ShoppingItem[] | null) ?? [];
+
+  await generateReportImages({
+    reportId,
+    userId,
+    tier,
+    profile,
+    content,
+    photos,
+    shopping,
+  });
+
+  return { ok: true };
+}
+
+/**
+ * Backstop for reports whose image generation was cut short: scan recent
+ * `ready` reports, find those still missing images, and resume a bounded number
+ * of them (each internally parallel). Called by the finish-reports cron.
+ */
+export async function finishIncompleteReports(opts?: {
+  sinceHours?: number;
+  maxReports?: number;
+  budgetMs?: number;
+}): Promise<{ scanned: number; incomplete: number; resumed: string[] }> {
+  if (!hasSupabaseAdmin) return { scanned: 0, incomplete: 0, resumed: [] };
+
+  const sinceHours = opts?.sinceHours ?? 24;
+  const maxReports = opts?.maxReports ?? 2;
+  const budgetMs = opts?.budgetMs ?? 240_000;
+  const startedAt = Date.now();
+
+  const admin = createAdminSupabase();
+  const since = new Date(Date.now() - sinceHours * 3_600_000).toISOString();
+
+  const { data: rows } = await admin
+    .from("reports")
+    .select(
+      "id, user_id, status, tier, capsule_images, hair, facial_hair, eyewear, accessories",
+    )
+    .eq("status", "ready")
+    .gte("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(200);
+
+  const reports = rows ?? [];
+  if (!reports.length) return { scanned: 0, incomplete: 0, resumed: [] };
+
+  const ids = reports.map((r) => r.id as string);
+  const userIds = Array.from(new Set(reports.map((r) => r.user_id as string)));
+
+  const [{ data: looks }, { data: photoRows }] = await Promise.all([
+    admin.from("looks").select("report_id, image_path").in("report_id", ids),
+    admin.from("photos").select("user_id").in("user_id", userIds),
+  ]);
+
+  const looksByReport = new Map<string, { image_path?: string | null }[]>();
+  for (const l of looks ?? []) {
+    const rid = l.report_id as string;
+    const arr = looksByReport.get(rid) ?? [];
+    arr.push({ image_path: l.image_path as string | null });
+    looksByReport.set(rid, arr);
+  }
+  const usersWithPhoto = new Set((photoRows ?? []).map((p) => p.user_id as string));
+
+  const incomplete = reports.filter((r) => {
+    const state = reportGenerationState(
+      r,
+      looksByReport.get(r.id as string) ?? [],
+      { hasReferencePhoto: usersWithPhoto.has(r.user_id as string) },
+    );
+    return state.pending && state.status !== "failed";
+  });
+
+  const resumed: string[] = [];
+  for (const r of incomplete) {
+    if (resumed.length >= maxReports) break;
+    if (Date.now() - startedAt > budgetMs) break;
+    const res = await resumeReportImages(r.id as string);
+    if (res.ok) resumed.push(r.id as string);
+  }
+
+  return { scanned: reports.length, incomplete: incomplete.length, resumed };
 }
 
 async function executeReportGeneration(

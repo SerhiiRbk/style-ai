@@ -7,6 +7,7 @@ import { getSiteUrl } from "@/lib/site-url";
 import { LuxeProviders } from "@/components/luxe/LuxeProviders";
 import { ReportGenerationNavProvider } from "@/components/CreateReportButton";
 import { NavSessionProvider } from "@/components/NavSession";
+import { ReportReadyNotifier } from "@/components/ReportReadyNotifier";
 
 const fraunces = Fraunces({
   variable: "--font-display",
@@ -74,7 +75,10 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-paper text-ink">
         <LuxeProviders>
           <ReportGenerationNavProvider>
-            <NavSessionProvider>{children}</NavSessionProvider>
+            <NavSessionProvider>
+              {children}
+              <ReportReadyNotifier />
+            </NavSessionProvider>
           </ReportGenerationNavProvider>
         </LuxeProviders>
         <Analytics />

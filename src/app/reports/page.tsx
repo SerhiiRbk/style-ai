@@ -139,7 +139,9 @@ export default async function ReportsPage() {
                     <span className="rounded-full border hairline bg-cream/40 px-3 py-1 text-xs text-stone">
                       {tierLabel(r.tier)}
                     </span>
-                    <StatusBadge status={r.status} />
+                    <StatusBadge
+                      status={r.generating ? "processing" : r.status}
+                    />
                     <Link
                       href={`/report/${r.id}`}
                       className="group inline-flex items-center justify-center gap-1 rounded-full border border-brass/40 bg-brass/5 px-5 py-2 text-sm text-ink transition-colors hover:border-brass/60 hover:bg-brass/10"
