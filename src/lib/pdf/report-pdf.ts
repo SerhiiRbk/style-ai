@@ -75,10 +75,36 @@ async function loadBytes(src: string): Promise<Uint8Array | null> {
   }
 }
 
+/** Cover-crop source bytes to box aspect (w:h) and re-encode as JPEG for pdf-lib. */
+async function cropToBoxJpeg(
+  bytes: Uint8Array,
+  box: { w: number; h: number; px?: number; position?: string },
+): Promise<Buffer | null> {
+  const px = box.px ?? 260;
+  const targetW = px;
+  const targetH = Math.round((px * box.h) / box.w);
+  const position = box.position ?? "centre";
+  try {
+    const { default: sharp } = await import("sharp");
+    return await sharp(bytes, { failOn: "none" })
+      .rotate()
+      .resize({
+        width: targetW,
+        height: targetH,
+        fit: "cover",
+        position,
+      })
+      .jpeg({ quality: 78 })
+      .toBuffer();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Embed an image from a public path or remote URL, cover-cropped to the target
  * box aspect (w:h) and re-encoded to JPEG. Cropping is required because pdf-lib
- * cannot clip overflow, and JPEG keeps the PDF small.
+ * cannot clip overflow, stretches uncropped bitmaps, and JPEG keeps the PDF small.
  */
 async function embedImage(
   doc: PDFDocument,
@@ -88,27 +114,12 @@ async function embedImage(
   if (!src) return null;
   const bytes = await loadBytes(src);
   if (!bytes) return null;
-  const px = box.px ?? 260;
+  const jpeg = await cropToBoxJpeg(bytes, box);
+  if (!jpeg) return null;
   try {
-    const { default: sharp } = await import("sharp");
-    const jpeg = await sharp(bytes)
-      .resize({
-        width: px,
-        height: Math.round((px * box.h) / box.w),
-        fit: "cover",
-        position: box.position ?? "centre",
-      })
-      .jpeg({ quality: 78 })
-      .toBuffer();
     return await doc.embedJpg(jpeg);
   } catch {
-    try {
-      if (bytes[0] === 0x89 && bytes[1] === 0x50)
-        return await doc.embedPng(bytes);
-      return await doc.embedJpg(bytes);
-    } catch {
-      return null;
-    }
+    return null;
   }
 }
 
@@ -564,8 +575,10 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   const cur = report.profile.currency;
   const extras = buildExtras(report);
 
+  /** AI headshots (hair, grooming, eyewear) — 4:5 portrait, keep embed + gallery in sync. */
+  const PORTRAIT_RATIO = 5 / 4;
   const portrait = (src?: string) =>
-    embedImage(d.doc, src, { w: 100, h: 125, px: 500, position: "top" });
+    embedImage(d.doc, src, { w: 4, h: 5, px: 500, position: "top" });
   /** AI look / capsule photos are generated at 9:16 — keep embed + gallery ratio in sync. */
   const LOOK_RATIO = 16 / 9;
   const tall = (src?: string) =>
@@ -734,7 +747,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   if (recItems.length) {
     d.gallerySection("Hairstyles for your face", recItems, {
       cols: 2,
-      ratio: 1.25,
+      ratio: PORTRAIT_RATIO,
     });
   }
 
@@ -748,7 +761,10 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     });
   }
   if (avoidItems.length) {
-    d.gallerySection("Best avoided", avoidItems, { cols: 2, ratio: 1.25 });
+    d.gallerySection("Best avoided", avoidItems, {
+      cols: 2,
+      ratio: PORTRAIT_RATIO,
+    });
   }
 
   d.subhead("Beard, skin & grooming", { keepWith: 28 });
@@ -763,7 +779,10 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     for (const item of report.facialHair) {
       items.push({ img: await portrait(item.image), title: item.name, sub: item.why });
     }
-    d.gallerySection("Recommended facial hair", items, { cols: 2, ratio: 1.25 });
+    d.gallerySection("Recommended facial hair", items, {
+      cols: 2,
+      ratio: PORTRAIT_RATIO,
+    });
   }
 
   if (report.eyewear?.length) {
@@ -778,7 +797,10 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
         label: kind,
       });
     }
-    d.gallerySection("Eyewear for your face", items, { cols: 2, ratio: 1.25 });
+    d.gallerySection("Eyewear for your face", items, {
+      cols: 2,
+      ratio: PORTRAIT_RATIO,
+    });
   } else {
     const items: GalleryItem[] = [];
     for (const f of extras.eyewear.recommend) {
@@ -803,7 +825,10 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     for (const item of report.accessories) {
       items.push({ img: await portrait(item.image), title: item.name, sub: item.why });
     }
-    d.gallerySection("Accessory styling", items, { cols: 2, ratio: 1.25 });
+    d.gallerySection("Accessory styling", items, {
+      cols: 2,
+      ratio: PORTRAIT_RATIO,
+    });
   }
 
   /* ---------------------------- silhouette & fit ------------------------- */

@@ -1301,13 +1301,14 @@ function HairCard({
       <div className="relative bg-sand">
         {showSplit ? (
           <div className="grid grid-cols-2 divide-x divide-line">
-            <div className="relative aspect-[4/5]">
+            <div className="relative aspect-[4/5] overflow-hidden">
               {hasFront ? (
                 <ReportZoomImage
                   src={h.image!}
                   alt={`${h.name} — front view`}
-                  wrapperClassName="relative block h-full w-full"
-                  className="h-full w-full object-cover"
+                  fill
+                  sizes="(max-width: 768px) 50vw, 25vw"
+                  className="object-cover object-top"
                 />
               ) : generating ? (
                 <ReportImageGenerating label="Front view" detail={h.name} />
@@ -1330,13 +1331,14 @@ function HairCard({
                 />
               ) : null}
             </div>
-            <div className="relative aspect-[4/5]">
+            <div className="relative aspect-[4/5] overflow-hidden">
               {hasSide ? (
                 <ReportZoomImage
                   src={h.imageSide!}
                   alt={`${h.name} — side view`}
-                  wrapperClassName="relative block h-full w-full"
-                  className="h-full w-full object-cover"
+                  fill
+                  sizes="(max-width: 768px) 50vw, 25vw"
+                  className="object-cover object-top"
                 />
               ) : generating ? (
                 <ReportImageGenerating label="Side view" detail={h.name} />
@@ -1361,13 +1363,14 @@ function HairCard({
             </div>
           </div>
         ) : (
-          <div className="relative aspect-[4/5]">
+          <div className="relative aspect-[4/5] overflow-hidden">
             {h.image ? (
               <ReportZoomImage
                 src={h.image}
                 alt={h.name}
-                wrapperClassName="relative block h-full w-full"
-                className={`h-full w-full object-cover ${
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className={`object-cover object-top ${
                   good ? "" : "opacity-95 grayscale-[35%]"
                 }`}
               />

@@ -39,6 +39,10 @@ const NO_TEXT_RULE =
   "words, captions, labels, headings, watermarks, logos, numbers, arrows or " +
   "graphic overlays anywhere in the frame.";
 
+/** Matches report UI + PDF portrait slots (aspect 4:5). */
+const HEADSHOT_FRAMING =
+  "Vertical 4:5 portrait framing, shoulders-up, subject centered in frame. ";
+
 const visionSchema = z.object({
   skinTone: z.string().describe("e.g. 'warm medium', 'cool fair'"),
   undertone: z.enum(["warm", "cool", "neutral"]),
@@ -552,10 +556,11 @@ export async function generateHairImage(opts: {
 
     const prompt =
       `Editorial beauty headshot for a premium grooming report. ` +
+      HEADSHOT_FRAMING +
       `Hairstyle: ${hair.name}. ${intent} ` +
       `Camera angle: ${angleNote} ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
-      `${profile.physical.faceShape} face shape. Shoulders-up framing, neutral soft studio backdrop, ` +
+      `${profile.physical.faceShape} face shape. Neutral soft studio backdrop, ` +
       `natural soft light, sharp focus on hair and face, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
         ? `Preserve the face, skin tone, and identity of the person in the provided photo — only change the hairstyle.`
@@ -594,9 +599,10 @@ export async function generateFacialHairImage(opts: {
     const { profile, style, referenceImageUrl } = opts;
     const prompt =
       `Editorial grooming headshot for a premium style report. ` +
+      HEADSHOT_FRAMING +
       `Facial hair style: ${style.name}. ${style.why} ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
-      `${profile.physical.faceShape} face shape. Shoulders-up framing, neutral soft studio backdrop, ` +
+      `${profile.physical.faceShape} face shape. Neutral soft studio backdrop, ` +
       `natural soft light, sharp focus on face and facial hair, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
         ? `Preserve the face, skin tone, and identity of the person in the provided photo — only change the facial hair style.`
@@ -639,9 +645,10 @@ export async function generateEyewearImage(opts: {
       : `Optical eyeglasses with clear lenses`;
     const prompt =
       `Editorial eyewear headshot for a premium style report. ` +
+      HEADSHOT_FRAMING +
       `${eyewearType}: ${frame.name}${frame.shape ? ` (${frame.shape} shape)` : ""}. ${frame.why} ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
-      `${profile.physical.faceShape} face shape. Shoulders-up framing, neutral soft studio backdrop, ` +
+      `${profile.physical.faceShape} face shape. Neutral soft studio backdrop, ` +
       `natural soft light, sharp focus on face and ${isSun ? "sunglasses" : "glasses"}, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
         ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add or change the eyewear.`
@@ -687,6 +694,7 @@ export async function generateAccessoryImage(opts: {
           : "a scarf draped around the neck over a coat or knitwear";
     const prompt =
       `Editorial accessory styling photo for a premium style report. ` +
+      HEADSHOT_FRAMING +
       `Accessory: ${accessory.name} — ${piece}. ${accessory.why} ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}. ` +
       `Upper-body framing (head to mid-chest) so the neckwear is clearly visible, ` +

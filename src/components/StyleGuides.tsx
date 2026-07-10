@@ -62,8 +62,9 @@ function MoodboardPhoto({
         src={src}
         alt={alt}
         priority={priority}
-        wrapperClassName="relative block h-full w-full"
-        className="h-full w-full object-cover object-top"
+        fill
+        sizes="(max-width: 640px) 50vw, 33vw"
+        className="object-cover object-top"
       />
     );
   }
@@ -827,7 +828,7 @@ function GroomingPreviewCard({
   const showGenerating = generating && !src;
   return (
     <article className="overflow-hidden rounded-2xl border hairline bg-paper">
-      <div className="relative aspect-[4/5] bg-sand">
+      <div className="relative aspect-[4/5] overflow-hidden bg-sand">
         {label ? (
           <span className="absolute right-3 top-3 z-10 max-w-[calc(100%-1.5rem)] truncate rounded-full bg-paper/90 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-stone">
             {label}
@@ -837,8 +838,9 @@ function GroomingPreviewCard({
           <ReportZoomImage
             src={src}
             alt={alt}
-            wrapperClassName="relative block h-full w-full"
-            className="h-full w-full object-cover"
+            fill
+            sizes="(max-width: 768px) 100vw, 50vw"
+            className="object-cover object-top"
           />
         ) : showGenerating ? (
           <ReportImageGenerating
