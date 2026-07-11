@@ -705,7 +705,9 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     2.6,
   );
   coverPage.drawText(
-    `${report.profile.demographics.city}, ${report.profile.demographics.country}  ·  ${when}`,
+    `${[report.profile.demographics.city, report.profile.demographics.country]
+      .filter(Boolean)
+      .join(", ")}  ·  ${when}`,
     { x: MARGIN, y: hy - 26, size: 9.5, font: d.reg, color: FOG },
   );
   coverPage.drawText("Prepared by Carlo Valetti  ·  AI style atelier, Valetti", {

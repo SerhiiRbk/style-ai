@@ -420,7 +420,7 @@ export function mockReportContent(intake: Intake): ReportContent {
     headline: "Warm, modern, and quietly confident",
     summary:
       `Your colouring is warm with low contrast, which means soft earth tones flatter you far more than cool, high-contrast palettes. ` +
-      `For a ${intake.age}-year-old in ${intake.city}'s ${climateFor(intake.country)} climate working in ${intake.occupation.toLowerCase()}, ` +
+      `For a ${intake.age}-year-old ${intake.city ? `in ${intake.city}'s` : "in a"} ${climateFor(intake.country)} climate working in ${intake.occupation.toLowerCase()}, ` +
       `the goal is a refined, low-effort wardrobe that reads modern without trying too hard.`,
     colors,
     hair,

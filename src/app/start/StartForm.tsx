@@ -272,7 +272,7 @@ export function StartForm({
     : photos.length >= 2;
 
   const canNext = () => {
-    if (step === 0) return city.trim() && country.trim();
+    if (step === 0) return country.trim();
     if (step === 1) return hasRequiredPhotos && biometricConsent;
     if (step === 2) return goals.length > 0;
     return true;
@@ -577,7 +577,7 @@ export function StartForm({
                     options={OCCUPATIONS.map((o) => [o, o])}
                   />
                 </Field>
-                <Field label="City">
+                <Field label="City (optional)">
                   <Input value={city} onChange={setCity} placeholder="Berlin" />
                 </Field>
                 <Field label="Country">

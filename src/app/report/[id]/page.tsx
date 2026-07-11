@@ -320,8 +320,10 @@ export default async function ReportPage({
                 {tierLabel} report
               </span>
               <span>
-                {profile.demographics.city}, {profile.demographics.country} ·{" "}
-                {profile.demographics.climate} climate
+                {[profile.demographics.city, profile.demographics.country]
+                  .filter(Boolean)
+                  .join(", ")}{" "}
+                · {profile.demographics.climate} climate
               </span>
             </div>
             <h1 className="mt-5 max-w-2xl font-display text-4xl leading-tight sm:text-5xl">

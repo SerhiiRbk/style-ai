@@ -230,7 +230,7 @@ export function inferBodyTypeFromMeasurements(
 export const intakeSchema = z.object({
   age: z.number().int().min(16).max(99),
   genderPresentation: GenderPresentation,
-  city: z.string().min(1),
+  city: z.string().optional().default(""),
   country: z.string().min(1),
   currency: Currency.default("EUR"),
   heightCm: z.number().int().min(120).max(230),
