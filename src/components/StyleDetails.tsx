@@ -2,6 +2,7 @@
  * Finishing-details guide: best patterns (rendered as SVG swatches),
  * recommended accessories, and a shoe guide. Pure presentational, server-safe.
  */
+import { StaticFillImg } from "@/components/StyleGuides";
 
 const NAVY = "#27324A";
 const CREAM = "#EFE6D3";
@@ -203,12 +204,11 @@ export function StyleDetails() {
         <div className="mt-5 grid grid-cols-3 gap-3">
           {SHOES.map((s) => (
             <div key={s.name}>
-              <div className="aspect-square overflow-hidden rounded-xl border hairline bg-paper">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+              <div className="relative aspect-square overflow-hidden rounded-xl border hairline bg-paper">
+                <StaticFillImg
                   src={s.image}
                   alt={s.name}
-                  className="h-full w-full object-cover"
+                  sizes="(max-width: 640px) 33vw, 15vw"
                 />
               </div>
               <div className="mt-2 text-center text-xs text-stone">{s.name}</div>
