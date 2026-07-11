@@ -73,6 +73,7 @@ import {
   ShopTheLook,
   FabricsGuide,
   FinishingTouches,
+  StaticFillImg,
 } from "@/components/StyleGuides";
 import { buildExtras, investmentLevel, itemsForLook } from "@/lib/style-extras";
 import { humanizeProductTitle } from "@/lib/product-title";
@@ -992,10 +993,10 @@ export default async function ReportPage({
                         >
                           <div className="relative aspect-[4/3] overflow-hidden bg-paper">
                             {item.image ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
+                              <StaticFillImg
                                 src={item.image}
                                 alt={humanizeProductTitle(item.title)}
+                                sizes="(max-width: 640px) 50vw, 25vw"
                                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
                               />
                             ) : (

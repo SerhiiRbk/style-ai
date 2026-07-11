@@ -1,4 +1,5 @@
-import { isGeneratedReportImage } from "@/lib/asset-url";
+import Image from "next/image";
+import { ASSET_PROXY_PREFIX, isGeneratedReportImage } from "@/lib/asset-url";
 import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
 import { RegenPhotoHint } from "@/components/RegenPhotoHint";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
@@ -29,6 +30,33 @@ import type {
   PriceTier,
   PriorityMove,
 } from "@/lib/style-extras";
+
+/**
+ * Fill-style image that optimizes bundled static assets (`/images/…`) to WebP
+ * via the Next optimizer, while loading generated report photos (asset proxy —
+ * already WebP-transcoded) and remote catalog URLs directly.
+ */
+export function StaticFillImg({
+  src,
+  alt,
+  className = "h-full w-full object-cover",
+  sizes = "(max-width: 640px) 50vw, 25vw",
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  sizes?: string;
+}) {
+  const isLocalStatic =
+    src.startsWith("/") && !src.startsWith(ASSET_PROXY_PREFIX);
+  if (isLocalStatic) {
+    return (
+      <Image src={src} alt={alt} fill sizes={sizes} className={className} />
+    );
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={alt} className={className} />;
+}
 
 /* -------------------------------- moodboard ------------------------------- */
 
@@ -70,8 +98,11 @@ function MoodboardPhoto({
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={alt} className="h-full w-full object-cover object-top" />
+    <StaticFillImg
+      src={src}
+      alt={alt}
+      className="h-full w-full object-cover object-top"
+    />
   );
 }
 
@@ -272,13 +303,12 @@ function ShoppingItemThumb({
   alt?: string;
 }) {
   return (
-    <span className="h-7 w-7 shrink-0 overflow-hidden rounded-full bg-sand">
+    <span className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-sand">
       {item.image ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <StaticFillImg
           src={item.image}
           alt={alt ?? item.title}
-          className="h-full w-full object-cover"
+          sizes="28px"
         />
       ) : (
         <span
@@ -657,12 +687,11 @@ export function EyewearGuide({
             key={f.shape}
             className="overflow-hidden rounded-xl border hairline bg-paper"
           >
-            <div className="aspect-[4/3] overflow-hidden bg-sand">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+            <div className="relative aspect-[4/3] overflow-hidden bg-sand">
+              <StaticFillImg
                 src={EYEWEAR_IMAGE[f.shape]}
                 alt={`${f.name} frames`}
-                className="h-full w-full object-cover"
+                sizes="(max-width: 640px) 33vw, 15vw"
               />
             </div>
             <div className="p-3">
