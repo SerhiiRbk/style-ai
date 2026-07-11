@@ -21,6 +21,12 @@ const nextConfig: NextConfig = {
       "./node_modules/sharp/**/*",
       "./node_modules/@img/**/*",
     ],
+    // The asset proxy transcodes large PNGs to WebP on the fly to speed up
+    // report image loading — it needs the native sharp binaries too.
+    "/api/assets/**": [
+      "./node_modules/sharp/**/*",
+      "./node_modules/@img/**/*",
+    ],
   },
   images: {
     localPatterns: [

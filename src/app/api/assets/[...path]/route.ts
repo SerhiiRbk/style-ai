@@ -44,16 +44,58 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  // Signed URLs are self-contained auth — safe to cache at the edge and in-browser.
+  // Asset bytes for a given path never change (generated once), so cache them
+  // aggressively as immutable. Signed URLs are self-contained auth and are
+  // day-stable, so they're safe to cache at the edge (public + s-maxage);
+  // cookie-authed requests stay browser-private.
   const cacheControl = signedOk
-    ? "public, max-age=86400, stale-while-revalidate=604800"
-    : "private, max-age=86400, stale-while-revalidate=604800";
+    ? "public, max-age=86400, s-maxage=604800, stale-while-revalidate=604800, immutable"
+    : "private, max-age=86400, stale-while-revalidate=604800, immutable";
 
-  return new Response(bytes as BodyInit, {
+  const sourceType = contentTypeForAssetPath(storagePath);
+  const { body, contentType } = await maybeWebp(request, bytes, sourceType);
+
+  return new Response(body as BodyInit, {
     headers: {
-      "Content-Type": contentTypeForAssetPath(storagePath),
+      "Content-Type": contentType,
       "Cache-Control": cacheControl,
-      "Content-Length": String(bytes.byteLength),
+      "Content-Length": String(body.byteLength),
+      // Cache key must account for WebP vs. original negotiation.
+      Vary: "Accept",
     },
   });
+}
+
+/**
+ * Generated report photos are stored as large PNGs (~1MB+). When the browser
+ * accepts WebP, transcode on the fly — typically a 5–7× size reduction — so
+ * report pages load far faster. Falls back to the original bytes if the client
+ * doesn't accept WebP, the asset isn't a raster photo, or sharp is unavailable.
+ */
+async function maybeWebp(
+  request: Request,
+  bytes: Uint8Array,
+  sourceType: string,
+): Promise<{ body: Uint8Array; contentType: string }> {
+  const original = { body: bytes, contentType: sourceType };
+
+  const accept = request.headers.get("accept") ?? "";
+  if (!accept.includes("image/webp")) return original;
+  if (sourceType !== "image/png" && sourceType !== "image/jpeg") {
+    return original;
+  }
+
+  try {
+    const sharp = (await import("sharp")).default;
+    const webp = await sharp(bytes)
+      .webp({ quality: 82 })
+      .toBuffer();
+    // Only use it if it actually helps.
+    if (webp.byteLength < bytes.byteLength) {
+      return { body: new Uint8Array(webp), contentType: "image/webp" };
+    }
+    return original;
+  } catch {
+    return original;
+  }
 }

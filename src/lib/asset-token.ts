@@ -3,11 +3,15 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { assetProxyUrl } from "@/lib/asset-url";
 import { env } from "@/lib/env";
 
-/** Matches `Cache-Control: max-age=86400` on `/api/assets`. */
-export const ASSET_URL_TTL_SEC = 86_400;
+/** Signature validity window — generous so day-stable URLs never expire early. */
+export const ASSET_URL_TTL_SEC = 604_800; // 7 days
 
-/** Hourly buckets keep signed URLs stable so browsers and the CDN can cache them. */
-export const ASSET_SIGNATURE_BUCKET_SEC = 3_600;
+/**
+ * Daily buckets keep a given asset's signed URL identical for the whole UTC day,
+ * so the browser and CDN actually reuse the cached bytes across page loads
+ * instead of re-fetching a freshly-signed URL every hour.
+ */
+export const ASSET_SIGNATURE_BUCKET_SEC = 86_400;
 
 function signingKey(): string | null {
   return process.env.ASSET_URL_SECRET ?? env.supabaseServiceKey ?? null;
