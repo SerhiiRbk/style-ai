@@ -277,13 +277,47 @@ export async function POST(request: Request) {
       picks = extraPicks(type, profile).filter((p) => !existingNames.has(p.name));
     }
   } else {
-    // Already unlocked on this non-premium report.
-    if (existing.length > 0) {
+    // Non-premium: unlock the base set, optionally the full set (base + extra)
+    // up front for a combined price, or top up the extra set after the base was
+    // already unlocked. Each pair of previews costs one unlock price.
+    const wantsFull = body?.count === config.base * 2;
+
+    if (existing.length > config.base) {
+      // Full set already generated — nothing left to buy.
       const items = await signItems(admin, existing);
       return NextResponse.json({ items, balance: null, alreadyOwned: true });
     }
-    cost = config.unlockCost;
-    picks = basePicks(type, profile);
+
+    if (existing.length === 0) {
+      if (wantsFull) {
+        cost = config.unlockCost * 2;
+        const base = basePicks(type, profile);
+        const baseNames = new Set(base.map((p) => p.name));
+        const extra = extraPicks(type, profile).filter(
+          (p) => !baseNames.has(p.name),
+        );
+        picks = [...base, ...extra];
+      } else {
+        cost = config.unlockCost;
+        picks = basePicks(type, profile);
+      }
+    } else {
+      // Top up the extra set on top of the already-unlocked base previews.
+      const baseReady =
+        existing.length >= config.base &&
+        existing.slice(0, config.base).every((i) => i.imagePath);
+      if (!baseReady) {
+        return NextResponse.json(
+          { error: "Base previews are still generating — try again shortly." },
+          { status: 409 },
+        );
+      }
+      cost = config.unlockCost;
+      const existingNames = new Set(existing.map((i) => i.name));
+      picks = extraPicks(type, profile).filter(
+        (p) => !existingNames.has(p.name),
+      );
+    }
   }
 
   if (hasSupabaseAdmin && cost > 0) {

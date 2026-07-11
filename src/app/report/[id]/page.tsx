@@ -27,7 +27,10 @@ import { ShareReportButton } from "@/components/ShareReportButton";
 import { DeleteReportButton } from "@/components/DeleteReportButton";
 import { GenerateMoreButton } from "@/components/GenerateMoreButton";
 import { GenerateLookButton } from "@/components/GenerateLookButton";
-import { UnlockAddonButton } from "@/components/UnlockAddonButton";
+import {
+  UnlockAddonButton,
+  type UnlockOption,
+} from "@/components/UnlockAddonButton";
 import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { RegenPhotoHint } from "@/components/RegenPhotoHint";
 import { BRAND } from "@/lib/brand";
@@ -756,38 +759,72 @@ export default async function ReportPage({
                   ) : null}
 
                   {report.accessories?.length ? (
-                    <AccessoriesGuide
-                      items={report.accessories}
-                      reportId={report.id}
-                      owner={canRegen}
-                      generating={imagesGenerating}
-                    />
+                    <>
+                      <AccessoriesGuide
+                        items={report.accessories}
+                        reportId={report.id}
+                        owner={canRegen}
+                        generating={imagesGenerating}
+                      />
+                      {isOwner && isLiveReport ? (
+                        <GenerateMoreButton
+                          reportId={report.id}
+                          type="accessories"
+                          cost={CREDIT_COSTS.accessory_addon}
+                          count={
+                            report.accessories.filter((i) => i.image).length
+                          }
+                          baseCount={PREMIUM_ACCESSORY_GEN_LIMIT}
+                          label="Generate 2 more"
+                        />
+                      ) : null}
+                    </>
                   ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
                       title="Accessory styling"
-                      desc="Two accessory previews (scarves, neckwear, ties) on your photo."
+                      desc="Accessory previews (scarves, neckwear, ties) on your photo — generate two, or the full set of four."
                       reportId={report.id}
                       type="accessories"
                       cost={CREDIT_COSTS.accessory_addon}
-                      label="Generate 2 accessory previews"
+                      label="Generate 2"
+                      fullCost={CREDIT_COSTS.accessory_addon * 2}
+                      fullLabel="Generate 4"
+                      fullCount={PREMIUM_ACCESSORY_GEN_LIMIT * 2}
                     />
                   ) : null}
 
                   {report.headwear?.length ? (
-                    <HeadwearGuide
-                      items={report.headwear}
-                      reportId={report.id}
-                      owner={canRegen}
-                      generating={imagesGenerating}
-                    />
+                    <>
+                      <HeadwearGuide
+                        items={report.headwear}
+                        reportId={report.id}
+                        owner={canRegen}
+                        generating={imagesGenerating}
+                      />
+                      {isOwner && isLiveReport ? (
+                        <GenerateMoreButton
+                          reportId={report.id}
+                          type="headwear"
+                          cost={CREDIT_COSTS.headwear_addon}
+                          count={
+                            report.headwear.filter((i) => i.image).length
+                          }
+                          baseCount={PREMIUM_HEADWEAR_GEN_LIMIT}
+                          label="Generate 2 more"
+                        />
+                      ) : null}
+                    </>
                   ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
                       title="Headwear"
-                      desc="Two headwear previews (hats, caps, bandanas) on your photo."
+                      desc="Headwear previews (hats, caps, bandanas) on your photo — generate two, or the full set of four."
                       reportId={report.id}
                       type="headwear"
                       cost={CREDIT_COSTS.headwear_addon}
-                      label="Generate 2 headwear previews"
+                      label="Generate 2"
+                      fullCost={CREDIT_COSTS.headwear_addon * 2}
+                      fullLabel="Generate 4"
+                      fullCount={PREMIUM_HEADWEAR_GEN_LIMIT * 2}
                     />
                   ) : null}
                 </div>
@@ -1128,6 +1165,9 @@ function AddonUnlockCard({
   cost,
   label,
   included = false,
+  fullCost,
+  fullLabel,
+  fullCount,
 }: {
   title: string;
   desc: string;
@@ -1137,7 +1177,15 @@ function AddonUnlockCard({
   label: string;
   /** Premium already covers this preview — generate the base set for free. */
   included?: boolean;
+  /** Optional "generate the full set at once" option (base + extra). */
+  fullCost?: number;
+  fullLabel?: string;
+  fullCount?: number;
 }) {
+  const options: UnlockOption[] = [{ cost, label }];
+  if (fullCost != null && fullLabel && fullCount != null) {
+    options.push({ count: fullCount, cost: fullCost, label: fullLabel });
+  }
   return (
     <div className="rounded-2xl border hairline bg-cream/30 p-6">
       <p className="font-display text-lg text-ink">{title}</p>
@@ -1145,8 +1193,7 @@ function AddonUnlockCard({
       <UnlockAddonButton
         reportId={reportId}
         type={type}
-        cost={cost}
-        label={label}
+        options={options}
         included={included}
       />
     </div>
