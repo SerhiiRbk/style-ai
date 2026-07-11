@@ -10,7 +10,13 @@ const nextConfig: NextConfig = {
   // not always traced into the function bundle — force-include them so the PDF
   // route never fails with "Could not load the sharp module" on Vercel.
   outputFileTracingIncludes: {
-    "/api/og/**": ["./assets/fonts/**"],
+    // The OG card reads brand fonts and re-encodes the PNG to JPEG (via sharp)
+    // so Facebook accepts it — trace both fonts and the native sharp binaries.
+    "/api/og/**": [
+      "./assets/fonts/**",
+      "./node_modules/sharp/**/*",
+      "./node_modules/@img/**/*",
+    ],
     "/api/reports/**": [
       "./node_modules/sharp/**/*",
       "./node_modules/@img/**/*",

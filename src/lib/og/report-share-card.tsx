@@ -333,16 +333,40 @@ function BrandCard() {
   );
 }
 
+const CARD_CACHE = "public, max-age=3600, s-maxage=86400";
+
+/**
+ * Satori renders PNGs with an alpha channel, which Facebook's scraper often
+ * rejects ("could not be processed as an image"). Re-encode to a flattened
+ * JPEG — Facebook's preferred format — falling back to the original PNG bytes
+ * if sharp is unavailable (still a valid image everywhere else).
+ */
+async function toShareResponse(image: ImageResponse): Promise<Response> {
+  const png = Buffer.from(await image.arrayBuffer());
+  try {
+    const sharp = (await import("sharp")).default;
+    const jpeg = await sharp(png)
+      .flatten({ background: INK })
+      .jpeg({ quality: 88, progressive: true })
+      .toBuffer();
+    return new Response(jpeg as BodyInit, {
+      headers: { "Content-Type": "image/jpeg", "Cache-Control": CARD_CACHE },
+    });
+  } catch {
+    return new Response(png as BodyInit, {
+      headers: { "Content-Type": "image/png", "Cache-Control": CARD_CACHE },
+    });
+  }
+}
+
 /** Render the branded report share card (personalized when data is present). */
 export async function renderReportShareCard(
   data: ShareCardData | null,
-): Promise<ImageResponse> {
+): Promise<Response> {
   const fonts = await loadFonts();
-  return new ImageResponse(data ? <PersonalizedCard {...data} /> : <BrandCard />, {
-    ...OG_SIZE,
-    fonts,
-    headers: {
-      "Cache-Control": "public, max-age=3600, s-maxage=86400",
-    },
-  });
+  const image = new ImageResponse(
+    data ? <PersonalizedCard {...data} /> : <BrandCard />,
+    { ...OG_SIZE, fonts },
+  );
+  return toShareResponse(image);
 }
