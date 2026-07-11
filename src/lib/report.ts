@@ -508,6 +508,18 @@ const DEMO_ACCESSORIES: AccessoryRec[] = [
     why: "A textured, matte tie in your palette reads refined — the detail that elevates a jacket for work.",
     image: "/images/demo/accessory-tie.png",
   },
+  {
+    name: "Patterned silk scarf",
+    kind: "scarf",
+    why: "A subtle foulard pattern adds depth at the neck while staying within your palette — an easy, elegant accent over a coat.",
+    image: "/images/demo/accessory-silk-scarf.png",
+  },
+  {
+    name: "Knitted tie",
+    kind: "tie",
+    why: "A matte knitted tie with a square end reads relaxed-smart — ideal under a blazer when you want polish without formality.",
+    image: "/images/demo/accessory-knitted-tie.png",
+  },
 ];
 
 const HAIR_DUAL_ANGLE_TIERS: Tier[] = ["lookbook", "premium"];
