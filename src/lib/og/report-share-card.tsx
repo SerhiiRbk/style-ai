@@ -238,7 +238,14 @@ function PersonalizedCard(data: ShareCardData) {
             alt=""
             width={470}
             height={630}
-            style={{ width: 470, height: 630, objectFit: "cover" }}
+            style={{
+              width: 470,
+              height: 630,
+              objectFit: "cover",
+              // Anchor to the top so a full-length portrait keeps the head in
+              // frame (center-crop was cutting off the face).
+              objectPosition: "center top",
+            }}
           />
           <div
             style={{

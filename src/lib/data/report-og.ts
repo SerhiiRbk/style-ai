@@ -17,7 +17,11 @@ function contentTypeForPath(path: string): string {
   return "image/jpeg";
 }
 
-/** First generated look image path used in the report header hero. */
+/**
+ * Hero image path for the share card — the report's bespoke editorial cover
+ * (same image shown in the report header), falling back to the first generated
+ * look photo when a report predates cover generation.
+ */
 export async function getReportHeroStoragePath(
   id: string,
 ): Promise<string | null> {
@@ -27,13 +31,13 @@ export async function getReportHeroStoragePath(
     const report = getMockReport(id);
     if (!report) return null;
     const lookImage = report.looks.map((l) => l.image).find(Boolean);
-    return lookImage ?? null;
+    return report.coverImage ?? lookImage ?? null;
   }
 
   const admin = createAdminSupabase();
   const { data: row } = await admin
     .from("reports")
-    .select("is_public, tier")
+    .select("is_public, tier, cover_image")
     .eq("id", id)
     .maybeSingle();
 
@@ -43,6 +47,9 @@ export async function getReportHeroStoragePath(
   ) {
     return null;
   }
+
+  // Prefer the editorial cover (matches the report header); fall back to a look.
+  if (row.cover_image) return row.cover_image as string;
 
   const { data: looks } = await admin
     .from("looks")
