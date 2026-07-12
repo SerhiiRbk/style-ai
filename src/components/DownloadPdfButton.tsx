@@ -43,7 +43,9 @@ export function DownloadPdfButton({
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") ?? "";
       const match = /filename="?([^"]+)"?/.exec(disposition);
-      const filename = match?.[1] ?? `styleai-report-${reportId}.pdf`;
+      const filename =
+        match?.[1] ??
+        `valetti-style-report-${new Date().toISOString().slice(0, 10)}.pdf`;
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

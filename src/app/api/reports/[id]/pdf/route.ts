@@ -1,10 +1,13 @@
+import { after } from "next/server";
 import { getReportViewForDownload } from "@/lib/data/reports";
-import { DEMO_REPORT_SLUG, isDemoReportId } from "@/lib/demo-report";
+import { isDemoReportId } from "@/lib/demo-report";
+import { getCachedReportPdf, putCachedReportPdf } from "@/lib/pdf/pdf-cache";
 import { buildReportPdf } from "@/lib/pdf/report-pdf";
 import { demoReport } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 600;
 
 // The example report is identical for everyone, so build it once and reuse.
 let demoPdfCache: Uint8Array | null = null;
@@ -26,6 +29,16 @@ function pdfResponse(bytes: Uint8Array, filename: string) {
   });
 }
 
+/** e.g. valetti-style-premium-report-2026-07-12.pdf */
+function pdfFilename(tier: string, createdAt: string): string {
+  const d = new Date(createdAt);
+  const date = Number.isNaN(d.getTime())
+    ? new Date().toISOString().slice(0, 10)
+    : d.toISOString().slice(0, 10);
+  const tierSlug = tier.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `valetti-style-${tierSlug}-report-${date}.pdf`;
+}
+
 /**
  * Download a report as a generated PDF.
  * - `demo` → cached sample report PDF
@@ -39,7 +52,8 @@ export async function GET(
   const { id } = await params;
 
   if (isDemoReportId(id)) {
-    return pdfResponse(await getDemoPdf(), `${DEMO_REPORT_SLUG}.pdf`);
+    const demo = demoReport();
+    return pdfResponse(await getDemoPdf(), pdfFilename(demo.tier, demo.createdAt));
   }
 
   const view = await getReportViewForDownload(id);
@@ -61,8 +75,14 @@ export async function GET(
   }
 
   try {
+    const filename = pdfFilename(report.tier, report.createdAt);
+    const cached = await getCachedReportPdf(report);
+    if (cached) return pdfResponse(cached, filename);
+
     const bytes = await buildReportPdf(report);
-    return pdfResponse(bytes, `styleai-report-${id}.pdf`);
+    // Populate the cache after the response is sent so the download isn't delayed.
+    after(() => putCachedReportPdf(report, bytes).catch(() => {}));
+    return pdfResponse(bytes, filename);
   } catch (err) {
     console.error("[pdf] failed to build report", id, err);
     return Response.json({ error: "Failed to generate PDF" }, { status: 500 });

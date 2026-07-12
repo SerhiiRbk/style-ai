@@ -65,6 +65,8 @@ export function ReportsAdminPanel() {
   const [error, setError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [finishMsg, setFinishMsg] = useState<string | null>(null);
+  const [regenId, setRegenId] = useState<string | null>(null);
+  const [regenMsg, setRegenMsg] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,6 +91,27 @@ export function ReportsAdminPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function regeneratePdf(id: string) {
+    if (regenId) return;
+    setRegenId(id);
+    setRegenMsg((m) => ({ ...m, [id]: "" }));
+    try {
+      const res = await fetch(`/api/admin/reports/${id}/regenerate-pdf`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not regenerate PDF");
+      setRegenMsg((m) => ({ ...m, [id]: "PDF rebuilt ✓" }));
+    } catch (e) {
+      setRegenMsg((m) => ({
+        ...m,
+        [id]: e instanceof Error ? e.message : "Could not regenerate PDF",
+      }));
+    } finally {
+      setRegenId(null);
+    }
+  }
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -226,22 +249,58 @@ export function ReportsAdminPanel() {
                   ) : null}
                 </div>
               </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <span className="rounded-full border hairline bg-cream/40 px-2.5 py-0.5 text-[11px] text-stone">
-                  {tierLabel(r.tier)}
-                </span>
-                {r.isPublic && (
+              <div className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full border hairline bg-cream/40 px-2.5 py-0.5 text-[11px] text-stone">
-                    Public
+                    {tierLabel(r.tier)}
+                  </span>
+                  {r.isPublic && (
+                    <span className="rounded-full border hairline bg-cream/40 px-2.5 py-0.5 text-[11px] text-stone">
+                      Public
+                    </span>
+                  )}
+                  <StatusBadge status={r.status} />
+                  {r.tier !== "free" && (
+                    <button
+                      type="button"
+                      onClick={() => regeneratePdf(r.id)}
+                      disabled={regenId === r.id}
+                      title="Rebuild this report's PDF and refresh the cached copy."
+                      className="inline-flex items-center gap-1.5 rounded-full border hairline px-3 py-1.5 text-sm text-stone transition-colors hover:border-brass/60 hover:text-ink disabled:opacity-50"
+                    >
+                      {regenId === r.id ? (
+                        <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-brass/40 border-t-brass" />
+                      ) : (
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          aria-hidden
+                        >
+                          <path
+                            d="M4 12a8 8 0 0 1 13.7-5.7L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.7L4 16M4 20v-4h4"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      )}
+                      Regen PDF
+                    </button>
+                  )}
+                  <Link
+                    href={`/report/${r.id}`}
+                    className="rounded-full border border-brass/40 bg-brass/5 px-4 py-1.5 text-sm text-ink transition-colors hover:border-brass/60 hover:bg-brass/10"
+                  >
+                    Open →
+                  </Link>
+                </div>
+                {regenMsg[r.id] && (
+                  <span className="text-right text-xs text-stone-soft">
+                    {regenMsg[r.id]}
                   </span>
                 )}
-                <StatusBadge status={r.status} />
-                <Link
-                  href={`/report/${r.id}`}
-                  className="rounded-full border border-brass/40 bg-brass/5 px-4 py-1.5 text-sm text-ink transition-colors hover:border-brass/60 hover:bg-brass/10"
-                >
-                  Open →
-                </Link>
               </div>
             </li>
           ))}
