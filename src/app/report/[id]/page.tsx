@@ -460,9 +460,12 @@ export default async function ReportPage({
           <SectionHead
             n="01"
             title={tr("Your colour story")}
-            sub={tr(
-              "Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works.",
-            )}
+            sub={
+              extras.colorDNA.colorStoryIntro ??
+              tr(
+                "Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works.",
+              )
+            }
           />
           <div className="mt-12 grid items-start gap-12 lg:grid-cols-[300px_1fr]">
             <div className="flex flex-col items-center rounded-3xl border hairline bg-cream/40 p-8">

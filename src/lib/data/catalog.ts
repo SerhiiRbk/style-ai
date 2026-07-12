@@ -5,7 +5,15 @@ import { createAdminSupabase } from "@/lib/supabase/server";
 import { formatCatalogProductTitle } from "@/lib/product-title";
 import { mockShopping, type ShoppingItem } from "@/lib/report";
 import { marketForCurrency } from "@/lib/currency";
-import { colorMatchScore, decomposeLook, garmentTitleMatchScore, paletteColorHints, type LookGarment } from "@/lib/style-extras";
+import {
+  colorMatchScore,
+  decomposeLook,
+  garmentTitleMatchScore,
+  paletteColorHints,
+  styleFitScore,
+  styleIntentPhrase,
+  type LookGarment,
+} from "@/lib/style-extras";
 import {
   LOOK_RERANK_CANDIDATE_LIMIT,
   rerankLookItemSlots,
@@ -42,7 +50,7 @@ const MIN_VECTOR_SIMILARITY = 0.68;
 const MIN_COLOR_MATCH = 0.4;
 const MIN_LOOK_PICK_SCORE = 0.42;
 /** Bumped when look-matching heuristics change — triggers background refresh. */
-export const LOOK_MATCH_VERSION = 3;
+export const LOOK_MATCH_VERSION = 4;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
@@ -204,11 +212,13 @@ export async function matchShopping(
     for (const category of CATEGORIES) {
       const query =
         `${category} in ${palette}; ${profile.colorSeason} palette; ` +
-        `${profile.goals.join(", ")}; ${profile.physical.bodyType} build`;
+        `${profile.goals.join(", ")}; ${profile.physical.bodyType} build; ` +
+        styleIntentPhrase(profile.boldness);
       const { embedding } = await embed({ model: env.embedModel, value: query });
       const data = await rpcMatchProducts(sb, {
         query_embedding: embedding,
-        match_count: 3,
+        // Wider pool so archetype re-ranking has room to demote trend pieces.
+        match_count: 8,
         filter_category: category,
         max_price: profile.budgetEur.max,
         country,
@@ -216,8 +226,21 @@ export async function matchShopping(
         market,
         gender_filter: gender,
       });
+      // Re-rank by vector similarity plus how well the piece suits the user's
+      // boldness, so a conservative profile isn't handed a trend-forward hero.
+      const ranked = [...((data ?? []) as MatchRow[])]
+        .map((p) => ({
+          p,
+          score:
+            (p.similarity ?? 0) +
+            styleFitScore(
+              formatCatalogProductTitle(p.brand, p.title),
+              profile.boldness,
+            ),
+        }))
+        .sort((a, b) => b.score - a.score);
       let added = 0;
-      for (const p of (data ?? []) as MatchRow[]) {
+      for (const { p } of ranked) {
         if (seen.has(p.id) || added >= 2) continue; // dedupe + cap per category
         seen.add(p.id);
         added++;
@@ -290,6 +313,7 @@ function rankMatchRows(
   rows: MatchRow[],
   color: string | null,
   garment: string,
+  boldness: string,
 ): RankedMatch[] {
   return rows.map((row) => {
     const sim = row.similarity ?? 0;
@@ -298,6 +322,7 @@ function rankMatchRows(
     const similarPick =
       sim < MIN_VECTOR_SIMILARITY || colorScore < MIN_COLOR_MATCH;
     const localBoost = row.same_country ? 0.04 : 0;
+    const styleFit = styleFitScore(row.title, boldness);
     return {
       row,
       colorScore,
@@ -307,7 +332,8 @@ function rankMatchRows(
         sim * 0.38 +
         colorScore * 0.32 +
         garmentScore * 0.26 +
-        localBoost,
+        localBoost +
+        styleFit,
     };
   });
 }
@@ -316,9 +342,10 @@ function pickBestMatch(
   rows: MatchRow[],
   color: string | null,
   garment: string,
+  boldness: string,
 ): { row: MatchRow; similarPick: boolean } | null {
   if (!rows.length) return null;
-  const ranked = rankMatchRows(rows, color, garment).sort(
+  const ranked = rankMatchRows(rows, color, garment, boldness).sort(
     (a, b) => b.score - a.score,
   );
   const best = ranked[0];
@@ -338,8 +365,9 @@ function topRankedCandidates(
   rows: MatchRow[],
   color: string | null,
   garment: string,
+  boldness: string,
 ): MatchRow[] {
-  return rankMatchRows(rows, color, garment)
+  return rankMatchRows(rows, color, garment, boldness)
     .sort((a, b) => b.score - a.score)
     .slice(0, LOOK_RERANK_CANDIDATE_LIMIT)
     .map((r) => r.row);
@@ -401,7 +429,12 @@ async function matchItemsForLook(
     if (matchSlots.length >= 6) break;
     if (usedCategories.has(g.category)) continue;
     const matchKey = matchKeyFor(g);
-    const rows = topRankedCandidates(matchByKey.get(matchKey) ?? [], g.color, g.garment);
+    const rows = topRankedCandidates(
+      matchByKey.get(matchKey) ?? [],
+      g.color,
+      g.garment,
+      profile.boldness,
+    );
     if (!rows.length) continue;
     usedCategories.add(g.category);
     matchSlots.push({ slot, garment: g, matchKey, rows });
@@ -458,6 +491,7 @@ async function matchItemsForLook(
       matchByKey.get(matchSlot.matchKey) ?? [],
       matchSlot.garment.color,
       matchSlot.garment.garment,
+      profile.boldness,
     );
     if (!picked || seen.has(picked.row.id)) continue;
     seen.add(picked.row.id);

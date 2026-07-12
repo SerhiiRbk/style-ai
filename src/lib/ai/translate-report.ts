@@ -45,6 +45,7 @@ function trExtras(e: StyleExtras, tr: TranslateFn): StyleExtras {
       metal: tr(e.colorDNA.metal),
       blackAlt: tr(e.colorDNA.blackAlt),
       contrastRule: tr(e.colorDNA.contrastRule),
+      colorStoryIntro: tr(e.colorDNA.colorStoryIntro),
     },
     metals: {
       recommend: e.metals.recommend.map((m) => ({

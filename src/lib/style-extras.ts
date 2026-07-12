@@ -51,6 +51,8 @@ export type ColorDNA = {
   metal: string;
   blackAlt: string;
   contrastRule: string;
+  /** Colour-story section intro, tailored to the actual undertone + contrast. */
+  colorStoryIntro: string;
 };
 
 export type OutfitCombo = {
@@ -928,6 +930,108 @@ function fragranceFor(profile: StyleProfile): string {
   return `A ${family} fragrance suits your colouring; ${strength}.`;
 }
 
+/* --------------------------- style-fit heuristics ------------------------- */
+
+/** Lexical cues that a product is trend-forward / statement rather than a staple. */
+const TREND_TOKENS = [
+  "smock",
+  "oversized",
+  "boxy",
+  "cropped",
+  "crop top",
+  "baggy",
+  "parachute",
+  "cargo",
+  "printed",
+  "print",
+  "graphic",
+  "logo",
+  "slogan",
+  "mesh",
+  "sheer",
+  "distressed",
+  "acid wash",
+  "tie-dye",
+  "tie dye",
+  "camo",
+  "sequin",
+  "metallic",
+  "fringe",
+  "flared",
+  "bootcut",
+  "parkour",
+  "asymmetric",
+  "patchwork",
+  "shacket",
+  "balloon",
+  "wide-leg extreme",
+  "runway",
+];
+/** Lexical cues of a timeless, tailored staple. */
+const STAPLE_TOKENS = [
+  "blazer",
+  "sport coat",
+  "sportcoat",
+  "suit",
+  "tailored",
+  "trench",
+  "overcoat",
+  "topcoat",
+  "peacoat",
+  "chino",
+  "oxford",
+  "poplin",
+  "merino",
+  "cashmere",
+  "lambswool",
+  "crew neck",
+  "crewneck",
+  "roll neck",
+  "polo shirt",
+  "chelsea boot",
+  "derby",
+  "loafer",
+  "cardigan",
+  "overshirt",
+  "gabardine",
+  "flannel",
+];
+
+/**
+ * Additive ranking nudge (~[-0.2, +0.06]) that aligns catalogue picks with the
+ * user's boldness: conservative/moderate wardrobes down-weight trend-forward
+ * pieces and favour timeless staples, while statement/experimental wardrobes get
+ * a mild boost for directional pieces. Keeps a "Refined Classic" professional
+ * from being handed an oversized smock as their hero piece.
+ */
+export function styleFitScore(title: string, boldness: string): number {
+  const t = (title || "").toLowerCase();
+  const trend = TREND_TOKENS.some((w) => t.includes(w));
+  const staple = STAPLE_TOKENS.some((w) => t.includes(w));
+  const b = (boldness || "moderate").toLowerCase();
+  if (b === "statement" || b === "experimental") {
+    return trend ? 0.06 : 0;
+  }
+  let s = 0;
+  if (trend) s -= b === "conservative" ? 0.2 : 0.12;
+  if (staple) s += 0.05;
+  return s;
+}
+
+/** Short intent clause appended to catalogue queries so vector search leans on the archetype. */
+export function styleIntentPhrase(boldness: string): string {
+  switch ((boldness || "moderate").toLowerCase()) {
+    case "conservative":
+      return "timeless tailored classic staples, understated, quietly expensive, not trend-driven";
+    case "experimental":
+      return "considered contemporary pieces with a creative edge";
+    case "statement":
+      return "bold directional statement pieces, high impact";
+    default:
+      return "clean modern versatile essentials, not trend-driven";
+  }
+}
+
 /* ----------------------------- priority moves ----------------------------- */
 
 function priorityMoves(
@@ -935,12 +1039,18 @@ function priorityMoves(
   shopping: ShoppingItem[],
 ): PriorityMove[] {
   const goal = profile.goals[0]?.toLowerCase() ?? "look more polished";
+  // Hero = a genuine investment piece: weight archetype fit ahead of category
+  // priority so a trend-forward layer never becomes the headline recommendation.
   const hero =
-    [...shopping].sort(
-      (a, b) =>
-        (CATEGORY_PRIORITY[a.category] ?? 9) -
-        (CATEGORY_PRIORITY[b.category] ?? 9),
-    )[0]?.title ?? "one excellent jacket";
+    [...shopping].sort((a, b) => {
+      const wa =
+        -styleFitScore(a.title, profile.boldness) * 10 +
+        (CATEGORY_PRIORITY[a.category] ?? 9);
+      const wb =
+        -styleFitScore(b.title, profile.boldness) * 10 +
+        (CATEGORY_PRIORITY[b.category] ?? 9);
+      return wa - wb;
+    })[0]?.title ?? "one excellent jacket";
   return [
     {
       n: "01",
@@ -1040,6 +1150,18 @@ function colorDNAFor(profile: StyleProfile, best: ColorRec[]): ColorDNA {
         ? "You can carry sharp contrast — a crisp light-vs-dark split reads intentional and strong."
         : "Moderate contrast suits you — one clear light/dark step, not a stark jump.";
 
+  const undertoneWord =
+    undertone === "warm" ? "warm" : undertone === "cool" ? "cool" : "balanced";
+  const wheelLine =
+    "Here's where your palette sits on the wheel — and exactly why each tone works.";
+  const colorStoryIntro =
+    (contrast === "low"
+      ? `Soft, ${undertoneWord} neutrals flatter your low-contrast colouring.`
+      : contrast === "high"
+        ? `Crisp, ${undertoneWord} tones let you carry your high-contrast colouring with intent.`
+        : `${cap(undertoneWord)} neutrals with one clear light-to-dark step suit your medium-contrast colouring.`) +
+    ` ${wheelLine}`;
+
   return {
     subseason,
     neutrals: neutrals.length ? neutrals : best.slice(0, 3),
@@ -1048,6 +1170,7 @@ function colorDNAFor(profile: StyleProfile, best: ColorRec[]): ColorDNA {
     metal,
     blackAlt,
     contrastRule,
+    colorStoryIntro,
   };
 }
 
