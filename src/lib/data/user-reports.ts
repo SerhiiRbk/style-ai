@@ -10,6 +10,7 @@ import type {
   HairRec,
   Tier,
 } from "@/lib/report";
+import { normalizeLanguage, type ReportLanguage } from "@/lib/languages";
 export { tierLabel, reportStatusLabel } from "@/lib/report-labels";
 
 export type UserReportSummary = {
@@ -18,6 +19,7 @@ export type UserReportSummary = {
   headline: string | null;
   tier: Tier;
   status: "processing" | "ready" | "failed";
+  language: ReportLanguage;
   /**
    * True while the report is still producing images in the background — the DB
    * status can be "ready" (written content saved) while look / hair / capsule
@@ -32,6 +34,7 @@ type SummaryRow = {
   headline: string | null;
   tier: Tier | null;
   status: string | null;
+  language: string | null;
   hair: { recommend: HairRec[]; avoid: HairRec[] } | null;
   facial_hair: FacialHairRec[] | null;
   eyewear: EyewearRec[] | null;
@@ -61,7 +64,7 @@ export async function getUserReports(): Promise<UserReportSummary[] | null> {
   const { data, error } = await db
     .from("reports")
     .select(
-      "id, created_at, headline, tier, status, hair, facial_hair, eyewear, accessories, headwear, capsule_images",
+      "id, created_at, headline, tier, status, language, hair, facial_hair, eyewear, accessories, headwear, capsule_images",
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
@@ -107,6 +110,7 @@ export async function getUserReports(): Promise<UserReportSummary[] | null> {
       createdAt: row.created_at,
       headline: row.headline ?? null,
       tier: row.tier ?? "basic",
+      language: normalizeLanguage(row.language),
       status:
         row.status === "processing" || row.status === "failed"
           ? row.status

@@ -18,6 +18,7 @@ export type CreditReason =
   | "look_extra"
   | "look_regen"
   | "cover_regen"
+  | "language_change"
   | "admin_grant";
 
 /** Credits charged to generate a report, by tier. */
@@ -45,6 +46,8 @@ export const CREDIT_COSTS = {
   look_regen: 3,
   /** Re-generate the report's bespoke editorial cover photo. */
   cover_regen: 1,
+  /** Re-translate an existing report's text into a different language. */
+  language_change: 5,
   /** A premium add-on render (e.g. facial-hair / eyewear preview). */
   premium_addon: 3,
   /** One-time "generate 2 more" accessory previews on a premium report. */

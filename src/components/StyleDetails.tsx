@@ -3,6 +3,8 @@
  * recommended accessories, and a shoe guide. Pure presentational, server-safe.
  */
 import { StaticFillImg } from "@/components/StyleGuides";
+import { makeT } from "@/lib/i18n/report";
+import type { ReportLanguage } from "@/lib/languages";
 
 const NAVY = "#27324A";
 const CREAM = "#EFE6D3";
@@ -152,12 +154,13 @@ const SHOES: { name: string; image: string }[] = [
   { name: "Derby shoes", image: "/images/products/brown-derbies.png" },
 ];
 
-export function StyleDetails() {
+export function StyleDetails({ lang }: { lang?: ReportLanguage }) {
+  const tt = makeT(lang);
   return (
     <div className="grid gap-12 lg:grid-cols-3">
       <div>
         <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-          Best patterns
+          {tt("Best patterns")}
         </h3>
         <div className="mt-5 grid grid-cols-2 gap-4">
           {PATTERNS.map((p) => (
@@ -165,7 +168,7 @@ export function StyleDetails() {
               <div className="aspect-square overflow-hidden rounded-xl border hairline">
                 <PatternSwatch kind={p.kind} />
               </div>
-              <div className="mt-2 text-center text-sm text-stone">{p.name}</div>
+              <div className="mt-2 text-center text-sm text-stone">{tt(p.name)}</div>
             </div>
           ))}
         </div>
@@ -173,7 +176,7 @@ export function StyleDetails() {
 
       <div>
         <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-          Accessories
+          {tt("Accessories")}
         </h3>
         <div className="mt-5 space-y-3">
           {ACCESSORIES.map((a) => (
@@ -188,9 +191,9 @@ export function StyleDetails() {
               </span>
               <div>
                 <div className="font-display text-base leading-tight">
-                  {a.name}
+                  {tt(a.name)}
                 </div>
-                <div className="text-xs text-stone-soft">{a.note}</div>
+                <div className="text-xs text-stone-soft">{tt(a.note)}</div>
               </div>
             </div>
           ))}
@@ -199,7 +202,7 @@ export function StyleDetails() {
 
       <div>
         <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-          Shoe guide
+          {tt("Shoe guide")}
         </h3>
         <div className="mt-5 grid grid-cols-3 gap-3">
           {SHOES.map((s) => (
@@ -211,7 +214,7 @@ export function StyleDetails() {
                   sizes="(max-width: 640px) 33vw, 15vw"
                 />
               </div>
-              <div className="mt-2 text-center text-xs text-stone">{s.name}</div>
+              <div className="mt-2 text-center text-xs text-stone">{tt(s.name)}</div>
             </div>
           ))}
         </div>

@@ -65,7 +65,11 @@ import {
   capsuleMatrix,
   facialHairFor,
   premiumEyewearPicks,
+  buildExtras,
+  type StyleExtras,
 } from "@/lib/style-extras";
+import { translateReportParts } from "@/lib/ai/translate-report";
+import { normalizeLanguage } from "@/lib/languages";
 import {
   enrichLookItems,
   enrichShoppingImages,
@@ -846,6 +850,7 @@ async function executeReportGeneration(
   },
 ): Promise<void> {
   const { reportId, userId, tier, intake, photos } = opts;
+  const language = normalizeLanguage(intake.language);
 
   const lookCount = lookCountForTier(tier);
   const { profile, content } = await generateReportContent(
@@ -866,45 +871,100 @@ async function executeReportGeneration(
   }
   const lookItems = await matchLookItems(profile, content);
 
+  // Premium grooming picks — deterministic English templates.
+  const premiumGrooming =
+    tier === "premium"
+      ? {
+          facialHair: facialHairFor(profile)
+            .slice(0, PREMIUM_FACIAL_HAIR_GEN_LIMIT)
+            .map((f) => ({ name: f.name, why: f.why })),
+          eyewear: premiumEyewearPicks(profile)
+            .slice(0, PREMIUM_EYEWEAR_GEN_LIMIT)
+            .map((f) => ({
+              name: f.name,
+              why: f.why,
+              shape: f.shape,
+              kind: f.kind,
+            })),
+          headwear: headwearPicksFor(profile)
+            .slice(0, PREMIUM_HEADWEAR_GEN_LIMIT)
+            .map((h) => ({ name: h.name, why: h.why, kind: h.kind })),
+        }
+      : null;
+
+  // The render-time "extras" (archetype, capsule, care, fragrance, …) are
+  // deterministic English. For non-English reports we translate a snapshot and
+  // persist it so the page/PDF render in the chosen language. English reports
+  // keep computing extras live (`extras` column stays null).
+  const baseExtras: StyleExtras =
+    language === "en"
+      ? ({} as StyleExtras)
+      : buildExtras(
+          assembleReport({
+            id: reportId,
+            createdAt: new Date().toISOString(),
+            tier,
+            profile,
+            content,
+            // Enrich product images first so the translated capsule snapshot
+            // keeps its thumbnails (read-time enrichment won't touch it).
+            shopping: await enrichShoppingImages(shopping),
+            lookItems,
+          }),
+        );
+
+  // The narrative (headline/summary/colours/hair/silhouette/do-dont/looks) is
+  // already generated natively in `language`. Only the deterministic parts need
+  // translating — skipped entirely for English.
+  const translated =
+    language === "en"
+      ? null
+      : await translateReportParts(
+          {
+            shopping,
+            lookItems,
+            ...(premiumGrooming
+              ? {
+                  facialHair: premiumGrooming.facialHair,
+                  eyewear: premiumGrooming.eyewear,
+                  headwear: premiumGrooming.headwear,
+                }
+              : {}),
+            extras: baseExtras,
+          },
+          language,
+        );
+
   await admin
     .from("reports")
     .update({
       status: "ready",
+      language,
       profile,
       headline: content.headline,
       summary: content.summary,
       colors: content.colors,
       hair: content.hair,
       silhouette: content.silhouette,
-      shopping,
+      shopping: translated?.shopping ?? shopping,
       do_list: content.doList,
       dont_list: content.dontList,
-      ...(tier === "premium"
+      extras: translated?.extras ?? null,
+      ...(premiumGrooming
         ? {
-            facial_hair: facialHairFor(profile).slice(
-              0,
-              PREMIUM_FACIAL_HAIR_GEN_LIMIT,
-            ),
-            eyewear: premiumEyewearPicks(profile)
-              .slice(0, PREMIUM_EYEWEAR_GEN_LIMIT)
-              .map((f) => ({
-                name: f.name,
-                why: f.why,
-                shape: f.shape,
-                kind: f.kind,
-              })),
-            headwear: headwearPicksFor(profile)
-              .slice(0, PREMIUM_HEADWEAR_GEN_LIMIT)
-              .map((h) => ({ name: h.name, why: h.why, kind: h.kind })),
+            facial_hair: translated?.facialHair ?? premiumGrooming.facialHair,
+            eyewear: translated?.eyewear ?? premiumGrooming.eyewear,
+            headwear: translated?.headwear ?? premiumGrooming.headwear,
           }
         : {}),
     })
     .eq("id", reportId);
 
-  if (Object.keys(lookItems).length) {
+  const finalLookItems = translated?.lookItems ?? lookItems;
+  if (Object.keys(finalLookItems).length) {
     await admin
       .from("reports")
-      .update({ look_items: lookItems })
+      .update({ look_items: finalLookItems })
       .eq("id", reportId);
   }
 
@@ -1141,6 +1201,8 @@ type ReportRow = {
   headwear: HeadwearRec[] | null;
   capsule_images: (string | null)[] | null;
   cover_image: string | null;
+  language?: string | null;
+  extras?: StyleExtras | null;
 };
 
 /** Map hair storage paths to stable same-origin proxy URLs (no signing I/O). */
@@ -1496,6 +1558,8 @@ async function fetchReportView(
     coverImage,
     lookItems,
     outfitTryons,
+    language: normalizeLanguage(row.language),
+    extras: (row.extras as StyleExtras | null) ?? undefined,
   });
 
   const ownerFeedback =

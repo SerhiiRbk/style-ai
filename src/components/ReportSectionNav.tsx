@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCredits } from "@/components/CreditsContext";
+import { makeT } from "@/lib/i18n/report";
+import type { ReportLanguage } from "@/lib/languages";
 
 const REPORT_NAV_ITEMS = [
   ["overview", "Overview"],
@@ -17,8 +19,9 @@ const REPORT_NAV_ITEMS = [
   ["dos-donts", "Do / Don't"],
 ] as const;
 
-export function ReportSectionNav() {
+export function ReportSectionNav({ lang }: { lang?: ReportLanguage }) {
   const { balance } = useCredits();
+  const tt = makeT(lang);
 
   return (
     <nav
@@ -34,7 +37,7 @@ export function ReportSectionNav() {
                 href={`#${id}`}
                 className="shrink-0 rounded-full border border-line bg-cream/40 px-3.5 py-1.5 text-xs text-stone transition-colors hover:border-ink/30 hover:bg-paper hover:text-ink"
               >
-                {label}
+                {tt(label)}
               </a>
             ))}
           </div>
@@ -45,7 +48,7 @@ export function ReportSectionNav() {
               className="shrink-0 whitespace-nowrap rounded-full border border-brass/40 bg-brass/5 px-3 py-1.5 text-xs text-ink transition-colors hover:border-brass"
             >
               <span className="font-display">{balance}</span>
-              <span className="text-stone"> credits</span>
+              <span className="text-stone"> {tt("credits")}</span>
             </Link>
           ) : null}
         </div>

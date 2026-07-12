@@ -25,6 +25,7 @@ import {
   type StyleProfile,
   type ReportContent,
 } from "@/lib/style-profile";
+import { languageInstruction, type ReportLanguage } from "@/lib/languages";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -188,6 +189,7 @@ export async function recommend(
   /** How many looks to produce (see `lookCountForTier`). */
   lookCount = lookCountForTier("basic"),
   tier: Tier = "basic",
+  language: ReportLanguage = "en",
 ): Promise<ReportContent> {
   if (!hasAI) return mockReportContent(intake);
 
@@ -234,7 +236,8 @@ export async function recommend(
       `- Ensure the looks flatter this body type.\n` +
       looksLine +
       `- doList and dontList: 4 short, actionable items each.\n` +
-      `Keep the tone refined and encouraging.`,
+      `Keep the tone refined and encouraging.` +
+      languageInstruction(language),
   });
 
   return output;
@@ -296,7 +299,8 @@ export async function generateExtraLook(opts: {
       `- description: ONE line naming each garment with its colour, comma-separated ` +
         `(e.g. "Camel crewneck knit, taupe chinos, brown loafers") — concrete catalogue words only.\n` +
       `- palette: 3–4 hex codes aligned with the client's best colours.\n` +
-      `Keep the tone refined and practical.`,
+      `Keep the tone refined and practical.` +
+      languageInstruction(intake.language),
   });
 
   return { ...output, context };
@@ -841,6 +845,13 @@ export async function generateReportContent(
 ): Promise<{ profile: StyleProfile; content: ReportContent }> {
   const profile = await analyzeProfile(intake, photos);
   const rules = await retrieveRules(profile);
-  const content = await recommend(intake, profile, rules, lookCount, tier);
+  const content = await recommend(
+    intake,
+    profile,
+    rules,
+    lookCount,
+    tier,
+    intake.language,
+  );
   return { profile, content };
 }

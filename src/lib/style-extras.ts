@@ -1559,6 +1559,14 @@ function priceTiersFrom(shopping: ShoppingItem[]): PriceTier[] {
 
 /* --------------------------------- build ---------------------------------- */
 
+/**
+ * Render-time extras for a report. Prefers a pre-translated stored snapshot
+ * (non-English reports) and otherwise computes them live in English.
+ */
+export function extrasForReport(report: StyleReport): StyleExtras {
+  return report.extras ?? buildExtras(report);
+}
+
 export function buildExtras(report: StyleReport): StyleExtras {
   const { profile } = report;
   return {

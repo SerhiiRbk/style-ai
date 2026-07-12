@@ -1,11 +1,13 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import QRCode from "qrcode";
+import fontkit from "@pdf-lib/fontkit";
+import { absoluteUrl } from "@/lib/site-url";
 import { storagePathFromAssetSrc } from "@/lib/asset-url";
 import { downloadAssetBytes } from "@/lib/data/asset-access";
 import {
   PDFDocument,
-  StandardFonts,
   rgb,
   type PDFFont,
   type PDFImage,
@@ -15,8 +17,9 @@ import { tierHasCapsule, type StyleReport } from "@/lib/report";
 import { formatMoneyPdf } from "@/lib/currency";
 import { BODY_TYPE_LABELS, isBodyType } from "@/lib/style-profile";
 import { capsuleMatrixImageAt } from "@/lib/demo-report";
-import { buildExtras, investmentLevel, itemsForLook } from "@/lib/style-extras";
+import { extrasForReport, investmentLevel, itemsForLook } from "@/lib/style-extras";
 import { humanizeProductTitle } from "@/lib/product-title";
+import { makeT } from "@/lib/i18n/report";
 
 // A4 in points.
 const PAGE_W = 595.28;
@@ -33,20 +36,17 @@ const BRASS = rgb(0.62, 0.47, 0.26);
 const WHITE = rgb(1, 1, 1);
 const FOG = rgb(0.88, 0.86, 0.82);
 
-/**
- * pdf-lib's StandardFonts use WinAnsi (Latin-1) and cannot render Latin-Extended
- * letters such as "č" (CZK "Kč") or "ł" (PLN "zł"). Transliterate the common
- * Central-European letters to ASCII so prices and names render cleanly instead
- * of turning into "?".
- */
-const EXT_LATIN: Record<string, string> = {
-  č: "c", Č: "C", š: "s", Š: "S", ž: "z", Ž: "Z", ř: "r", Ř: "R",
-  ě: "e", Ě: "E", ů: "u", Ů: "U", ť: "t", Ť: "T", ď: "d", Ď: "D",
-  ň: "n", Ň: "N", ł: "l", Ł: "L", ą: "a", Ą: "A", ę: "e", Ę: "E",
-  ń: "n", Ń: "N", ś: "s", Ś: "S", ż: "z", Ż: "Z", ź: "z", Ź: "Z",
-  ć: "c", Ć: "C",
-};
-const EXT_LATIN_RE = new RegExp(`[${Object.keys(EXT_LATIN).join("")}]`, "g");
+// Embedded Unicode fonts (Noto) cover Latin, Latin-Extended (Czech/Polish/
+// Turkish) and Cyrillic (Russian/Ukrainian), so localized reports render their
+// prose, prices and names correctly instead of being stripped to "?".
+const FONT_DIR = path.join(process.cwd(), "assets/fonts/pdf");
+const FONT_FILES = {
+  sans: "NotoSans-Regular.ttf",
+  sansBold: "NotoSans-Bold.ttf",
+  serif: "NotoSerif-Regular.ttf",
+  serifBold: "NotoSerif-Bold.ttf",
+  serifItalic: "NotoSerif-Italic.ttf",
+} as const;
 
 function hexToRgb(hex: string) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
@@ -121,6 +121,64 @@ async function cropToBoxJpeg(
 }
 
 /**
+ * Average perceived luminance (0 = black … 1 = white) of a normalized region of
+ * an image. Used to pick dark vs light cover type over an unpredictable photo.
+ * Returns null when sharp is unavailable so the caller can fall back safely.
+ */
+async function regionLuma(
+  bytes: Uint8Array,
+  region: { left: number; top: number; width: number; height: number },
+): Promise<number | null> {
+  let sharp: typeof import("sharp").default;
+  try {
+    ({ default: sharp } = await import("sharp"));
+  } catch {
+    return null;
+  }
+  try {
+    const meta = await sharp(bytes, { failOn: "none" }).rotate().metadata();
+    const W = meta.width ?? 0;
+    const H = meta.height ?? 0;
+    if (!W || !H) return null;
+    const left = Math.min(W - 1, Math.max(0, Math.round(region.left * W)));
+    const top = Math.min(H - 1, Math.max(0, Math.round(region.top * H)));
+    const w = Math.max(1, Math.min(W - left, Math.round(region.width * W)));
+    const h = Math.max(1, Math.min(H - top, Math.round(region.height * H)));
+    const { data, info } = await sharp(bytes, { failOn: "none" })
+      .rotate()
+      .extract({ left, top, width: w, height: h })
+      .resize(16, 16, { fit: "fill" })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const n = info.width * info.height;
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+      sum +=
+        0.2126 * data[i * 3] + 0.7152 * data[i * 3 + 1] + 0.0722 * data[i * 3 + 2];
+    }
+    return sum / n / 255;
+  } catch {
+    return null;
+  }
+}
+
+/** Heavily blurred version of an image, used as an ambient full-bleed backdrop. */
+async function blurJpeg(buf: Uint8Array, sigma = 34): Promise<Buffer | null> {
+  let sharp: typeof import("sharp").default;
+  try {
+    ({ default: sharp } = await import("sharp"));
+  } catch {
+    return null;
+  }
+  try {
+    return await sharp(buf).blur(sigma).modulate({ brightness: 0.9 }).jpeg({ quality: 70 }).toBuffer();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Embed an image from a public path or remote URL, cover-cropped to the target
  * box aspect (w:h) and re-encoded to JPEG. Cropping is required because pdf-lib
  * cannot clip overflow, stretches uncropped bitmaps, and JPEG keeps the PDF small.
@@ -181,25 +239,31 @@ class Doc {
   static async create() {
     const d = new Doc();
     d.doc = await PDFDocument.create();
-    d.reg = await d.doc.embedFont(StandardFonts.Helvetica);
-    d.bold = await d.doc.embedFont(StandardFonts.HelveticaBold);
-    d.serif = await d.doc.embedFont(StandardFonts.TimesRoman);
-    d.serifBold = await d.doc.embedFont(StandardFonts.TimesRomanBold);
-    d.serifItalic = await d.doc.embedFont(StandardFonts.TimesRomanItalic);
+    d.doc.registerFontkit(fontkit);
+    const [sans, sansBold, serif, serifBold, serifItalic] = await Promise.all([
+      readFile(path.join(FONT_DIR, FONT_FILES.sans)),
+      readFile(path.join(FONT_DIR, FONT_FILES.sansBold)),
+      readFile(path.join(FONT_DIR, FONT_FILES.serif)),
+      readFile(path.join(FONT_DIR, FONT_FILES.serifBold)),
+      readFile(path.join(FONT_DIR, FONT_FILES.serifItalic)),
+    ]);
+    // subset: true keeps only the glyphs actually used, so the embedded fonts
+    // add little to the file size while covering every supported language.
+    d.reg = await d.doc.embedFont(sans, { subset: true });
+    d.bold = await d.doc.embedFont(sansBold, { subset: true });
+    d.serif = await d.doc.embedFont(serif, { subset: true });
+    d.serifBold = await d.doc.embedFont(serifBold, { subset: true });
+    d.serifItalic = await d.doc.embedFont(serifItalic, { subset: true });
     return d;
   }
 
-  // StandardFonts use WinAnsi — transliterate / strip characters pdf-lib can't encode.
+  // Embedded Noto fonts are full Unicode, so keep real typography (€, curly
+  // quotes, en/em dashes, ellipsis, Latin-Extended, Cyrillic). Only normalise
+  // arrow glyphs (not present in the serif face) and drop control characters.
   sanitize(str: string) {
     return str
-      .replace(/\u20AC/g, "EUR")
       .replace(/[\u2192\u2794\u279C]/g, "->")
-      .replace(/[\u2018\u2019]/g, "'")
-      .replace(/[\u201C\u201D]/g, '"')
-      .replace(/[\u2013\u2014]/g, "-")
-      .replace(/[\u2026]/g, "...")
-      .replace(EXT_LATIN_RE, (ch) => EXT_LATIN[ch] ?? ch)
-      .replace(/[^\n\r\t\x20-\xFF]/g, "?");
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
   }
 
   newPage() {
@@ -251,10 +315,11 @@ class Doc {
     font: PDFFont,
     color: ReturnType<typeof rgb>,
     tracking: number,
+    opacity?: number,
   ) {
     let cx = x;
     for (const ch of this.sanitize(str)) {
-      this.page.drawText(ch, { x: cx, y, size, font, color });
+      this.page.drawText(ch, { x: cx, y, size, font, color, opacity });
       cx += font.widthOfTextAtSize(ch, size) + tracking;
     }
   }
@@ -607,13 +672,14 @@ class Doc {
 export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   const d = await Doc.create();
   const cur = report.profile.currency;
-  const extras = buildExtras(report);
+  const extras = extrasForReport(report);
   const includeCapsule = tierHasCapsule(report.tier);
+  const tt = makeT(report.language);
 
   /** Sequential chapter numbering so skipped sections never leave gaps. */
   let chapterNo = 0;
   const chapter = (title: string) =>
-    d.heading(`Chapter ${String(++chapterNo).padStart(2, "0")}`, title);
+    d.heading(`${tt("Chapter")} ${String(++chapterNo).padStart(2, "0")}`, tt(title));
 
   /** AI headshots (hair, grooming, eyewear) — 4:5 portrait, keep embed + gallery in sync. */
   const PORTRAIT_RATIO = 5 / 4;
@@ -632,95 +698,192 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   const coverPage = d.doc.addPage([PAGE_W, PAGE_H]);
   // Bespoke per-report cover when generated; otherwise the default editorial hero.
   const coverSrc = report.coverImage || "/images/hero-editorial.png";
-  const hero =
-    (await embedImage(d.doc, coverSrc, {
-      w: PAGE_W,
-      h: PAGE_H,
-      px: 1400,
-      position: "top",
-    })) ??
-    (report.coverImage
-      ? await embedImage(d.doc, "/images/hero-editorial.png", {
-          w: PAGE_W,
-          h: PAGE_H,
-          px: 1400,
-          position: "top",
-        })
-      : null);
+  const coverBytes = await loadBytes(coverSrc);
+
+  // Build the cover-cropped hero once so a centre slice of it can be re-laid
+  // *over* the wordmark, letting the subject stand in front of the masthead.
+  const heroBox = { w: PAGE_W, h: PAGE_H, px: 1400, position: "top" as const };
+  let heroBuf: Buffer | null = coverBytes ? await cropToBoxJpeg(coverBytes, heroBox) : null;
+  let hero: PDFImage | null = null;
+  if (heroBuf) {
+    try {
+      hero = await d.doc.embedJpg(heroBuf);
+    } catch {
+      hero = null;
+      heroBuf = null;
+    }
+  }
+  if (!hero) {
+    hero =
+      (await embedImage(d.doc, coverSrc, heroBox)) ??
+      (report.coverImage
+        ? await embedImage(d.doc, "/images/hero-editorial.png", heroBox)
+        : null);
+  }
   if (hero) {
-    coverPage.drawImage(hero, { x: 0, y: 0, width: PAGE_W, height: PAGE_H });
+    // Ambient, heavily-blurred full-bleed backdrop so the portrait can sit at a
+    // slightly reduced scale without hard letterbox bars.
+    const bgBuf = heroBuf ? await blurJpeg(heroBuf) : null;
+    let bg: PDFImage | null = null;
+    if (bgBuf) {
+      try {
+        bg = await d.doc.embedJpg(bgBuf);
+      } catch {
+        bg = null;
+      }
+    }
+    coverPage.drawImage(bg ?? hero, { x: 0, y: 0, width: PAGE_W, height: PAGE_H });
+    // Reduced-scale sharp portrait, anchored to the top so the head stays high.
+    const shrink = 0.9;
+    const fw = PAGE_W * shrink;
+    const fh = PAGE_H * shrink;
+    coverPage.drawImage(hero, {
+      x: (PAGE_W - fw) / 2,
+      y: PAGE_H - fh,
+      width: fw,
+      height: fh,
+    });
   } else {
     coverPage.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: INK });
   }
-  // Legibility scrims top & bottom.
-  coverPage.drawRectangle({
-    x: 0,
-    y: PAGE_H - 150,
-    width: PAGE_W,
-    height: 150,
-    color: INK,
-    opacity: 0.32,
-  });
+
+  // Bottom scrim so the headline + footer read. No top scrim — the masthead
+  // instead flips dark/light to stay legible over the bare photo.
   coverPage.drawRectangle({
     x: 0,
     y: 0,
     width: PAGE_W,
-    height: 320,
+    height: 300,
     color: INK,
     opacity: 0.55,
   });
 
-  // Masthead.
   d.page = coverPage;
-  const mast = "VALETTI";
-  const mastW = d.widthTracked(mast, d.serif, 34, 12);
-  d.drawTracked(mast, (PAGE_W - mastW) / 2, PAGE_H - 92, 34, d.serif, WHITE, 12);
-  const tagline = "THE PERSONAL STYLE EDIT";
-  const tagW = d.widthTracked(tagline, d.reg, 8.5, 4.5);
-  d.drawTracked(tagline, (PAGE_W - tagW) / 2, PAGE_H - 116, 8.5, d.reg, FOG, 4.5);
 
-  // Headline + meta in the lower band.
-  const issueW = d.widthTracked("THE STYLE REPORT", d.bold, 8, 3);
-  d.drawTracked("THE STYLE REPORT", MARGIN, 224, 8, d.bold, BRASS, 3);
-  void issueW;
-  const headLines = d.wrapLines(report.headline, d.serifBold, 31, CONTENT_W);
-  let hy = 206;
-  for (const ln of headLines) {
-    coverPage.drawText(ln, { x: MARGIN, y: hy - 31, size: 31, font: d.serifBold, color: WHITE });
-    hy -= 36;
+  // The byline roundel sits over the bare photo, whose brightness we can't
+  // predict. Sample that zone and flip the type dark/light so it always reads.
+  const rightLuma = coverBytes
+    ? await regionLuma(coverBytes, { left: 0.7, top: 0.2, width: 0.28, height: 0.24 })
+    : null;
+  const rightLight = (rightLuma ?? 0) > 0.55;
+  const rightTitle = rightLight ? INK : WHITE;
+  const rightBody = rightLight ? STONE : FOG;
+
+  const emblemBytes = await loadBytes("/images/valetti-emblem.png");
+  let emblem: PDFImage | null = null;
+  try {
+    if (emblemBytes) emblem = await d.doc.embedPng(emblemBytes);
+  } catch {
+    emblem = null;
   }
+
+  // Masthead — a large wordmark tracked to fill the measure, drawn on top of the
+  // photo at the very top in translucent white (70%). The smaller strap-line
+  // flips dark/light against the photo so it always reads.
+  const topLuma = coverBytes
+    ? await regionLuma(coverBytes, { left: 0.12, top: 0.02, width: 0.76, height: 0.11 })
+    : null;
+  const topLight = (topLuma ?? 0) > 0.55;
+  const subColor = topLight ? STONE : FOG;
+
+  const mast = "VALETTI";
+  let mSize = 60;
+  let mNat = d.widthTracked(mast, d.serif, mSize, 0);
+  while (mNat > CONTENT_W && mSize > 34) {
+    mSize -= 1;
+    mNat = d.widthTracked(mast, d.serif, mSize, 0);
+  }
+  const mTrack = mast.length > 1 ? (CONTENT_W - mNat) / (mast.length - 1) : 0;
+  const mBaseline = PAGE_H - 78;
+  d.drawTracked(mast, MARGIN, mBaseline, mSize, d.serif, WHITE, mTrack, 0.7);
+  d.drawTracked(tt("THE PERSONAL STYLE EDIT"), MARGIN, mBaseline - 24, 8, d.reg, subColor, 5);
+  const coverMonth = new Date(report.createdAt)
+    .toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+    .toUpperCase();
+  d.drawTracked(coverMonth, MARGIN, mBaseline - 40, 8, d.bold, BRASS, 5);
+
+  // Right byline roundel.
+  const R = 48;
+  const bcx = PAGE_W - MARGIN - R + 8;
+  const bcy = PAGE_H - 252;
+  coverPage.drawEllipse({ x: bcx, y: bcy, xScale: R, yScale: R, borderColor: BRASS, borderWidth: 0.9 });
+  const centerAt = (
+    s: string,
+    y: number,
+    size: number,
+    font: PDFFont,
+    color: ReturnType<typeof rgb>,
+    track: number,
+  ) => {
+    const w = d.widthTracked(s, font, size, track);
+    d.drawTracked(s, bcx - w / 2, y, size, font, color, track);
+  };
+  centerAt(tt("CARLO"), bcy + 11, 8.5, d.bold, rightTitle, 2.5);
+  centerAt(tt("VALETTI"), bcy + 0.5, 8.5, d.bold, rightTitle, 2.5);
+  let ry = bcy - 11;
+  for (const ln of d.wrapLines(tt("On timeless style and personal expression"), d.serifItalic, 6.5, R * 1.55)) {
+    const w = d.serifItalic.widthOfTextAtSize(ln, 6.5);
+    coverPage.drawText(ln, { x: bcx - w / 2, y: ry - 6.5, size: 6.5, font: d.serifItalic, color: rightBody });
+    ry -= 9;
+  }
+
+  // Headline block over the bottom scrim.
+  d.drawTracked(tt("THE STYLE REPORT"), MARGIN, 232, 8, d.bold, BRASS, 3);
+  const headSize = 30;
+  const headLines = d.wrapLines(report.headline, d.serifBold, headSize, CONTENT_W);
+  const headGap = headLines.length >= 4 ? 30 : 35;
+  let hy = 214;
+  for (const ln of headLines) {
+    coverPage.drawText(ln, { x: MARGIN, y: hy - headSize, size: headSize, font: d.serifBold, color: WHITE });
+    hy -= headGap;
+  }
+  const tierName = report.tier.charAt(0).toUpperCase() + report.tier.slice(1);
+  d.drawTracked(`${tierName.toUpperCase()} ${tt("EDITION")}`, MARGIN, hy - 4, 8.5, d.bold, BRASS, 2.6);
   const when = new Date(report.createdAt).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric",
   });
-  const tierName = report.tier.charAt(0).toUpperCase() + report.tier.slice(1);
-  d.drawTracked(
-    `${tierName.toUpperCase()} EDITION`,
-    MARGIN,
-    hy - 6,
-    8.5,
-    d.bold,
-    FOG,
-    2.6,
-  );
   coverPage.drawText(
     `${[report.profile.demographics.city, report.profile.demographics.country]
       .filter(Boolean)
       .join(", ")}  ·  ${when}`,
-    { x: MARGIN, y: hy - 26, size: 9.5, font: d.reg, color: FOG },
+    { x: MARGIN, y: hy - 24, size: 9.5, font: d.reg, color: FOG },
   );
-  coverPage.drawText("Prepared by Carlo Valetti  ·  AI style atelier, Valetti", {
-    x: MARGIN,
-    y: hy - 42,
-    size: 9.5,
+
+  // Footer maker's-mark: emblem + atelier line.
+  const footY = 44;
+  let atelierX = MARGIN;
+  if (emblem) {
+    const eh = 30;
+    const ew = eh * (emblem.width / emblem.height);
+    coverPage.drawImage(emblem, { x: MARGIN, y: footY - 9, width: ew, height: eh });
+    atelierX = MARGIN + ew + 12;
+  }
+  d.drawTracked(tt("VALETTI STYLE ATELIER"), atelierX, footY + 10, 7.5, d.bold, BRASS, 2.4);
+  coverPage.drawText(tt("Clarity. Character. Confidence."), {
+    x: atelierX,
+    y: footY - 3,
+    size: 9,
     font: d.serifItalic,
     color: FOG,
   });
 
   /* ----------------------------- opening page ---------------------------- */
   d.newPage();
-  d.flowTracked("EDITOR'S NOTE", {
+  // Centred emblem crest to open the editorial.
+  if (emblem) {
+    const eh = 42;
+    const ew = eh * (emblem.width / emblem.height);
+    d.page.drawImage(emblem, {
+      x: (PAGE_W - ew) / 2,
+      y: d.y - eh,
+      width: ew,
+      height: eh,
+    });
+    d.y -= eh + 16;
+  }
+  d.flowTracked(tt("EDITOR'S NOTE"), {
     size: 8.5,
     font: d.bold,
     color: BRASS,
@@ -729,7 +892,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   d.gap(8);
   d.quote(report.summary);
   d.gap(10);
-  d.flowTracked(`STYLE ARCHETYPE · ${extras.archetype.name.toUpperCase()}`, {
+  d.flowTracked(`${tt("STYLE ARCHETYPE")} · ${extras.archetype.name.toUpperCase()}`, {
     size: 9,
     font: d.bold,
     color: INK,
@@ -739,7 +902,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   d.text(extras.archetype.line, { color: STONE, lineGap: 5 });
   d.gap(12);
   d.rule();
-  d.subhead("Start here — your three highest-impact moves", { keepWith: 15 });
+  d.subhead(tt("Start here — your three highest-impact moves"), { keepWith: 15 });
   for (const mv of extras.priorityMoves) {
     d.text(`${mv.n}.  ${mv.title}`, { size: 11.5, font: d.bold });
     d.gap(2);
@@ -749,33 +912,33 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
 
   /* ------------------------------- colours ------------------------------- */
   chapter("Your colours");
-  d.subhead("Colours that work for you", { keepWith: 16 });
+  d.subhead(tt("Colours that work for you"), { keepWith: 16 });
   for (const c of report.colors.best) d.swatch(c.hex, `${c.name} — ${c.why}`);
   d.gap(6);
-  d.subhead("Colours to avoid", { keepWith: 16 });
+  d.subhead(tt("Colours to avoid"), { keepWith: 16 });
   for (const c of report.colors.avoid) d.swatch(c.hex, `${c.name} — ${c.why}`);
   d.gap(6);
-  d.subhead("How to combine them", { keepWith: 15 });
+  d.subhead(tt("How to combine them"), { keepWith: 15 });
   if (extras.pairings.hero)
-    d.text(`Hero colour near the face: ${extras.pairings.hero.name}.`, {
+    d.text(`${tt("Hero colour near the face:")} ${extras.pairings.hero.name}.`, {
       color: STONE,
     });
   d.gap(2);
   for (const combo of extras.pairings.combos) d.bullet(`${combo.name} — ${combo.why}`);
   d.gap(6);
-  d.subhead("Metals & hardware", { keepWith: 14 });
+  d.subhead(tt("Metals & hardware"), { keepWith: 14 });
   for (const mt of extras.metals.recommend) d.swatch(mt.hex, `${mt.name} — ${mt.why}`);
   d.text(extras.metals.avoidNote, { size: 9, color: STONE });
   d.gap(6);
-  d.subhead(`Your colour DNA — ${extras.colorDNA.subseason}`, { keepWith: 14 });
-  d.text(`Neutrals: ${extras.colorDNA.neutrals.map((c) => c.name).join(", ")}`, {
+  d.subhead(`${tt("Your colour DNA")} — ${extras.colorDNA.subseason}`, { keepWith: 14 });
+  d.text(`${tt("Neutrals:")} ${extras.colorDNA.neutrals.map((c) => c.name).join(", ")}`, {
     color: STONE,
   });
-  d.text(`Best white: ${extras.colorDNA.bestWhite}`, { color: STONE });
-  d.text(`Best denim: ${extras.colorDNA.bestDenim}`, { color: STONE });
-  d.text(`Metal: ${extras.colorDNA.metal}`, { color: STONE });
-  d.text(`Instead of black: ${extras.colorDNA.blackAlt}`, { color: STONE });
-  d.text(`Contrast: ${extras.colorDNA.contrastRule}`, { color: STONE });
+  d.text(`${tt("Best white:")} ${extras.colorDNA.bestWhite}`, { color: STONE });
+  d.text(`${tt("Best denim:")} ${extras.colorDNA.bestDenim}`, { color: STONE });
+  d.text(`${tt("Metal:")} ${extras.colorDNA.metal}`, { color: STONE });
+  d.text(`${tt("Instead of black:")} ${extras.colorDNA.blackAlt}`, { color: STONE });
+  d.text(`${tt("Contrast:")} ${extras.colorDNA.contrastRule}`, { color: STONE });
 
   /* -------------------------- hair, beard, eyewear ----------------------- */
   chapter("Hair, beard & eyewear");
@@ -786,19 +949,19 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       img: await portrait(h.image),
       title: h.name,
       sub: h.why,
-      label: "Recommended",
+      label: tt("Recommended"),
     });
     if (h.imageSide) {
       recItems.push({
         img: await portrait(h.imageSide),
-        title: `${h.name} — side view`,
-        sub: "Three-quarter angle showing the cut shape.",
-        label: "Side",
+        title: `${h.name} — ${tt("side view")}`,
+        sub: tt("Three-quarter angle showing the cut shape."),
+        label: tt("Side"),
       });
     }
   }
   if (recItems.length) {
-    d.gallerySection("Hairstyles for your face", recItems, {
+    d.gallerySection(tt("Hairstyles for your face"), recItems, {
       cols: 2,
       ratio: PORTRAIT_RATIO,
     });
@@ -810,17 +973,17 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       img: await portrait(h.image),
       title: h.name,
       sub: h.why,
-      label: "Best avoided",
+      label: tt("Best avoided"),
     });
   }
   if (avoidItems.length) {
-    d.gallerySection("Best avoided", avoidItems, {
+    d.gallerySection(tt("Best avoided"), avoidItems, {
       cols: 2,
       ratio: PORTRAIT_RATIO,
     });
   }
 
-  d.subhead("Beard, skin & grooming", { keepWith: 28 });
+  d.subhead(tt("Beard, skin & grooming"), { keepWith: 28 });
   for (const g of extras.grooming) {
     d.text(g.title, { size: 9.5, font: d.bold });
     d.text(g.detail, { color: STONE });
@@ -832,7 +995,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     for (const item of report.facialHair) {
       items.push({ img: await portrait(item.image), title: item.name, sub: item.why });
     }
-    d.gallerySection("Recommended facial hair", items, {
+    d.gallerySection(tt("Recommended facial hair"), items, {
       cols: 2,
       ratio: PORTRAIT_RATIO,
     });
@@ -842,7 +1005,11 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     const items: GalleryItem[] = [];
     for (const item of report.eyewear) {
       const kind =
-        item.kind === "sun" ? "Sunglasses" : item.kind === "optical" ? "Optical" : "Glasses";
+        item.kind === "sun"
+          ? tt("Sunglasses")
+          : item.kind === "optical"
+            ? tt("Optical")
+            : tt("Glasses");
       items.push({
         img: await portrait(item.image),
         title: item.name,
@@ -850,7 +1017,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
         label: kind,
       });
     }
-    d.gallerySection("Eyewear for your face", items, {
+    d.gallerySection(tt("Eyewear for your face"), items, {
       cols: 2,
       ratio: PORTRAIT_RATIO,
     });
@@ -870,9 +1037,9 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
         sub: f.why,
       });
     }
-    d.gallerySection("Eyewear for your face", items, { cols: 2, ratio: 0.72 });
+    d.gallerySection(tt("Eyewear for your face"), items, { cols: 2, ratio: 0.72 });
     d.gap(2);
-    d.text(`Avoid: ${extras.eyewear.avoid.join("  ·  ")}`, { size: 9, color: STONE });
+    d.text(`${tt("Avoid:")} ${extras.eyewear.avoid.join("  ·  ")}`, { size: 9, color: STONE });
   }
 
   if (report.accessories?.length) {
@@ -880,7 +1047,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     for (const item of report.accessories) {
       items.push({ img: await portrait(item.image), title: item.name, sub: item.why });
     }
-    d.gallerySection("Accessory styling", items, {
+    d.gallerySection(tt("Accessory styling"), items, {
       cols: 2,
       ratio: PORTRAIT_RATIO,
     });
@@ -891,7 +1058,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     for (const item of report.headwear) {
       items.push({ img: await portrait(item.image), title: item.name, sub: item.why });
     }
-    d.gallerySection("Headwear", items, {
+    d.gallerySection(tt("Headwear"), items, {
       cols: 2,
       ratio: PORTRAIT_RATIO,
     });
@@ -901,7 +1068,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   chapter("Silhouette & fit");
   const bt = report.profile.physical.bodyType;
   const btLabel = isBodyType(bt) ? BODY_TYPE_LABELS[bt] : bt;
-  d.flowTracked(`BODY TYPE · ${String(btLabel).toUpperCase()}`, {
+  d.flowTracked(`${tt("BODY TYPE")} · ${tt(String(btLabel)).toUpperCase()}`, {
     size: 8.5,
     font: d.bold,
     color: BRASS,
@@ -915,17 +1082,17 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   if (m && Object.values(m).some((v) => v != null)) {
     d.gap(5);
     const parts = [
-      m.shoulderCm && `Shoulders ${m.shoulderCm} cm`,
-      m.chestCm && `Chest ${m.chestCm} cm`,
-      m.waistCm && `Waist ${m.waistCm} cm`,
-      m.hipCm && `Hips ${m.hipCm} cm`,
-      m.sleeveCm && `Sleeve ${m.sleeveCm} cm`,
+      m.shoulderCm && `${tt("Shoulders")} ${m.shoulderCm} ${tt("cm")}`,
+      m.chestCm && `${tt("Chest")} ${m.chestCm} ${tt("cm")}`,
+      m.waistCm && `${tt("Waist")} ${m.waistCm} ${tt("cm")}`,
+      m.hipCm && `${tt("Hips")} ${m.hipCm} ${tt("cm")}`,
+      m.sleeveCm && `${tt("Sleeve")} ${m.sleeveCm} ${tt("cm")}`,
     ].filter(Boolean);
-    d.subhead("Measurements", { keepWith: 14 });
+    d.subhead(tt("Measurements"), { keepWith: 14 });
     d.text(parts.join("   ·   "), { color: STONE });
   }
   d.gap(6);
-  d.subhead("Fit blueprint — what to tell your tailor", { keepWith: 28 });
+  d.subhead(tt("Fit blueprint — what to tell your tailor"), { keepWith: 28 });
   for (const s of extras.fitBlueprint) {
     d.text(`${s.part}: ${s.spec}`, { font: d.bold, size: 9.5 });
     d.text(s.why, { x: MARGIN + 12, width: CONTENT_W - 12, color: STONE });
@@ -946,7 +1113,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       img: await tall(l.image),
       title: `${l.context} — ${l.title}`,
       sub: l.description,
-      meta: shop ? `Shop a look like this: ${shop}` : undefined,
+      meta: shop ? `${tt("Shop a look like this:")} ${shop}` : undefined,
       label: l.context,
     });
   }
@@ -957,7 +1124,11 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   if (includeCapsule) {
     chapter("Capsule & buying plan");
     d.text(
-      `${extras.capsule.pieces} core pieces unlock roughly ${extras.capsule.outfits} outfits with what you already own. Buy them in three phases:`,
+      tt(
+        "{pieces} core pieces unlock roughly {outfits} outfits with what you already own. Buy them in three phases:",
+      )
+        .replace("{pieces}", String(extras.capsule.pieces))
+        .replace("{outfits}", String(extras.capsule.outfits)),
       { color: STONE, lineGap: 5 },
     );
     d.gap(5);
@@ -967,16 +1138,16 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       for (const i of items) {
         cards.push({
           img: await product(i.image),
-          title: i.title,
+          title: humanizeProductTitle(i.title),
           meta: formatMoneyPdf(i.priceEur, cur),
         });
       }
       d.gallerySection(label, cards, { cols: 3, ratio: 1.15 });
       d.gap(3);
     };
-    await phase("Buy now", extras.capsule.now);
-    await phase("Next", extras.capsule.next);
-    await phase("Later", extras.capsule.later);
+    await phase(tt("Buy now"), extras.capsule.now);
+    await phase(tt("Next"), extras.capsule.next);
+    await phase(tt("Later"), extras.capsule.later);
     d.gap(2);
     const matrixItems: GalleryItem[] = [];
     for (let i = 0; i < extras.matrix.length; i++) {
@@ -984,33 +1155,35 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       matrixItems.push({
         img: await matrixOutfit(capsuleMatrixImageAt(report, i)),
         title: c.context,
-        sub: c.pieces.join("  +  "),
+        sub: c.pieces.map(humanizeProductTitle).join("  +  "),
         label: c.context,
       });
     }
     if (matrixItems.length) {
       d.text(
-        "The same handful of pieces, recombined into a full week of outfits — so nothing in your wardrobe sits unused.",
+        tt(
+          "The same handful of pieces, recombined into a full week of outfits — so nothing in your wardrobe sits unused.",
+        ),
         { color: STONE, lineGap: 5 },
       );
       d.gap(4);
       const matrixWithPhotos = matrixItems.filter((it) => it.img);
       if (matrixWithPhotos.length) {
-        d.gallerySection("Outfit matrix — mix & match", matrixWithPhotos, {
+        d.gallerySection(tt("Outfit matrix — mix & match"), matrixWithPhotos, {
           cols: 2,
           ratio: LOOK_RATIO,
         });
       } else {
-        d.subhead("Outfit matrix — mix & match");
+        d.subhead(tt("Outfit matrix — mix & match"));
         for (const c of extras.matrix) {
           d.text(`${c.context}`, { font: d.bold, size: 9.5 });
-          d.text(c.pieces.join("  +  "), { color: STONE });
+          d.text(c.pieces.map(humanizeProductTitle).join("  +  "), { color: STONE });
           d.gap(3);
         }
       }
     }
     d.gap(4);
-    d.subhead("Good / Better / Best — where to spend", { keepWith: 28 });
+    d.subhead(tt("Good / Better / Best — where to spend"), { keepWith: 28 });
     for (const t of extras.priceTiers) {
       d.text(`${t.category}`, { size: 9.5, font: d.bold });
       d.text(
@@ -1029,49 +1202,51 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       img: await product(item.image),
       title: humanizeProductTitle(item.title),
       sub: item.why,
-      meta: `${item.retailer}  ·  ${formatMoneyPdf(item.priceEur, cur)} · ${investmentLevel(item)}`,
+      meta: `${item.retailer}  ·  ${formatMoneyPdf(item.priceEur, cur)} · ${tt(investmentLevel(item))}`,
     });
   }
   d.gallery(shopGallery, { cols: 3, ratio: 1.15 });
 
   /* ------------------------ patterns & finishing ------------------------- */
   chapter("Patterns & finishing details");
-  d.subhead("Fabrics & texture", { keepWith: 28 });
+  d.subhead(tt("Fabrics & texture"), { keepWith: 28 });
   for (const f of extras.fabrics) {
     d.text(f.name, { size: 9.5, font: d.bold });
     d.text(f.why, { color: STONE });
     d.gap(3);
   }
   d.gap(2);
-  d.subhead("Patterns", { keepWith: 14 });
-  d.text("Solid · Fine stripe · Gingham check · Tartan", { color: STONE });
+  d.subhead(tt("Patterns"), { keepWith: 14 });
+  d.text(tt("Solid · Fine stripe · Gingham check · Tartan"), { color: STONE });
   d.gap(4);
-  d.subhead("Accessories", { keepWith: 14 });
+  d.subhead(tt("Accessories"), { keepWith: 14 });
   d.text(
-    "Field watch (cream dial) · Leather belt matched to shoes · Warm tortoiseshell sunglasses · One minimal chain",
+    tt(
+      "Field watch (cream dial) · Leather belt matched to shoes · Warm tortoiseshell sunglasses · One minimal chain",
+    ),
     { color: STONE, lineGap: 5 },
   );
   d.gap(4);
-  d.subhead("Shoe guide", { keepWith: 14 });
-  d.text("Cream sneakers · Suede chelsea boots · Derby shoes", { color: STONE });
+  d.subhead(tt("Shoe guide"), { keepWith: 14 });
+  d.text(tt("Cream sneakers · Suede chelsea boots · Derby shoes"), { color: STONE });
 
   /* ----------------------- how to wear, care & scent --------------------- */
   chapter("How to wear it, and make it last");
-  d.subhead("How to wear it", { keepWith: 15 });
+  d.subhead(tt("How to wear it"), { keepWith: 15 });
   for (const s of extras.styling) d.bullet(s);
   d.gap(4);
-  d.subhead("Care & longevity", { keepWith: 15 });
+  d.subhead(tt("Care & longevity"), { keepWith: 15 });
   for (const s of extras.care) d.bullet(s);
   d.gap(4);
-  d.subhead("Signature scent", { keepWith: 14 });
+  d.subhead(tt("Signature scent"), { keepWith: 14 });
   d.text(extras.fragrance, { color: STONE, lineGap: 5 });
 
   /* ------------------------------ do & don't ----------------------------- */
   chapter("Do & don't");
-  d.subhead("Do", { keepWith: 15 });
+  d.subhead(tt("Do"), { keepWith: 15 });
   for (const x of report.doList) d.bullet(x);
   d.gap(6);
-  d.subhead("Avoid", { keepWith: 15 });
+  d.subhead(tt("Avoid"), { keepWith: 15 });
   for (const x of report.dontList) {
     const lh = 10.5 + 4;
     const lines = d.wrapLines(x, d.reg, 10.5, CONTENT_W - 12);
@@ -1093,15 +1268,29 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   } catch {
     sigPng = null;
   }
+  // QR code linking to the live report, drawn on the left opposite the signature.
+  let qrPng: PDFImage | null = null;
+  try {
+    const qrBuf = await QRCode.toBuffer(absoluteUrl(`/report/${report.id}`), {
+      type: "png",
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 320,
+      color: { dark: "#1F1C1A", light: "#FAF7F0" },
+    });
+    qrPng = await d.doc.embedPng(qrBuf);
+  } catch {
+    qrPng = null;
+  }
   const sigW = 190;
   const sigH = sigPng ? sigW * (sigPng.height / sigPng.width) : 0;
   const rightEdge = PAGE_W - MARGIN;
-  d.ensure(40 + sigH + 40);
+  d.ensure(40 + Math.max(sigH, 88 + 12) + 40);
   d.gap(22);
   d.rule();
   d.gap(4);
   // Closing line, right-aligned above the signature.
-  const closing = d.sanitize("With care for the details,");
+  const closing = d.sanitize(tt("With care for the details,"));
   const cw = d.serifItalic.widthOfTextAtSize(closing, 12);
   d.ensure(12 + 8);
   d.page.drawText(closing, {
@@ -1113,13 +1302,37 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   });
   d.y -= 12 + 8;
   if (sigPng) {
+    const sigTop = d.y;
     d.page.drawImage(sigPng, {
       x: rightEdge - sigW,
-      y: d.y - sigH,
+      y: sigTop - sigH,
       width: sigW,
       height: sigH,
     });
+    // QR on the left, vertically centred on the signature.
+    if (qrPng) {
+      const q = 88;
+      const qy = sigTop - sigH / 2 - q / 2;
+      d.page.drawImage(qrPng, { x: MARGIN, y: qy, width: q, height: q });
+      d.page.drawText(d.sanitize(tt("Scan to view online")), {
+        x: MARGIN,
+        y: qy - 11,
+        size: 7.5,
+        font: d.reg,
+        color: STONE,
+      });
+    }
     d.y -= sigH + 4;
+  } else if (qrPng) {
+    const q = 88;
+    d.page.drawImage(qrPng, { x: MARGIN, y: d.y - q, width: q, height: q });
+    d.page.drawText(d.sanitize(tt("Scan to view online")), {
+      x: MARGIN,
+      y: d.y - q - 11,
+      size: 7.5,
+      font: d.reg,
+      color: STONE,
+    });
   }
   d.page.drawLine({
     start: { x: rightEdge - 150, y: d.y },

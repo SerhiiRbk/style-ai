@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { REPORT_LANGUAGE_IDS, DEFAULT_LANGUAGE } from "@/lib/languages";
 
 /**
  * Canonical Style Profile contract. Generated once from the user's photos +
@@ -232,6 +233,7 @@ export const intakeSchema = z.object({
   genderPresentation: GenderPresentation,
   city: z.string().optional().default(""),
   country: z.string().min(1),
+  language: z.enum(REPORT_LANGUAGE_IDS).default(DEFAULT_LANGUAGE),
   currency: Currency.default("EUR"),
   heightCm: z.number().int().min(120).max(230),
   weightKg: z.number().int().min(30).max(300).optional(),

@@ -34,6 +34,8 @@ import {
 import type { StyleProfile } from "@/lib/style-profile";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { getReportGroomingPhotoUrl } from "@/lib/photo-tryon";
+import { withTranslator } from "@/lib/ai/translate";
+import { normalizeLanguage } from "@/lib/languages";
 
 export const maxDuration = 300;
 
@@ -228,7 +230,7 @@ export async function POST(request: Request) {
   const { data: row } = await admin
     .from("reports")
     .select(
-      "id, user_id, tier, profile, accessories, headwear, eyewear, facial_hair, created_at",
+      "id, user_id, tier, profile, accessories, headwear, eyewear, facial_hair, created_at, language",
     )
     .eq("id", reportId)
     .single();
@@ -333,6 +335,14 @@ export async function POST(request: Request) {
         { status: 402 },
       );
     }
+  }
+
+  // Localise the deterministic pick copy to the report's language.
+  const language = normalizeLanguage((row as { language?: string | null }).language);
+  if (language !== "en" && picks.length) {
+    picks = await withTranslator(language, (tr) =>
+      picks.map((p) => ({ ...p, name: tr(p.name), why: tr(p.why) })),
+    );
   }
 
   // Prefer the photos tied to THIS report (uploaded around its creation) so the

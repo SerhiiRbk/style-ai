@@ -17,6 +17,7 @@
     "deck:pptx": "node scripts/generate-investor-pptx.mjs"
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "@sentry/nextjs": "^10.57.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
@@ -25,9 +26,11 @@
     "ai": "^6.0.193",
     "csv-parse": "^6.2.1",
     "fast-xml-parser": "^5.8.0",
+    "image-size": "^2.0.2",
     "next": "16.2.6",
     "pdf-lib": "^1.17.1",
     "pg": "^8.21.0",
+    "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "stripe": "^22.2.0",
@@ -37,10 +40,12 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "png-to-ico": "^3.0.2",
     "pptxgenjs": "^4.0.1",
     "sharp": "^0.35.1",
     "tailwindcss": "^4",

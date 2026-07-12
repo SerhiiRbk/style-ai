@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getReportViewForDownload } from "@/lib/data/reports";
 import { resolveReportOgImage } from "@/lib/data/report-og";
-import { buildExtras } from "@/lib/style-extras";
+import { extrasForReport } from "@/lib/style-extras";
 import { SUBSEASON_LABELS, type SubseasonId } from "@/lib/style-profile";
 
 /** Everything the branded share card needs — resolved server-side, gated to public reports. */
@@ -63,7 +63,7 @@ export async function getReportShareCard(
 
   let archetype = "";
   try {
-    archetype = buildExtras(report).archetype.name;
+    archetype = extrasForReport(report).archetype.name;
   } catch {
     archetype = "";
   }

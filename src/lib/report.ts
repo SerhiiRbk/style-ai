@@ -12,6 +12,8 @@ import {
 import { isDemoReportId } from "./demo-report";
 import { resolveHairImage } from "./hair-images";
 import type { SavedOutfitTryOn } from "./outfit-tryon";
+import type { StyleExtras } from "./style-extras";
+import type { ReportLanguage } from "./languages";
 
 export type Tier = "free" | "basic" | "lookbook" | "premium";
 
@@ -238,6 +240,10 @@ export type StyleReport = {
   outfitTryons?: SavedOutfitTryOn[];
   /** Live reports only — drives the “still generating” banner. */
   generation?: ReportGenerationState;
+  /** Language the textual part of the report is written in (default English). */
+  language?: ReportLanguage;
+  /** Pre-translated render-time "extras" snapshot (non-English reports only). */
+  extras?: StyleExtras;
 };
 
 export const climateFor = (country: string): string => {
@@ -644,6 +650,8 @@ export function assembleReport(opts: {
   headwear?: HeadwearRec[];
   id?: string;
   createdAt?: string;
+  language?: ReportLanguage;
+  extras?: StyleExtras;
 }): StyleReport {
   const isDemo = opts.id != null && isDemoReportId(opts.id);
   const hairContent = clampHairForTier(opts.content.hair, opts.tier);
@@ -681,6 +689,8 @@ export function assembleReport(opts: {
     lookItems: opts.lookItems,
     outfitTryons: opts.outfitTryons,
     generation: opts.generation,
+    language: opts.language,
+    extras: opts.extras,
   };
 }
 
@@ -709,6 +719,7 @@ export const demoIntake: Intake = {
   genderPresentation: "male",
   city: "Berlin",
   country: "Germany",
+  language: "en",
   currency: "EUR",
   heightCm: 182,
   occupation: "Software / IT",

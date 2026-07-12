@@ -1,6 +1,7 @@
 import "server-only";
+import { imageSize } from "image-size";
 import { isAdminEmail } from "@/lib/admin";
-import { reportIdFromStoragePath } from "@/lib/asset-url";
+import { reportIdFromStoragePath, storagePathFromAssetSrc } from "@/lib/asset-url";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { canShareReport, type Tier } from "@/lib/report";
 import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
@@ -57,5 +58,30 @@ export async function downloadAssetBytes(
     .download(storagePath);
   if (error || !data) return null;
   return new Uint8Array(await data.arrayBuffer());
+}
+
+const aspectCache = new Map<string, number>();
+
+/**
+ * Real width/height aspect (w/h) of a stored cover image so the report page can
+ * frame it without cropping the subject. Result is clamped to a sane portrait
+ * range and cached per storage path. Returns null when it can't be determined.
+ */
+export async function coverImageAspect(src: string): Promise<number | null> {
+  const storagePath = storagePathFromAssetSrc(src);
+  if (!storagePath) return null;
+  const cached = aspectCache.get(storagePath);
+  if (cached !== undefined) return cached;
+  const bytes = await downloadAssetBytes(storagePath);
+  if (!bytes) return null;
+  try {
+    const { width, height } = imageSize(bytes);
+    if (!width || !height) return null;
+    const ratio = Math.min(0.82, Math.max(0.58, width / height));
+    aspectCache.set(storagePath, ratio);
+    return ratio;
+  } catch {
+    return null;
+  }
 }
 

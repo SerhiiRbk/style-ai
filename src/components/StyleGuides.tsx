@@ -7,6 +7,8 @@ import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { formatMoney, formatOfferPrice } from "@/lib/currency";
 import type { Currency } from "@/lib/currency";
 import { humanizeProductTitle } from "@/lib/product-title";
+import { makeT } from "@/lib/i18n/report";
+import type { ReportLanguage } from "@/lib/languages";
 import { LookTryOn } from "./LookTryOn";
 import type {
   ShoppingItem,
@@ -115,6 +117,7 @@ export function Moodboard({
   archetypeLine,
   zoomable,
   generating = false,
+  lang,
 }: {
   portrait: string;
   look?: string;
@@ -124,7 +127,9 @@ export function Moodboard({
   archetypeLine?: string;
   zoomable?: boolean;
   generating?: boolean;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   // Only show the second photo when it's a genuinely different image.
   const showSecondLook = Boolean(look) && look !== portrait;
   return (
@@ -138,7 +143,7 @@ export function Moodboard({
           generating={generating}
         />
         <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
-          Your look
+          {tt("Your look")}
         </span>
       </figure>
 
@@ -151,17 +156,17 @@ export function Moodboard({
             generating={generating}
           />
           <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
-            Another look
+            {tt("Another look")}
           </span>
         </figure>
       ) : generating ? (
         <figure className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-sand">
           <ReportImageGenerating
-            label="Another look"
+            label={tt("Another look")}
             detail="Building your second outfit"
           />
           <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
-            Another look
+            {tt("Another look")}
           </span>
         </figure>
       ) : null}
@@ -171,7 +176,7 @@ export function Moodboard({
           <span key={hex} className="flex-1" style={{ background: hex }} />
         ))}
         <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
-          Your palette
+          {tt("Your palette")}
         </span>
       </div>
 
@@ -183,14 +188,14 @@ export function Moodboard({
             zoomable={zoomable}
           />
           <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
-            Hero piece
+            {tt("Hero piece")}
           </span>
         </figure>
       )}
 
       <div className="flex aspect-[4/5] flex-col justify-end rounded-2xl bg-ink p-5 text-paper">
         <span className="text-[10px] uppercase tracking-[0.2em] text-brass-soft">
-          Your direction
+          {tt("Your direction")}
         </span>
         <span className="mt-1 font-display text-xl leading-tight">
           {archetypeName}
@@ -207,20 +212,21 @@ export function Moodboard({
 
 /* ------------------------------ wheel legend ------------------------------ */
 
-export function WheelLegend() {
+export function WheelLegend({ lang }: { lang?: ReportLanguage }) {
+  const tt = makeT(lang);
   return (
     <div className="mt-5 space-y-1.5 text-xs text-stone">
       <div className="flex items-center gap-2">
         <span className="h-3 w-3 rounded-full bg-brass ring-2 ring-paper" />
-        Your palette on the hue wheel
+        {tt("Your palette on the hue wheel")}
       </div>
       <div className="flex items-center gap-2">
         <span className="h-3 w-3 rounded-full border border-dashed border-ink" />
-        Complementary accent (opposite hue)
+        {tt("Complementary accent (opposite hue)")}
       </div>
       <div className="flex items-center gap-2">
         <span className="h-0.5 w-4 rounded-full bg-ink/70" />
-        Analogous range (neighbouring tones)
+        {tt("Analogous range (neighbouring tones)")}
       </div>
     </div>
   );
@@ -228,11 +234,18 @@ export function WheelLegend() {
 
 /* -------------------------------- archetype ------------------------------- */
 
-export function ArchetypeBadge({ archetype }: { archetype: ArchetypeT }) {
+export function ArchetypeBadge({
+  archetype,
+  lang,
+}: {
+  archetype: ArchetypeT;
+  lang?: ReportLanguage;
+}) {
+  const tt = makeT(lang);
   return (
     <div className="inline-flex flex-col">
       <span className="text-[11px] uppercase tracking-[0.2em] text-brass-soft">
-        Your style archetype
+        {tt("Your style archetype")}
       </span>
       <span className="mt-1 font-display text-2xl text-paper">
         {archetype.name}
@@ -244,7 +257,14 @@ export function ArchetypeBadge({ archetype }: { archetype: ArchetypeT }) {
 
 /* -------------------------------- colour DNA ------------------------------ */
 
-export function ColorDNAGuide({ dna }: { dna: ColorDNAT }) {
+export function ColorDNAGuide({
+  dna,
+  lang,
+}: {
+  dna: ColorDNAT;
+  lang?: ReportLanguage;
+}) {
+  const tt = makeT(lang);
   const rows: { label: string; value: string }[] = [
     { label: "Best white", value: dna.bestWhite },
     { label: "Best denim", value: dna.bestDenim },
@@ -255,7 +275,7 @@ export function ColorDNAGuide({ dna }: { dna: ColorDNAT }) {
     <div className="rounded-2xl border hairline bg-paper p-6">
       <div className="flex items-baseline justify-between">
         <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-          Your colour DNA
+          {tt("Your colour DNA")}
         </h3>
         <span className="rounded-full bg-ink px-3 py-1 text-xs text-paper">
           {dna.subseason}
@@ -279,14 +299,14 @@ export function ColorDNAGuide({ dna }: { dna: ColorDNAT }) {
         {rows.map((r) => (
           <div key={r.label} className="border-t hairline pt-2">
             <dt className="text-[11px] uppercase tracking-wider text-stone-soft">
-              {r.label}
+              {tt(r.label)}
             </dt>
             <dd className="text-sm text-ink">{r.value}</dd>
           </div>
         ))}
       </dl>
       <p className="mt-5 rounded-xl bg-cream/50 px-4 py-3 text-sm leading-relaxed text-stone">
-        <span className="font-medium text-ink">Contrast: </span>
+        <span className="font-medium text-ink">{tt("Contrast:")} </span>
         {dna.contrastRule}
       </p>
     </div>
@@ -325,22 +345,26 @@ function ShoppingItemThumb({
 export function ShopTheLook({
   items,
   currency,
+  lang,
 }: {
   items: ShoppingItem[];
   currency: Currency;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   if (!items.length) return null;
   const showAlternativesNote =
     items.some((it) => it.similarPick) || items.length < 3;
   return (
     <div className="mt-4 border-t hairline pt-4">
       <div className="text-[11px] uppercase tracking-wider text-stone-soft">
-        Shop a look like this
+        {tt("Shop a look like this")}
       </div>
       {showAlternativesNote ? (
         <p className="mt-1 max-w-md text-xs leading-relaxed text-stone-soft">
-          Stylistic alternatives from our catalogue — close in category and colour,
-          not necessarily the exact pieces in the photo.
+          {tt(
+            "Stylistic alternatives from our catalogue — close in category and colour, not necessarily the exact pieces in the photo.",
+          )}
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
@@ -356,7 +380,7 @@ export function ShopTheLook({
             <span className="text-xs text-ink">{humanizeProductTitle(it.title)}</span>
             {it.similarPick ? (
               <span className="rounded-full bg-cream px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-stone">
-                Similar
+                {tt("Similar")}
               </span>
             ) : null}
             <span className="text-xs text-stone-soft">
@@ -380,22 +404,26 @@ export function CapsuleMatrix({
   combos,
   reportId,
   generating = false,
+  lang,
 }: {
   combos: OutfitCombo[];
   reportId?: string;
   generating?: boolean;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   if (!combos.length) return null;
   const hasPhotos = combos.some((c) => c.image);
   const visual = hasPhotos || generating;
   return (
     <div className="mt-10">
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-        Your week, styled — mix &amp; match
+        {tt("Your week, styled — mix & match")}
       </h3>
       <p className="mt-2 max-w-xl text-sm text-stone">
-        The same handful of pieces, recombined into a full week of outfits — so
-        nothing in your wardrobe sits unused.
+        {tt(
+          "The same handful of pieces, recombined into a full week of outfits — so nothing in your wardrobe sits unused.",
+        )}
       </p>
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {combos.map((c, i) => (
@@ -436,10 +464,10 @@ export function CapsuleMatrix({
                   return (
                     <li key={p} className="flex items-center gap-2 text-sm">
                       <span className="h-1 w-1 rounded-full bg-stone-soft" />
-                      <span>{p}</span>
+                      <span>{humanizeProductTitle(p)}</span>
                       {owned && (
                         <span className="rounded-full bg-cream px-2 py-0.5 text-[10px] uppercase tracking-wide text-stone-soft">
-                          from your wardrobe
+                          {tt("from your wardrobe")}
                         </span>
                       )}
                     </li>
@@ -472,18 +500,21 @@ export function CapsuleMatrix({
 export function PriceTiers({
   tiers,
   currency,
+  lang,
 }: {
   tiers: PriceTier[];
   currency: Currency;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   if (!tiers.length) return null;
   return (
     <div className="mt-10 overflow-hidden rounded-2xl border hairline">
       <div className="grid grid-cols-[1.3fr_1fr_1fr_1fr] bg-cream/60 px-5 py-3 text-[11px] uppercase tracking-wider text-stone-soft">
-        <span>Category</span>
-        <span>Good</span>
-        <span>Better</span>
-        <span>Best</span>
+        <span>{tt("Category")}</span>
+        <span>{tt("Good")}</span>
+        <span>{tt("Better")}</span>
+        <span>{tt("Best")}</span>
       </div>
       <div className="divide-y divide-line">
         {tiers.map((t) => (
@@ -528,13 +559,16 @@ export function PriorityMoves({ moves }: { moves: PriorityMove[] }) {
 
 export function MetalChips({
   metals,
+  lang,
 }: {
   metals: { recommend: Metal[]; avoidNote: string };
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-        Metals & hardware
+        {tt("Metals & hardware")}
       </h3>
       <div className="mt-4 space-y-3">
         {metals.recommend.map((m) => (
@@ -563,17 +597,24 @@ export function MetalChips({
 
 /* ------------------------------- pairings --------------------------------- */
 
-export function Pairings({ pairings }: { pairings: PairingsT }) {
+export function Pairings({
+  pairings,
+  lang,
+}: {
+  pairings: PairingsT;
+  lang?: ReportLanguage;
+}) {
+  const tt = makeT(lang);
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-        How to combine them
+        {tt("How to combine them")}
       </h3>
       {pairings.hero && (
         <p className="mt-3 text-sm leading-relaxed text-stone">
-          Your hero colour near the face is{" "}
-          <span className="font-display text-ink">{pairings.hero.name}</span> —
-          build neutral bases and let it lead.
+          {tt("Your hero colour near the face is")}{" "}
+          <span className="font-display text-ink">{pairings.hero.name}</span>
+          {tt(" — build neutral bases and let it lead.")}
         </p>
       )}
       <div className="mt-4 space-y-3">
@@ -673,13 +714,16 @@ const EYEWEAR_IMAGE: Record<FrameShapeId, string> = {
 
 export function EyewearGuide({
   eyewear,
+  lang,
 }: {
   eyewear: { recommend: FrameRec[]; avoid: string[] };
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-        Eyewear for your face
+        {tt("Eyewear for your face")}
       </h3>
       <div className="mt-4 grid grid-cols-3 gap-3">
         {eyewear.recommend.map((f) => (
@@ -704,7 +748,7 @@ export function EyewearGuide({
         ))}
       </div>
       <p className="mt-3 text-xs text-stone-soft">
-        Avoid: {eyewear.avoid.join(" · ")}
+        {tt("Avoid:")} {eyewear.avoid.join(" · ")}
       </p>
     </div>
   );
@@ -712,11 +756,18 @@ export function EyewearGuide({
 
 /* ----------------------------- fit blueprint ------------------------------ */
 
-export function FitBlueprint({ specs }: { specs: FitSpec[] }) {
+export function FitBlueprint({
+  specs,
+  lang,
+}: {
+  specs: FitSpec[];
+  lang?: ReportLanguage;
+}) {
+  const tt = makeT(lang);
   return (
     <div className="mt-8 overflow-hidden rounded-2xl border hairline">
       <div className="bg-cream/60 px-5 py-3 text-xs uppercase tracking-wider text-stone-soft">
-        Fit blueprint — what to tell your tailor
+        {tt("Fit blueprint — what to tell your tailor")}
       </div>
       <div className="divide-y divide-line">
         {specs.map((s) => (
@@ -785,44 +836,47 @@ function PriorityColumn({
 export function Capsule({
   capsule,
   currency,
+  lang,
 }: {
   capsule: CapsulePlan;
   currency: Currency;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   return (
     <div>
       <div className="grid gap-6 sm:grid-cols-3">
         <div className="rounded-2xl border hairline bg-cream/40 p-6">
           <div className="font-display text-4xl">{capsule.pieces}</div>
-          <div className="mt-1 text-sm text-stone">core pieces</div>
+          <div className="mt-1 text-sm text-stone">{tt("core pieces")}</div>
         </div>
         <div className="rounded-2xl border hairline bg-cream/40 p-6">
           <div className="font-display text-4xl">~{capsule.outfits}</div>
           <div className="mt-1 text-sm text-stone">
-            outfits they unlock with what you own
+            {tt("outfits they unlock with what you own")}
           </div>
         </div>
         <div className="rounded-2xl border hairline bg-cream/40 p-6">
           <div className="font-display text-4xl">3</div>
-          <div className="mt-1 text-sm text-stone">phases — buy in order</div>
+          <div className="mt-1 text-sm text-stone">{tt("phases — buy in order")}</div>
         </div>
       </div>
 
       <div className="mt-10 grid gap-8 md:grid-cols-3">
         <PriorityColumn
-          label="Buy now"
+          label={tt("Buy now")}
           tone="bg-brass"
           items={capsule.now}
           currency={currency}
         />
         <PriorityColumn
-          label="Next"
+          label={tt("Next")}
           tone="bg-stone"
           items={capsule.next}
           currency={currency}
         />
         <PriorityColumn
-          label="Later"
+          label={tt("Later")}
           tone="bg-line"
           items={capsule.later}
           currency={currency}
@@ -904,24 +958,28 @@ export function FacialHairGuide({
   reportId,
   owner = false,
   generating = false,
+  lang,
 }: {
   items: FacialHairRec[];
   reportId?: string;
   owner?: boolean;
   generating?: boolean;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   if (!items.length) return null;
   const canRegen = owner && Boolean(reportId);
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-        Recommended facial hair
+        {tt("Recommended facial hair")}
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-stone">
-        Four personalized beard and mustache directions on your photo — take
-        these to your barber.
+        {tt(
+          "Four personalized beard and mustache directions on your photo — take these to your barber.",
+        )}
       </p>
-      {canRegen ? <RegenPhotoHint className="mt-3" /> : null}
+      {canRegen ? <RegenPhotoHint className="mt-3" lang={lang} /> : null}
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
         {items.map((item, i) => (
           <GroomingPreviewCard
@@ -946,12 +1004,15 @@ export function PremiumEyewearGuide({
   reportId,
   owner = false,
   generating = false,
+  lang,
 }: {
   items: EyewearRec[];
   reportId?: string;
   owner?: boolean;
   generating?: boolean;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   if (!items.length) return null;
   const canRegen = owner && Boolean(reportId);
   const withIdx = items.map((item, idx) => ({ item, idx }));
@@ -977,9 +1038,9 @@ export function PremiumEyewearGuide({
               alt={`${item.name} — eyewear recommendation`}
               label={
                 item.kind === "sun"
-                  ? "Sunglasses"
+                  ? tt("Sunglasses")
                   : item.kind === "optical"
-                    ? "Optical"
+                    ? tt("Optical")
                     : defaultLabel
               }
               fallbackSrc={
@@ -1002,18 +1063,19 @@ export function PremiumEyewearGuide({
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-        Recommended glasses
+        {tt("Recommended glasses")}
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-stone">
-        Two optical frames and two sunglasses suited to your face — previewed on
-        your photo.
+        {tt(
+          "Two optical frames and two sunglasses suited to your face — previewed on your photo.",
+        )}
       </p>
-      {canRegen ? <RegenPhotoHint className="mt-3" /> : null}
+      {canRegen ? <RegenPhotoHint className="mt-3" lang={lang} /> : null}
       <div className="mt-5 space-y-8">
-        {renderGroup(optical, "Optical frames")}
-        {renderGroup(sun, "Sunglasses")}
+        {renderGroup(optical, tt("Optical frames"))}
+        {renderGroup(sun, tt("Sunglasses"))}
         {unlabeled.length
-          ? renderGroup(unlabeled, "Frames", "Optical")
+          ? renderGroup(unlabeled, tt("Frames"), tt("Optical"))
           : null}
       </div>
     </div>
@@ -1025,32 +1087,36 @@ export function AccessoriesGuide({
   reportId,
   owner = false,
   generating = false,
+  lang,
 }: {
   items: AccessoryRec[];
   reportId?: string;
   owner?: boolean;
   generating?: boolean;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   if (!items.length) return null;
   const canRegen = owner && Boolean(reportId);
   const label = (k?: string) =>
     k === "tie"
-      ? "Tie"
+      ? tt("Tie")
       : k === "neckwear"
-        ? "Neckwear"
+        ? tt("Neckwear")
         : k === "scarf"
-          ? "Scarf"
+          ? tt("Scarf")
           : undefined;
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-        Accessory styling
+        {tt("Accessory styling")}
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-stone">
-        Scarves, neckwear and ties chosen for your colouring and climate —
-        previewed on your own photo.
+        {tt(
+          "Scarves, neckwear and ties chosen for your colouring and climate — previewed on your own photo.",
+        )}
       </p>
-      {canRegen ? <RegenPhotoHint className="mt-3" /> : null}
+      {canRegen ? <RegenPhotoHint className="mt-3" lang={lang} /> : null}
       <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {items.map((item, i) => (
           <GroomingPreviewCard
@@ -1076,34 +1142,38 @@ export function HeadwearGuide({
   reportId,
   owner = false,
   generating = false,
+  lang,
 }: {
   items: HeadwearRec[];
   reportId?: string;
   owner?: boolean;
   generating?: boolean;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   if (!items.length) return null;
   const canRegen = owner && Boolean(reportId);
   const label = (k?: string) =>
     k === "hat"
-      ? "Hat"
+      ? tt("Hat")
       : k === "cap"
-        ? "Cap"
+        ? tt("Cap")
         : k === "beanie"
-          ? "Beanie"
+          ? tt("Beanie")
           : k === "bandana"
-            ? "Bandana"
+            ? tt("Bandana")
             : undefined;
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-        Headwear
+        {tt("Headwear")}
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-stone">
-        Hats, caps and bandanas chosen for your face shape and colouring —
-        previewed on your own photo.
+        {tt(
+          "Hats, caps and bandanas chosen for your face shape and colouring — previewed on your own photo.",
+        )}
       </p>
-      {canRegen ? <RegenPhotoHint className="mt-3" /> : null}
+      {canRegen ? <RegenPhotoHint className="mt-3" lang={lang} /> : null}
       <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {items.map((item, i) => (
           <GroomingPreviewCard
@@ -1124,11 +1194,18 @@ export function HeadwearGuide({
   );
 }
 
-export function GroomingGuide({ items }: { items: GroomingItem[] }) {
+export function GroomingGuide({
+  items,
+  lang,
+}: {
+  items: GroomingItem[];
+  lang?: ReportLanguage;
+}) {
+  const tt = makeT(lang);
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-        Beard, skin & grooming
+        {tt("Beard, skin & grooming")}
       </h3>
       <div className="mt-4 space-y-4">
         {items.map((g) => (
@@ -1153,13 +1230,16 @@ export function GroomingGuide({ items }: { items: GroomingItem[] }) {
 
 export function FabricsGuide({
   fabrics,
+  lang,
 }: {
   fabrics: { name: string; why: string }[];
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-        Fabrics & texture
+        {tt("Fabrics & texture")}
       </h3>
       <div className="mt-4 space-y-3">
         {fabrics.map((f) => (
@@ -1179,16 +1259,19 @@ export function FinishingTouches({
   styling,
   care,
   fragrance,
+  lang,
 }: {
   styling: string[];
   care: string[];
   fragrance: string;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   return (
     <div className="grid gap-10 lg:grid-cols-2">
       <div>
         <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-          How to wear it
+          {tt("How to wear it")}
         </h3>
         <ul className="mt-4 space-y-3">
           {styling.map((s) => (
@@ -1201,7 +1284,7 @@ export function FinishingTouches({
       </div>
       <div>
         <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-          Care & longevity
+          {tt("Care & longevity")}
         </h3>
         <ul className="mt-4 space-y-3">
           {care.map((s) => (
@@ -1213,7 +1296,7 @@ export function FinishingTouches({
         </ul>
         <div className="mt-6 rounded-xl border hairline bg-cream/40 p-4">
           <div className="text-xs uppercase tracking-wider text-stone-soft">
-            Signature scent
+            {tt("Signature scent")}
           </div>
           <p className="mt-1 text-sm leading-relaxed text-stone">{fragrance}</p>
         </div>

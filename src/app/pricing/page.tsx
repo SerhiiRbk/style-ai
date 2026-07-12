@@ -22,6 +22,7 @@ import {
   PREMIUM_ACCESSORY_GEN_LIMIT,
   PREMIUM_EYEWEAR_GEN_LIMIT,
   PREMIUM_FACIAL_HAIR_GEN_LIMIT,
+  PREMIUM_HEADWEAR_GEN_LIMIT,
   type Tier,
 } from "@/lib/report";
 import { BRAND } from "@/lib/brand";
@@ -74,7 +75,7 @@ const TIERS: TierCard[] = [
       "1 photorealistic preview look",
       "2 hairstyle previews on your photo",
       `Virtual try-on on your photo (${CREDIT_COSTS.tryon} credit each)`,
-      "Optional facial-hair / eyewear / accessory add-ons (credits)",
+      "Optional facial-hair / eyewear / accessory / headwear add-ons (credits)",
       "No share link, capsule, or PDF",
     ],
     cta: "Try it free",
@@ -90,7 +91,7 @@ const TIERS: TierCard[] = [
       "Shopping list with real product links",
       "PDF export",
       `Add extra looks on your photo (${CREDIT_COSTS.look_extra} credits each)`,
-      "Optional facial-hair / eyewear / accessory add-ons (credits)",
+      "Optional facial-hair / eyewear / accessory / headwear add-ons (credits)",
     ],
     cta: "Get Basic",
   },
@@ -106,7 +107,7 @@ const TIERS: TierCard[] = [
       "Good · Better · Best buying plan",
       "4 hairstyle previews on your photo (front + side)",
       `Add extra looks on your photo (${CREDIT_COSTS.look_extra} credits each)`,
-      "Optional facial-hair / eyewear / accessory add-ons (credits)",
+      "Optional facial-hair / eyewear / accessory / headwear add-ons (credits)",
     ],
     cta: "Get Lookbook",
     featured: true,
@@ -121,6 +122,7 @@ const TIERS: TierCard[] = [
       "4 facial-hair previews on your photo",
       "2 optical + 2 sunglasses previews",
       "2 accessory previews (scarves, neckwear, ties)",
+      `${PREMIUM_HEADWEAR_GEN_LIMIT} headwear previews (hats, caps, bandanas)`,
       "One-time extra previews on demand (credits)",
       `Add extra looks on your photo (${CREDIT_COSTS.look_extra} credits each)`,
       "Deeper grooming guidance",
@@ -155,6 +157,7 @@ const PAYG = {
   facialAddon: `${CREDIT_COSTS.facialhair_addon} cr`,
   eyewearAddon: `${CREDIT_COSTS.eyewear_addon} cr`,
   accessoryAddon: `${CREDIT_COSTS.accessory_addon} cr`,
+  headwearAddon: `${CREDIT_COSTS.headwear_addon} cr`,
 } as const;
 
 const COMPARISON_ROWS: CompareRow[] = [
@@ -323,8 +326,19 @@ const COMPARISON_ROWS: CompareRow[] = [
   },
   {
     kind: "feature",
+    feature: "Headwear previews",
+    detail: "Hats, caps & bandanas",
+    cells: {
+      free: PAYG.headwearAddon,
+      basic: PAYG.headwearAddon,
+      lookbook: PAYG.headwearAddon,
+      premium: `${PREMIUM_HEADWEAR_GEN_LIMIT} incl.`,
+    },
+  },
+  {
+    kind: "feature",
     feature: "Extra grooming batch (Premium)",
-    detail: `+2 facial hair (${CREDIT_COSTS.facialhair_extra} cr) · +4 eyewear (${CREDIT_COSTS.eyewear_extra} cr)`,
+    detail: `+2 facial hair (${CREDIT_COSTS.facialhair_extra} cr) · +4 eyewear (${CREDIT_COSTS.eyewear_extra} cr) · +2 headwear (${CREDIT_COSTS.headwear_extra} cr)`,
     cells: { free: false, basic: false, lookbook: false, premium: true },
   },
   {

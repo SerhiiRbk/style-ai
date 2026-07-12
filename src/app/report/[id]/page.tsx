@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { preload } from "react-dom";
 import { getReportView } from "@/lib/data/reports";
 import { reportOgMetadataImageUrl } from "@/lib/data/report-og";
+import { coverImageAspect } from "@/lib/data/asset-access";
 import { TryOnButton } from "@/components/TryOnButton";
 import { TryOnSelectionProvider } from "@/components/TryOnContext";
 import { TryOnTray } from "@/components/TryOnTray";
@@ -17,6 +18,7 @@ import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { RegenerateCoverButton } from "@/components/RegenerateCoverButton";
+import { ChangeLanguageButton } from "@/components/ChangeLanguageButton";
 import { StylistNote } from "@/components/StylistNote";
 import { ReportSectionNav } from "@/components/ReportSectionNav";
 import { ReportGenerationBanner } from "@/components/ReportGenerationBanner";
@@ -78,8 +80,10 @@ import {
   FinishingTouches,
   StaticFillImg,
 } from "@/components/StyleGuides";
-import { buildExtras, investmentLevel, itemsForLook } from "@/lib/style-extras";
+import { extrasForReport, investmentLevel, itemsForLook } from "@/lib/style-extras";
 import { humanizeProductTitle } from "@/lib/product-title";
+import { makeT } from "@/lib/i18n/report";
+import type { ReportLanguage } from "@/lib/languages";
 import {
   isBodyType,
   BODY_TYPE_LABELS,
@@ -164,6 +168,8 @@ export default async function ReportPage({
 
   const { report, isOwner, isPublic, isAdmin, ownerFeedback } = view;
   const { profile } = report;
+  const lang = report.language;
+  const tr = makeT(lang);
   const tierLabel = report.tier.charAt(0).toUpperCase() + report.tier.slice(1);
 
   const grouped = report.shopping.reduce<Record<string, ShoppingItem[]>>(
@@ -174,7 +180,7 @@ export default async function ReportPage({
     {},
   );
 
-  const extras = buildExtras(report);
+  const extras = extrasForReport(report);
 
   // The demo report uses the deterministic mock catalogue, so the outfit-matrix
   // combinations are stable and we can attach pre-rendered lookbook photos.
@@ -212,6 +218,12 @@ export default async function ReportPage({
   const heroPortrait = isDemo
     ? "/images/hero-editorial.png"
     : report.coverImage || firstLookImage || null;
+  // Frame the bespoke cover to its real aspect so the full-length subject is
+  // never cropped (covers are generated taller than the default 4:5 slot).
+  const heroAspect =
+    heroIsCover && report.coverImage
+      ? await coverImageAspect(report.coverImage)
+      : null;
   const lookImages = report.looks
     .map((l) => l.image)
     .filter((src): src is string => Boolean(src));
@@ -246,14 +258,15 @@ export default async function ReportPage({
         <div className="border-b hairline bg-brass/10">
           <div className="container-luxe flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-ink">
-              <span className="font-medium">Preview — upgrade for the full report.</span>{" "}
+              <span className="font-medium">{tr("Preview — upgrade for the full report.")}</span>{" "}
               <span className="text-stone">
-                One look included. Try-on costs 1 credit. Unlock all looks, the
-                capsule wardrobe and PDF export on paid tiers.
+                {tr(
+                  "One look included. Try-on costs 1 credit. Unlock all looks, the capsule wardrobe and PDF export on paid tiers.",
+                )}
               </span>
             </p>
             <ButtonLink href="/pricing" className="shrink-0 !px-5 !py-2 text-sm">
-              See plans &amp; credits
+              {tr("See plans & credits")}
             </ButtonLink>
           </div>
         </div>
@@ -268,7 +281,7 @@ export default async function ReportPage({
           <div className="flex items-center gap-3">
             {!isOwner && isPublic ? (
               <span className="rounded-full border border-paper/20 px-3 py-1.5 text-xs text-paper/60">
-                Shared report
+                {tr("Shared report")}
               </span>
             ) : null}
             {isOwner && isLiveReport && !isFree ? (
@@ -280,11 +293,12 @@ export default async function ReportPage({
                 className="rounded-full border border-brass-soft/50 px-5 py-2 text-sm text-brass-soft transition-colors hover:bg-paper hover:text-ink"
                 title="PDF export is a paid feature"
               >
-                Upgrade for PDF
+                {tr("Upgrade for PDF")}
               </Link>
             ) : (
               <DownloadPdfButton
                 reportId={report.id}
+                lang={lang}
                 className="rounded-full border border-paper/25 px-5 py-2 text-sm text-paper/90 transition-colors hover:bg-paper hover:text-ink disabled:cursor-wait disabled:opacity-60"
               />
             )}
@@ -300,14 +314,14 @@ export default async function ReportPage({
                 href="/start"
                 className="!bg-paper !text-ink hover:!bg-cream !px-5 !py-2"
               >
-                New report
+                {tr("New report")}
               </ButtonLink>
             ) : (
               <ButtonLink
                 href="/start"
                 className="!bg-paper !text-ink hover:!bg-cream !px-5 !py-2"
               >
-                Create yours
+                {tr("Create yours")}
               </ButtonLink>
             )}
           </div>
@@ -317,13 +331,13 @@ export default async function ReportPage({
           <div>
             <div className="flex items-center gap-3 text-xs text-paper/50">
               <span className="rounded-full border border-paper/20 px-2.5 py-1 uppercase tracking-wider">
-                {tierLabel} report
+                {tierLabel} {tr("report")}
               </span>
               <span>
                 {[profile.demographics.city, profile.demographics.country]
                   .filter(Boolean)
                   .join(", ")}{" "}
-                · {profile.demographics.climate} climate
+                · {tr(profile.demographics.climate)} {tr("climate")}
               </span>
             </div>
             <h1 className="mt-5 max-w-2xl font-display text-4xl leading-tight sm:text-5xl">
@@ -334,20 +348,25 @@ export default async function ReportPage({
             </p>
             <div className="mt-7 max-w-xl">
               <StylistNote tone="dark">
-                I&apos;ve read your colouring, proportions and goals — here&apos;s
-                how I&apos;d dress you. Calm, considered, and with the reason
-                behind every choice. Take what fits your life; leave the rest.
+                {tr(
+                  "I've read your colouring, proportions and goals — here's how I'd dress you. Calm, considered, and with the reason behind every choice. Take what fits your life; leave the rest.",
+                )}
               </StylistNote>
             </div>
             <div className="mt-7 border-t border-paper/15 pt-6">
-              <ArchetypeBadge archetype={extras.archetype} />
+              <ArchetypeBadge archetype={extras.archetype} lang={lang} />
             </div>
           </div>
           {heroPortrait ? (
-            <div className="relative hidden aspect-[4/5] overflow-hidden rounded-2xl border border-paper/15 md:block">
+            <div
+              className={`relative hidden overflow-hidden rounded-2xl border border-paper/15 md:block ${
+                heroAspect ? "" : "aspect-[4/5]"
+              }`}
+              style={heroAspect ? { aspectRatio: String(heroAspect) } : undefined}
+            >
               <ReportZoomImage
                 src={heroPortrait}
-                alt="Your style direction"
+                alt={tr("Your style direction")}
                 fill
                 sizes="(max-width: 768px) 0px, 33vw"
                 className={`object-cover ${heroIsCover ? "object-center" : "object-top"}`}
@@ -363,60 +382,62 @@ export default async function ReportPage({
           ) : imagesGenerating ? (
             <div className="relative hidden aspect-[4/5] overflow-hidden rounded-2xl border border-paper/15 md:block">
               <ReportImageGenerating
-                label="Your first look"
-                detail="Photorealistic style direction"
+                label={tr("Your first look")}
+                detail={tr("Photorealistic style direction")}
               />
             </div>
           ) : null}
         </div>
       </header>
 
-      <ReportSectionNav />
+      <ReportSectionNav lang={lang} />
 
       <main className="flex-1">
         {/* Profile snapshot */}
         <section id="overview" className="scroll-mt-24 border-b hairline bg-cream/40">
           <div className="container-luxe grid grid-cols-2 gap-px overflow-hidden py-0 sm:grid-cols-3 lg:grid-cols-6">
             <Snapshot
-              label="Season"
+              label={tr("Season")}
               value={
                 profile.colorSubseason
-                  ? SUBSEASON_LABELS[profile.colorSubseason]
-                  : cap(profile.colorSeason)
+                  ? tr(SUBSEASON_LABELS[profile.colorSubseason])
+                  : tr(cap(profile.colorSeason))
               }
             />
-            <Snapshot label="Undertone" value={cap(profile.physical.undertone)} />
-            <Snapshot label="Contrast" value={cap(profile.physical.contrast)} />
-            <Snapshot label="Face shape" value={cap(profile.physical.faceShape)} />
+            <Snapshot label={tr("Undertone")} value={tr(cap(profile.physical.undertone))} />
+            <Snapshot label={tr("Contrast")} value={tr(cap(profile.physical.contrast))} />
+            <Snapshot label={tr("Face shape")} value={tr(cap(profile.physical.faceShape))} />
             <Snapshot
-              label="Build"
+              label={tr("Build")}
               value={
                 isBodyType(profile.physical.bodyType)
-                  ? BODY_TYPE_LABELS[profile.physical.bodyType]
-                  : cap(profile.physical.bodyType)
+                  ? tr(BODY_TYPE_LABELS[profile.physical.bodyType])
+                  : tr(cap(profile.physical.bodyType))
               }
             />
-            <Snapshot label="Boldness" value={cap(profile.boldness)} />
+            <Snapshot label={tr("Boldness")} value={tr(cap(profile.boldness))} />
           </div>
         </section>
 
         {/* Start here — 3 highest-impact moves */}
         <section id="start-here" className="container-luxe scroll-mt-24 py-20">
           <SectionHead
-            title="Start here"
-            sub="If you change only three things, change these. The rest of the report builds on them."
+            title={tr("Start here")}
+            sub={tr(
+              "If you change only three things, change these. The rest of the report builds on them.",
+            )}
           />
           <div className="mt-10">
             <PriorityMoves moves={extras.priorityMoves} />
           </div>
           <div className="mt-14 border-t hairline pt-12">
             <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-              The direction — your moodboard
+              {tr("The direction — your moodboard")}
             </h3>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-stone">
-              A quick visual summary of where we&apos;re taking your style: example
-              looks on your photo, your colour palette, a hero piece, and the
-              overall direction.
+              {tr(
+                "A quick visual summary of where we're taking your style: example looks on your photo, your colour palette, a hero piece, and the overall direction.",
+              )}
             </p>
             <div className="mt-6">
               <Moodboard
@@ -428,6 +449,7 @@ export default async function ReportPage({
                 archetypeLine={extras.archetype.line}
                 zoomable
                 generating={imagesGenerating}
+                lang={lang}
               />
             </div>
           </div>
@@ -437,8 +459,10 @@ export default async function ReportPage({
         <section id="colours" className="border-t hairline container-luxe scroll-mt-24 py-20">
           <SectionHead
             n="01"
-            title="Your colour story"
-            sub="Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works."
+            title={tr("Your colour story")}
+            sub={tr(
+              "Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works.",
+            )}
           />
           <div className="mt-12 grid items-start gap-12 lg:grid-cols-[300px_1fr]">
             <div className="flex flex-col items-center rounded-3xl border hairline bg-cream/40 p-8">
@@ -457,12 +481,12 @@ export default async function ReportPage({
                   </span>
                 ))}
               </div>
-              <WheelLegend />
+              <WheelLegend lang={lang} />
             </div>
             <div>
               <div className="report-keep-together">
                 <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-                  Colours that work for you
+                  {tr("Colours that work for you")}
                 </h3>
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
                   {report.colors.best.map((c) => (
@@ -472,7 +496,7 @@ export default async function ReportPage({
               </div>
               <div className="report-keep-together mt-10">
                 <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-                  Colours to avoid
+                  {tr("Colours to avoid")}
                 </h3>
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
                   {report.colors.avoid.map((c) => (
@@ -484,11 +508,11 @@ export default async function ReportPage({
           </div>
 
           <div className="mt-12 border-t hairline pt-12">
-            <ColorDNAGuide dna={extras.colorDNA} />
+            <ColorDNAGuide dna={extras.colorDNA} lang={lang} />
           </div>
           <div className="mt-12 grid gap-12 lg:grid-cols-2">
-            <Pairings pairings={extras.pairings} />
-            <MetalChips metals={extras.metals} />
+            <Pairings pairings={extras.pairings} lang={lang} />
+            <MetalChips metals={extras.metals} lang={lang} />
           </div>
         </section>
 
@@ -497,13 +521,15 @@ export default async function ReportPage({
           <div className="container-luxe py-20">
             <SectionHead
               n="02"
-              title="Hair, beard & eyewear"
-              sub="Cuts that flatter your face shape — with real examples to take to your barber — plus the beard and frame shapes that finish the picture."
+              title={tr("Hair, beard & eyewear")}
+              sub={tr(
+                "Cuts that flatter your face shape — with real examples to take to your barber — plus the beard and frame shapes that finish the picture.",
+              )}
             />
-            {canRegen ? <RegenPhotoHint className="mt-6 max-w-2xl" /> : null}
+            {canRegen ? <RegenPhotoHint className="mt-6 max-w-2xl" lang={lang} /> : null}
             <div className="report-keep-together mt-10">
               <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-                Recommended
+                {tr("Recommended")}
               </h3>
               <div className="mt-5 grid gap-5 sm:grid-cols-2">
                 {report.hair.recommend.map((h, i) => (
@@ -526,7 +552,7 @@ export default async function ReportPage({
 
             <div className="report-keep-together mt-12 border-t hairline pt-12">
               <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-                Best avoided
+                {tr("Best avoided")}
               </h3>
               <div className="mt-5 grid gap-5 sm:grid-cols-2">
                 {report.hair.avoid.map((h, i) => (
@@ -544,7 +570,7 @@ export default async function ReportPage({
             </div>
 
             <div className="mt-12 grid gap-12 border-t hairline pt-12 lg:grid-cols-2">
-              <GroomingGuide items={extras.grooming} />
+              <GroomingGuide items={extras.grooming} lang={lang} />
               {report.tier === "premium" ? (
                 report.facialHair?.length ? (
                   <div>
@@ -553,6 +579,7 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                       generating={imagesGenerating}
+                      lang={lang}
                     />
                     {isOwner && isLiveReport ? (
                       <GenerateMoreButton
@@ -563,23 +590,24 @@ export default async function ReportPage({
                           report.facialHair.filter((i) => i.image).length
                         }
                         baseCount={PREMIUM_FACIAL_HAIR_GEN_LIMIT}
-                        label="Generate 2 more"
+                        label={tr("Generate 2 more")}
                       />
                     ) : null}
                   </div>
                 ) : (
                   <div className="rounded-2xl border hairline bg-cream/30 p-6 text-sm leading-relaxed text-stone">
                     <p className="font-display text-lg text-ink">
-                      Recommended facial hair
+                      {tr("Recommended facial hair")}
                     </p>
                     <p className="mt-2">
-                      Beard and mustache previews on your photo are being
-                      generated.
+                      {tr(
+                        "Beard and mustache previews on your photo are being generated.",
+                      )}
                     </p>
                   </div>
                 )
               ) : (
-                <EyewearGuide eyewear={extras.eyewear} />
+                <EyewearGuide eyewear={extras.eyewear} lang={lang} />
               )}
             </div>
 
@@ -592,6 +620,7 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                       generating={imagesGenerating}
+                      lang={lang}
                     />
                     {isOwner && isLiveReport ? (
                       <GenerateMoreButton
@@ -600,17 +629,17 @@ export default async function ReportPage({
                         cost={CREDIT_COSTS.eyewear_extra}
                         count={report.eyewear.filter((i) => i.image).length}
                         baseCount={PREMIUM_EYEWEAR_GEN_LIMIT}
-                        label="Generate 2 optical + 2 sunglasses"
+                        label={tr("Generate 2 optical + 2 sunglasses")}
                       />
                     ) : null}
                   </>
                 ) : (
                   <div className="rounded-2xl border hairline bg-cream/30 p-6 text-sm leading-relaxed text-stone">
                     <p className="font-display text-lg text-ink">
-                      Recommended glasses
+                      {tr("Recommended glasses")}
                     </p>
                     <p className="mt-2">
-                      Frame previews on your photo are being generated.
+                      {tr("Frame previews on your photo are being generated.")}
                     </p>
                   </div>
                 )}
@@ -627,6 +656,7 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                       generating={imagesGenerating}
+                      lang={lang}
                     />
                     {isOwner && isLiveReport ? (
                       <GenerateMoreButton
@@ -637,18 +667,19 @@ export default async function ReportPage({
                           report.accessories.filter((i) => i.image).length
                         }
                         baseCount={PREMIUM_ACCESSORY_GEN_LIMIT}
-                        label="Generate 2 more"
+                        label={tr("Generate 2 more")}
                       />
                     ) : null}
                   </>
                 ) : generation?.pending ? (
                   <div className="rounded-2xl border hairline bg-cream/30 p-6 text-sm leading-relaxed text-stone">
                     <p className="font-display text-lg text-ink">
-                      Accessory styling
+                      {tr("Accessory styling")}
                     </p>
                     <p className="mt-2">
-                      Scarves, neckwear and ties on your photo are being
-                      generated.
+                      {tr(
+                        "Scarves, neckwear and ties on your photo are being generated.",
+                      )}
                     </p>
                   </div>
                 ) : null}
@@ -667,6 +698,7 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                       generating={imagesGenerating}
+                      lang={lang}
                     />
                     {isOwner && isLiveReport ? (
                       <GenerateMoreButton
@@ -675,28 +707,32 @@ export default async function ReportPage({
                         cost={CREDIT_COSTS.headwear_extra}
                         count={report.headwear.filter((i) => i.image).length}
                         baseCount={PREMIUM_HEADWEAR_GEN_LIMIT}
-                        label="Generate 2 more"
+                        label={tr("Generate 2 more")}
                       />
                     ) : null}
                   </>
                 ) : generation?.pending ? (
                   <div className="rounded-2xl border hairline bg-cream/30 p-6 text-sm leading-relaxed text-stone">
-                    <p className="font-display text-lg text-ink">Headwear</p>
+                    <p className="font-display text-lg text-ink">{tr("Headwear")}</p>
                     <p className="mt-2">
-                      Hats, caps and bandanas on your photo are being generated.
+                      {tr(
+                        "Hats, caps and bandanas on your photo are being generated.",
+                      )}
                     </p>
                   </div>
                 ) : isOwner && isLiveReport ? (
                   // Existing premium report created before headwear was included —
                   // let the owner generate the base set on demand (no charge).
                   <AddonUnlockCard
-                    title="Headwear"
-                    desc="Two headwear previews (hats, caps, bandanas) on your photo — included with Premium."
+                    title={tr("Headwear")}
+                    desc={tr(
+                      "Two headwear previews (hats, caps, bandanas) on your photo — included with Premium.",
+                    )}
                     reportId={report.id}
                     type="headwear"
                     cost={0}
                     included
-                    label="Generate 2 headwear previews"
+                    label={tr("Generate 2 headwear previews")}
                   />
                 ) : null}
               </div>
@@ -712,14 +748,14 @@ export default async function ReportPage({
               )) ? (
               <div className="mt-12 border-t hairline pt-12">
                 <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-                  See it on your photo
+                  {tr("See it on your photo")}
                 </h3>
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-stone">
-                  Generate photorealistic previews of facial hair, eyewear,
-                  accessories and headwear on your own photo — available as
-                  add-ons for this report.{" "}
+                  {tr(
+                    "Generate photorealistic previews of facial hair, eyewear, accessories and headwear on your own photo — available as add-ons for this report.",
+                  )}{" "}
                   <Link href="/pricing" className="text-brass hover:text-ink">
-                    All included with Premium.
+                    {tr("All included with Premium.")}
                   </Link>
                 </p>
 
@@ -730,15 +766,18 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                       generating={imagesGenerating}
+                      lang={lang}
                     />
                   ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
-                      title="Facial-hair previews"
-                      desc="Four beard & mustache styles rendered on your own photo."
+                      title={tr("Facial-hair previews")}
+                      desc={tr(
+                        "Four beard & mustache styles rendered on your own photo.",
+                      )}
                       reportId={report.id}
                       type="facial_hair"
                       cost={CREDIT_COSTS.facialhair_addon}
-                      label="Generate 4 facial-hair previews"
+                      label={tr("Generate 4 facial-hair previews")}
                     />
                   ) : null}
 
@@ -748,15 +787,18 @@ export default async function ReportPage({
                       reportId={report.id}
                       owner={canRegen}
                       generating={imagesGenerating}
+                      lang={lang}
                     />
                   ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
-                      title="Eyewear previews"
-                      desc="Two optical frames and two pairs of sunglasses on your photo."
+                      title={tr("Eyewear previews")}
+                      desc={tr(
+                        "Two optical frames and two pairs of sunglasses on your photo.",
+                      )}
                       reportId={report.id}
                       type="eyewear"
                       cost={CREDIT_COSTS.eyewear_addon}
-                      label="Generate 2 optical + 2 sunglasses"
+                      label={tr("Generate 2 optical + 2 sunglasses")}
                     />
                   ) : null}
 
@@ -767,6 +809,7 @@ export default async function ReportPage({
                         reportId={report.id}
                         owner={canRegen}
                         generating={imagesGenerating}
+                        lang={lang}
                       />
                       {isOwner && isLiveReport ? (
                         <GenerateMoreButton
@@ -777,20 +820,22 @@ export default async function ReportPage({
                             report.accessories.filter((i) => i.image).length
                           }
                           baseCount={PREMIUM_ACCESSORY_GEN_LIMIT}
-                          label="Generate 2 more"
+                          label={tr("Generate 2 more")}
                         />
                       ) : null}
                     </>
                   ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
-                      title="Accessory styling"
-                      desc="Accessory previews (scarves, neckwear, ties) on your photo — generate two, or the full set of four."
+                      title={tr("Accessory styling")}
+                      desc={tr(
+                        "Accessory previews (scarves, neckwear, ties) on your photo — generate two, or the full set of four.",
+                      )}
                       reportId={report.id}
                       type="accessories"
                       cost={CREDIT_COSTS.accessory_addon}
-                      label="Generate 2"
+                      label={tr("Generate 2")}
                       fullCost={CREDIT_COSTS.accessory_addon * 2}
-                      fullLabel="Generate 4"
+                      fullLabel={tr("Generate 4")}
                       fullCount={PREMIUM_ACCESSORY_GEN_LIMIT * 2}
                     />
                   ) : null}
@@ -802,6 +847,7 @@ export default async function ReportPage({
                         reportId={report.id}
                         owner={canRegen}
                         generating={imagesGenerating}
+                        lang={lang}
                       />
                       {isOwner && isLiveReport ? (
                         <GenerateMoreButton
@@ -812,20 +858,22 @@ export default async function ReportPage({
                             report.headwear.filter((i) => i.image).length
                           }
                           baseCount={PREMIUM_HEADWEAR_GEN_LIMIT}
-                          label="Generate 2 more"
+                          label={tr("Generate 2 more")}
                         />
                       ) : null}
                     </>
                   ) : isOwner && isLiveReport ? (
                     <AddonUnlockCard
-                      title="Headwear"
-                      desc="Headwear previews (hats, caps, bandanas) on your photo — generate two, or the full set of four."
+                      title={tr("Headwear")}
+                      desc={tr(
+                        "Headwear previews (hats, caps, bandanas) on your photo — generate two, or the full set of four.",
+                      )}
                       reportId={report.id}
                       type="headwear"
                       cost={CREDIT_COSTS.headwear_addon}
-                      label="Generate 2"
+                      label={tr("Generate 2")}
                       fullCost={CREDIT_COSTS.headwear_addon * 2}
-                      fullLabel="Generate 4"
+                      fullLabel={tr("Generate 4")}
                       fullCount={PREMIUM_HEADWEAR_GEN_LIMIT * 2}
                     />
                   ) : null}
@@ -839,7 +887,7 @@ export default async function ReportPage({
         <section id="fit" className="container-luxe scroll-mt-24 py-20">
           <div className="max-w-3xl">
             <div>
-              <SectionHead n="03" title="Silhouette & fit" />
+              <SectionHead n="03" title={tr("Silhouette & fit")} />
               <div className="mt-6 flex items-start gap-6">
                 {isBodyType(profile.physical.bodyType) && (
                   <div className="shrink-0 rounded-xl border border-line bg-paper p-3">
@@ -859,18 +907,18 @@ export default async function ReportPage({
               {profile.physical.measurements &&
                 Object.values(profile.physical.measurements).some(
                   (v) => v != null,
-                ) && <Measurements m={profile.physical.measurements} />}
+                ) && <Measurements m={profile.physical.measurements} lang={lang} />}
             </div>
           </div>
-          <FitBlueprint specs={extras.fitBlueprint} />
+          <FitBlueprint specs={extras.fitBlueprint} lang={lang} />
         </section>
 
         {/* Looks */}
         <section id="looks" className="container-luxe scroll-mt-24 py-20">
           <SectionHead
             n="04"
-            title="Your looks"
-            sub="Photorealistic outfit directions for the moments that matter."
+            title={tr("Your looks")}
+            sub={tr("Photorealistic outfit directions for the moments that matter.")}
           />
           <div className="mt-12 grid gap-6 md:grid-cols-3">
             {report.looks.map((look, i) => (
@@ -890,11 +938,11 @@ export default async function ReportPage({
                   ) : imagesGenerating ? (
                     <ReportImageGenerating
                       label={look.title}
-                      detail="Styling this look on your photo"
+                      detail={tr("Styling this look on your photo")}
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center px-4 text-center text-sm text-stone-soft">
-                      Outfit photo generating…
+                      {tr("Outfit photo generating…")}
                     </div>
                   )}
                   <div className="absolute inset-x-0 bottom-0 flex gap-1.5 bg-gradient-to-t from-ink/60 to-transparent p-3 pt-8">
@@ -922,6 +970,7 @@ export default async function ReportPage({
                         : itemsForLook(look, report.shopping)
                     }
                     currency={profile.currency}
+                    lang={lang}
                   />
                   {canTryOn && (
                     <div className="mt-4">
@@ -950,27 +999,33 @@ export default async function ReportPage({
         <section id="capsule" className="border-t hairline container-luxe scroll-mt-24 py-20">
           <SectionHead
             n="05"
-            title="Capsule & buying plan"
-            sub="A small, deliberate set of pieces that multiply into many outfits — bought in the order that pays off fastest."
+            title={tr("Capsule & buying plan")}
+            sub={tr(
+              "A small, deliberate set of pieces that multiply into many outfits — bought in the order that pays off fastest.",
+            )}
           />
           {!tierHasCapsule(report.tier) ? (
             <UpgradeLock
-              title="The capsule wardrobe is a paid feature"
-              body="See your full mix-and-match capsule, the week-of-outfits matrix, and a Good · Better · Best buying plan — included from the Lookbook tier."
+              title={tr("The capsule wardrobe is a paid feature")}
+              body={tr(
+                "See your full mix-and-match capsule, the week-of-outfits matrix, and a Good · Better · Best buying plan — included from the Lookbook tier.",
+              )}
+              lang={lang}
             />
           ) : (
             <div className="mt-10">
-              <Capsule capsule={extras.capsule} currency={profile.currency} />
+              <Capsule capsule={extras.capsule} currency={profile.currency} lang={lang} />
               <CapsuleMatrix
                 combos={matrix}
                 reportId={canTryOn ? report.id : undefined}
                 generating={capsuleGenerating}
+                lang={lang}
               />
               <div className="mt-12 border-t hairline pt-10">
                 <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-                  Good · Better · Best — where to spend
+                  {tr("Good · Better · Best — where to spend")}
                 </h3>
-                <PriceTiers tiers={extras.priceTiers} currency={profile.currency} />
+                <PriceTiers tiers={extras.priceTiers} currency={profile.currency} lang={lang} />
               </div>
             </div>
           )}
@@ -983,14 +1038,18 @@ export default async function ReportPage({
               <div>
                 <p className="eyebrow !text-brass-soft">06</p>
                 <h2 className="mt-3 font-display text-3xl sm:text-4xl">
-                  Your shopping list
+                  {tr("Your shopping list")}
                 </h2>
                 <p className="mt-3 max-w-md text-paper/60">
                   {catalogShopping
-                    ? "Pieces matched to your palette from our catalogue — real products and affiliate links."
+                    ? tr(
+                        "Pieces matched to your palette from our catalogue — real products and affiliate links.",
+                      )
                     : isDemo
-                      ? "Sample curated list for the demo report."
-                      : "The pieces that unlock the most new outfits. Real products, real links — affiliate links are disclosed."}
+                      ? tr("Sample curated list for the demo report.")
+                      : tr(
+                          "The pieces that unlock the most new outfits. Real products, real links — affiliate links are disclosed.",
+                        )}
                 </p>
               </div>
               <div className="hidden text-right sm:block">
@@ -1001,15 +1060,16 @@ export default async function ReportPage({
                   )}
                 </div>
                 <div className="text-xs text-paper/50">
-                  {report.shopping.length} essential pieces
+                  {report.shopping.length} {tr("essential pieces")}
                 </div>
               </div>
             </div>
 
             {canTryOn ? (
               <p className="mt-4 text-xs text-paper/45">
-                Tip: use “+ Add to outfit” on up to 4 pieces to render them
-                together on your photo in a single try-on.
+                {tr(
+                  "Tip: use “+ Add to outfit” on up to 4 pieces to render them together on your photo in a single try-on.",
+                )}
               </p>
             ) : null}
 
@@ -1017,7 +1077,7 @@ export default async function ReportPage({
             <div className="mt-12 space-y-10">
               {Object.entries(grouped).map(([cat, items]) => (
                 <div key={cat}>
-                  <div className="eyebrow !text-paper/40">{cat}</div>
+                  <div className="eyebrow !text-paper/40">{tr(cat)}</div>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {items.map((item) => (
                       <div
@@ -1050,7 +1110,7 @@ export default async function ReportPage({
                               {formatMoney(item.priceEur, profile.currency)}
                             </span>
                             <span className="absolute left-3 top-3 rounded-full bg-paper/90 px-2.5 py-1 text-[11px] uppercase tracking-wider text-ink">
-                              {investmentLevel(item)}
+                              {tr(investmentLevel(item))}
                             </span>
                           </div>
                           <div className="p-5">
@@ -1061,7 +1121,7 @@ export default async function ReportPage({
                             <div className="mt-4 flex items-center justify-between text-xs text-paper/50">
                               <span>{item.retailer}</span>
                               <span className="text-brass-soft transition-colors group-hover:text-paper">
-                                Shop →
+                                {tr("Shop →")}
                               </span>
                             </div>
                           </div>
@@ -1100,14 +1160,16 @@ export default async function ReportPage({
           <div className="container-luxe py-20">
             <SectionHead
               n="07"
-              title="Patterns & finishing details"
-              sub="The textures, fabrics, accessories and shoes that complete the wardrobe."
+              title={tr("Patterns & finishing details")}
+              sub={tr(
+                "The textures, fabrics, accessories and shoes that complete the wardrobe.",
+              )}
             />
             <div className="mt-10 border-b hairline pb-12">
-              <FabricsGuide fabrics={extras.fabrics} />
+              <FabricsGuide fabrics={extras.fabrics} lang={lang} />
             </div>
             <div className="mt-12">
-              <StyleDetails />
+              <StyleDetails lang={lang} />
             </div>
           </div>
         </section>
@@ -1116,29 +1178,50 @@ export default async function ReportPage({
         <section id="care" className="container-luxe scroll-mt-24 py-20">
           <SectionHead
             n="08"
-            title="How to wear it, and make it last"
-            sub="The small mechanics and habits that separate well-dressed from expensively-dressed."
+            title={tr("How to wear it, and make it last")}
+            sub={tr(
+              "The small mechanics and habits that separate well-dressed from expensively-dressed.",
+            )}
           />
           <div className="mt-10">
             <FinishingTouches
               styling={extras.styling}
               care={extras.care}
               fragrance={extras.fragrance}
+              lang={lang}
             />
           </div>
         </section>
 
         {/* Do / Don't */}
         <section id="dos-donts" className="border-t hairline container-luxe scroll-mt-24 py-20">
-          <SectionHead n="09" title="Do & don't" />
+          <SectionHead n="09" title={tr("Do & don't")} />
           <div className="mt-10 grid gap-8 md:grid-cols-2">
-            <ListCard title="Do" items={report.doList} good />
-            <ListCard title="Avoid" items={report.dontList} />
+            <ListCard title={tr("Do")} items={report.doList} good />
+            <ListCard title={tr("Avoid")} items={report.dontList} />
           </div>
 
-          <TipsStrip />
+          <TipsStrip lang={lang} />
 
-          <ReportTierUpsell tier={report.tier} reportId={report.id} />
+          <ReportTierUpsell tier={report.tier} reportId={report.id} lang={lang} />
+
+          {isOwner && isLiveReport && !generation?.pending ? (
+            <div className="mt-12 border-t hairline pt-8">
+              <h3 className="font-display text-lg text-ink">{tr("Report language")}</h3>
+              <p className="mt-1 max-w-xl text-sm text-stone">
+                {tr(
+                  "Re-translate the written report into another language. Your recommendations and photos stay the same.",
+                )}
+              </p>
+              <div className="mt-4">
+                <ChangeLanguageButton
+                  reportId={report.id}
+                  current={report.language ?? "en"}
+                  cost={CREDIT_COSTS.language_change}
+                />
+              </div>
+            </div>
+          ) : null}
 
           {isOwner && isLiveReport && !generation?.pending ? (
             <ReportFeedback reportId={report.id} isOwner={isOwner} />
@@ -1205,29 +1288,33 @@ function AddonUnlockCard({
 function ReportTierUpsell({
   tier,
   reportId,
+  lang,
 }: {
   tier: Tier;
   reportId: string;
+  lang?: ReportLanguage;
 }) {
   const upsell = reportUpsellForTier(tier);
   if (!upsell) return null;
+  const tt = makeT(lang);
 
   return (
     <div className="mt-16 rounded-2xl border hairline bg-cream/40 p-10 text-center">
-      <h3 className="font-display text-2xl">{upsell.title}</h3>
-      <p className="mx-auto mt-2 max-w-md text-stone">{upsell.body}</p>
+      <h3 className="font-display text-2xl">{tt(upsell.title)}</h3>
+      <p className="mx-auto mt-2 max-w-md text-stone">{tt(upsell.body)}</p>
       <div className="mt-6 flex justify-center gap-3">
-        <ButtonLink href={upsell.ctaHref}>{upsell.ctaLabel}</ButtonLink>
+        <ButtonLink href={upsell.ctaHref}>{tt(upsell.ctaLabel)}</ButtonLink>
         {tier === "free" ? (
           <Link
             href="/pricing"
             className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper"
           >
-            Upgrade for PDF
+            {tt("Upgrade for PDF")}
           </Link>
         ) : (
           <DownloadPdfButton
             reportId={reportId}
+            lang={lang}
             className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-60"
           />
         )}
@@ -1236,7 +1323,16 @@ function ReportTierUpsell({
   );
 }
 
-function UpgradeLock({ title, body }: { title: string; body: string }) {
+function UpgradeLock({
+  title,
+  body,
+  lang,
+}: {
+  title: string;
+  body: string;
+  lang?: ReportLanguage;
+}) {
+  const tt = makeT(lang);
   return (
     <div className="mt-10 rounded-3xl border border-dashed border-ink/20 bg-cream/40 px-8 py-14 text-center">
       <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-ink text-paper">
@@ -1254,7 +1350,7 @@ function UpgradeLock({ title, body }: { title: string; body: string }) {
       <h3 className="mt-5 font-display text-2xl">{title}</h3>
       <p className="mx-auto mt-2 max-w-md text-stone">{body}</p>
       <div className="mt-6 flex justify-center">
-        <ButtonLink href="/pricing">See plans &amp; credits</ButtonLink>
+        <ButtonLink href="/pricing">{tt("See plans & credits")}</ButtonLink>
       </div>
     </div>
   );
@@ -1294,10 +1390,11 @@ const STYLE_TIPS: { title: string; desc: string; icon: React.ReactNode }[] = [
   },
 ];
 
-function TipsStrip() {
+function TipsStrip({ lang }: { lang?: ReportLanguage }) {
+  const tt = makeT(lang);
   return (
     <div className="mt-14 rounded-3xl border hairline bg-cream/40 px-8 py-12">
-      <p className="eyebrow text-center">Style principles</p>
+      <p className="eyebrow text-center">{tt("Style principles")}</p>
       <div className="mx-auto mt-8 grid max-w-4xl gap-10 sm:grid-cols-2 lg:grid-cols-4">
         {STYLE_TIPS.map((t) => (
           <div key={t.title} className="flex flex-col items-center text-center">
@@ -1306,8 +1403,8 @@ function TipsStrip() {
                 {t.icon}
               </svg>
             </div>
-            <div className="mt-4 font-display text-lg">{t.title}</div>
-            <p className="mt-1.5 text-sm leading-relaxed text-stone">{t.desc}</p>
+            <div className="mt-4 font-display text-lg">{tt(t.title)}</div>
+            <p className="mt-1.5 text-sm leading-relaxed text-stone">{tt(t.desc)}</p>
           </div>
         ))}
       </div>
@@ -1315,7 +1412,8 @@ function TipsStrip() {
   );
 }
 
-function Measurements({ m }: { m: MeasurementsT }) {
+function Measurements({ m, lang }: { m: MeasurementsT; lang?: ReportLanguage }) {
+  const tt = makeT(lang);
   const rows: [string, number | undefined][] = [
     ["Shoulders", m.shoulderCm],
     ["Chest", m.chestCm],
@@ -1326,15 +1424,15 @@ function Measurements({ m }: { m: MeasurementsT }) {
   return (
     <div className="mt-7 border-t hairline pt-5">
       <div className="text-xs uppercase tracking-wider text-stone-soft">
-        Your measurements
+        {tt("Your measurements")}
       </div>
       <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 sm:grid-cols-3">
         {rows
           .filter(([, v]) => v != null)
           .map(([label, v]) => (
             <div key={label} className="flex items-baseline justify-between">
-              <dt className="text-sm text-stone">{label}</dt>
-              <dd className="font-display text-lg text-ink">{v} cm</dd>
+              <dt className="text-sm text-stone">{tt(label)}</dt>
+              <dd className="font-display text-lg text-ink">{v} {tt("cm")}</dd>
             </div>
           ))}
       </dl>
@@ -1348,7 +1446,9 @@ function Snapshot({ label, value }: { label: string; value: string }) {
       <div className="text-xs uppercase tracking-wider text-stone-soft">
         {label}
       </div>
-      <div className="mt-1.5 font-display text-xl">{value}</div>
+      <div className="mt-1.5 break-words font-display text-xl leading-tight hyphens-auto">
+        {value}
+      </div>
     </div>
   );
 }

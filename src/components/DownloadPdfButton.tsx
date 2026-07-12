@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
+import { makeT } from "@/lib/i18n/report";
+import type { ReportLanguage } from "@/lib/languages";
 
 /**
  * Downloads a report PDF via fetch so we can show a "preparing" indicator while
@@ -12,12 +14,15 @@ import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 export function DownloadPdfButton({
   reportId,
   className,
-  children = "Download PDF",
+  children,
+  lang,
 }: {
   reportId: string;
   className?: string;
   children?: React.ReactNode;
+  lang?: ReportLanguage;
 }) {
+  const tt = makeT(lang);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +54,7 @@ export function DownloadPdfButton({
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      setError("Couldn't prepare the PDF. Please try again.");
+      setError(tt("Couldn't prepare the PDF. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -64,9 +69,9 @@ export function DownloadPdfButton({
         aria-busy={loading}
         className={className}
       >
-        {children}
+        {children ?? tt("Download PDF")}
       </button>
-      {loading ? <PreparingPill message="Preparing your PDF…" /> : null}
+      {loading ? <PreparingPill message={tt("Preparing your PDF…")} /> : null}
       {error ? <PreparingPill message={error} tone="error" /> : null}
     </>
   );

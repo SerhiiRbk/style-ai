@@ -17,9 +17,12 @@ const nextConfig: NextConfig = {
       "./node_modules/sharp/**/*",
       "./node_modules/@img/**/*",
     ],
+    // The PDF export cover-crops photos with sharp and embeds Unicode fonts
+    // (Noto) so localized reports render Latin-Extended + Cyrillic correctly.
     "/api/reports/**": [
       "./node_modules/sharp/**/*",
       "./node_modules/@img/**/*",
+      "./assets/fonts/pdf/**",
     ],
     // The asset proxy transcodes large PNGs to WebP on the fly to speed up
     // report image loading — it needs the native sharp binaries too.

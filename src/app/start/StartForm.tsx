@@ -16,6 +16,11 @@ import {
 } from "@/lib/style-profile";
 import { COUNTRIES } from "@/lib/countries";
 import { PROFILE_CURRENCIES, type Currency } from "@/lib/currency";
+import {
+  REPORT_LANGUAGES,
+  DEFAULT_LANGUAGE,
+  type ReportLanguage,
+} from "@/lib/languages";
 import { REPORT_COST, CREDIT_COSTS, SIGNUP_BONUS } from "@/lib/credit-costs";
 import { lookCountForTier } from "@/lib/report";
 import { BRAND } from "@/lib/brand";
@@ -216,6 +221,7 @@ export function StartForm({
   const [city, setCity] = useState(initialGeo?.city ?? "");
   const [country, setCountry] = useState(initialGeo?.countryName ?? "");
   const [currency, setCurrency] = useState<Currency>(initialGeo?.currency ?? "EUR");
+  const [language, setLanguage] = useState<ReportLanguage>(DEFAULT_LANGUAGE);
   const [height, setHeight] = useState(180);
   const [weight, setWeight] = useState("");
   const [bodyType, setBodyType] = useState<BodyTypeId | "">("");
@@ -305,6 +311,7 @@ export function StartForm({
             genderPresentation: gender,
             city,
             country,
+            language,
             currency,
             heightCm: height,
             weightKg: weight ? Number(weight) : undefined,
@@ -597,6 +604,15 @@ export function StartForm({
                     value={currency}
                     onChange={(v) => setCurrency(v as Currency)}
                     options={PROFILE_CURRENCIES.map((c) => [c, c])}
+                  />
+                </Field>
+                <Field label="Report language">
+                  <Select
+                    value={language}
+                    onChange={(v) => setLanguage(v as ReportLanguage)}
+                    options={REPORT_LANGUAGES.map(
+                      (l) => [l.id, l.native] as [string, string],
+                    )}
                   />
                 </Field>
               </div>

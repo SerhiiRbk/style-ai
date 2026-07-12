@@ -12,8 +12,8 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#f6f1e7",
     theme_color: "#15120d",
     icons: [
-      { src: "/icon.svg", type: "image/svg+xml", sizes: "any" },
       { src: "/images/valetti-logo-512.png", type: "image/png", sizes: "512x512" },
+      { src: "/images/valetti-logo-1024.png", type: "image/png", sizes: "1024x1024" },
     ],
   };
 }

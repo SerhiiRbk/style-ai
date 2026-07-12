@@ -15,6 +15,8 @@ import type { Intake, ReportContent, StyleProfile } from "@/lib/style-profile";
 import type { ShoppingItem } from "@/lib/report";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { getReportReferencePhotos } from "@/lib/photo-tryon";
+import { translateReportParts } from "@/lib/ai/translate-report";
+import { normalizeLanguage } from "@/lib/languages";
 
 export const maxDuration = 300;
 
@@ -65,7 +67,7 @@ export async function POST(request: Request) {
   const [{ data: row }, { data: intakeRow }] = await Promise.all([
     admin
       .from("reports")
-      .select("id, user_id, profile, colors, look_items, created_at")
+      .select("id, user_id, profile, colors, look_items, created_at, language")
       .eq("id", reportId)
       .single(),
     admin
@@ -82,6 +84,13 @@ export async function POST(request: Request) {
   if (!profile || !intake) {
     return NextResponse.json({ error: "Report not ready" }, { status: 409 });
   }
+
+  // Honour the report's current language (may differ from the original intake
+  // if the owner changed it after generation).
+  const language = normalizeLanguage(
+    (row as { language?: string | null }).language ?? intake.language,
+  );
+  intake.language = language;
 
   const cost = CREDIT_COSTS.look_extra;
   if (hasSupabaseAdmin) {
@@ -174,7 +183,11 @@ export async function POST(request: Request) {
       looks: [look],
     } as unknown as ReportContent;
     const matched = await matchLookItems(profile, singleContent);
-    const items = matched[0];
+    let items = matched[0];
+    if (items?.length && language !== "en") {
+      const t = await translateReportParts({ shopping: items }, language);
+      items = t.shopping ?? items;
+    }
     if (items?.length) {
       const lookItems =
         (row.look_items as Record<number, ShoppingItem[]> | null) ?? {};

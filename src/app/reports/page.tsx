@@ -15,6 +15,7 @@ import {
   reportStatusLabel,
   tierLabel,
 } from "@/lib/data/user-reports";
+import { languageNativeLabel } from "@/lib/languages";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +139,9 @@ export default async function ReportsPage() {
                   <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
                     <span className="rounded-full border hairline bg-cream/40 px-3 py-1 text-xs text-stone">
                       {tierLabel(r.tier)}
+                    </span>
+                    <span className="rounded-full border hairline bg-cream/40 px-3 py-1 text-xs text-stone">
+                      {languageNativeLabel(r.language)}
                     </span>
                     <StatusBadge
                       status={r.generating ? "processing" : r.status}
