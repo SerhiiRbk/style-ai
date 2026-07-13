@@ -759,15 +759,18 @@ export function EyewearGuide({
 export function FitBlueprint({
   specs,
   lang,
+  title = "Fit blueprint — what to tell your tailor",
 }: {
   specs: FitSpec[];
   lang?: ReportLanguage;
+  title?: string;
 }) {
   const tt = makeT(lang);
+  if (!specs.length) return null;
   return (
     <div className="mt-8 overflow-hidden rounded-2xl border hairline">
       <div className="bg-cream/60 px-5 py-3 text-xs uppercase tracking-wider text-stone-soft">
-        {tt("Fit blueprint — what to tell your tailor")}
+        {tt(title)}
       </div>
       <div className="divide-y divide-line">
         {specs.map((s) => (

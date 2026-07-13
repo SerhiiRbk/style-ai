@@ -990,6 +990,16 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     d.gap(3);
   }
 
+  if (extras.barberBlueprint?.length) {
+    d.gap(6);
+    d.subhead(tt("Barber blueprint — what to tell your barber"), { keepWith: 28 });
+    for (const s of extras.barberBlueprint) {
+      d.text(`${s.part}: ${s.spec}`, { font: d.bold, size: 9.5 });
+      d.text(s.why, { x: MARGIN + 12, width: CONTENT_W - 12, color: STONE });
+      d.gap(3);
+    }
+  }
+
   if (report.facialHair?.length) {
     const items: GalleryItem[] = [];
     for (const item of report.facialHair) {

@@ -883,6 +883,16 @@ export default async function ReportPage({
                 </div>
               </div>
             ) : null}
+
+            {extras.barberBlueprint?.length ? (
+              <div className="mt-12 border-t hairline pt-12">
+                <FitBlueprint
+                  specs={extras.barberBlueprint}
+                  lang={lang}
+                  title="Barber blueprint — what to tell your barber"
+                />
+              </div>
+            ) : null}
           </div>
         </section>
 

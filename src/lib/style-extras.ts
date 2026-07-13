@@ -78,6 +78,7 @@ export type StyleExtras = {
   metals: { recommend: Metal[]; avoidNote: string };
   eyewear: { recommend: FrameRec[]; avoid: string[] };
   fitBlueprint: FitSpec[];
+  barberBlueprint: FitSpec[];
   pairings: Pairings;
   fabrics: { name: string; why: string }[];
   capsule: CapsulePlan;
@@ -763,6 +764,121 @@ function fitBlueprint(profile: StyleProfile): FitSpec[] {
         : short
           ? "Vertical, uninterrupted lines make you read taller."
           : "Classic proportions flatter an average height without tricks.",
+    });
+  }
+
+  return specs;
+}
+
+/* ------------------------------ barber blueprint -------------------------- */
+
+/**
+ * A concise, hand-to-your-barber cut brief keyed to the client's face shape and
+ * hair colour — the grooming counterpart to the fit blueprint. Rule-based and
+ * deterministic so it reads consistently and translates cleanly.
+ */
+function barberBlueprint(profile: StyleProfile): FitSpec[] {
+  const f = lc(profile.physical.faceShape);
+  const specs: FitSpec[] = [];
+
+  const round = f.includes("round");
+  const square = f.includes("square");
+  const long = f.includes("oblong") || f.includes("rectang") || f.includes("long");
+  const heart = f.includes("heart") || f.includes("triang");
+  const diamond = f.includes("diamond");
+
+  const shapeLabel = round
+    ? "round"
+    : square
+      ? "square"
+      : long
+        ? "longer"
+        : heart
+          ? "heart-shaped"
+          : diamond
+            ? "diamond"
+            : "oval";
+  specs.push({
+    part: "Face shape",
+    spec: `Your face reads as ${shapeLabel} — the cut below is tuned to it.`,
+    why: "A haircut's job is to balance your proportions, not fight them.",
+  });
+
+  // Length on top — the main lever for balancing face length/width.
+  specs.push({
+    part: "Length on top",
+    spec: round
+      ? "Keep good height on top; ask for length to style up and back."
+      : long
+        ? "Keep the top moderate — avoid piling on height."
+        : heart
+          ? "Medium length on top with soft movement, nothing too tall."
+          : square
+            ? "Short-to-medium with texture; a little height works well."
+            : "Medium length with natural movement — most shapes suit you.",
+    why: round
+      ? "Vertical volume lengthens a round face and adds structure."
+      : long
+        ? "Too much height stretches an already-long face."
+        : heart
+          ? "Soft volume avoids widening the upper face further."
+          : square
+            ? "Texture keeps a strong jaw from looking heavy."
+            : "Balanced length flatters oval proportions without tricks.",
+  });
+
+  // Sides / fade.
+  specs.push({
+    part: "Sides & fade",
+    spec: round
+      ? "Tight/short sides — a high taper or fade to slim the face."
+      : long
+        ? "Leave a little more length on the sides; low-to-mid taper."
+        : heart
+          ? "Keep some weight at the sides; avoid very tight fades."
+          : "Clean mid taper — versatile and easy to maintain.",
+    why: round
+      ? "Short sides narrow the face and sharpen the jaw."
+      : long
+        ? "Side volume adds width and shortens a long face."
+        : heart
+          ? "Width lower down balances a wider forehead."
+          : "A mid taper suits most shapes and grows out cleanly.",
+  });
+
+  // Fringe / parting / hairline.
+  specs.push({
+    part: "Fringe & parting",
+    spec: long || heart
+      ? "Consider a soft fringe or forward-textured front."
+      : "A defined side part or natural push-back both work.",
+    why: long || heart
+      ? "A fringe shortens the forehead and softens the top third."
+      : "A clean part adds polish and structure to your look.",
+  });
+
+  // Beard / neckline — pairs with the grooming section.
+  specs.push({
+    part: "Beard & neckline",
+    spec: round
+      ? "A slightly longer, squared beard elongates the face; keep cheek lines crisp."
+      : square
+        ? "Keep the beard neat and rounded at the base to soften the jaw."
+        : long
+          ? "Fuller on the cheeks, shorter at the chin to add width."
+          : heart
+            ? "A little more beard at the jaw balances a narrower chin."
+            : "A tidy, even beard or clean shave both suit your balance.",
+    why: "Facial hair reshapes the lower face — use it to balance the top.",
+  });
+
+  // Colour care note when the client reports grey/silver hair.
+  const hair = lc(profile.physical.hairColor ?? "");
+  if (hair.includes("grey") || hair.includes("gray") || hair.includes("silver") || hair.includes("salt")) {
+    specs.push({
+      part: "Colour & upkeep",
+      spec: "Embrace the grey — ask for a clean, sharp shape and use a silver/purple shampoo weekly.",
+      why: "Well-cut grey reads distinguished; a toning shampoo keeps it bright, not yellow.",
     });
   }
 
@@ -1967,6 +2083,7 @@ export function buildExtras(report: StyleReport): StyleExtras {
     metals: metalsFor(profile.physical.undertone),
     eyewear: eyewearFor(profile.physical.faceShape),
     fitBlueprint: fitBlueprint(profile),
+    barberBlueprint: barberBlueprint(profile),
     pairings: colorPairings(report.colors.best),
     fabrics: fabricsFor(profile),
     capsule: capsuleFrom(report.shopping, profile),

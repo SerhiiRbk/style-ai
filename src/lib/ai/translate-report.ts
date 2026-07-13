@@ -68,6 +68,11 @@ function trExtras(e: StyleExtras, tr: TranslateFn): StyleExtras {
       spec: tr(f.spec),
       why: tr(f.why),
     })),
+    barberBlueprint: (e.barberBlueprint ?? []).map((f) => ({
+      part: tr(f.part),
+      spec: tr(f.spec),
+      why: tr(f.why),
+    })),
     pairings: {
       base: e.pairings.base.map((c) => trColor(c, tr)),
       accent: e.pairings.accent.map((c) => trColor(c, tr)),
