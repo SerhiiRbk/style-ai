@@ -6,6 +6,7 @@ import { formatCatalogProductTitle } from "@/lib/product-title";
 import { mockShopping, type ShoppingItem } from "@/lib/report";
 import { marketForCurrency } from "@/lib/currency";
 import {
+  CASUAL_FOOTWEAR_RE,
   colorMatchScore,
   decomposeLook,
   garmentTitleMatchScore,
@@ -45,6 +46,30 @@ type MatchRow = {
   same_country?: boolean | null;
   similarity?: number;
 };
+
+/** Placeholder / non-shoppable deeplink hosts that must never reach a report. */
+const PLACEHOLDER_DEEPLINK =
+  /(?:^|\/\/|\.)(?:example\.(?:com|org|net)|localhost|test\.example|placeholder)/i;
+
+/** A deeplink is shoppable only if it's a real, absolute http(s) URL to a live host. */
+function isUsableDeeplink(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const u = url.trim();
+  if (!u || u === "#") return false;
+  if (!/^https?:\/\//i.test(u)) return false;
+  return !PLACEHOLDER_DEEPLINK.test(u);
+}
+
+/** Drop catalogue rows we can't actually link to (fake/sample deeplinks). */
+function shoppableRows(rows: MatchRow[]): MatchRow[] {
+  return rows.filter((r) => isUsableDeeplink(r.deeplink));
+}
+
+/** Trend-forward wardrobes (statement/experimental) tolerate directional/casual pieces. */
+function isTrendForward(boldness: string): boolean {
+  const b = (boldness || "moderate").toLowerCase();
+  return b === "statement" || b === "experimental";
+}
 
 const MIN_VECTOR_SIMILARITY = 0.68;
 const MIN_COLOR_MATCH = 0.4;
@@ -210,15 +235,24 @@ export async function matchShopping(
     const seen = new Set<string>();
 
     for (const category of CATEGORIES) {
+      const isFootwear = category === "Footwear";
+      // Polished profiles: steer footwear queries to dress shoes so sandals/clogs
+      // don't dominate the vector pool for warm palettes.
+      const footwearBias =
+        isFootwear && !isTrendForward(profile.boldness)
+          ? " Leather dress shoes: derbies, oxfords, loafers, monk straps or chelsea boots — not sandals, clogs, slides or flip-flops."
+          : "";
       const query =
         `${category} in ${palette}; ${profile.colorSeason} palette; ` +
         `${profile.goals.join(", ")}; ${profile.physical.bodyType} build; ` +
-        styleIntentPhrase(profile.boldness);
+        styleIntentPhrase(profile.boldness) +
+        footwearBias;
       const { embedding } = await embed({ model: env.embedModel, value: query });
       const data = await rpcMatchProducts(sb, {
         query_embedding: embedding,
-        // Wider pool so archetype re-ranking has room to demote trend pieces.
-        match_count: 8,
+        // Wider pool so archetype re-ranking (and the footwear hard-filter) has
+        // room to demote trend/casual pieces; footwear needs extra headroom.
+        match_count: isFootwear ? 24 : 8,
         filter_category: category,
         max_price: profile.budgetEur.max,
         country,
@@ -228,17 +262,26 @@ export async function matchShopping(
       });
       // Re-rank by vector similarity plus how well the piece suits the user's
       // boldness, so a conservative profile isn't handed a trend-forward hero.
-      const ranked = [...((data ?? []) as MatchRow[])]
+      let ranked = shoppableRows((data ?? []) as MatchRow[])
         .map((p) => ({
           p,
-          score:
-            (p.similarity ?? 0) +
-            styleFitScore(
-              formatCatalogProductTitle(p.brand, p.title),
-              profile.boldness,
-            ),
+          title: formatCatalogProductTitle(p.brand, p.title),
+          score: 0,
+        }))
+        .map((r) => ({
+          ...r,
+          score: (r.p.similarity ?? 0) + styleFitScore(r.title, profile.boldness),
         }))
         .sort((a, b) => b.score - a.score);
+
+      // Polished/professional wardrobes should never be handed casual
+      // warm-weather footwear (sandals, clogs, slides) as a recommended piece —
+      // a soft penalty isn't enough, so hard-drop them unless nothing else fits.
+      if (category === "Footwear" && !isTrendForward(profile.boldness)) {
+        const dress = ranked.filter((r) => !CASUAL_FOOTWEAR_RE.test(r.title));
+        if (dress.length) ranked = dress;
+      }
+
       let added = 0;
       for (const { p } of ranked) {
         if (seen.has(p.id) || added >= 2) continue; // dedupe + cap per category
@@ -618,7 +661,7 @@ export async function matchLookItems(
           market,
           gender_filter: gender,
         });
-        matchByKey.set(q.key, (data ?? []) as MatchRow[]);
+        matchByKey.set(q.key, shoppableRows((data ?? []) as MatchRow[]));
       }),
     );
 

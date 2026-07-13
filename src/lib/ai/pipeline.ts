@@ -30,6 +30,37 @@ import { languageInstruction, type ReportLanguage } from "@/lib/languages";
 export type PhotoInput = { role: string; url: string };
 
 /**
+ * Run an image-generation request with bounded retries. The image model
+ * intermittently returns a response with no image file (or a transient gateway
+ * error); without a retry that surfaces to users as a failed "Render again" or a
+ * partially-filled capsule. Retries a few times with light backoff before
+ * giving up (returns null so callers can handle the miss).
+ */
+async function renderImage(
+  content: ({ type: "text"; text: string } | { type: "image"; image: URL })[],
+  attempts = 3,
+): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const result = await generateText({
+        model: env.modelImage,
+        messages: [{ role: "user", content }],
+      });
+      const file = result.files.find((f) => f.mediaType.startsWith("image/"));
+      if (file) return { bytes: file.uint8Array, mediaType: file.mediaType };
+    } catch (err) {
+      if (attempt === attempts - 1) {
+        console.error("[image] generation failed after retries", err);
+      }
+    }
+    if (attempt < attempts - 1) {
+      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+    }
+  }
+  return null;
+}
+
+/**
  * Strict instruction appended to every image-generation prompt. Image models
  * (esp. when the prompt contains descriptive phrases like "style to avoid")
  * sometimes render that copy as a caption baked into the photo. This forbids
@@ -321,6 +352,8 @@ export async function generateLookImage(opts: {
     catalogContext?: string;
     /** Public product image URLs rendered as garment references. */
     catalogImageUrls?: string[];
+    /** Explicit footwear directive (e.g. dress shoes only, no sandals). */
+    footwearRule?: string;
   };
   referenceImageUrl?: string;
   /** Portrait anchor for identity when a separate full-length photo is also provided. */
@@ -359,6 +392,10 @@ export async function generateLookImage(opts: {
       ? `${look.catalogContext ?? ""}` +
         `Styling note (mood and proportions only — do NOT substitute different clothes): ${look.description}. `
       : `Outfit: ${look.description}. `;
+
+    // The image model tends to default to sandals for warm palettes; an explicit
+    // footwear directive with a hard negative keeps formal looks in dress shoes.
+    const footwearBlock = look.footwearRule ? `${look.footwearRule} ` : "";
 
     // Describe the role of each input image so identity (person photo) and the
     // garments (catalogue product photos) are not confused.
@@ -402,6 +439,7 @@ export async function generateLookImage(opts: {
     const prompt =
       `Editorial, full-length fashion photograph for a premium style report. ` +
       outfitBlock +
+      footwearBlock +
       `Colour palette: ${look.palette.join(", ")}. ` +
       subject +
       imageRoles +
@@ -435,12 +473,7 @@ export async function generateLookImage(opts: {
       }
     }
 
-    const result = await generateText({
-      model: env.modelImage,
-      messages: [{ role: "user", content }],
-    });
-    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
-    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+    return await renderImage(content);
   } catch {
     return null;
   }
@@ -488,12 +521,7 @@ export async function generateCoverImage(opts: {
         ]
       : [{ type: "text" as const, text: prompt }];
 
-    const result = await generateText({
-      model: env.modelImage,
-      messages: [{ role: "user", content }],
-    });
-    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
-    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+    return await renderImage(content);
   } catch {
     return null;
   }
@@ -573,12 +601,7 @@ export async function generateCatalogTryOnImage(opts: {
       }
     }
 
-    const result = await generateText({
-      model: env.modelImage,
-      messages: [{ role: "user", content }],
-    });
-    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
-    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+    return await renderImage(content);
   } catch (e) {
     console.error("[tryon] image-pipeline render failed", e);
     return null;
@@ -631,12 +654,7 @@ export async function generateHairImage(opts: {
         ]
       : [{ type: "text" as const, text: prompt }];
 
-    const result = await generateText({
-      model: env.modelImage,
-      messages: [{ role: "user", content }],
-    });
-    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
-    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+    return await renderImage(content);
   } catch {
     return null;
   }
@@ -673,12 +691,7 @@ export async function generateFacialHairImage(opts: {
         ]
       : [{ type: "text" as const, text: prompt }];
 
-    const result = await generateText({
-      model: env.modelImage,
-      messages: [{ role: "user", content }],
-    });
-    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
-    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+    return await renderImage(content);
   } catch {
     return null;
   }
@@ -719,15 +732,38 @@ export async function generateEyewearImage(opts: {
         ]
       : [{ type: "text" as const, text: prompt }];
 
-    const result = await generateText({
-      model: env.modelImage,
-      messages: [{ role: "user", content }],
-    });
-    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
-    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+    return await renderImage(content);
   } catch {
     return null;
   }
+}
+
+/**
+ * Colour guidance so the piece AND the surrounding outfit sit in the client's
+ * palette instead of whatever the image model defaults to. Deterministic from
+ * undertone + season — keeps hats/scarves and their jackets on-palette.
+ */
+function outfitPaletteGuidance(profile: StyleProfile): string {
+  const u = (profile.physical.undertone ?? "").toLowerCase();
+  const season = profile.colorSeason ? ` (${profile.colorSeason})` : "";
+  if (u.includes("warm")) {
+    return (
+      `Keep BOTH the piece and the outfit in the client's warm palette${season}: ` +
+      `warm neutrals such as camel, tobacco brown, olive, stone, cream and warm charcoal, ` +
+      `co-ordinated so the colours harmonise. Avoid cool greys, icy blue and stark black.`
+    );
+  }
+  if (u.includes("cool")) {
+    return (
+      `Keep BOTH the piece and the outfit in the client's cool palette${season}: ` +
+      `cool neutrals such as charcoal, slate grey, navy and crisp white, ` +
+      `co-ordinated so the colours harmonise. Avoid warm browns, camel and orange tones.`
+    );
+  }
+  return (
+    `Keep BOTH the piece and the outfit in the client's balanced neutral palette${season}: ` +
+    `taupe, greige, soft brown, grey and off-white, co-ordinated and muted so the colours harmonise.`
+  );
 }
 
 /**
@@ -753,11 +789,12 @@ export async function generateAccessoryImage(opts: {
       `Editorial accessory styling photo for a premium style report. ` +
       HEADSHOT_FRAMING +
       `Accessory: ${accessory.name} — ${piece}. ${accessory.why} ` +
+      `${outfitPaletteGuidance(profile)} ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}. ` +
       `Upper-body framing (head to mid-chest) so the neckwear is clearly visible, ` +
       `neutral soft studio backdrop, natural soft light, sharp focus, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
-        ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add the accessory and a simple complementary outfit.`
+        ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add the accessory and a simple on-palette outfit.`
         : `Do not show identifiable facial features.`) +
       NO_TEXT_RULE;
 
@@ -768,12 +805,7 @@ export async function generateAccessoryImage(opts: {
         ]
       : [{ type: "text" as const, text: prompt }];
 
-    const result = await generateText({
-      model: env.modelImage,
-      messages: [{ role: "user", content }],
-    });
-    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
-    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+    return await renderImage(content);
   } catch {
     return null;
   }
@@ -808,12 +840,13 @@ export async function generateHeadwearImage(opts: {
       `Editorial headwear styling photo for a premium style report. ` +
       HEADSHOT_FRAMING +
       `Headwear: ${headwear.name} — ${piece}. ${headwear.why} ` +
+      `${outfitPaletteGuidance(profile)} ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.faceShape} face shape. ` +
       `Frame so the full headwear and the top of the head are clearly visible (leave headroom above the hat), ` +
       `neutral soft studio backdrop, natural soft light, sharp focus on the face and headwear, magazine quality, tasteful and respectful. ` +
       (referenceImageUrl
-        ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add the headwear and a simple complementary outfit.`
+        ? `Preserve the face, skin tone, and identity of the person in the provided photo — only add the headwear and a simple on-palette outfit.`
         : `Do not show identifiable facial features.`) +
       NO_TEXT_RULE;
 
@@ -824,12 +857,7 @@ export async function generateHeadwearImage(opts: {
         ]
       : [{ type: "text" as const, text: prompt }];
 
-    const result = await generateText({
-      model: env.modelImage,
-      messages: [{ role: "user", content }],
-    });
-    const file = result.files.find((f) => f.mediaType.startsWith("image/"));
-    return file ? { bytes: file.uint8Array, mediaType: file.mediaType } : null;
+    return await renderImage(content);
   } catch {
     return null;
   }

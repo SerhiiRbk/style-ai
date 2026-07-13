@@ -601,10 +601,23 @@ const MOCK_SHOPPING_TITLES = new Set([
   "Field watch, cream dial",
 ]);
 
-/** True when shopping reasons use the old generic template (pre-v2 copy). */
+/** Placeholder / non-shoppable product URLs that must never survive in a report. */
+const PLACEHOLDER_URL_RE =
+  /(?:^|\/\/|\.)(?:example\.(?:com|org|net)|localhost|placeholder)/i;
+
+/**
+ * True when the persisted shopping list should be re-matched: either it uses the
+ * old generic reason template (pre-v2 copy) or it contains a placeholder /
+ * unshoppable URL (e.g. a sample-feed `example.com` link). The latter lets
+ * existing reports self-heal once such rows are hidden from the catalogue.
+ */
 export function isStaleShoppingCopy(items: ShoppingItem[]): boolean {
-  return items.some((i) =>
-    /^A \S+ that fits your .+ palette and your goal to/.test(i.why),
+  return items.some(
+    (i) =>
+      /^A \S+ that fits your .+ palette and your goal to/.test(i.why) ||
+      !i.url ||
+      i.url === "#" ||
+      PLACEHOLDER_URL_RE.test(i.url),
   );
 }
 

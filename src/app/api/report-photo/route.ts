@@ -129,7 +129,14 @@ export async function POST(request: Request) {
       angle: isSide ? "three_quarter" : "front",
     });
     if (!img) {
-      return NextResponse.json({ error: "Generation failed" }, { status: 502 });
+      console.error("[report-photo] hair generation returned no image", {
+        reportId,
+        index,
+      });
+      return NextResponse.json(
+        { error: "Image generation is busy — please try again." },
+        { status: 502 },
+      );
     }
     const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
     oldPath = (isSide ? item.imagePathSide : item.imagePath) ?? null;
@@ -198,7 +205,14 @@ export async function POST(request: Request) {
       });
     }
     if (!img) {
-      return NextResponse.json({ error: "Generation failed" }, { status: 502 });
+      console.error(
+        `[report-photo] ${kind} generation returned no image`,
+        { reportId, index },
+      );
+      return NextResponse.json(
+        { error: "Image generation is busy — please try again." },
+        { status: 502 },
+      );
     }
     const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
     oldPath = item.imagePath ?? null;

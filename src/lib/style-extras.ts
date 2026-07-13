@@ -1004,16 +1004,30 @@ const STAPLE_TOKENS = [
  * a mild boost for directional pieces. Keeps a "Refined Classic" professional
  * from being handed an oversized smock as their hero piece.
  */
+/** Casual, warm-weather footwear that reads wrong for a polished/professional wardrobe. */
+export const CASUAL_FOOTWEAR_RE =
+  /\b(sandal|sndls?|slides?|flip[-\s]?flop|espadrille|clog|havaianas|thong|pool slider)\b/i;
+/** Casual outerwear that reads wrong in a boardroom / client-meeting context. */
+const CASUAL_OUTERWEAR_RE =
+  /\b(field jacket|hood(?:ed|ie)?|bomber|parka|anorak|gilet|puffer|windbreaker|shacket|denim jacket|track(?:suit| jacket)?|cagoule|fleece)\b/i;
+
 export function styleFitScore(title: string, boldness: string): number {
   const t = (title || "").toLowerCase();
   const trend = TREND_TOKENS.some((w) => t.includes(w));
   const staple = STAPLE_TOKENS.some((w) => t.includes(w));
+  const casualShoe = CASUAL_FOOTWEAR_RE.test(t);
+  // Casual outerwear (field/denim/bomber/puffer/parka/anorak/fleece…) reads wrong
+  // as the headline "invest in your hero piece" for a polished, professional
+  // wardrobe — a tailored blazer or coat should always outrank it.
+  const casualOuter = CASUAL_OUTERWEAR_RE.test(t);
   const b = (boldness || "moderate").toLowerCase();
   if (b === "statement" || b === "experimental") {
     return trend ? 0.06 : 0;
   }
   let s = 0;
   if (trend) s -= b === "conservative" ? 0.2 : 0.12;
+  if (casualShoe) s -= b === "conservative" ? 0.18 : 0.1;
+  if (casualOuter) s -= b === "conservative" ? 0.18 : 0.1;
   if (staple) s += 0.05;
   return s;
 }
@@ -1558,7 +1572,10 @@ export function decomposeLook(description: string): LookGarment[] {
 /** Palette-aware wardrobe staples assumed already owned (clearly labelled in UI). */
 function assumedBasics(profile: StyleProfile): {
   bottoms: string[];
+  /** Dress shoes for formal contexts. */
   shoes: string[];
+  /** Smart-casual shoes for relaxed contexts. */
+  casualShoes: string[];
 } {
   const u = lc(profile.physical.undertone);
   const jeans =
@@ -1574,8 +1591,20 @@ function assumedBasics(profile: StyleProfile): {
         ? "Grey chinos"
         : "Taupe chinos";
   const shoe = u === "cool" ? "Black leather derbies" : "Brown leather derbies";
-  return { bottoms: [jeans, chinos], shoes: [shoe] };
+  const sneaker = u === "cool" ? "White leather sneakers" : "Cream leather sneakers";
+  return { bottoms: [jeans, chinos], shoes: [shoe], casualShoes: [sneaker] };
 }
+
+/** Smart-casual footwear that suits relaxed contexts (not boardrooms). */
+const SNEAKER_RE = /\b(sneakers?|trainers?|plimsolls?|runners?)\b/i;
+
+/** Contexts that call for dress shoes rather than casual/warm-weather footwear. */
+export const FORMAL_CONTEXTS = new Set([
+  "Boardroom",
+  "Client meeting",
+  "Dinner",
+  "Date night",
+]);
 
 /** Outfit contexts tied to the client's stated goals (with a sensible default mix). */
 function contextsForGoals(profile: StyleProfile): string[] {
@@ -1597,6 +1626,36 @@ function contextsForGoals(profile: StyleProfile): string[] {
   return out;
 }
 
+/** A context-specific outfit recipe: which layer / top / bottom / shoe to use. */
+type OutfitSlot = {
+  layer: "formal" | "casual" | "none";
+  top: "shirt" | "knit" | "polo" | "tee" | "any";
+  bottom: "dress" | "chino" | "jean";
+  shoe: "dress" | "sneaker";
+};
+
+/**
+ * Per-context recipes give every capsule look a distinct silhouette. Formal
+ * contexts always land on dress shoes; casual ones differentiate between a
+ * smart-casual (chinos + loafers) and a relaxed (jeans + sneakers) register.
+ */
+const CAPSULE_RECIPES: Record<string, OutfitSlot> = {
+  Boardroom: { layer: "formal", top: "shirt", bottom: "dress", shoe: "dress" },
+  "Client meeting": { layer: "none", top: "knit", bottom: "dress", shoe: "dress" },
+  Dinner: { layer: "formal", top: "knit", bottom: "dress", shoe: "dress" },
+  "Date night": { layer: "none", top: "shirt", bottom: "dress", shoe: "dress" },
+  "Smart casual": { layer: "none", top: "knit", bottom: "chino", shoe: "dress" },
+  Everyday: { layer: "none", top: "shirt", bottom: "chino", shoe: "sneaker" },
+  Weekend: { layer: "casual", top: "polo", bottom: "jean", shoe: "sneaker" },
+  "Travel day": { layer: "casual", top: "tee", bottom: "chino", shoe: "sneaker" },
+};
+const DEFAULT_CAPSULE_SLOT: OutfitSlot = {
+  layer: "none",
+  top: "any",
+  bottom: "chino",
+  shoe: "sneaker",
+};
+
 /**
  * Mix-and-match outfit matrix built ONLY from the curated catalogue (`shopping`).
  * When a slot has no catalogue item (e.g. no trousers / shoes), it is filled with
@@ -1614,42 +1673,110 @@ export function capsuleMatrix(
   const owned = new Set<string>();
 
   const layers = pick(["Outerwear"]);
-  const catTops = pick(["Knitwear", "Shirts"]);
-  const tops = (layers[0] ? [layers[0], ...catTops] : catTops).slice(0, 3);
-  if (!tops.length) return [];
+  const knits = pick(["Knitwear"]);
+  const shirtsAll = pick(["Shirts"]);
+  const anyTop = [...knits, ...shirtsAll];
+  if (!anyTop.length && !layers.length) return [];
 
-  let bottoms = pick(["Trousers"]);
-  if (!bottoms.length) {
-    bottoms = basics.bottoms;
-    basics.bottoms.forEach((b) => owned.add(b));
-  }
-  let shoes = pick(["Footwear"]);
-  if (!shoes.length) {
-    shoes = basics.shoes;
-    basics.shoes.forEach((s) => owned.add(s));
-  }
+  const tees = shirtsAll.filter((t) => /\b(t-?shirt|tee)\b/i.test(t));
+  const dressShirts = shirtsAll.filter((t) => !/\b(t-?shirt|tee)\b/i.test(t));
+  const polos = anyTop.filter((t) => /polo/i.test(t));
 
-  const contexts = contextsForGoals(profile);
+  const formalLayers = layers.filter((l) => !CASUAL_OUTERWEAR_RE.test(l));
+  const casualLayers = layers.filter((l) => CASUAL_OUTERWEAR_RE.test(l));
+
+  const catTrousers = pick(["Trousers"]);
+  const jeanBasic = basics.bottoms[0];
+  const chinoBasic = basics.bottoms[1] ?? basics.bottoms[0];
+
+  // Split footwear by formality. Formal contexts get dress shoes only (never
+  // sandals/clogs); casual contexts prefer sneakers. Each falls back to a
+  // clearly-labelled assumed basic when the catalogue lacks a fitting pair.
+  const shoes = (() => {
+    const s = pick(["Footwear"]);
+    return s.length ? s : basics.shoes;
+  })();
+  const dressShoes = shoes.filter(
+    (s) => !CASUAL_FOOTWEAR_RE.test(s) && !SNEAKER_RE.test(s),
+  );
+  const formalPool = dressShoes.length ? dressShoes : basics.shoes;
+  if (!dressShoes.length) basics.shoes.forEach((s) => owned.add(s));
+  const sneakers = shoes.filter((s) => SNEAKER_RE.test(s));
+  const casualPool = sneakers.length ? sneakers : basics.casualShoes;
+  if (!sneakers.length) basics.casualShoes.forEach((s) => owned.add(s));
+
+  // Round-robin picker so consecutive looks don't repeat the same piece.
+  const counts = new Map<string, number>();
+  const rot = (key: string, arr: string[]): string | undefined => {
+    const clean = arr.filter(Boolean);
+    if (!clean.length) return undefined;
+    const n = counts.get(key) ?? 0;
+    counts.set(key, n + 1);
+    return clean[n % clean.length];
+  };
+  const topFor = (kind: OutfitSlot["top"]): string | undefined => {
+    switch (kind) {
+      case "shirt":
+        return rot("shirt", dressShirts.length ? dressShirts : anyTop);
+      case "knit":
+        return rot("knit", knits.length ? knits : anyTop);
+      case "polo":
+        return rot("polo", polos.length ? polos : knits.length ? knits : anyTop);
+      case "tee":
+        return rot("tee", tees.length ? tees : anyTop);
+      default:
+        return rot("any", anyTop);
+    }
+  };
+
+  // Each context maps to a distinct silhouette so, e.g., Smart casual (knit +
+  // chinos + loafers) never collapses into Weekend (jacket + polo + jeans +
+  // sneakers). Deterministic — capsule images are ordered to match.
+  const contexts = contextsForGoals(profile).slice(0, 6);
   const combos: OutfitCombo[] = [];
   const seen = new Set<string>();
-  let ci = 0;
-  for (let i = 0; i < tops.length && combos.length < 6; i++) {
-    for (let j = 0; j < bottoms.length && combos.length < 6; j++) {
-      const top = tops[i];
-      const bottom = bottoms[(i + j) % bottoms.length];
-      const shoe = shoes.length ? shoes[(i + j) % shoes.length] : undefined;
-      const pieces = [top, bottom, ...(shoe ? [shoe] : [])];
-      const key = pieces.join("|").toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const ownedHere = pieces.filter((p) => owned.has(p));
-      combos.push({
-        context: contexts[ci % contexts.length],
-        pieces,
-        ...(ownedHere.length ? { owned: ownedHere } : {}),
-      });
-      ci++;
+  for (const context of contexts) {
+    const slot = CAPSULE_RECIPES[context] ?? DEFAULT_CAPSULE_SLOT;
+    const pieces: string[] = [];
+
+    if (slot.layer === "formal") {
+      const l = rot("formalLayer", formalLayers);
+      if (l) pieces.push(l);
+    } else if (slot.layer === "casual") {
+      const l = rot("casualLayer", casualLayers);
+      if (l) pieces.push(l);
     }
+
+    const top = topFor(slot.top);
+    if (top) pieces.push(top);
+
+    let bottom: string | undefined;
+    if (slot.bottom === "jean") {
+      bottom = jeanBasic;
+      owned.add(jeanBasic);
+    } else if (slot.bottom === "chino") {
+      bottom = chinoBasic;
+      owned.add(chinoBasic);
+    } else {
+      bottom = catTrousers.length ? rot("trousers", catTrousers) : chinoBasic;
+      if (!catTrousers.length) owned.add(chinoBasic);
+    }
+    if (bottom) pieces.push(bottom);
+
+    // Footwear last — the image prompt derives its footwear directive from it.
+    const shoe =
+      slot.shoe === "dress" ? rot("dress", formalPool) : rot("sneaker", casualPool);
+    if (shoe) pieces.push(shoe);
+
+    const key = pieces.join("|").toLowerCase();
+    if (!pieces.length || seen.has(key)) continue;
+    seen.add(key);
+    const ownedHere = pieces.filter((p) => owned.has(p));
+    combos.push({
+      context,
+      pieces,
+      ...(ownedHere.length ? { owned: ownedHere } : {}),
+    });
   }
   return combos;
 }

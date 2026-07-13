@@ -15,7 +15,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/report/valetti-style-prospect-demo", priority: 0.6, freq: "monthly" },
     { path: "/privacy", priority: 0.4, freq: "monthly" },
     { path: "/terms", priority: 0.4, freq: "monthly" },
-    { path: "/impressum", priority: 0.3, freq: "monthly" },
   ];
   return entries.map((e) => ({
     url: `${base}${e.path}`,

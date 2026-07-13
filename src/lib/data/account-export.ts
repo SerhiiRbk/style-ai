@@ -70,6 +70,6 @@ export async function exportUserData(userId: string) {
     creditsLedger: creditsRes.data ?? [],
     tryOns: tryonsRes.data ?? [],
     note:
-      "Generated images and full report JSON are stored in your account and included here as metadata. Contact privacy@valetti.app if you need a fuller archive.",
+      "Generated images and full report JSON are stored in your account and included here as metadata. Contact contact@system.valetti.fit if you need a fuller archive.",
   };
 }

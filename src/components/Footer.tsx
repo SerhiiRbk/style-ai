@@ -44,7 +44,6 @@ export function Footer() {
           items={[
             ["Privacy", "/privacy"],
             ["Terms", "/terms"],
-            ["Impressum", "/impressum"],
             [BRAND.contactEmail, `mailto:${BRAND.contactEmail}`],
           ]}
         />

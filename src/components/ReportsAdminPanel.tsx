@@ -67,6 +67,7 @@ export function ReportsAdminPanel() {
   const [finishMsg, setFinishMsg] = useState<string | null>(null);
   const [regenId, setRegenId] = useState<string | null>(null);
   const [regenMsg, setRegenMsg] = useState<Record<string, string>>({});
+  const [capsuleId, setCapsuleId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +111,27 @@ export function ReportsAdminPanel() {
       }));
     } finally {
       setRegenId(null);
+    }
+  }
+
+  async function regenerateCapsule(id: string) {
+    if (capsuleId) return;
+    setCapsuleId(id);
+    setRegenMsg((m) => ({ ...m, [id]: "" }));
+    try {
+      const res = await fetch(`/api/admin/reports/${id}/regenerate-capsule`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not regenerate looks");
+      setRegenMsg((m) => ({ ...m, [id]: "Looks rebuilt ✓" }));
+    } catch (e) {
+      setRegenMsg((m) => ({
+        ...m,
+        [id]: e instanceof Error ? e.message : "Could not regenerate looks",
+      }));
+    } finally {
+      setCapsuleId(null);
     }
   }
 
@@ -287,6 +309,35 @@ export function ReportsAdminPanel() {
                         </svg>
                       )}
                       Regen PDF
+                    </button>
+                  )}
+                  {(r.tier === "lookbook" || r.tier === "premium") && (
+                    <button
+                      type="button"
+                      onClick={() => regenerateCapsule(r.id)}
+                      disabled={capsuleId === r.id}
+                      title="Re-match the shopping list and rebuild the capsule/look photos from the corrected styling matrix."
+                      className="inline-flex items-center gap-1.5 rounded-full border hairline px-3 py-1.5 text-sm text-stone transition-colors hover:border-brass/60 hover:text-ink disabled:opacity-50"
+                    >
+                      {capsuleId === r.id ? (
+                        <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-brass/40 border-t-brass" />
+                      ) : (
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          aria-hidden
+                        >
+                          <path
+                            d="M4 5h16v11H4zM4 20h16M9 16v4M15 16v4M8 11l2.5-2.5L13 11l3-3.5"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      )}
+                      Regen looks
                     </button>
                   )}
                   <Link

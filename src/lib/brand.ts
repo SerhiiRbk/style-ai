@@ -14,7 +14,7 @@ export const BRAND = {
   /** Honest, understated AI disclosure. */
   tagline: "AI-assisted personal styling",
   /** Privacy, terms, and data-subject requests. */
-  legalContactEmail: "privacy@valetti.app",
+  legalContactEmail: "contact@system.valetti.fit",
   /** General contact (footer, support). */
   contactEmail: "contact@system.valetti.fit",
 

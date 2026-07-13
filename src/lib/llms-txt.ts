@@ -37,7 +37,6 @@ General contact: ${BRAND.contactEmail} · Privacy & data requests: ${BRAND.legal
 
 - [Privacy Policy](${url("/privacy")}): GDPR data handling, photos, AI processing, credits, and user rights
 - [Terms of Service](${url("/terms")}): Service terms
-- [Impressum](${url("/impressum")}): Legal imprint (EU)
 
 ## Optional
 

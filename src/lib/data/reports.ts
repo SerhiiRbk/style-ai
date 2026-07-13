@@ -66,6 +66,7 @@ import {
   facialHairFor,
   premiumEyewearPicks,
   buildExtras,
+  FORMAL_CONTEXTS,
   type StyleExtras,
 } from "@/lib/style-extras";
 import { translateReportParts } from "@/lib/ai/translate-report";
@@ -648,6 +649,9 @@ async function generateReportImages(input: ImageJobInput) {
   if (tier === "lookbook" || tier === "premium") {
     const colorByTitle = new Map(shopping.map((s) => [s.title, s.color]));
     const matrix = capsuleMatrix(shopping, profile);
+    // Cache-buster: asset URLs are served `immutable`, so a regenerated slot must
+    // land on a NEW path or browsers/edge keep serving the previous image.
+    const stamp = Date.now().toString(36);
 
     // Preserve any capsule slots already rendered; only fill the gaps.
     const { data: capsuleRow } = await admin
@@ -669,6 +673,14 @@ async function generateReportImages(input: ImageJobInput) {
       capsuleTasks,
       IMAGE_CONCURRENCY,
       async ({ combo, i }) => {
+        const shoe = combo.pieces[combo.pieces.length - 1];
+        const isFormal = FORMAL_CONTEXTS.has(combo.context);
+        const footwearRule = shoe
+          ? isFormal
+            ? `Footwear MUST be ${shoe} — polished closed-toe leather dress shoes. ` +
+              `Absolutely NO sandals, slides, clogs, mules, espadrilles or open-toe shoes.`
+            : `Footwear MUST be ${shoe}. NO sandals, slides, flip-flops or open-toe shoes.`
+          : undefined;
         const img = await generateLookImage({
           profile,
           look: {
@@ -677,12 +689,13 @@ async function generateReportImages(input: ImageJobInput) {
             palette: combo.pieces
               .map((p) => colorByTitle.get(p))
               .filter((c): c is string => Boolean(c)),
+            ...(footwearRule ? { footwearRule } : {}),
           },
           referenceImageUrl,
         });
         if (!img) return null;
         const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
-        const path = `${userId}/${reportId}/capsule-${i}.${ext}`;
+        const path = `${userId}/${reportId}/capsule-${i}-${stamp}.${ext}`;
         const { error: upErr } = await admin.storage
           .from("assets")
           .upload(path, img.bytes, {
@@ -767,6 +780,68 @@ export async function resumeReportImages(
   });
 
   return { ok: true };
+}
+
+/**
+ * Admin remediation for reports generated before the context-aware styling fix.
+ * Re-matches the shopping list (drops casual footwear for polished profiles) and
+ * regenerates the capsule photos from the corrected matrix. Idempotent: safe to
+ * run repeatedly. Only lookbook/premium have a capsule to rebuild.
+ */
+export async function regenerateReportStyling(
+  reportId: string,
+  opts?: { rematchShopping?: boolean },
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!hasSupabaseAdmin) return { ok: false, reason: "admin-unconfigured" };
+  if (isDemoReportId(reportId)) return { ok: false, reason: "demo" };
+
+  const admin = createAdminSupabase();
+  const { data: row } = await admin
+    .from("reports")
+    .select("id, user_id, tier, status, profile, colors")
+    .eq("id", reportId)
+    .single();
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.status !== "ready") return { ok: false, reason: `status-${row.status}` };
+
+  const tier = (row.tier as Tier) ?? "basic";
+  if (tier !== "lookbook" && tier !== "premium") {
+    return { ok: false, reason: "no-capsule-tier" };
+  }
+  const profile = row.profile as StyleProfile | null;
+  if (!profile) return { ok: false, reason: "no-profile" };
+  const userId = row.user_id as string;
+
+  if (opts?.rematchShopping !== false) {
+    const colors =
+      (row.colors as { best: { name: string }[] } | null) ?? { best: [] };
+    const content = {
+      colors: { best: colors.best ?? [], avoid: [] },
+      hair: { recommend: [], avoid: [] },
+      looks: [],
+    } as unknown as ReportContent;
+    const matched = await matchShopping(profile, content);
+    if (!isMockShopping(matched)) {
+      await admin.from("reports").update({ shopping: matched }).eq("id", reportId);
+    }
+  }
+
+  // Remove the stale capsule files (served `immutable`) and clear the column so
+  // resume rebuilds every slot from the corrected matrix onto fresh paths.
+  const dir = `${userId}/${reportId}`;
+  const { data: files } = await admin.storage.from("assets").list(dir);
+  const oldCapsules = (files ?? [])
+    .filter((f) => /^capsule-/.test(f.name))
+    .map((f) => `${dir}/${f.name}`);
+  if (oldCapsules.length) {
+    await admin.storage.from("assets").remove(oldCapsules);
+  }
+  await admin
+    .from("reports")
+    .update({ capsule_images: null })
+    .eq("id", reportId);
+
+  return resumeReportImages(reportId);
 }
 
 /**
