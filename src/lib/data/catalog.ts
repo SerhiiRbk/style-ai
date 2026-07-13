@@ -75,7 +75,7 @@ const MIN_VECTOR_SIMILARITY = 0.68;
 const MIN_COLOR_MATCH = 0.4;
 const MIN_LOOK_PICK_SCORE = 0.42;
 /** Bumped when look-matching heuristics change — triggers background refresh. */
-export const LOOK_MATCH_VERSION = 4;
+export const LOOK_MATCH_VERSION = 5;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
@@ -282,10 +282,26 @@ export async function matchShopping(
         if (dress.length) ranked = dress;
       }
 
+      // A report should never surface two pairs of sandals: cap open/casual
+      // footwear to a single pair whenever a closed, versatile silhouette also
+      // exists in the pool — even for bold wardrobes.
+      const footwearHasClosed =
+        isFootwear && ranked.some((r) => !CASUAL_FOOTWEAR_RE.test(r.title));
+
       let added = 0;
-      for (const { p } of ranked) {
-        if (seen.has(p.id) || added >= 2) continue; // dedupe + cap per category
+      let casualShoes = 0;
+      for (const { p, title } of ranked) {
+        if (added >= 2) break;
+        // Dedup by product id AND by normalized model title, so the same model
+        // in two colours can't take both slots (e.g. two "Leather Sandals").
+        const titleKey = title.toLowerCase().replace(/\s+/g, " ").trim();
+        if (seen.has(p.id) || seen.has(titleKey)) continue;
+        if (isFootwear && footwearHasClosed && CASUAL_FOOTWEAR_RE.test(title)) {
+          if (casualShoes >= 1) continue; // keep the second slot for variety
+        }
         seen.add(p.id);
+        seen.add(titleKey);
+        if (isFootwear && CASUAL_FOOTWEAR_RE.test(title)) casualShoes++;
         added++;
         items.push({
           category,

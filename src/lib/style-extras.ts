@@ -1010,6 +1010,28 @@ export const CASUAL_FOOTWEAR_RE =
 /** Casual outerwear that reads wrong in a boardroom / client-meeting context. */
 const CASUAL_OUTERWEAR_RE =
   /\b(field jacket|hood(?:ed|ie)?|bomber|parka|anorak|gilet|puffer|windbreaker|shacket|denim jacket|track(?:suit| jacket)?|cagoule|fleece)\b/i;
+/**
+ * Loud, gimmicky cues that read cheap or juvenile *regardless* of how bold the
+ * wardrobe is — slogan/graphic tees, ripped denim, tie-dye, sequins. Even a
+ * "statement" client is better served by well-cut directional pieces than by
+ * novelty prints, so these are demoted for everyone (just less for bold ones).
+ */
+const GIMMICK_TOKENS = [
+  "slogan",
+  "graphic",
+  "logo",
+  "printed",
+  "print",
+  "ripped",
+  "distressed",
+  "acid wash",
+  "tie-dye",
+  "tie dye",
+  "sequin",
+];
+/** Athleisure / loungewear cues that undercut a "polished" or "elevated" brief. */
+const ATHLEISURE_RE =
+  /\b(joggers?|sweat\s?pants?|track\s?pants?|tracksuit|balloon\s?fit|jogger\s?shorts?|drawstring\s?shorts?)\b/i;
 
 export function styleFitScore(title: string, boldness: string): number {
   const t = (title || "").toLowerCase();
@@ -1020,12 +1042,27 @@ export function styleFitScore(title: string, boldness: string): number {
   // as the headline "invest in your hero piece" for a polished, professional
   // wardrobe — a tailored blazer or coat should always outrank it.
   const casualOuter = CASUAL_OUTERWEAR_RE.test(t);
+  const gimmick = GIMMICK_TOKENS.some((w) => t.includes(w));
+  const athleisure = ATHLEISURE_RE.test(t);
   const b = (boldness || "moderate").toLowerCase();
+
+  // Statement / experimental wardrobes welcome directional design, but even a
+  // bold wardrobe should not be *led* by slogan tees, ripped denim or joggers —
+  // those read cheap/juvenile rather than "elevated statement". Reward genuine
+  // directional pieces; still demote the gimmicky/athleisure ones.
   if (b === "statement" || b === "experimental") {
-    return trend ? 0.06 : 0;
+    let s = 0;
+    if (trend && !gimmick) s += 0.06;
+    if (gimmick) s -= 0.1;
+    if (athleisure) s -= 0.08;
+    if (staple) s += 0.02;
+    return s;
   }
+
   let s = 0;
   if (trend) s -= b === "conservative" ? 0.2 : 0.12;
+  if (gimmick) s -= b === "conservative" ? 0.22 : 0.14;
+  if (athleisure) s -= b === "conservative" ? 0.2 : 0.12;
   if (casualShoe) s -= b === "conservative" ? 0.18 : 0.1;
   if (casualOuter) s -= b === "conservative" ? 0.18 : 0.1;
   if (staple) s += 0.05;
