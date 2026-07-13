@@ -1,26 +1,57 @@
 import { CATEGORIES } from "./schema.mjs";
 
 /**
- * Map a free-text merchant category (and the product title as a fallback) onto
- * our fixed category enum using keyword rules. Extend KEYWORDS as needed.
+ * Weighted, word-boundary category signals used to classify a product from its
+ * TITLE (the reliable signal) with the merchant category only as a weak hint.
+ *
+ * Weight encodes specificity so a decisive noun beats a generic/material one:
+ *   4 = highly specific / disambiguating (polo, t-shirt, swim, suit jacket)
+ *   3 = specific garment noun (jumper, chinos, derby, belt)
+ *   2 = generic garment noun (jacket, shirt, shoe)
+ *   1 = material / weak cue (denim, corduroy)
+ *
+ * Bags fold into Accessories (the recommendation flow queries Accessories, not
+ * Bags) so a bag stays shoppable and consistent with existing data.
  */
-// Order matters: the first matching rule wins. Keep garments and Accessories
-// above the more specialised buckets so existing classifications stay stable;
-// the trailing buckets mostly rescue items that used to fall through to "Other".
-const KEYWORDS = [
-  ["Outerwear", ["coat", "jacket", "blazer", "overshirt", "parka", "trench", "gilet", "puffer", "peacoat", "pea coat", "raincoat", "windbreaker", "anorak", "bomber", "harrington", "mantel", "jacke", "manteau", "cappotto", "abrigo", "chaqueta", "giacca"]],
-  ["Knitwear", ["knit", "jumper", "sweater", "cardigan", "pullover", "hoodie", "sweatshirt", "turtleneck", "rollneck", "roll neck", "crewneck", "fleece", "strick", "maglione", "pull"]],
-  ["Shirts", ["shirt", "tee", "t-shirt", "polo", "blouse", "henley", "top", "hemd", "oberteil", "camicia", "chemise", "camisa"]],
-  ["Swimwear", ["swim", "swimwear", "swimsuit", "board short", "boardshort", "bikini", "badehose", "maillot"]],
-  ["Activewear", ["activewear", "sportswear", "tracksuit", "gymwear", "rashguard", "base layer", "compression top"]],
-  ["Trousers", ["trouser", "pant", "chino", "jean", "denim", "short", "legging", "slacks", "cargo", "corduroy", "cords", "hose", "pantalon", "pantaloni"]],
-  ["Footwear", ["shoe", "sneaker", "trainer", "boot", "loafer", "derby", "sandal", "brogue", "chelsea", "espadrille", "mule", "slipper", "plimsoll", "chukka", "monk strap", "schuh", "scarpa", "zapato", "chaussure"]],
-  ["Accessories", ["watch", "belt", "bag", "scarf", "hat", "cap", "glove", "sunglass", "wallet", "tie", "jewel", "cufflink", "pocket square", "beanie", "umbrella", "keyring", "accessoire"]],
-  ["Bags", ["backpack", "rucksack", "tote", "holdall", "duffel", "duffle", "weekender", "briefcase", "messenger", "satchel", "crossbody"]],
-  ["Underwear", ["underwear", "boxer", "briefs", "trunks", "sock", "socks", "loungewear", "pyjama", "pajama", "undershirt", "long john"]],
-  ["Grooming", ["fragrance", "cologne", "perfume", "aftershave", "grooming", "skincare", "moisturiser", "moisturizer", "shampoo", "beard oil", "pomade", "razor"]],
-  ["Dresses", ["dress", "gown", "kleid", "skirt", "rock"]],
-  ["Suits", ["suit", "tuxedo", "anzug", "completo"]],
+const CATEGORY_SIGNALS = [
+  // Outerwear — specific nouns beat the material words below.
+  { c: "Outerwear", w: 4, re: /\bsuit jackets?\b|\bsuit blazers?\b/i },
+  { c: "Outerwear", w: 3, re: /\b(coats?|overcoats?|topcoats?|peacoats?|pea coats?|trench(?:es|coats?)?|parkas?|gilets?|puffers?|raincoats?|windbreakers?|anoraks?|bombers?|harringtons?|blazers?|sport coats?|overshirts?|shackets?|waistcoats?)\b/i },
+  { c: "Outerwear", w: 2, re: /\b(jackets?|jacke|manteau|cappotto|abrigo|chaqueta|giacca)\b/i },
+  // Knitwear
+  { c: "Knitwear", w: 3, re: /\b(pullovers?|jumpers?|sweaters?|cardigans?|turtlenecks?|rollnecks?|roll necks?|hoodies?|sweatshirts?|maglione)\b/i },
+  { c: "Knitwear", w: 2, re: /\b(knit|knitted|crewnecks?|crew necks?|fleece|strick)\b/i },
+  // Shirts — polo/tee are more specific than a generic "knitted" adjective.
+  { c: "Shirts", w: 4, re: /\b(polos?|t-?shirts?|tees?|henleys?)\b/i },
+  { c: "Shirts", w: 2, re: /\b(shirts?|blouses?|tank tops?|hemd|camicia|chemise|camisa)\b/i },
+  // Swimwear — beats "trunks" (Underwear) for swimming trunks.
+  { c: "Swimwear", w: 4, re: /\b(swim(?:ming|wear|suits?)?|boardshorts?|board shorts?|bikinis?|badehose|maillot)\b/i },
+  // Activewear
+  { c: "Activewear", w: 3, re: /\b(activewear|sportswear|tracksuits?|gymwear|rashguards?|base layers?|compression tops?)\b/i },
+  // Trousers — garment nouns w3, material/ambiguous w1.
+  { c: "Trousers", w: 3, re: /\b(trousers?|chinos?|jeans?|slacks?|leggings?|cargos?|shorts|bermudas?|joggers?|sweatpants?|pantalon|pantaloni)\b/i },
+  { c: "Trousers", w: 1, re: /\b(pants?|denim|corduroy|cords|hose)\b/i },
+  // Footwear
+  { c: "Footwear", w: 3, re: /\b(sneakers?|trainers?|boots?|loafers?|derby|derbies|sandals?|brogues?|espadrilles?|mules?|slippers?|plimsolls?|chukkas?|monk straps?|oxfords?|schuh|scarpa|zapato|chaussure)\b/i },
+  { c: "Footwear", w: 2, re: /\b(shoes?|chelsea)\b/i },
+  // Accessories (bags folded in)
+  { c: "Accessories", w: 3, re: /\b(watch(?:es)?|belts?|scarf|scarves|gloves?|sunglasses|wallets?|cufflinks?|pocket squares?|beanies?|umbrellas?|bow ties?|ties?|caps?|hats?|jewel\w*|keyrings?|backpacks?|rucksacks?|totes?|holdalls?|duffels?|duffles?|weekenders?|briefcases?|satchels?|crossbody|bags?)\b/i },
+  // Underwear
+  { c: "Underwear", w: 3, re: /\b(boxers?|briefs|trunks|socks?|pyjamas?|pajamas?|undershirts?|loungewear|long johns?)\b/i },
+  // Grooming
+  { c: "Grooming", w: 3, re: /\b(fragrances?|cologne|perfumes?|aftershave|grooming|skincare|moisturisers?|moisturizers?|shampoo|beard oil|pomade|razors?)\b/i },
+  // Dresses (the "dress" adjective guard runs first — see mapCategory)
+  { c: "Dresses", w: 3, re: /\b(dress(?:es)?|gowns?|skirts?|kleid)\b/i },
+  // Suits — a bare "suit"/"tuxedo"; a specific garment noun (trousers, suit
+  // jacket) outranks it via higher weight.
+  { c: "Suits", w: 2, re: /\b(suits?|tuxedos?|anzug|completo)\b/i },
+];
+
+/** Deterministic tie-break order when two categories score equally. */
+const TIEBREAK_ORDER = [
+  "Footwear", "Trousers", "Knitwear", "Shirts", "Outerwear", "Suits",
+  "Dresses", "Swimwear", "Activewear", "Underwear", "Accessories",
+  "Grooming", "Other",
 ];
 
 /** Drop JSON `null` on optional scraper fields so Zod `.optional()` accepts rows. */
@@ -33,14 +64,67 @@ export function sanitizeScraperNulls(raw) {
   return r;
 }
 
+/**
+ * Classify a product into our fixed category enum.
+ *
+ * Strategy: the TITLE is the reliable signal, so score it with weighted,
+ * word-boundary rules; the merchant `rawCategory` only nudges as a weak hint
+ * when it already equals one of our enum values. Guardrails handle known traps:
+ *  - "dress shirt/shoes/pants/boots" — "dress" is an adjective, not Dresses.
+ *  - only the head of the title (before " with …") decides the main garment, so
+ *    "shirt with cufflinks" is Shirts, not Accessories.
+ */
 export function mapCategory(rawCategory, title = "") {
-  const hay = `${rawCategory ?? ""} ${title ?? ""}`.toLowerCase();
-  for (const [cat, words] of KEYWORDS) {
-    if (words.some((w) => hay.includes(w))) return cat;
+  const rawTitle = String(title ?? "");
+  // Guard 1: neutralise the "dress" adjective in "dress shirt/shoes/…".
+  let deadjectived = rawTitle.replace(
+    /\bdress(?=\s+(?:shirts?|shoes?|pants?|trousers?|boots?)\b)/gi,
+    " ",
+  );
+  // Guard 1b: "oxford" means the shoe — except in "oxford (cloth) shirt", where
+  // it's a fabric/collar. If the title mentions a shirt, drop "oxford" so it
+  // classifies as Shirts, not Footwear.
+  if (/\bshirts?\b/i.test(deadjectived)) {
+    deadjectived = deadjectived.replace(/\boxfords?\b/gi, " ");
   }
-  // Allow exact passthrough if the feed already uses our enum.
-  const exact = CATEGORIES.find((c) => c.toLowerCase() === String(rawCategory).toLowerCase());
-  return exact ?? "Other";
+  // Guard 2: the garment is decided by the head before " with " (accessory
+  // details like "with tie/hood/pocket square" shouldn't hijack the category).
+  const head = deadjectived.split(/\bwith\b/i)[0] || deadjectived;
+
+  const scoreText = (text) => {
+    const scores = new Map();
+    for (const { c, w, re } of CATEGORY_SIGNALS) {
+      if (re.test(text) && (scores.get(c) ?? 0) < w) scores.set(c, w);
+    }
+    return scores;
+  };
+
+  // Prefer the head; fall back to the full (de-adjectived) title if the head
+  // carries no signal (e.g. the noun sits after "with").
+  let scores = scoreText(head);
+  if (scores.size === 0) scores = scoreText(deadjectived);
+
+  const rawExact = CATEGORIES.find(
+    (c) => c.toLowerCase() === String(rawCategory ?? "").trim().toLowerCase(),
+  );
+
+  // No title signal at all → keep the merchant category (or Other).
+  if (scores.size === 0) return rawExact ?? "Other";
+
+  // Winner = highest TITLE score. The merchant category is NOT added to the
+  // score (a weak hint must never beat a stronger title noun); it only breaks a
+  // genuine tie, after which the deterministic order decides.
+  const maxW = Math.max(...scores.values());
+  const winners = [...scores.entries()]
+    .filter(([, s]) => s === maxW)
+    .map(([c]) => c);
+  if (winners.length === 1) return winners[0];
+  if (rawExact && rawExact !== "Other" && winners.includes(rawExact)) {
+    return rawExact;
+  }
+  return winners.sort(
+    (a, b) => TIEBREAK_ORDER.indexOf(a) - TIEBREAK_ORDER.indexOf(b),
+  )[0];
 }
 
 /** Static FX fallback (override per-run via FX_RATES env as JSON). Rate = units per 1 EUR. */

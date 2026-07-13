@@ -1004,6 +1004,12 @@ const STAPLE_TOKENS = [
  * a mild boost for directional pieces. Keeps a "Refined Classic" professional
  * from being handed an oversized smock as their hero piece.
  */
+/** Build a case-insensitive, word-boundary matcher from a token list. */
+function tokenMatcher(tokens: string[]): RegExp {
+  const escaped = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\b(?:${escaped.join("|")})\\b`, "i");
+}
+
 /** Casual, warm-weather footwear that reads wrong for a polished/professional wardrobe. */
 export const CASUAL_FOOTWEAR_RE =
   /\b(sandal|sndls?|slides?|flip[-\s]?flop|espadrille|clog|havaianas|thong|pool slider)\b/i;
@@ -1033,16 +1039,44 @@ const GIMMICK_TOKENS = [
 const ATHLEISURE_RE =
   /\b(joggers?|sweat\s?pants?|track\s?pants?|tracksuit|balloon\s?fit|jogger\s?shorts?|drawstring\s?shorts?)\b/i;
 
+// Compiled once — word-boundary matching avoids false hits like "blueprint"
+// (print) or "camomile" (camo) that the old substring `.includes` produced.
+const TREND_RE = tokenMatcher(TREND_TOKENS);
+const STAPLE_RE = tokenMatcher(STAPLE_TOKENS);
+const GIMMICK_RE = tokenMatcher(GIMMICK_TOKENS);
+
+/**
+ * All tunable ranking weights in one place so the scoring is easy to reason
+ * about and adjust. Positive = better fit for the archetype. `bold` covers the
+ * statement/experimental wardrobes; `conservative` and `other` (moderate) cover
+ * the polished end. `heroPriceWeight`/`heroFitWeight` scale the hero selection.
+ */
+export const SCORING = {
+  trend: { bold: +0.06, conservative: -0.2, other: -0.12 },
+  gimmick: { bold: -0.1, conservative: -0.22, other: -0.14 },
+  athleisure: { bold: -0.08, conservative: -0.2, other: -0.12 },
+  casualShoe: { conservative: -0.18, other: -0.1 },
+  casualOuter: { conservative: -0.18, other: -0.1 },
+  staple: { bold: +0.02, other: +0.05 },
+  hero: { fitWeight: 10, priceWeight: 1.2 },
+} as const;
+
+/** Whether a boldness value is a trend-tolerant (statement/experimental) wardrobe. */
+export function isBoldWardrobe(boldness: string): boolean {
+  const b = (boldness || "moderate").toLowerCase();
+  return b === "statement" || b === "experimental";
+}
+
 export function styleFitScore(title: string, boldness: string): number {
-  const t = (title || "").toLowerCase();
-  const trend = TREND_TOKENS.some((w) => t.includes(w));
-  const staple = STAPLE_TOKENS.some((w) => t.includes(w));
+  const t = title || "";
+  const trend = TREND_RE.test(t);
+  const staple = STAPLE_RE.test(t);
+  const gimmick = GIMMICK_RE.test(t);
   const casualShoe = CASUAL_FOOTWEAR_RE.test(t);
   // Casual outerwear (field/denim/bomber/puffer/parka/anorak/fleece…) reads wrong
   // as the headline "invest in your hero piece" for a polished, professional
   // wardrobe — a tailored blazer or coat should always outrank it.
   const casualOuter = CASUAL_OUTERWEAR_RE.test(t);
-  const gimmick = GIMMICK_TOKENS.some((w) => t.includes(w));
   const athleisure = ATHLEISURE_RE.test(t);
   const b = (boldness || "moderate").toLowerCase();
 
@@ -1050,22 +1084,23 @@ export function styleFitScore(title: string, boldness: string): number {
   // bold wardrobe should not be *led* by slogan tees, ripped denim or joggers —
   // those read cheap/juvenile rather than "elevated statement". Reward genuine
   // directional pieces; still demote the gimmicky/athleisure ones.
-  if (b === "statement" || b === "experimental") {
+  if (isBoldWardrobe(b)) {
     let s = 0;
-    if (trend && !gimmick) s += 0.06;
-    if (gimmick) s -= 0.1;
-    if (athleisure) s -= 0.08;
-    if (staple) s += 0.02;
+    if (trend && !gimmick) s += SCORING.trend.bold;
+    if (gimmick) s += SCORING.gimmick.bold;
+    if (athleisure) s += SCORING.athleisure.bold;
+    if (staple) s += SCORING.staple.bold;
     return s;
   }
 
+  const tier = b === "conservative" ? "conservative" : "other";
   let s = 0;
-  if (trend) s -= b === "conservative" ? 0.2 : 0.12;
-  if (gimmick) s -= b === "conservative" ? 0.22 : 0.14;
-  if (athleisure) s -= b === "conservative" ? 0.2 : 0.12;
-  if (casualShoe) s -= b === "conservative" ? 0.18 : 0.1;
-  if (casualOuter) s -= b === "conservative" ? 0.18 : 0.1;
-  if (staple) s += 0.05;
+  if (trend) s += SCORING.trend[tier];
+  if (gimmick) s += SCORING.gimmick[tier];
+  if (athleisure) s += SCORING.athleisure[tier];
+  if (casualShoe) s += SCORING.casualShoe[tier];
+  if (casualOuter) s += SCORING.casualOuter[tier];
+  if (staple) s += SCORING.staple.other;
   return s;
 }
 
@@ -1075,9 +1110,9 @@ export function styleIntentPhrase(boldness: string): string {
     case "conservative":
       return "timeless tailored classic staples, understated, quietly expensive, not trend-driven";
     case "experimental":
-      return "considered contemporary pieces with a creative edge";
+      return "considered contemporary pieces with a creative edge, well-tailored, no novelty prints";
     case "statement":
-      return "bold directional statement pieces, high impact";
+      return "elevated directional pieces, refined statement, architectural cuts and rich fabrics — no slogans, graphics or distressed finishes";
     default:
       return "clean modern versatile essentials, not trend-driven";
   }
@@ -1090,18 +1125,8 @@ function priorityMoves(
   shopping: ShoppingItem[],
 ): PriorityMove[] {
   const goal = profile.goals[0]?.toLowerCase() ?? "look more polished";
-  // Hero = a genuine investment piece: weight archetype fit ahead of category
-  // priority so a trend-forward layer never becomes the headline recommendation.
-  const hero =
-    [...shopping].sort((a, b) => {
-      const wa =
-        -styleFitScore(a.title, profile.boldness) * 10 +
-        (CATEGORY_PRIORITY[a.category] ?? 9);
-      const wb =
-        -styleFitScore(b.title, profile.boldness) * 10 +
-        (CATEGORY_PRIORITY[b.category] ?? 9);
-      return wa - wb;
-    })[0]?.title ?? "one excellent jacket";
+  const heroItem = pickHero(shopping, profile.boldness);
+  const hero = heroItem?.title ?? "one excellent jacket";
   return [
     {
       n: "01",
@@ -1116,9 +1141,46 @@ function priorityMoves(
     {
       n: "03",
       title: `Invest in your hero piece — ${humanizeProductTitle(hero)}`,
-      why: "One high-impact layer raises the perceived quality of everything you already own.",
+      why: heroWhy(heroItem?.category),
     },
   ];
+}
+
+/**
+ * Choose the single "invest in this" hero piece. Weights archetype fit ahead of
+ * category priority (so a trend-forward layer never becomes the headline), then
+ * nudges towards the pricier, more investment-grade end of the qualifying pool
+ * so the "invest" copy isn't attached to a €25 fast-fashion tee.
+ */
+export function pickHero(
+  shopping: ShoppingItem[],
+  boldness: string,
+): ShoppingItem | undefined {
+  if (!shopping.length) return undefined;
+  const prices = shopping.map((i) => i.priceEur ?? 0);
+  const maxPrice = Math.max(1, ...prices);
+  const weight = (i: ShoppingItem) =>
+    -styleFitScore(i.title, boldness) * SCORING.hero.fitWeight +
+    (CATEGORY_PRIORITY[i.category] ?? 9) -
+    ((i.priceEur ?? 0) / maxPrice) * SCORING.hero.priceWeight;
+  return [...shopping].sort((a, b) => weight(a) - weight(b))[0];
+}
+
+/** Category-aware rationale for the hero piece (not every hero is a "layer"). */
+function heroWhy(category?: string): string {
+  switch (category) {
+    case "Footwear":
+      return "One excellent pair of shoes anchors every outfit and outlasts three cheap pairs.";
+    case "Trousers":
+      return "A precisely-cut pair of trousers is the quiet foundation every look is built on.";
+    case "Knitwear":
+    case "Shirts":
+      return "One beautifully-made piece worn near the face lifts the perceived quality of everything else.";
+    case "Accessories":
+      return "The right finishing piece is what makes an outfit look considered rather than thrown together.";
+    default:
+      return "One high-impact layer raises the perceived quality of everything you already own.";
+  }
 }
 
 /* -------------------------------- archetype ------------------------------- */
@@ -1723,6 +1785,13 @@ export function capsuleMatrix(
   const casualLayers = layers.filter((l) => CASUAL_OUTERWEAR_RE.test(l));
 
   const catTrousers = pick(["Trousers"]);
+  // Prefer real catalogue chinos/jeans for those slots before falling back to
+  // assumed basics, so purchasable trousers aren't crowded out by virtual ones.
+  const catJeans = catTrousers.filter((t) => /\b(jeans?|denim)\b/i.test(t));
+  const catChinos = catTrousers.filter((t) => /\bchinos?\b/i.test(t));
+  const catOtherTrousers = catTrousers.filter(
+    (t) => !/\b(jeans?|denim|chinos?)\b/i.test(t),
+  );
   const jeanBasic = basics.bottoms[0];
   const chinoBasic = basics.bottoms[1] ?? basics.bottoms[0];
 
@@ -1751,19 +1820,35 @@ export function capsuleMatrix(
     counts.set(key, n + 1);
     return clean[n % clean.length];
   };
-  const topFor = (kind: OutfitSlot["top"]): string | undefined => {
+  const poolForTop = (kind: OutfitSlot["top"]): [string, string[]] => {
     switch (kind) {
       case "shirt":
-        return rot("shirt", dressShirts.length ? dressShirts : anyTop);
+        return ["shirt", dressShirts.length ? dressShirts : anyTop];
       case "knit":
-        return rot("knit", knits.length ? knits : anyTop);
+        return ["knit", knits.length ? knits : anyTop];
       case "polo":
-        return rot("polo", polos.length ? polos : knits.length ? knits : anyTop);
+        return ["polo", polos.length ? polos : knits.length ? knits : anyTop];
       case "tee":
-        return rot("tee", tees.length ? tees : anyTop);
+        return ["tee", tees.length ? tees : anyTop];
       default:
-        return rot("any", anyTop);
+        return ["any", anyTop];
     }
+  };
+  const topFor = (kind: OutfitSlot["top"]): string | undefined => {
+    const [key, pool] = poolForTop(kind);
+    return rot(key, pool);
+  };
+
+  // Colour harmony: build a title → swatch map so a look keeps at most one
+  // accent piece (neutrals form the base). Unknown/non-hex colours are treated
+  // as neutral so nothing is dropped when colour data is missing.
+  const colorByTitle = new Map<string, string>();
+  for (const i of shopping) if (i.title && i.color) colorByTitle.set(i.title, i.color);
+  const isNeutralPiece = (title?: string): boolean => {
+    if (!title) return true;
+    const hex = colorByTitle.get(title);
+    if (!hex || !/^#?[0-9a-f]{6}$/i.test(hex.trim())) return true;
+    return hexToHsl(hex).s < 0.3;
   };
 
   // Each context maps to a distinct silhouette so, e.g., Smart casual (knit +
@@ -1780,30 +1865,49 @@ export function capsuleMatrix(
       const l = rot("formalLayer", formalLayers);
       if (l) pieces.push(l);
     } else if (slot.layer === "casual") {
-      const l = rot("casualLayer", casualLayers);
+      // Fall back to a formal layer (worn open) so a casual look isn't left
+      // thin — better an unstructured blazer than no layer at all.
+      const l =
+        rot("casualLayer", casualLayers) ?? rot("casualLayerAlt", formalLayers);
       if (l) pieces.push(l);
     }
 
     const top = topFor(slot.top);
-    if (top) pieces.push(top);
+    const topIndex = top ? pieces.push(top) - 1 : -1;
 
     let bottom: string | undefined;
     if (slot.bottom === "jean") {
-      bottom = jeanBasic;
-      owned.add(jeanBasic);
+      bottom = catJeans.length ? rot("catJean", catJeans) : jeanBasic;
+      if (!catJeans.length) owned.add(jeanBasic);
     } else if (slot.bottom === "chino") {
-      bottom = chinoBasic;
-      owned.add(chinoBasic);
+      bottom = catChinos.length ? rot("catChino", catChinos) : chinoBasic;
+      if (!catChinos.length) owned.add(chinoBasic);
     } else {
-      bottom = catTrousers.length ? rot("trousers", catTrousers) : chinoBasic;
-      if (!catTrousers.length) owned.add(chinoBasic);
+      // Dress slot: prefer real tailored trousers (non-jean/chino), then any
+      // catalogue trouser, then an assumed chino.
+      const dressPool = catOtherTrousers.length ? catOtherTrousers : catTrousers;
+      bottom = dressPool.length ? rot("trousers", dressPool) : chinoBasic;
+      if (!dressPool.length) owned.add(chinoBasic);
     }
     if (bottom) pieces.push(bottom);
 
     // Footwear last — the image prompt derives its footwear directive from it.
     const shoe =
       slot.shoe === "dress" ? rot("dress", formalPool) : rot("sneaker", casualPool);
-    if (shoe) pieces.push(shoe);
+    const shoeIndex = shoe ? pieces.push(shoe) - 1 : -1;
+
+    // Enforce one-accent harmony: if the look carries more than one accent
+    // (excluding footwear, whose leather tones read as neutral), swap the
+    // near-the-face top for a neutral catalogue alternative when one exists.
+    const accentCount = () =>
+      pieces.filter((p, idx) => idx !== shoeIndex && !isNeutralPiece(p)).length;
+    if (topIndex >= 0 && accentCount() > 1 && !isNeutralPiece(pieces[topIndex])) {
+      const [, pool] = poolForTop(slot.top);
+      const neutralAlt = pool.find(
+        (t) => isNeutralPiece(t) && !pieces.includes(t),
+      );
+      if (neutralAlt) pieces[topIndex] = neutralAlt;
+    }
 
     const key = pieces.join("|").toLowerCase();
     if (!pieces.length || seen.has(key)) continue;

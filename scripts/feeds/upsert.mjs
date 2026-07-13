@@ -8,6 +8,8 @@ import {
   productKey,
   normalizeCountry,
 } from "./normalize.mjs";
+import { normalizeColor } from "./color.mjs";
+import { tagsFor } from "./tags.mjs";
 
 export function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -36,6 +38,12 @@ function toRow(p, embedding, sourceType, unhide) {
     (p.sourceType && VALID_SOURCE_TYPES.includes(p.sourceType)
       ? p.sourceType
       : null) ?? sourceType ?? "feed";
+  // Convert the human colour name (and/or feed swatch) into a canonical hex +
+  // attributes so the app can render true swatches and reason about colour.
+  const norm = normalizeColor(p.color, p.colorHex);
+  // Rule-based style tags (formality / trend / versatility) so recommendation
+  // ranking can reason about a product beyond its title text.
+  const tags = tagsFor(p);
   const row = {
     source: p.source,
     external_id: p.externalId,
@@ -47,6 +55,12 @@ function toRow(p, embedding, sourceType, unhide) {
     gender: p.gender ?? null,
     color: p.color ?? p.colorHex ?? null,
     color_key: colorKey(p.color, p.colorHex),
+    color_hex: norm?.hex ?? null,
+    color_family: norm?.family ?? null,
+    color_is_neutral: norm ? norm.neutral : null,
+    formality: tags.formality ?? null,
+    trend_level: tags.trend_level ?? null,
+    versatility: tags.versatility ?? null,
     original_price: p.price ?? null,
     currency: p.currency ?? null,
     price_eur: p.priceEur ?? null,

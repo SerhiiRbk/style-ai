@@ -37,6 +37,10 @@ type MatchRow = {
   brand: string | null;
   title: string;
   color: string | null;
+  color_hex?: string | null;
+  formality?: number | null;
+  trend_level?: number | null;
+  versatility?: number | null;
   price_eur: number | null;
   price_native?: number | null;
   currency?: string | null;
@@ -46,6 +50,21 @@ type MatchRow = {
   same_country?: boolean | null;
   similarity?: number;
 };
+
+const HEX_RE = /^#?[0-9a-f]{6}$/i;
+
+/**
+ * Swatch colour for a shopping item — the display uses this as a CSS colour, so
+ * it must be a hex. Prefer the normalised `color_hex`, fall back to a hex that
+ * happens to sit in the raw `color` field, else a neutral placeholder.
+ */
+function swatchHex(row: { color_hex?: string | null; color?: string | null }): string {
+  const hex = row.color_hex?.trim();
+  if (hex && HEX_RE.test(hex)) return hex.startsWith("#") ? hex : `#${hex}`;
+  const raw = row.color?.trim();
+  if (raw && HEX_RE.test(raw)) return raw.startsWith("#") ? raw : `#${raw}`;
+  return "#CCCCCC";
+}
 
 /** Placeholder / non-shoppable deeplink hosts that must never reach a report. */
 const PLACEHOLDER_DEEPLINK =
@@ -71,11 +90,45 @@ function isTrendForward(boldness: string): boolean {
   return b === "statement" || b === "experimental";
 }
 
+/**
+ * Ranking nudge from a product's ingest-time style tags (formality / trend /
+ * versatility). Unlike `styleFitScore` (which reads the title), this works for
+ * items with weak lexical signals because the tags are computed from category +
+ * colour + title at ingest. Small magnitudes — refines, never overrides
+ * similarity. No-op when a row has no tags (legacy rows before backfill).
+ */
+function tagFitScore(row: MatchRow, boldness: string): number {
+  const trend = row.trend_level;
+  const vers = row.versatility;
+  const formality = row.formality;
+  if (trend == null && vers == null && formality == null) return 0;
+
+  const b = (boldness || "moderate").toLowerCase();
+  const bold = isTrendForward(b);
+  const conservative = b === "conservative";
+  let s = 0;
+
+  if (trend != null) {
+    if (bold) {
+      // Directional wardrobes welcome mild trend, but a "3" reads gimmicky.
+      s += trend >= 3 ? -0.05 : trend >= 1 ? 0.03 : 0;
+    } else {
+      s -= (conservative ? 0.06 : 0.03) * trend;
+    }
+  }
+  // Versatile pieces are safer building blocks — valued most by polished profiles.
+  if (vers != null) s += (conservative ? 0.03 : 0.02) * vers;
+  // Polished wardrobes lean dressier; nudge formality around the mid-point.
+  if (formality != null && conservative) s += (formality - 3) * 0.02;
+
+  return s;
+}
+
 const MIN_VECTOR_SIMILARITY = 0.68;
 const MIN_COLOR_MATCH = 0.4;
 const MIN_LOOK_PICK_SCORE = 0.42;
 /** Bumped when look-matching heuristics change — triggers background refresh. */
-export const LOOK_MATCH_VERSION = 5;
+export const LOOK_MATCH_VERSION = 6;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
@@ -262,7 +315,21 @@ export async function matchShopping(
       });
       // Re-rank by vector similarity plus how well the piece suits the user's
       // boldness, so a conservative profile isn't handed a trend-forward hero.
-      let ranked = shoppableRows((data ?? []) as MatchRow[])
+      const pool = shoppableRows((data ?? []) as MatchRow[]);
+      // Gentle budget nudge for investment categories: when the pool has price
+      // spread, edge the pricier (more investment-grade) options ahead so a
+      // €1000+ budget isn't only shown €25 fast-fashion. Small magnitude — never
+      // enough to override a clearly better-fitting or closer-matching piece.
+      const investCategory = category === "Outerwear" || category === "Footwear";
+      const poolPrices = pool.map((p) => Number(p.price_eur ?? 0));
+      const poolMax = Math.max(1, ...poolPrices);
+      const poolMin = Math.min(...(poolPrices.length ? poolPrices : [0]));
+      const hasSpread = poolMax - poolMin > 40;
+      const priceBias = (p: MatchRow) =>
+        investCategory && hasSpread
+          ? (Number(p.price_eur ?? 0) / poolMax) * 0.06
+          : 0;
+      let ranked = pool
         .map((p) => ({
           p,
           title: formatCatalogProductTitle(p.brand, p.title),
@@ -270,7 +337,11 @@ export async function matchShopping(
         }))
         .map((r) => ({
           ...r,
-          score: (r.p.similarity ?? 0) + styleFitScore(r.title, profile.boldness),
+          score:
+            (r.p.similarity ?? 0) +
+            styleFitScore(r.title, profile.boldness) +
+            tagFitScore(r.p, profile.boldness) +
+            priceBias(r.p),
         }))
         .sort((a, b) => b.score - a.score);
 
@@ -312,7 +383,7 @@ export async function matchShopping(
           currency: p.currency ?? undefined,
           retailer: p.brand ?? p.source ?? "",
           url: p.deeplink ?? "#",
-          color: p.color ?? "#CCCCCC",
+          color: swatchHex(p),
           image: p.image_url ?? undefined,
           productId: p.id,
         });
@@ -382,6 +453,7 @@ function rankMatchRows(
       sim < MIN_VECTOR_SIMILARITY || colorScore < MIN_COLOR_MATCH;
     const localBoost = row.same_country ? 0.04 : 0;
     const styleFit = styleFitScore(row.title, boldness);
+    const tagFit = tagFitScore(row, boldness);
     return {
       row,
       colorScore,
@@ -392,7 +464,8 @@ function rankMatchRows(
         colorScore * 0.32 +
         garmentScore * 0.26 +
         localBoost +
-        styleFit,
+        styleFit +
+        tagFit,
     };
   });
 }
@@ -462,7 +535,7 @@ function shoppingItemFromMatch(
     currency: row.currency ?? undefined,
     retailer: row.brand ?? row.source ?? "",
     url: row.deeplink ?? "#",
-    color: row.color ?? "#CCCCCC",
+    color: swatchHex(row),
     image: row.image_url ?? undefined,
     productId: row.id,
     similarPick,

@@ -326,6 +326,20 @@ async function mapPool<T, R>(
   return results;
 }
 
+/**
+ * Short, stable fingerprint of a capsule outfit (its ordered pieces). Embedded
+ * in the slot's image filename so a reused image is invalidated whenever the
+ * recomputed matrix changes that slot's outfit.
+ */
+function comboFingerprint(combo: { pieces: string[] }): string {
+  const str = combo.pieces.join("|").toLowerCase();
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(36);
+}
+
 /** Personalized hairstyle headshots — runs before look images in `after()`. */
 async function generateHairImages(input: ImageJobInput) {
   const admin = createAdminSupabase();
@@ -661,9 +675,14 @@ async function generateReportImages(input: ImageJobInput) {
       .single();
     const existingCapsule =
       (capsuleRow?.capsule_images as (string | null)[] | null) ?? [];
-    const capsulePaths: (string | null)[] = matrix.map(
-      (_, i) => existingCapsule[i] ?? null,
-    );
+    // Fingerprint each slot's outfit so a reused image can't drift out of sync
+    // with a recomputed matrix (e.g. after a shopping refresh): only keep an
+    // existing image if its path carries the current combo's fingerprint.
+    const capsulePaths: (string | null)[] = matrix.map((combo, i) => {
+      const fp = comboFingerprint(combo);
+      const prev = existingCapsule[i] ?? null;
+      return prev && prev.includes(`-${fp}-`) ? prev : null;
+    });
 
     const capsuleTasks = matrix
       .map((combo, i) => ({ combo, i }))
@@ -695,7 +714,8 @@ async function generateReportImages(input: ImageJobInput) {
         });
         if (!img) return null;
         const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
-        const path = `${userId}/${reportId}/capsule-${i}-${stamp}.${ext}`;
+        const fp = comboFingerprint(combo);
+        const path = `${userId}/${reportId}/capsule-${i}-${fp}-${stamp}.${ext}`;
         const { error: upErr } = await admin.storage
           .from("assets")
           .upload(path, img.bytes, {
