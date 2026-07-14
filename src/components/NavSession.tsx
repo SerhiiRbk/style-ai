@@ -127,6 +127,11 @@ export function NavDesktopAuthLinks() {
           My reports
         </Link>
       )}
+      {authed && (
+        <Link href="/gallery" className={navLinkClass}>
+          My looks
+        </Link>
+      )}
       {isAdmin && (
         <Link
           href="/admin"

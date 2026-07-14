@@ -139,6 +139,17 @@ export function NavbarMenu({
                 </Link>
               </li>
             )}
+            {authed && (
+              <li>
+                <Link
+                  href="/gallery"
+                  className={linkClass}
+                  onClick={() => setOpen(false)}
+                >
+                  My looks
+                </Link>
+              </li>
+            )}
             {isAdmin && (
               <li>
                 <Link

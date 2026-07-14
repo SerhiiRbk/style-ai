@@ -1,6 +1,7 @@
 import "server-only";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
+import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { reportGenerationState } from "@/lib/data/reports";
 import type {
   AccessoryRec,
@@ -20,6 +21,8 @@ export type UserReportSummary = {
   tier: Tier;
   status: "processing" | "ready" | "failed";
   language: ReportLanguage;
+  /** Signed proxy URL of the report cover image, when generated. */
+  coverImage?: string;
   /**
    * True while the report is still producing images in the background — the DB
    * status can be "ready" (written content saved) while look / hair / capsule
@@ -41,6 +44,7 @@ type SummaryRow = {
   accessories: AccessoryRec[] | null;
   headwear: HeadwearRec[] | null;
   capsule_images: (string | null)[] | null;
+  cover_image: string | null;
 };
 
 /**
@@ -64,7 +68,7 @@ export async function getUserReports(): Promise<UserReportSummary[] | null> {
   const { data, error } = await db
     .from("reports")
     .select(
-      "id, created_at, headline, tier, status, language, hair, facial_hair, eyewear, accessories, headwear, capsule_images",
+      "id, created_at, headline, tier, status, language, hair, facial_hair, eyewear, accessories, headwear, capsule_images, cover_image",
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
@@ -111,6 +115,9 @@ export async function getUserReports(): Promise<UserReportSummary[] | null> {
       headline: row.headline ?? null,
       tier: row.tier ?? "basic",
       language: normalizeLanguage(row.language),
+      coverImage: row.cover_image
+        ? signedAssetProxyUrl(row.cover_image)
+        : undefined,
       status:
         row.status === "processing" || row.status === "failed"
           ? row.status

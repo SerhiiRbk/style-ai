@@ -95,7 +95,12 @@ export default async function ReportsPage() {
                   </Link>
                 </div>
               )}
-              <CreateReportButton compact label="New report" />
+              <div className="flex items-center gap-3">
+                <ButtonLink href="/gallery" variant="outline">
+                  My looks
+                </ButtonLink>
+                <CreateReportButton compact label="New report" />
+              </div>
             </div>
           </div>
         </section>
@@ -118,6 +123,20 @@ export default async function ReportsPage() {
                   key={r.id}
                   className="flex flex-col gap-4 px-5 py-5 transition-colors hover:bg-cream/30 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6"
                 >
+                  {r.coverImage ? (
+                    <Link
+                      href={`/report/${r.id}`}
+                      className="relative hidden h-16 w-12 shrink-0 overflow-hidden rounded-lg border hairline bg-cream/40 sm:block"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={r.coverImage}
+                        alt=""
+                        className="h-full w-full object-cover object-top"
+                        loading="lazy"
+                      />
+                    </Link>
+                  ) : null}
                   <div className="min-w-0 flex-1">
                     <Link
                       href={`/report/${r.id}`}
