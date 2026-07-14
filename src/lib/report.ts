@@ -302,6 +302,7 @@ export function mockStyleProfile(intake: Intake): StyleProfile {
     }),
     currency: intake.currency,
     goals: intake.goals,
+    lifestyle: intake.lifestyle ?? [],
     boldness: intake.boldness,
     budgetEur: intake.budgetEur,
   };

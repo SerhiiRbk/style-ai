@@ -309,6 +309,8 @@ export const styleProfileSchema = z.object({
   colorSubseason: Subseason.optional(),
   currency: Currency.default("EUR"),
   goals: z.array(z.string()),
+  /** Optional lifestyle tags carried from intake — empty means no styling effect. */
+  lifestyle: z.array(z.string()).default([]),
   boldness: Boldness,
   budgetEur: z.object({ min: z.number(), max: z.number() }),
 });

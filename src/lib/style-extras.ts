@@ -1819,15 +1819,41 @@ export const FORMAL_CONTEXTS = new Set([
   "Client meeting",
   "Dinner",
   "Date night",
+  "On stage",
+  "Evening event",
 ]);
 
-/** Outfit contexts tied to the client's stated goals (with a sensible default mix). */
+/**
+ * Optional lifestyle tags (from intake) → the outfit contexts they call for.
+ * Keyed by lower-cased label. Empty lifestyle contributes nothing, so a report
+ * with no lifestyle selected behaves exactly as before.
+ */
+const LIFESTYLE_CONTEXTS: Record<string, string[]> = {
+  "office & remote": ["Boardroom", "Client meeting", "Smart casual"],
+  "travels often": ["Travel day", "Smart casual"],
+  "active / outdoors": ["Outdoors", "Weekend"],
+  "public speaking": ["On stage", "Client meeting"],
+  "creator / blog": ["On camera", "Smart casual"],
+  parenting: ["Everyday", "Weekend"],
+  "old money": ["Country weekend", "Smart casual", "Dinner"],
+  socialite: ["Evening event", "Date night", "Dinner"],
+};
+
+/**
+ * Outfit contexts for the client. Lifestyle tags (optional) take priority, then
+ * goals + boldness, then a sensible default mix to guarantee enough contexts.
+ */
 function contextsForGoals(profile: StyleProfile): string[] {
   const hay = `${profile.goals.join(" ")} ${profile.boldness}`.toLowerCase();
   const out: string[] = [];
   const add = (...cs: string[]) => {
     for (const c of cs) if (!out.includes(c)) out.push(c);
   };
+  // Lifestyle first — most personal signal. Empty ⇒ no effect (unchanged).
+  for (const l of profile.lifestyle ?? []) {
+    const cs = LIFESTYLE_CONTEXTS[l.trim().toLowerCase()];
+    if (cs) add(...cs);
+  }
   if (/work|profession|office|career|business|promot|lead|manage|interview/.test(hay))
     add("Boardroom", "Client meeting");
   if (/confiden|date|dating|social|attract|impress|romance/.test(hay))
@@ -1863,6 +1889,12 @@ const CAPSULE_RECIPES: Record<string, OutfitSlot> = {
   Everyday: { layer: "none", top: "shirt", bottom: "chino", shoe: "sneaker" },
   Weekend: { layer: "casual", top: "polo", bottom: "jean", shoe: "sneaker" },
   "Travel day": { layer: "casual", top: "tee", bottom: "chino", shoe: "sneaker" },
+  // Lifestyle-driven contexts (distinct silhouettes so images differ).
+  Outdoors: { layer: "casual", top: "tee", bottom: "chino", shoe: "sneaker" },
+  "On stage": { layer: "formal", top: "knit", bottom: "dress", shoe: "dress" },
+  "On camera": { layer: "none", top: "knit", bottom: "chino", shoe: "dress" },
+  "Country weekend": { layer: "casual", top: "knit", bottom: "chino", shoe: "dress" },
+  "Evening event": { layer: "formal", top: "shirt", bottom: "dress", shoe: "dress" },
 };
 const DEFAULT_CAPSULE_SLOT: OutfitSlot = {
   layer: "none",

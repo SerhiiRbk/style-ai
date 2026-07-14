@@ -68,6 +68,8 @@ const LIFESTYLE = [
   "Public speaking",
   "Creator / blog",
   "Parenting",
+  "Old Money",
+  "Socialite",
 ];
 const OCCUPATIONS = [
   "Software / IT",
@@ -673,7 +675,7 @@ export function StartForm({
                 selected={goals}
                 onToggle={(v) => toggle(goals, setGoals, v)}
               />
-              <Label className="mt-7">Lifestyle</Label>
+              <Label className="mt-7">Lifestyle (optional)</Label>
               <Chips
                 options={LIFESTYLE}
                 selected={lifestyle}

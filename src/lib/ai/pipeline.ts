@@ -168,6 +168,7 @@ export async function analyzeProfile(
     }),
     currency: intake.currency,
     goals: intake.goals,
+    lifestyle: intake.lifestyle ?? [],
     boldness: intake.boldness,
     budgetEur: intake.budgetEur,
   };
@@ -249,6 +250,9 @@ export async function recommend(
       `You are a thoughtful, experienced personal stylist writing a calm, practical, non-judgmental report.\n\n` +
       `Style Profile (JSON):\n${JSON.stringify(profile)}\n\n` +
       `Occupation: ${intake.occupation}. Goals: ${intake.goals.join(", ")}. ` +
+      (intake.lifestyle?.length
+        ? `Lifestyle: ${intake.lifestyle.join(", ")}. `
+        : "") +
       `Boldness: ${intake.boldness}. Budget: €${intake.budgetEur.min}–${intake.budgetEur.max}. ` +
       `City climate: ${profile.demographics.climate}.\n` +
       `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
@@ -317,6 +321,9 @@ export async function generateExtraLook(opts: {
       `You are a thoughtful personal stylist creating ONE additional outfit for an existing client report.\n\n` +
       `Style Profile (JSON):\n${JSON.stringify(profile)}\n\n` +
       `Occupation: ${intake.occupation}. Goals: ${intake.goals.join(", ")}. ` +
+      (intake.lifestyle?.length
+        ? `Lifestyle: ${intake.lifestyle.join(", ")}. `
+        : "") +
       `Boldness: ${intake.boldness}. Budget: €${intake.budgetEur.min}–${intake.budgetEur.max}. ` +
       `City climate: ${profile.demographics.climate}.\n` +
       `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
