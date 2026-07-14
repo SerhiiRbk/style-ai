@@ -3,7 +3,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { preload } from "react-dom";
 import { getReportView } from "@/lib/data/reports";
-import { reportOgMetadataImageUrl } from "@/lib/data/report-og";
+import {
+  reportOgMetadataImageUrl,
+  reportOgLookImageUrl,
+  isShareableReport,
+} from "@/lib/data/report-og";
 import { coverImageAspect } from "@/lib/data/asset-access";
 import { TryOnButton } from "@/components/TryOnButton";
 import { TryOnSelectionProvider } from "@/components/TryOnContext";
@@ -102,19 +106,43 @@ function ogDescription(text: string): string {
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ look?: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
   const view = await getReportView(id);
   if (!view) return {};
 
   const { report } = view;
-  const title = report.headline
-    ? `${report.headline} · ${BRAND.name}`
-    : `Your Style Report · ${BRAND.name}`;
-  const description = ogDescription(report.summary || report.headline);
-  const ogImage = await reportOgMetadataImageUrl(id);
+
+  // A `?look=N` deep link shares a single look — the OG card and title reflect
+  // that look, but only when the report is publicly shareable.
+  const { look: lookParam } = await searchParams;
+  const lookIndex =
+    lookParam !== undefined ? Number.parseInt(lookParam, 10) : NaN;
+  const sharedLook =
+    !Number.isNaN(lookIndex) &&
+    lookIndex >= 0 &&
+    lookIndex < report.looks.length &&
+    (await isShareableReport(id))
+      ? report.looks[lookIndex]
+      : null;
+
+  const title = sharedLook
+    ? `${sharedLook.title} · ${BRAND.name}`
+    : report.headline
+      ? `${report.headline} · ${BRAND.name}`
+      : `Your Style Report · ${BRAND.name}`;
+  const description = ogDescription(
+    sharedLook
+      ? sharedLook.description || report.summary || report.headline
+      : report.summary || report.headline,
+  );
+  const ogImage = sharedLook
+    ? reportOgLookImageUrl(id, lookIndex)
+    : await reportOgMetadataImageUrl(id);
   const canonicalPath = `/report/${id}`;
   // Only the public demo is meant for the index; real reports (owner-private or
   // link-shared) must never be indexed even if their URL leaks.
@@ -937,7 +965,8 @@ export default async function ReportPage({
             {report.looks.map((look, i) => (
               <article
                 key={look.title}
-                className="overflow-hidden rounded-2xl border hairline bg-cream/30"
+                id={`look-${i}`}
+                className="scroll-mt-24 overflow-hidden rounded-2xl border hairline bg-cream/30"
               >
                 <div className="relative aspect-[9/16] overflow-hidden bg-sand">
                   {look.image ? (

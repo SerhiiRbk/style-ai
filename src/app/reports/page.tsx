@@ -189,10 +189,17 @@ export default async function ReportsPage() {
             </h2>
             <p className="mt-2 max-w-xl text-sm text-stone">
               Download a structured copy of the personal data we hold about your
-              account, or permanently erase everything.
+              account, manage your uploaded reference photos, or permanently
+              erase everything.
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-4">
               <ExportDataButton />
+              <Link
+                href="/photos"
+                className="text-sm text-brass underline-offset-2 transition-colors hover:text-ink hover:underline"
+              >
+                Manage my photos →
+              </Link>
             </div>
           </div>
 

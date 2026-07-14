@@ -2,7 +2,11 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getReportViewForDownload } from "@/lib/data/reports";
-import { resolveReportOgImage } from "@/lib/data/report-og";
+import {
+  resolveReportOgImage,
+  resolveLookOgImage,
+  type ReportOgImageResult,
+} from "@/lib/data/report-og";
 import { extrasForReport } from "@/lib/style-extras";
 import { SUBSEASON_LABELS, type SubseasonId } from "@/lib/style-profile";
 
@@ -23,10 +27,11 @@ function cap(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 
-/** Resolve the hero image to an inline data URL (storage bytes or a public asset). */
-async function heroDataUrl(id: string): Promise<string | null> {
+/** Turn a resolved OG image (storage bytes or public asset) into a data URL. */
+async function ogResultToDataUrl(
+  resolved: ReportOgImageResult,
+): Promise<string | null> {
   try {
-    const resolved = await resolveReportOgImage(id);
     if (resolved.kind === "bytes") {
       const base64 = Buffer.from(resolved.bytes).toString("base64");
       return `data:${resolved.contentType};base64,${base64}`;
@@ -41,6 +46,11 @@ async function heroDataUrl(id: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** Resolve the hero image to an inline data URL (storage bytes or a public asset). */
+async function heroDataUrl(id: string): Promise<string | null> {
+  return ogResultToDataUrl(await resolveReportOgImage(id));
 }
 
 /**
@@ -81,5 +91,41 @@ export async function getReportShareCard(
     archetype,
     palette,
     heroDataUrl: await heroDataUrl(id),
+  };
+}
+
+/**
+ * Build share-card data for a single look, or `null` when the report isn't
+ * publicly shareable or the look index is out of range.
+ */
+export async function getLookShareCard(
+  id: string,
+  index: number,
+): Promise<ShareCardData | null> {
+  const view = await getReportViewForDownload(id).catch(() => null);
+  if (!view || !view.isPublic) return null;
+
+  const { report } = view;
+  const look = report.looks[index];
+  if (!look) return null;
+
+  const { profile } = report;
+  const subId = profile.colorSubseason as SubseasonId | undefined;
+  const seasonLabel = subId
+    ? SUBSEASON_LABELS[subId]
+    : cap(profile.colorSeason);
+
+  const palette = (look.palette ?? [])
+    .filter((hex): hex is string => Boolean(hex))
+    .slice(0, 6);
+
+  return {
+    headline: look.title || report.headline || "Your style, decoded",
+    seasonLabel,
+    undertone: cap(profile.physical.undertone),
+    contrast: look.context || `${cap(profile.physical.contrast)} contrast`,
+    archetype: "",
+    palette,
+    heroDataUrl: await ogResultToDataUrl(await resolveLookOgImage(id, index)),
   };
 }

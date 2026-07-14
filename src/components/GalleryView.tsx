@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
+import { ShareLookButton } from "@/components/ShareLookButton";
 import { tierLabel } from "@/lib/report-labels";
 import {
   GALLERY_KIND_LABEL,
@@ -89,18 +90,22 @@ export function GalleryView({ groups }: { groups: GalleryReportGroup[] }) {
                 </h2>
                 <div className="mt-1 flex items-center gap-2 text-sm text-stone">
                   <span>{formatDate(g.createdAt)}</span>
-                  <span className="text-stone-soft/60" aria-hidden>
-                    ·
-                  </span>
-                  <span>{tierLabel(g.tier)}</span>
+                  {g.tier ? (
+                    <>
+                      <span className="text-stone-soft/60" aria-hidden>
+                        ·
+                      </span>
+                      <span>{tierLabel(g.tier)}</span>
+                    </>
+                  ) : null}
                 </div>
               </div>
               <Link
-                href={`/report/${g.id}`}
+                href={g.href}
                 className="group inline-flex shrink-0 items-center gap-1 rounded-full border border-brass/40 bg-brass/5 px-4 py-1.5 text-sm text-ink transition-colors hover:border-brass/60 hover:bg-brass/10"
               >
                 <span className="transition-colors group-hover:text-brass">
-                  Open report
+                  {g.linkLabel}
                 </span>
                 <span aria-hidden>→</span>
               </Link>
@@ -123,15 +128,41 @@ export function GalleryView({ groups }: { groups: GalleryReportGroup[] }) {
                   <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-[10px] uppercase tracking-wider text-paper backdrop-blur-sm">
                     {GALLERY_KIND_LABEL[it.kind]}
                   </span>
-                  <a
-                    href={it.src}
-                    download
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute right-2 top-2 z-10 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] font-medium text-ink opacity-0 shadow-sm transition-opacity hover:bg-paper group-hover:opacity-100"
-                    title="Download image"
-                  >
-                    Download
-                  </a>
+                  <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                    <span className="group/tip relative">
+                      <a
+                        href={`${it.src}&dl=1`}
+                        download
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label="Download full resolution"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-ink/35 text-paper shadow-sm ring-1 ring-paper/25 backdrop-blur-md transition-colors hover:bg-ink/60"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-4 w-4"
+                          aria-hidden
+                        >
+                          <path d="M12 3v12" />
+                          <path d="m7 11 5 5 5-5" />
+                          <path d="M5 21h14" />
+                        </svg>
+                      </a>
+                      <span className="pointer-events-none absolute right-0 top-full z-20 mt-1.5 whitespace-nowrap rounded-md bg-ink/90 px-2 py-1 text-[10px] font-medium text-paper opacity-0 shadow-lg backdrop-blur-sm transition-opacity duration-150 group-hover/tip:opacity-100">
+                        Download full resolution
+                      </span>
+                    </span>
+                    {it.kind === "look" && g.canShare ? (
+                      <ShareLookButton
+                        reportId={g.id}
+                        lookIndex={Number(it.id.split(":")[2])}
+                      />
+                    ) : null}
+                  </div>
                 </figure>
               ))}
             </div>

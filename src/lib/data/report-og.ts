@@ -72,13 +72,10 @@ function staticFallback(): ReportOgImageResult {
   };
 }
 
-/** Resolve hero image bytes/path for social crawlers; always falls back to flatlay PNG. */
-export async function resolveReportOgImage(
-  id: string,
+/** Turn a resolved image path (static, remote, or storage) into an OG result. */
+async function resolveOgImageFromPath(
+  imagePath: string | null,
 ): Promise<ReportOgImageResult> {
-  if (isDemoReportId(id)) return staticFallback();
-
-  const imagePath = await getReportHeroStoragePath(id);
   if (!imagePath) return staticFallback();
 
   if (imagePath.startsWith("/")) {
@@ -102,6 +99,61 @@ export async function resolveReportOgImage(
   return { kind: "bytes", bytes, contentType: contentTypeForPath(imagePath) };
 }
 
+/** Resolve hero image bytes/path for social crawlers; always falls back to flatlay PNG. */
+export async function resolveReportOgImage(
+  id: string,
+): Promise<ReportOgImageResult> {
+  if (isDemoReportId(id)) return staticFallback();
+  return resolveOgImageFromPath(await getReportHeroStoragePath(id));
+}
+
+/**
+ * Storage path of a specific look photo, gated to publicly shareable reports so
+ * the per-look share card never leaks a private report's imagery.
+ */
+export async function getReportLookStoragePath(
+  id: string,
+  index: number,
+): Promise<string | null> {
+  if (isDemoReportId(id) || !Number.isInteger(index) || index < 0) return null;
+
+  if (!hasSupabaseAdmin) {
+    const report = getMockReport(id);
+    return report?.looks[index]?.image ?? null;
+  }
+
+  const admin = createAdminSupabase();
+  const { data: row } = await admin
+    .from("reports")
+    .select("is_public, tier")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (
+    !row?.is_public ||
+    !canShareReport((row.tier as Tier | null) ?? "free")
+  ) {
+    return null;
+  }
+
+  const { data: looks } = await admin
+    .from("looks")
+    .select("image_path")
+    .eq("report_id", id)
+    .order("created_at", { ascending: true });
+
+  return (looks?.[index]?.image_path as string | null) ?? null;
+}
+
+/** Resolve a specific look's OG image; falls back to flatlay when unavailable. */
+export async function resolveLookOgImage(
+  id: string,
+  index: number,
+): Promise<ReportOgImageResult> {
+  if (isDemoReportId(id)) return staticFallback();
+  return resolveOgImageFromPath(await getReportLookStoragePath(id, index));
+}
+
 /** Direct static OG image URL (flatlay fallback). */
 export function reportOgFallbackImageUrl(): string {
   return absoluteUrl(REPORT_OG_FALLBACK);
@@ -110,6 +162,11 @@ export function reportOgFallbackImageUrl(): string {
 /** Stable OG image URL for a report (served by `/api/og/report/[id]`). */
 export function reportOgImageUrl(id: string): string {
   return absoluteUrl(`/api/og/report/${id}`);
+}
+
+/** Stable OG image URL for a single look (served by `/api/og/report/[id]/look/[index]`). */
+export function reportOgLookImageUrl(id: string, index: number): string {
+  return absoluteUrl(`/api/og/report/${id}/look/${index}`);
 }
 
 /**

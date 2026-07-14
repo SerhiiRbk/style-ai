@@ -24,8 +24,15 @@ export type GalleryItem = {
 export type GalleryReportGroup = {
   id: string;
   headline: string | null;
-  tier: Tier;
+  /** Report tier badge; null for non-report groups (e.g. catalogue try-ons). */
+  tier: Tier | null;
   createdAt: string;
+  /** True when the report is publicly shared on a shareable tier (per-look share links work). */
+  canShare: boolean;
+  /** Where the group's header link points. */
+  href: string;
+  /** Header link label (e.g. "Open report" / "Open catalog"). */
+  linkLabel: string;
   items: GalleryItem[];
 };
 

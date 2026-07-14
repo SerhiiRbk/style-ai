@@ -2,6 +2,7 @@ import "server-only";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
+import { canShareReport } from "@/lib/report";
 import type {
   GalleryItem,
   GalleryItemKind,
@@ -28,6 +29,7 @@ type GalleryRow = {
   created_at: string;
   headline: string | null;
   tier: Tier | null;
+  is_public: boolean | null;
   cover_image: string | null;
   capsule_images: (string | null)[] | null;
   hair: { recommend?: HairRec[]; avoid?: HairRec[] } | null;
@@ -58,7 +60,7 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
   const { data, error } = await db
     .from("reports")
     .select(
-      "id, created_at, headline, tier, cover_image, capsule_images, hair, facial_hair, eyewear, accessories, headwear",
+      "id, created_at, headline, tier, is_public, cover_image, capsule_images, hair, facial_hair, eyewear, accessories, headwear",
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
@@ -158,15 +160,64 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
     );
 
     if (items.length) {
+      const tier = row.tier ?? "basic";
       groups.push({
         id: row.id,
         headline: row.headline ?? null,
-        tier: row.tier ?? "basic",
+        tier,
         createdAt: row.created_at,
+        canShare: Boolean(row.is_public) && canShareReport(tier),
+        href: `/report/${row.id}`,
+        linkLabel: "Open report",
         items,
       });
     }
   }
+
+  // Catalogue try-ons aren't tied to any report (report_id is null) — surface
+  // them as their own group so they aren't lost.
+  const { data: catalogTryons } = await db
+    .from("tryons")
+    .select("image_path, created_at, garments")
+    .eq("user_id", user.id)
+    .is("report_id", null)
+    .order("created_at", { ascending: false });
+
+  const catalogItems: GalleryItem[] = [];
+  (catalogTryons ?? []).forEach((t) => {
+    const path = (t.image_path as string | null) ?? null;
+    if (!path) return;
+    // Report look/capsule try-ons (`/tryon/look-{reportId}-...`) are also stored
+    // with a null report_id; they belong to a report, not the catalogue, and
+    // some are orphaned (object deleted). Keep only genuine catalogue try-ons.
+    if (path.includes("/tryon/look-")) return;
+    const garments = (t.garments as { title?: string }[] | null) ?? [];
+    const label = garments[0]?.title || `Try-on ${catalogItems.length + 1}`;
+    catalogItems.push({
+      id: `catalog:tryon:${catalogItems.length}`,
+      kind: "tryon",
+      src: signedAssetProxyUrl(path),
+      label,
+    });
+  });
+
+  if (catalogItems.length) {
+    groups.push({
+      id: "catalog",
+      headline: "Catalogue try-ons",
+      tier: null,
+      createdAt:
+        (catalogTryons?.[0]?.created_at as string | undefined) ??
+        new Date(0).toISOString(),
+      canShare: false,
+      href: "/catalog",
+      linkLabel: "Open catalog",
+      items: catalogItems,
+    });
+  }
+
+  // Newest first across reports and the catalogue group.
+  groups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return groups;
 }
