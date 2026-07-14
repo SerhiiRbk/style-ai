@@ -3,6 +3,7 @@
 import { CreditsProvider } from "@/components/CreditsContext";
 import { TryOnSelectionProvider } from "@/components/TryOnContext";
 import { TryOnTray } from "@/components/TryOnTray";
+import { TryOnModelPicker } from "@/components/TryOnModelPicker";
 import { DisplayCurrencyProvider } from "@/components/CatalogDisplayCurrency";
 import { useNavSession } from "@/components/NavSession";
 
@@ -20,6 +21,7 @@ export function CatalogTryOnShell({
     <DisplayCurrencyProvider>
       <CreditsProvider initialBalance={authed ? balance : null}>
         <TryOnSelectionProvider>
+          {authed ? <TryOnModelPicker /> : null}
           {children}
           <TryOnTray cost={tryOnCost} variant="catalog" />
         </TryOnSelectionProvider>

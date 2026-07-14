@@ -6,7 +6,12 @@ import {
   generateCatalogTryOnImage,
   type CatalogTryOnGarment,
 } from "@/lib/ai/pipeline";
-import { getFullLengthPhotoUrl, tryOnErrorCode } from "@/lib/photo-tryon";
+import {
+  getFullLengthPhotoUrl,
+  getCatalogTryOnPhoto,
+  getDefaultTryOnPhoto,
+  tryOnErrorCode,
+} from "@/lib/photo-tryon";
 import { absoluteUrl } from "@/lib/site-url";
 import { isDemoReportId } from "@/lib/demo-report";
 import {
@@ -158,9 +163,26 @@ export async function POST(request: Request) {
     }
   }
 
-  const photo = await getFullLengthPhotoUrl(admin, user.id, {
-    reportCreatedAt,
-  });
+  // Reference photo of the person. Inside a report we keep the report-scoped
+  // photo (unchanged); catalogue try-on uses the user's pinned default (falling
+  // back to their latest full-length). If a report has no full-length photo, we
+  // fall back to the user's default so try-on still works.
+  let photo:
+    | { ok: true; signedUrl: string }
+    | { ok: false; error: string; code: "no_photos" | "needs_full_photo" };
+  if (reportId) {
+    const scoped = await getFullLengthPhotoUrl(admin, user.id, {
+      reportCreatedAt,
+    });
+    if (scoped.ok) {
+      photo = scoped;
+    } else {
+      const fallback = await getDefaultTryOnPhoto(admin, user.id);
+      photo = fallback ?? scoped;
+    }
+  } else {
+    photo = await getCatalogTryOnPhoto(admin, user.id);
+  }
   if (!photo.ok) {
     return NextResponse.json(
       { error: photo.error, code: photo.code },

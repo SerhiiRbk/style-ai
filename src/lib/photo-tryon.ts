@@ -206,6 +206,51 @@ export async function getFullLengthPhotoUrl(
   return { ok: true, signedUrl: signed.signedUrl };
 }
 
+/**
+ * The user's pinned default full-length photo for catalogue try-on, if any.
+ * Returns null when no default is set, the default row is missing, or the
+ * default is somehow not a full-length photo (guards against stale flags).
+ */
+export async function getDefaultTryOnPhoto(
+  admin: AdminClient,
+  userId: string,
+): Promise<{ ok: true; signedUrl: string } | null> {
+  const { data: row } = await admin
+    .from("photos")
+    .select("storage_path, role")
+    .eq("user_id", userId)
+    .eq("is_default_tryon", true)
+    .maybeSingle();
+
+  if (!row || (row.role as string) !== "full") return null;
+
+  const { data } = await admin.storage
+    .from("photos")
+    .createSignedUrl(row.storage_path as string, 600);
+  if (!data?.signedUrl) return null;
+  return { ok: true, signedUrl: data.signedUrl };
+}
+
+/**
+ * Reference photo for catalogue try-on (no report context): the user's pinned
+ * default full-length photo when set, otherwise their latest full-length upload.
+ * `usedDefault` lets the caller nudge users who haven't picked a default yet.
+ */
+export async function getCatalogTryOnPhoto(
+  admin: AdminClient,
+  userId: string,
+): Promise<
+  | { ok: true; signedUrl: string; usedDefault: boolean }
+  | { ok: false; error: string; code: "no_photos" | "needs_full_photo" }
+> {
+  const preferred = await getDefaultTryOnPhoto(admin, userId);
+  if (preferred) return { ok: true, signedUrl: preferred.signedUrl, usedDefault: true };
+
+  const latest = await getFullLengthPhotoUrl(admin, userId);
+  if (!latest.ok) return latest;
+  return { ok: true, signedUrl: latest.signedUrl, usedDefault: false };
+}
+
 export function tryOnErrorCode(
   message: string,
 ): "body_pose_failed" | "needs_full_photo" | undefined {
