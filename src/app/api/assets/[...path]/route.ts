@@ -31,10 +31,11 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const exp = searchParams.get("exp");
   const sig = searchParams.get("sig");
-  // `dl=1` forces the original full-resolution bytes as a download attachment
-  // (skips WebP transcoding). Extra params don't affect the signature, which
-  // only covers the storage path + expiry.
+  // `dl=1` forces the original full-resolution bytes as a download attachment;
+  // `orig=1` serves the original inline (both skip WebP transcoding). Extra
+  // params don't affect the signature, which only covers the path + expiry.
   const download = searchParams.get("dl") === "1";
+  const original = download || searchParams.get("orig") === "1";
 
   const signedOk = verifySignedAssetProxyUrl(storagePath, exp, sig);
   const allowed = signedOk || (await canAccessAssetPath(storagePath));
@@ -50,19 +51,6 @@ export async function GET(
 
   const sourceType = contentTypeForAssetPath(storagePath);
 
-  if (download) {
-    const base = storagePath.split("/").pop() || "image";
-    const filename = base.startsWith("valetti-") ? base : `valetti-${base}`;
-    return new Response(bytes as BodyInit, {
-      headers: {
-        "Content-Type": sourceType,
-        "Cache-Control": "private, max-age=86400, immutable",
-        "Content-Length": String(bytes.byteLength),
-        "Content-Disposition": `attachment; filename="${filename}"`,
-      },
-    });
-  }
-
   // Asset bytes for a given path never change (generated once), so cache them
   // aggressively as immutable. Signed URLs are self-contained auth and are
   // day-stable, so they're safe to cache at the edge (public + s-maxage);
@@ -70,6 +58,20 @@ export async function GET(
   const cacheControl = signedOk
     ? "public, max-age=86400, s-maxage=604800, stale-while-revalidate=604800, immutable"
     : "private, max-age=86400, stale-while-revalidate=604800, immutable";
+
+  if (original) {
+    const headers: Record<string, string> = {
+      "Content-Type": sourceType,
+      "Cache-Control": cacheControl,
+      "Content-Length": String(bytes.byteLength),
+    };
+    if (download) {
+      const base = storagePath.split("/").pop() || "image";
+      const filename = base.startsWith("valetti-") ? base : `valetti-${base}`;
+      headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+    }
+    return new Response(bytes as BodyInit, { headers });
+  }
 
   const { body, contentType } = await maybeWebp(request, bytes, sourceType);
 

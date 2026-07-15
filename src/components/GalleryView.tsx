@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
-import { ShareLookButton } from "@/components/ShareLookButton";
+import { ShareImageButton } from "@/components/ShareImageButton";
+import { DownloadIconButton } from "@/components/DownloadIconButton";
 import { tierLabel } from "@/lib/report-labels";
 import {
   GALLERY_KIND_LABEL,
@@ -129,39 +130,8 @@ export function GalleryView({ groups }: { groups: GalleryReportGroup[] }) {
                     {GALLERY_KIND_LABEL[it.kind]}
                   </span>
                   <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                    <span className="group/tip relative">
-                      <a
-                        href={`${it.src}&dl=1`}
-                        download
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label="Download full resolution"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-ink/35 text-paper shadow-sm ring-1 ring-paper/25 backdrop-blur-md transition-colors hover:bg-ink/60"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="h-4 w-4"
-                          aria-hidden
-                        >
-                          <path d="M12 3v12" />
-                          <path d="m7 11 5 5 5-5" />
-                          <path d="M5 21h14" />
-                        </svg>
-                      </a>
-                      <span className="pointer-events-none absolute right-0 top-full z-20 mt-1.5 whitespace-nowrap rounded-md bg-ink/90 px-2 py-1 text-[10px] font-medium text-paper opacity-0 shadow-lg backdrop-blur-sm transition-opacity duration-150 group-hover/tip:opacity-100">
-                        Download full resolution
-                      </span>
-                    </span>
-                    {it.kind === "look" && g.canShare ? (
-                      <ShareLookButton
-                        reportId={g.id}
-                        lookIndex={Number(it.id.split(":")[2])}
-                      />
-                    ) : null}
+                    <DownloadIconButton href={`${it.src}&dl=1`} />
+                    <ShareImageButton src={it.src} title={it.label} />
                   </div>
                 </figure>
               ))}

@@ -5,6 +5,8 @@ import { useState } from "react";
 import { MAX_TRYON_ITEMS, useTryOnSelection } from "./TryOnContext";
 import { OUTFIT_TRYON_SAVED_EVENT } from "./SavedOutfitTryOns";
 import { ReportZoomImage } from "./ReportZoomImage";
+import { DownloadIconButton } from "./DownloadIconButton";
+import { ShareImageButton } from "./ShareImageButton";
 import { useCredits } from "./CreditsContext";
 import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 import { WORKING } from "@/components/luxe/messages";
@@ -161,12 +163,18 @@ export function TryOnTray({
 
         {url && (
           <div className="mt-3">
-            <ReportZoomImage
-              src={url}
-              alt="Combined outfit try-on"
-              className="max-h-80 w-full rounded-lg border border-paper/12 object-cover object-top"
-              wrapperClassName="block w-full"
-            />
+            <div className="group/dl relative mx-auto w-fit">
+              <ReportZoomImage
+                src={`${url}&orig=1`}
+                alt="Combined outfit try-on"
+                className="block max-h-96 w-auto rounded-lg border border-paper/12"
+                wrapperClassName="block"
+              />
+              <div className="absolute right-2 top-2 flex items-center gap-1.5 opacity-0 transition-opacity duration-200 group-hover/dl:opacity-100">
+                <DownloadIconButton href={`${url}&dl=1`} />
+                <ShareImageButton src={url} title="My Valetti try-on" />
+              </div>
+            </div>
             <p className="mt-1.5 text-center text-[10px] text-paper/35">
               Tap image for full size
             </p>

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ReportZoomImage } from "./ReportZoomImage";
+import { DownloadIconButton } from "./DownloadIconButton";
+import { ShareImageButton } from "./ShareImageButton";
 import { useCredits } from "./CreditsContext";
 import { MAX_TRYON_ITEMS, useTryOnSelection } from "./TryOnContext";
 import { OUTFIT_TRYON_SAVED_EVENT } from "./SavedOutfitTryOns";
@@ -230,13 +232,21 @@ export function TryOnButton({
       {msg && <p className="mt-1 text-xs text-paper/40">{msg}</p>}
       {url && (
         <div className="mt-2">
-          <ReportZoomImage
-            src={url}
-            alt="Virtual try-on preview"
-            className="w-full rounded-lg border border-paper/12"
-            wrapperClassName="block w-full"
-          />
-          <p className="mt-1 text-[10px] text-paper/35">Tap for full size</p>
+          <div className="group/dl relative mx-auto w-fit">
+            <ReportZoomImage
+              src={`${url}&orig=1`}
+              alt="Virtual try-on preview"
+              className="block max-h-96 w-auto rounded-lg border border-paper/12"
+              wrapperClassName="block"
+            />
+            <div className="absolute right-2 top-2 flex items-center gap-1.5 opacity-0 transition-opacity duration-200 group-hover/dl:opacity-100">
+              <DownloadIconButton href={`${url}&dl=1`} />
+              <ShareImageButton src={url} title="My Valetti try-on" />
+            </div>
+          </div>
+          <p className="mt-1 text-center text-[10px] text-paper/35">
+            Tap for full size
+          </p>
         </div>
       )}
     </div>
