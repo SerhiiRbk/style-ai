@@ -19,6 +19,8 @@ export type GalleryItem = {
   src: string;
   /** Short caption for alt text / hover. */
   label: string;
+  /** Set for catalogue try-ons — enables user-initiated deletion. */
+  tryonId?: string;
 };
 
 export type GalleryReportGroup = {

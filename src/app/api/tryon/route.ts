@@ -37,6 +37,61 @@ function normalizeGarmentUrl(raw: string | null | undefined): string | null {
   return null;
 }
 
+/** Delete a catalogue try-on (report_id null) — storage object + row, owner only. */
+export async function DELETE(request: Request) {
+  if (!hasSupabase || !hasSupabaseAdmin) {
+    return NextResponse.json({ error: "Requires live mode" }, { status: 501 });
+  }
+
+  const sb = await createServerSupabase();
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const body = await request.json().catch(() => null);
+  const tryonId = typeof body?.tryonId === "string" ? body.tryonId : "";
+  if (!tryonId) {
+    return NextResponse.json({ error: "Missing tryonId" }, { status: 400 });
+  }
+
+  const admin = createAdminSupabase();
+  const { data: row } = await admin
+    .from("tryons")
+    .select("id, user_id, report_id, image_path")
+    .eq("id", tryonId)
+    .maybeSingle();
+
+  // Only the owner may delete, and only catalogue try-ons (not report-linked).
+  if (!row || row.user_id !== user.id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (row.report_id) {
+    return NextResponse.json(
+      { error: "Only catalogue try-ons can be deleted here" },
+      { status: 400 },
+    );
+  }
+
+  const imagePath = row.image_path as string | null;
+  if (imagePath) {
+    await admin.storage.from("assets").remove([imagePath]);
+  }
+  const { error: delErr } = await admin
+    .from("tryons")
+    .delete()
+    .eq("id", tryonId)
+    .eq("user_id", user.id);
+  if (delErr) {
+    console.error("[tryon] delete failed", delErr);
+    return NextResponse.json({ error: "Could not delete" }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
 export async function POST(request: Request) {
   if (!hasSupabase) {
     return NextResponse.json({ error: "Try-on requires live mode" }, { status: 501 });

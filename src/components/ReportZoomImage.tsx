@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ASSET_PROXY_PREFIX } from "@/lib/asset-url";
 import { env } from "@/lib/env";
 
@@ -103,30 +104,33 @@ export function ReportZoomImage({
         )}
       </button>
 
-      {open ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/92 p-4 sm:p-8"
-          role="dialog"
-          aria-modal="true"
-          aria-label={alt}
-          onClick={close}
-        >
-          <button
-            type="button"
-            className="absolute right-4 top-4 rounded-full border border-paper/30 px-3 py-1.5 text-sm text-paper"
-            onClick={close}
-          >
-            Close
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={src}
-            alt={alt}
-            className="max-h-[90vh] max-w-full object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      ) : null}
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/92 p-4 sm:p-8"
+              role="dialog"
+              aria-modal="true"
+              aria-label={alt}
+              onClick={close}
+            >
+              <button
+                type="button"
+                className="absolute right-4 top-4 rounded-full border border-paper/30 bg-ink/40 px-4 py-1.5 text-sm text-paper backdrop-blur-sm transition-colors hover:bg-ink/70"
+                onClick={close}
+              >
+                Close
+              </button>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={alt}
+                className="max-h-[90vh] max-w-full object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }

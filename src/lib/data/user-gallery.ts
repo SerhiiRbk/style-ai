@@ -178,7 +178,7 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
   // them as their own group so they aren't lost.
   const { data: catalogTryons } = await db
     .from("tryons")
-    .select("image_path, created_at, garments")
+    .select("id, image_path, created_at, garments")
     .eq("user_id", user.id)
     .is("report_id", null)
     .order("created_at", { ascending: false });
@@ -198,6 +198,7 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
       kind: "tryon",
       src: signedAssetProxyUrl(path),
       label,
+      tryonId: t.id as string,
     });
   });
 

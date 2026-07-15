@@ -25,6 +25,33 @@ type Filter = "all" | GalleryItemKind;
 /** Client-side type filter over the server-aggregated "My looks" gallery. */
 export function GalleryView({ groups }: { groups: GalleryReportGroup[] }) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  async function deleteTryon(tryonId: string) {
+    if (deleting) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this try-on image? This cannot be undone.")
+    ) {
+      return;
+    }
+    setDeleting(tryonId);
+    try {
+      const res = await fetch("/api/tryon", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tryonId }),
+      });
+      if (res.ok) {
+        setRemoved((prev) => new Set(prev).add(tryonId));
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setDeleting(null);
+    }
+  }
 
   // Which kinds actually exist, in a stable display order.
   const kindOrder: GalleryItemKind[] = [
@@ -46,11 +73,17 @@ export function GalleryView({ groups }: { groups: GalleryReportGroup[] }) {
   }, [groups]);
 
   const visibleGroups = useMemo(() => {
-    if (filter === "all") return groups;
     return groups
-      .map((g) => ({ ...g, items: g.items.filter((it) => it.kind === filter) }))
+      .map((g) => ({
+        ...g,
+        items: g.items.filter(
+          (it) =>
+            (filter === "all" || it.kind === filter) &&
+            !(it.tryonId && removed.has(it.tryonId)),
+        ),
+      }))
       .filter((g) => g.items.length > 0);
-  }, [groups, filter]);
+  }, [groups, filter, removed]);
 
   const chipClass = (active: boolean) =>
     `whitespace-nowrap rounded-full border px-4 py-1.5 text-sm transition-colors ${
@@ -132,6 +165,36 @@ export function GalleryView({ groups }: { groups: GalleryReportGroup[] }) {
                   <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                     <DownloadIconButton href={`${it.src}&dl=1`} />
                     <ShareImageButton src={it.src} title={it.label} />
+                    {it.tryonId ? (
+                      <span className="group/tip relative inline-flex">
+                        <button
+                          type="button"
+                          aria-label="Delete try-on"
+                          disabled={deleting === it.tryonId}
+                          onClick={() => deleteTryon(it.tryonId!)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-ink/35 text-paper shadow-sm ring-1 ring-paper/25 backdrop-blur-md transition-colors hover:bg-red-600/80 disabled:opacity-50"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="h-4 w-4"
+                            aria-hidden
+                          >
+                            <path d="M4 7h16" />
+                            <path d="M10 11v6M14 11v6" />
+                            <path d="M6 7l1 13h10l1-13" />
+                            <path d="M9 7V4h6v3" />
+                          </svg>
+                        </button>
+                        <span className="pointer-events-none absolute right-0 top-full z-20 mt-1.5 whitespace-nowrap rounded-md bg-ink/90 px-2 py-1 text-[10px] font-medium text-paper opacity-0 shadow-lg backdrop-blur-sm transition-opacity duration-150 group-hover/tip:opacity-100">
+                          Delete try-on
+                        </span>
+                      </span>
+                    ) : null}
                   </div>
                 </figure>
               ))}
