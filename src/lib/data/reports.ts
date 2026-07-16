@@ -621,19 +621,24 @@ async function generateReportImages(input: ImageJobInput) {
 
   const referenceImageUrl =
     photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
+  // Anchor identity with the dedicated face portrait too (same as virtual
+  // try-on), so the report look and a later "try this on me" match the person.
+  const faceReferenceImageUrl = photos.find((p) => p.role === "face")?.url;
 
-  // Look photos — DB-driven and idempotent: read the look rows (ordered so each
-  // keeps a stable storage index), skip rows that already have an image, and
+  // Look photos — DB-driven and idempotent: read the look rows ordered by their
+  // stable content index (`idx`), skip rows that already have an image, and
   // generate the rest in parallel. Each row is an independent update, so writes
-  // are persisted immediately without racing.
+  // are persisted immediately without racing. The storage index is the look's
+  // own `idx`, which keeps images aligned with look_items (also keyed by idx).
   const { data: lookRows } = await admin
     .from("looks")
-    .select("id, image_path, context, title, description, palette")
+    .select("id, idx, image_path, context, title, description, palette")
     .eq("report_id", reportId)
+    .order("idx", { ascending: true })
     .order("created_at", { ascending: true });
 
   const lookTasks = (lookRows ?? [])
-    .map((row, index) => ({ row, index }))
+    .map((row, index) => ({ row, index: (row.idx as number | null) ?? index }))
     .filter(({ row }) => !row.image_path);
 
   await mapPool(lookTasks, IMAGE_CONCURRENCY, async ({ row, index }) => {
@@ -645,6 +650,7 @@ async function generateReportImages(input: ImageJobInput) {
         palette: (row.palette as string[] | null) ?? [],
       },
       referenceImageUrl,
+      faceReferenceImageUrl,
     });
     if (!img) return;
     const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
@@ -1064,8 +1070,9 @@ async function executeReportGeneration(
   }
 
   await admin.from("looks").insert(
-    content.looks.map((l) => ({
+    content.looks.map((l, i) => ({
       report_id: reportId,
+      idx: i,
       user_id: userId,
       context: l.context,
       title: l.title,
@@ -1346,6 +1353,9 @@ async function loadSavedOutfitTryons(
     .eq("user_id", userId)
     .eq("status", "ready")
     .not("image_path", "is", null)
+    // Per-look "try this on me" renders (`.../tryon/look-…`) render inline under
+    // each look — keep them out of the saved catalogue/outfit try-ons section.
+    .not("image_path", "like", "%/tryon/look-%")
     .order("created_at", { ascending: false });
 
   const outfits: SavedOutfitTryOn[] = [];
@@ -1504,6 +1514,7 @@ async function fetchReportView(
       .from("looks")
       .select("*")
       .eq("report_id", id)
+      .order("idx", { ascending: true })
       .order("created_at", { ascending: true }),
     isOwner || isAdmin
       ? db.from("photos").select("id").eq("user_id", row.user_id).limit(1)

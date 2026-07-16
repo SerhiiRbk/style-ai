@@ -29,6 +29,15 @@ export const env = {
   // single-garment VTON via fal.ai).
   tryonEngine: process.env.TRYON_ENGINE === "fal" ? "fal" : "image",
 
+  /**
+   * LLM-written shopping "why" copy (src/lib/ai/shopping-reasons). On by
+   * default; SHOPPING_REASONS_LLM=false is the kill switch back to templates.
+   */
+  shoppingReasonsLLM:
+    process.env.SHOPPING_REASONS_LLM == null
+      ? true
+      : envFlag(process.env.SHOPPING_REASONS_LLM),
+
   // Shared secret required to POST scraper results to /api/catalog/import.
   catalogImportKey: process.env.CATALOG_IMPORT_KEY,
 

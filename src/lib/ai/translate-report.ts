@@ -24,9 +24,13 @@ const trNamed = <T extends Named>(i: T, tr: TranslateFn): T => ({
   why: tr(i.why),
 });
 
-/** Only the "why" is prose — brand/product titles and colours stay unchanged. */
+/** Only the "why" prose is translated — brand/product titles and colours stay unchanged. */
 const trShopping = (items: ShoppingItem[], tr: TranslateFn): ShoppingItem[] =>
-  items.map((i) => ({ ...i, why: tr(i.why) }));
+  items.map((i) => ({
+    ...i,
+    why: tr(i.why),
+    ...(i.heroWhy ? { heroWhy: tr(i.heroWhy) } : {}),
+  }));
 
 function trExtras(e: StyleExtras, tr: TranslateFn): StyleExtras {
   return {

@@ -266,10 +266,24 @@ export async function POST(request: Request) {
     );
   }
 
+  // Persist the row tied to its report (and with garment metadata) so it shows
+  // up in the user's gallery grouped under this report. Look/capsule try-ons are
+  // excluded from the report's "saved outfit try-ons" list by their storage path
+  // (they already render inline under each look), so this won't duplicate them.
+  const garmentsMeta = catalogItems.map((it) => ({
+    productId: it.productId ?? null,
+    title: it.title,
+    category: it.category,
+    imageUrl: it.image ?? null,
+  }));
+
   await admin.from("tryons").insert({
     user_id: user.id,
+    report_id: reportId,
     image_path: path,
     status: "ready",
+    kind,
+    garments: garmentsMeta,
   });
 
   // Charge after the render succeeds so failed renders are never billed.

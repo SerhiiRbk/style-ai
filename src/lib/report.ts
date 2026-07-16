@@ -174,6 +174,10 @@ export type ShoppingItem = {
   similarPick?: boolean;
   /** Bumped when look-matching logic changes — triggers background refresh. */
   matchVersion?: number;
+  /** Set when the "why" was written by the reasons model (src/lib/ai/shopping-reasons). */
+  reasonVersion?: number;
+  /** Investment-framed reason, only on the hero piece — used by the "Start here" block. */
+  heroWhy?: string;
 };
 export type Look = {
   context: string;

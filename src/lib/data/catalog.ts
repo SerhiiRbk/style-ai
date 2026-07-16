@@ -2,7 +2,15 @@ import "server-only";
 import { embed, embedMany } from "ai";
 import { env, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
-import { formatCatalogProductTitle } from "@/lib/product-title";
+import {
+  formatCatalogProductTitle,
+  humanizeProductTitle,
+} from "@/lib/product-title";
+import {
+  applyShoppingReasons,
+  reasonIsSafe,
+  REASON_VERSION,
+} from "@/lib/ai/shopping-reasons";
 import { mockShopping, type ShoppingItem } from "@/lib/report";
 import { marketForCurrency } from "@/lib/currency";
 import {
@@ -127,8 +135,10 @@ function tagFitScore(row: MatchRow, boldness: string): number {
 const MIN_VECTOR_SIMILARITY = 0.68;
 const MIN_COLOR_MATCH = 0.4;
 const MIN_LOOK_PICK_SCORE = 0.42;
-/** Bumped when look-matching heuristics change — triggers background refresh. */
-export const LOOK_MATCH_VERSION = 6;
+/** Bumped when look-matching heuristics change — triggers background refresh.
+ *  v7: re-derive look_items after looks gained a stable `idx` ordering, so
+ *  per-look products realign with the rendered look on legacy reports. */
+export const LOOK_MATCH_VERSION = 7;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
@@ -390,7 +400,9 @@ export async function matchShopping(
       }
     }
 
-    return items.length ? items : mockShopping();
+    // One batched LLM pass rewrites the template "why" copy into item-aware
+    // reasons (guarded + never throws; template copy stays on any fallback).
+    return items.length ? await applyShoppingReasons(items, profile) : mockShopping();
   } catch {
     return mockShopping();
   }
@@ -509,7 +521,9 @@ function toRerankCandidate(row: MatchRow, category: string): RerankGarmentSlot["
   return {
     id: row.id,
     brand: row.brand,
-    title: row.title,
+    // Humanized so the reranker judges (and writes reasons about) readable
+    // titles, not raw feed abbreviations like "CHCKD SMCK PLLVR".
+    title: humanizeProductTitle(row.title),
     color: row.color,
     priceEur: row.price_eur != null ? Number(row.price_eur) : null,
     category,
@@ -522,14 +536,24 @@ function shoppingItemFromMatch(
   profile: StyleProfile,
   goal: string,
   similarPick: boolean,
+  /** Optional reranker-written reason; used only when it passes the safety guard. */
+  llmWhy?: string,
 ): ShoppingItem {
   const colorLabel = g.color ? `${g.color} ` : "";
+  const title = formatCatalogProductTitle(row.brand, row.title);
+  const safeLlmWhy =
+    llmWhy && reasonIsSafe(llmWhy, { title, color: row.color })
+      ? llmWhy.trim()
+      : null;
   return {
     category: g.category,
-    title: formatCatalogProductTitle(row.brand, row.title),
-    why: similarPick
-      ? `Similar ${colorLabel}${g.garment} from the catalogue — same category and tone as this look.`
-      : `Matches this look — ${colorLabel}${g.garment} aligned with your ${profile.colorSeason} palette and goal to ${goal}.`,
+    title,
+    why:
+      safeLlmWhy ??
+      (similarPick
+        ? `Similar ${colorLabel}${g.garment} from the catalogue — same category and tone as this look.`
+        : `Matches this look — ${colorLabel}${g.garment} aligned with your ${profile.colorSeason} palette and goal to ${goal}.`),
+    ...(safeLlmWhy ? { reasonVersion: REASON_VERSION } : {}),
     priceEur: Number(row.price_eur ?? 0),
     priceNative: row.price_native != null ? Number(row.price_native) : undefined,
     currency: row.currency ?? undefined,
@@ -611,6 +635,7 @@ async function matchItemsForLook(
           profile,
           goal,
           pick.similarPick,
+          pick.why,
         ),
       );
     }

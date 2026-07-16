@@ -1257,7 +1257,11 @@ function priorityMoves(
     {
       n: "03",
       title: `Invest in your hero piece — ${humanizeProductTitle(hero)}`,
-      why: heroWhy(heroItem?.category),
+      // Prefer the investment-framed LLM reason written specifically for the
+      // hero (ai/shopping-reasons); the category template remains the fallback.
+      // The fit-framed per-item `why` is NOT reused here — wrong frame for an
+      // "invest" headline, and it already appears on the shopping card.
+      why: heroItem?.heroWhy ?? heroWhy(heroItem?.category),
     },
   ];
 }

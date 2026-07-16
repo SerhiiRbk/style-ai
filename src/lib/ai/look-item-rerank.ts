@@ -28,6 +28,8 @@ export type RerankPick = {
   slot: number;
   candidateIndex: number;
   similarPick: boolean;
+  /** One-sentence stylist reason for the pick — validated by the caller before use. */
+  why?: string;
 };
 
 const lookItemRerankSchema = z.object({
@@ -36,6 +38,7 @@ const lookItemRerankSchema = z.object({
       slot: z.number().int().min(0),
       candidateIndex: z.number().int(),
       similarPick: z.boolean(),
+      why: z.string().min(20).max(300).optional(),
     }),
   ),
 });
@@ -82,7 +85,11 @@ function buildRerankPrompt(
     `formality of this look. Use -1 only when every candidate is clearly wrong ` +
     `(wrong category, clashing colour, or unrelated item).\n` +
     `Set similarPick=true when the pick is the closest available option but not a ` +
-    `strong colour or style match.\n\n` +
+    `strong colour or style match.\n` +
+    `For every pick with candidateIndex >= 0 also write "why" — ONE calm sentence ` +
+    `(18–28 words) in the voice of a personal stylist: why this piece works for ` +
+    `this look. Reference the item's actual type and colour; NEVER mention a ` +
+    `material that is not in the candidate's title; no hype words.\n\n` +
     slotBlocks
   );
 }
@@ -124,6 +131,7 @@ export async function rerankLookItemSlots(
         slot: pick.slot,
         candidateIndex: pick.candidateIndex,
         similarPick: pick.similarPick,
+        why: pick.why,
       });
     }
     return [...valid.values()];
