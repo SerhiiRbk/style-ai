@@ -434,6 +434,18 @@ export async function generateLookImage(opts: {
           `Images ${ordinal(catalogStart)} through ${ordinal(catalogStart + catalogImageUrls.length - 1)} are catalogue garment references — ` +
           `reproduce those exact garments on the person. `;
       }
+      // When garment product photos share the prompt with the person's photos,
+      // the model tends to blend faces from the product shots and lose likeness.
+      // Make identity fidelity to the portrait override the garment references.
+      // Only fires when BOTH exist — report look renders pass no catalogue images,
+      // so their (good) likeness is untouched.
+      if (personImageCount > 0) {
+        imageRoles +=
+          `CRITICAL identity rule: the person's face, bone structure, skin tone and hair ` +
+          `come ONLY from ${hasFace ? "the close-up portrait" : "the person photo"} — ` +
+          `reproduce them at maximum fidelity. The catalogue images are clothing swatches ` +
+          `only: copy the garments, and take NOTHING facial, body or pose-related from them. `;
+      }
     }
     if (!personImageCount && !catalogImageUrls.length) {
       imageRoles = `Do not show identifiable facial features. `;

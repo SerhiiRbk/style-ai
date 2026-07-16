@@ -10,6 +10,13 @@ import { ShareImageButton } from "./ShareImageButton";
 import { useCredits } from "./CreditsContext";
 import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 import { WORKING } from "@/components/luxe/messages";
+import type { TryOnOpinion, TryOnVerdict } from "@/lib/ai/tryon-opinion";
+
+const VERDICT_STYLE: Record<TryOnVerdict, { dot: string; label: string }> = {
+  great: { dot: "bg-emerald-400", label: "Strong match" },
+  good: { dot: "bg-brass", label: "Works for you" },
+  caution: { dot: "bg-amber-400", label: "Wearable, with a caveat" },
+};
 
 /**
  * Floating tray for the combined catalog try-on: shows the selected pieces
@@ -32,6 +39,11 @@ export function TryOnTray({
   );
   const [url, setUrl] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [opinion, setOpinion] = useState<TryOnOpinion | null>(null);
+  const [opinionState, setOpinionState] = useState<
+    "idle" | "loading" | "done"
+  >("idle");
+  const [opinionNoProfile, setOpinionNoProfile] = useState(false);
 
   if (!selection || selection.items.length === 0) return null;
   const { items } = selection;
@@ -68,9 +80,33 @@ export function TryOnTray({
       if (data.savedToReport) {
         window.dispatchEvent(new CustomEvent(OUTFIT_TRYON_SAVED_EVENT));
       }
+      void fetchOpinion(selection.items.map((i) => i.productId));
     } catch {
       setState("error");
       setMsg("Try-on failed");
+    }
+  }
+
+  /** Carlo's expert read — fetched after the image so it never blocks the preview. */
+  async function fetchOpinion(productIds: string[]) {
+    setOpinion(null);
+    setOpinionNoProfile(false);
+    setOpinionState("loading");
+    try {
+      const res = await fetch("/api/tryon/opinion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productIds, reportId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.opinion) {
+        setOpinion(data.opinion as TryOnOpinion);
+        setOpinionNoProfile(data.hasProfile === false);
+      }
+    } catch {
+      /* opinion is best-effort — the try-on image already renders */
+    } finally {
+      setOpinionState("done");
     }
   }
 
@@ -88,6 +124,9 @@ export function TryOnTray({
               setUrl(null);
               setMsg(null);
               setState("idle");
+              setOpinion(null);
+              setOpinionState("idle");
+              setOpinionNoProfile(false);
             }}
             className="text-[11px] text-paper/40 transition-colors hover:text-paper"
           >
@@ -178,6 +217,61 @@ export function TryOnTray({
             <p className="mt-1.5 text-center text-[10px] text-paper/35">
               Tap image for full size
             </p>
+          </div>
+        )}
+
+        {state === "done" && opinionState === "loading" && (
+          <p className="mt-3 text-[11px]">
+            <LuxeWorkingLabel message="Carlo is taking a look…" tone="paper" />
+          </p>
+        )}
+
+        {state === "done" && opinion && (
+          <div className="mt-3 rounded-xl border border-paper/12 bg-paper/[0.03] p-3">
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${VERDICT_STYLE[opinion.verdict].dot}`}
+                aria-hidden
+              />
+              <span className="text-[10px] uppercase tracking-wider text-brass-soft">
+                Carlo · {VERDICT_STYLE[opinion.verdict].label}
+              </span>
+            </div>
+            <p className="mt-1.5 text-[13px] leading-snug text-paper">
+              {opinion.headline}
+            </p>
+            <p className="mt-1 text-[12px] leading-relaxed text-paper/70">
+              {opinion.body}
+            </p>
+            {opinion.pairWith.length > 0 && (
+              <div className="mt-2">
+                <p className="text-[10px] uppercase tracking-wider text-paper/40">
+                  Complete the look
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {opinion.pairWith.map((p, i) => (
+                    <li
+                      key={i}
+                      className="text-[12px] leading-snug text-paper/70"
+                    >
+                      · {p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {opinionNoProfile && (
+              <p className="mt-2 border-t border-paper/10 pt-2 text-[11px] text-paper/45">
+                General guidance — {" "}
+                <Link
+                  href="/start"
+                  className="text-brass underline-offset-2 hover:underline"
+                >
+                  create your style report
+                </Link>{" "}
+                for advice tailored to your colouring and build.
+              </p>
+            )}
           </div>
         )}
       </div>
