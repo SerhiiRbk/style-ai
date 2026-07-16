@@ -669,7 +669,12 @@ async function matchItemsForLook(
 /** Per-look matched products, keyed by the look's index in content.looks. */
 export type LookItems = Record<number, ShoppingItem[]>;
 
-/** True when persisted look_items predate colour-aware ranking / similarPick flag. */
+/**
+ * True when persisted look_items predate colour-aware ranking / the similarPick
+ * flag, or still hold a raw feed title from before ingest-time humanization.
+ * The raw-title check mirrors isStaleShoppingCopy (report.ts) so a snapshot with
+ * humanized shopping but raw look items still self-heals via scheduleMatchRefresh.
+ */
 export function lookItemsNeedRefresh(items: LookItems | undefined): boolean {
   if (!items || !Object.keys(items).length) return true;
   return Object.values(items)
@@ -677,7 +682,8 @@ export function lookItemsNeedRefresh(items: LookItems | undefined): boolean {
     .some(
       (i) =>
         i.similarPick === undefined ||
-        i.matchVersion !== LOOK_MATCH_VERSION,
+        i.matchVersion !== LOOK_MATCH_VERSION ||
+        humanizeProductTitle(i.title) !== i.title,
     );
 }
 

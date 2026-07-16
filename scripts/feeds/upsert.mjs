@@ -10,6 +10,19 @@ import {
 } from "./normalize.mjs";
 import { normalizeColor } from "./color.mjs";
 import { tagsFor } from "./tags.mjs";
+import { humanizeProductTitle } from "./humanize.mjs";
+
+/**
+ * Last-line guarantee that no raw feed title reaches the DB or the embedder.
+ * Ingest entry points already humanize (and set titleRaw); this belt catches any
+ * path that didn't (e.g. a future importer) — every product runs through here on
+ * its way to embedText/toRow. Idempotent: a product with titleRaw is left alone.
+ */
+function ensureHumanTitle(p) {
+  if (!p || p.title == null || p.titleRaw != null) return;
+  p.titleRaw = String(p.title);
+  p.title = humanizeProductTitle(p.title);
+}
 
 export function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -50,6 +63,7 @@ function toRow(p, embedding, sourceType, unhide) {
     sku: p.sku ?? null,
     brand: p.brand ?? null,
     title: p.title,
+    title_raw: p.titleRaw ?? p.title,
     description: p.description ?? null,
     category: p.category,
     gender: p.gender ?? null,
@@ -127,7 +141,10 @@ export async function embedAndUpsert(
 ) {
   const sb = getSupabase();
   const { products: unique } = dedupeProducts(products);
-  for (const p of unique) p.__pk = productKey(p);
+  for (const p of unique) {
+    ensureHumanTitle(p); // before embedText (below) and toRow — see note above
+    p.__pk = productKey(p);
+  }
 
   let upserted = 0;
   for (let i = 0; i < unique.length; i += batchSize) {

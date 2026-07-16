@@ -34,7 +34,8 @@ export const canonicalProductSchema = z.object({
 
   // Descriptive
   brand: z.string().optional(),
-  title: z.string().min(1),
+  title: z.string().min(1), // humanized at ingest (see scripts/feeds/humanize.mjs)
+  titleRaw: z.string().optional(), // original feed title, kept for provenance
   description: z.string().optional(),
   category: z.enum(CATEGORIES),
   gender: z.enum(["men", "women", "unisex", "kids"]).optional(),

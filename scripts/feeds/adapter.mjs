@@ -7,6 +7,7 @@ import {
   inferMarket,
   inferCountry,
 } from "./normalize.mjs";
+import { normalizeTitle } from "./humanize.mjs";
 
 function pick(record, keys) {
   for (const k of [].concat(keys ?? [])) {
@@ -34,9 +35,12 @@ export function toCanonical(records, source, { fxRates } = {}) {
   const out = [];
 
   for (const r of records) {
-    const title = pick(r, m.title);
+    const rawTitle = pick(r, m.title);
     const deeplink = pick(r, m.deeplink);
-    if (!title || !deeplink) continue; // incomplete row — skip
+    if (!rawTitle || !deeplink) continue; // incomplete row — skip
+
+    // Humanize BEFORE category/gender inference so they read real words.
+    const { title, titleRaw } = normalizeTitle(rawTitle);
 
     const rawCategory = pick(r, m.category);
     const brand = pick(r, m.brand);
@@ -83,7 +87,8 @@ export function toCanonical(records, source, { fxRates } = {}) {
       mpn: mpn ? String(mpn) : undefined,
       country,
       brand: brand ? String(brand) : undefined,
-      title: String(title),
+      title,
+      titleRaw,
       description: pick(r, m.description) ? String(pick(r, m.description)) : undefined,
       category: mapCategory(rawCategory, title),
       gender,

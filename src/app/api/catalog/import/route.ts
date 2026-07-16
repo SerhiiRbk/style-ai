@@ -15,6 +15,7 @@ import {
   dedupeProducts,
   sanitizeScraperNulls,
 } from "../../../../../scripts/feeds/normalize.mjs";
+import { normalizeTitle } from "../../../../../scripts/feeds/humanize.mjs";
 import { env, hasCatalogImportKey, hasSupabaseAdmin, hasAI } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 
@@ -60,6 +61,14 @@ function normalizeRaw(raw: unknown, defaultSource?: string): unknown {
   const r = sanitizeScraperNulls(raw as Record<string, unknown>);
 
   if (defaultSource) r.source = defaultSource;
+
+  // Humanize the title first so category/gender inference read real words and
+  // the stored title needs no display-time pass. Preserve the original.
+  if (typeof r.title === "string") {
+    const { title, titleRaw } = normalizeTitle(r.title);
+    r.title = title;
+    r.titleRaw = titleRaw;
+  }
 
   if (typeof r.category !== "string" || !CATEGORIES.includes(r.category)) {
     r.category = mapCategory(

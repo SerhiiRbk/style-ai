@@ -10,6 +10,7 @@ import {
   type ReportContent,
 } from "./style-profile";
 import { isDemoReportId } from "./demo-report";
+import { humanizeProductTitle } from "./product-title";
 import { resolveHairImage } from "./hair-images";
 import type { SavedOutfitTryOn } from "./outfit-tryon";
 import type { StyleExtras } from "./style-extras";
@@ -611,10 +612,11 @@ const PLACEHOLDER_URL_RE =
   /(?:^|\/\/|\.)(?:example\.(?:com|org|net)|localhost|placeholder)/i;
 
 /**
- * True when the persisted shopping list should be re-matched: either it uses the
- * old generic reason template (pre-v2 copy) or it contains a placeholder /
- * unshoppable URL (e.g. a sample-feed `example.com` link). The latter lets
- * existing reports self-heal once such rows are hidden from the catalogue.
+ * True when the persisted shopping list should be re-matched: it uses the old
+ * generic reason template (pre-v2 copy), contains a placeholder / unshoppable
+ * URL (e.g. a sample-feed `example.com` link), or still holds a raw feed title
+ * that predates ingest-time humanization. Each lets existing reports self-heal
+ * on the next view via scheduleMatchRefresh (data/reports.ts).
  */
 export function isStaleShoppingCopy(items: ShoppingItem[]): boolean {
   return items.some(
@@ -622,7 +624,8 @@ export function isStaleShoppingCopy(items: ShoppingItem[]): boolean {
       /^A \S+ that fits your .+ palette and your goal to/.test(i.why) ||
       !i.url ||
       i.url === "#" ||
-      PLACEHOLDER_URL_RE.test(i.url),
+      PLACEHOLDER_URL_RE.test(i.url) ||
+      humanizeProductTitle(i.title) !== i.title,
   );
 }
 
