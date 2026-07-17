@@ -751,7 +751,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   }
   const mTrack = mast.length > 1 ? (CONTENT_W - mNat) / (mast.length - 1) : 0;
   const mBaseline = PAGE_H - 84;
-  d.drawTracked(mast, MARGIN, mBaseline, mSize, d.serif, topC.strong, mTrack, 1);
+  d.drawTracked(mast, MARGIN, mBaseline, mSize, d.serif, WHITE, mTrack, 0.7);
   d.drawTracked(tt("THE PERSONAL STYLE EDIT"), MARGIN, mBaseline - 26, 8, d.bold, topC.soft, 4.5);
   const coverMonth = new Date(report.createdAt)
     .toLocaleDateString("en-GB", { month: "long", year: "numeric" })
@@ -771,7 +771,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   let ty = 650;
   const drawTeaser = (title: string, body: string) => {
     for (const ln of d.wrapLines(tt(title.toUpperCase()), d.bold, 13.5, LCOL_W)) {
-      d.drawTracked(ln, MARGIN, ty, 13.5, d.bold, leftC.strong, 1.2);
+      d.drawTracked(ln, MARGIN, ty, 13.5, d.bold, WHITE, 1.2);
       ty -= 18;
     }
     ty -= 5;
@@ -826,7 +826,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   const headLines = d.wrapLines(report.headline, d.serifBold, headSize, CONTENT_W * 0.86);
   let hy = 232;
   for (const ln of headLines) {
-    coverPage.drawText(ln, { x: MARGIN, y: hy - headSize, size: headSize, font: d.serifBold, color: botC.strong });
+    coverPage.drawText(ln, { x: MARGIN, y: hy - headSize, size: headSize, font: d.serifBold, color: WHITE });
     hy -= 34;
   }
   d.drawTracked(`${tierName.toUpperCase()}  ${tt("EDITION")}`, MARGIN, hy - 6, 8.5, d.bold, BRASS, 2.6);
