@@ -1,5 +1,8 @@
 import { after } from "next/server";
-import { getReportViewForDownload } from "@/lib/data/reports";
+import {
+  getReportViewForDownload,
+  loadLookTryOnImages,
+} from "@/lib/data/reports";
 import { isDemoReportId } from "@/lib/demo-report";
 import { getCachedReportPdf, putCachedReportPdf } from "@/lib/pdf/pdf-cache";
 import { buildReportPdf } from "@/lib/pdf/report-pdf";
@@ -72,6 +75,21 @@ export async function GET(
       },
       { status: 402, headers: { "Content-Type": "application/json" } },
     );
+  }
+
+  // Attach the per-look "on you" try-ons (from the user's photo) so each look in
+  // the PDF carries its rendered variant. Done before caching so the PDF cache
+  // fingerprint accounts for them (a newly-generated try-on rebuilds the PDF).
+  try {
+    const lookTryOns = await loadLookTryOnImages(id);
+    if (lookTryOns.size) {
+      report.looks.forEach((l, i) => {
+        const url = lookTryOns.get(i);
+        if (url) l.tryOnImage = url;
+      });
+    }
+  } catch (err) {
+    console.error("[pdf] failed to load look try-ons", id, err);
   }
 
   try {

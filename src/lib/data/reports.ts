@@ -1690,6 +1690,36 @@ export async function getReportViewForDownload(
   return fetchReportView(id, { scheduleRefresh: false });
 }
 
+/**
+ * Per-look "on you" try-on images (proxy URLs) keyed by the look's `idx`, for
+ * the PDF. These are rendered from the user's own photo by /api/tryon/look and
+ * live in the `tryons` table (report-scoped) — not on the StyleReport itself.
+ * Latest render per look wins. Empty when unconfigured/demo or none generated.
+ */
+export async function loadLookTryOnImages(
+  reportId: string,
+): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (isDemoReportId(reportId) || !hasSupabaseAdmin) return out;
+  const admin = createAdminSupabase();
+  const { data } = await admin
+    .from("tryons")
+    .select("image_path, created_at")
+    .eq("report_id", reportId)
+    .eq("kind", "look")
+    .order("created_at", { ascending: false });
+  for (const r of data ?? []) {
+    const path = (r.image_path as string | null) ?? null;
+    if (!path) continue;
+    const m = path.match(/-look-(\d+)\.(?:png|jpe?g)$/i);
+    if (!m) continue;
+    const idx = Number(m[1]);
+    if (out.has(idx)) continue; // desc order → first seen is the latest render
+    out.set(idx, signedAssetProxyUrl(path));
+  }
+  return out;
+}
+
 /** Fetch report content only — owner or public link. Falls back to mock store. */
 export async function getReportById(id: string): Promise<StyleReport | null> {
   const view = await getReportView(id);

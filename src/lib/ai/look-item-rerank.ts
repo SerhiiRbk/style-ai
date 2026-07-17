@@ -89,7 +89,8 @@ function buildRerankPrompt(
     `For every pick with candidateIndex >= 0 also write "why" — ONE calm sentence ` +
     `(18–28 words) in the voice of a personal stylist: why this piece works for ` +
     `this look. Reference the item's actual type and colour; NEVER mention a ` +
-    `material that is not in the candidate's title; no hype words.\n\n` +
+    `material that is not in the candidate's title; no hype words; never write ` +
+    `internal tokens such as "similarPick" in the prose.\n\n` +
     slotBlocks
   );
 }

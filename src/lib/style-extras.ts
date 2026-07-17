@@ -1243,6 +1243,14 @@ function priorityMoves(
   const goal = profile.goals[0]?.toLowerCase() ?? "look more polished";
   const heroItem = pickHero(shopping, profile.boldness);
   const hero = heroItem?.title ?? "one excellent jacket";
+  // Undertone-aware so a cool Soft Summer isn't told to build on "warm neutrals"
+  // with gold metals. Names the primary metal from the same source as the
+  // Colour DNA section (metalsFor) to keep the report internally consistent.
+  const undertone = lc(profile.physical.undertone);
+  const neutralsWord =
+    undertone === "warm" ? "warm" : undertone === "cool" ? "cool" : "muted";
+  const metal = metalsFor(profile.physical.undertone).recommend[0]?.name.toLowerCase();
+  const metalPhrase = metal ? `metals (${metal})` : "metals";
   return [
     {
       n: "01",
@@ -1252,7 +1260,7 @@ function priorityMoves(
     {
       n: "02",
       title: "Anchor everything to your palette",
-      why: "Build on warm neutrals and one accent near the face; match metals and leather to your undertone.",
+      why: `Build on ${neutralsWord} neutrals and one accent near the face; match ${metalPhrase} and leather to your undertone.`,
     },
     {
       n: "03",

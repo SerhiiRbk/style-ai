@@ -18,10 +18,14 @@ export const REASON_VERSION = 2;
 const MATERIAL_RE =
   /\b(leather|suede|nubuck|wool|merino|cashmere|linen|silk|denim|corduroy|velvet|satin|fleece|down(?=[-\s](?:jacket|coat|vest|gilet|parka|puffer|fill(?:ed)?|padded|padding)))\b/gi;
 
+/** Internal marker tokens the model must never echo into user-facing prose. */
+const JARGON_RE = /\b(similar\s*pick|candidate\s*index|heroWhy|reasonVersion)\b/i;
+
 /**
  * Deterministic guard against hallucinated copy: a reason may not claim a
- * material absent from the item itself, and must stay one sentence-sized line.
- * Failing reasons fall back to the template "why" — no retry.
+ * material absent from the item itself, must not leak an internal marker token,
+ * and must stay one sentence-sized line. Failing reasons fall back to the
+ * template "why" — no retry.
  */
 export function reasonIsSafe(
   why: string,
@@ -29,6 +33,7 @@ export function reasonIsSafe(
 ): boolean {
   const text = why.trim();
   if (text.length < 40 || text.length > 260) return false;
+  if (JARGON_RE.test(text)) return false;
   const known = `${item.title} ${item.color ?? ""}`.toLowerCase();
   for (const m of text.matchAll(MATERIAL_RE)) {
     if (!known.includes(m[0].toLowerCase())) return false;
@@ -64,8 +69,8 @@ function formatItem(i: number, item: ShoppingItem, heroIndex: number): string {
     item.priceEur && Number.isFinite(item.priceEur)
       ? ` · €${Math.round(item.priceEur)}`
       : "";
-  const similar = item.similarPick ? " (similarPick)" : "";
-  const hero = i === heroIndex ? " (hero)" : "";
+  const similar = item.similarPick ? " [closest match, not exact]" : "";
+  const hero = i === heroIndex ? " [hero]" : "";
   return `[${i}] ${item.category} — ${item.title} · colour swatch ${item.color}${price}${similar}${hero}`;
 }
 
@@ -76,7 +81,7 @@ function buildReasonsPrompt(
 ): string {
   const heroRule =
     heroIndex >= 0
-      ? `- Item [${heroIndex}] is marked (hero) — the single "invest in this" piece the ` +
+      ? `- Item [${heroIndex}] is marked [hero] — the single "invest in this" piece the ` +
         `report leads with. Its per-item reason follows the normal rules; ADDITIONALLY ` +
         `fill the top-level "heroWhy" field for it with a DIFFERENT sentence in an ` +
         `investment frame — durability, cost-per-wear, or how one strong piece lifts ` +
@@ -96,8 +101,10 @@ function buildReasonsPrompt(
     `- Tie each reason to ONE profile anchor (palette/season, undertone, ` +
     `contrast, build, or a goal); vary the anchors — no anchor on more than ` +
     `three items.\n` +
-    `- Items marked (similarPick) are the closest catalogue match rather than ` +
-    `an exact one — acknowledge that honestly.\n` +
+    `- An item tagged [closest match, not exact] is the nearest catalogue option, ` +
+    `not a perfect one — acknowledge that honestly in plain words (e.g. "the ` +
+    `closest match in your palette"). NEVER write bracketed tags or code-like ` +
+    `tokens (no "[hero]", no "similarPick") in the prose.\n` +
     heroRule +
     `- Write in English. Return a reason for every index.\n\n` +
     `Items:\n${items.map((it, i) => formatItem(i, it, heroIndex)).join("\n")}`

@@ -515,18 +515,22 @@ export async function generateCoverImage(opts: {
     const palette = (opts.palette ?? []).filter(Boolean);
 
     const prompt =
-      `Cover photograph for a luxury men's style magazine — a single striking ` +
-      `full-length editorial hero shot. ` +
+      `Cover photograph for a luxury men's style magazine — a single full-length ` +
+      `editorial hero shot in a bright, airy, high-key style. ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.bodyType} build, dressed in refined, well-tailored clothing` +
       (palette.length ? ` in a ${palette.join(", ")} colour palette. ` : ". ") +
       (opts.archetype ? `Overall mood: ${opts.archetype}. ` : "") +
-      `Confident, poised stance, editorial fashion energy. Cinematic soft directional ` +
-      `light, refined minimalist studio backdrop with a subtle warm tone. ` +
-      `Vertical full-length cover framing (taller than wide), the subject centred with ` +
-      `generous clean empty space above the head and below the feet so a magazine ` +
-      `masthead and cover lines can be overlaid later. Sharp focus, high-end retouching, ` +
-      `magazine cover quality. ` +
+      `Composition: the subject stands full-length slightly to the RIGHT of centre, ` +
+      `weight relaxed, one hand in a trouser pocket, calm confident expression. ` +
+      `The LEFT third of the frame is clean, empty, softly-lit wall — deliberate negative ` +
+      `space for cover text. Leave generous empty space ABOVE the head (for a masthead) ` +
+      `and a clear band along the BOTTOM (for a title). ` +
+      `Background: a minimalist warm-neutral studio — smooth plaster / travertine wall in ` +
+      `soft beige, gentle natural daylight from the side, low soft shadows, no props. ` +
+      `Bright and evenly lit so dark text overlays read cleanly on the empty areas. ` +
+      `Vertical cover framing (taller than wide), head-to-shoes fully visible, sharp focus, ` +
+      `high-end retouching, editorial magazine-cover quality. ` +
       (referenceImageUrl
         ? `Preserve the face, hair, skin tone and identity of the person in the provided ` +
           `photo exactly — this is a portrait of that same person.`

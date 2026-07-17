@@ -186,6 +186,8 @@ export type Look = {
   description: string;
   palette: string[];
   image: string;
+  /** "On you" try-on rendered from the user's photo (proxy URL) — shown in the PDF. */
+  tryOnImage?: string;
 };
 
 /** What the user still has after a failed generation — shown in the recovery banner. */

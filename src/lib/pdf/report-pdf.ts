@@ -163,21 +163,6 @@ async function regionLuma(
   }
 }
 
-/** Heavily blurred version of an image, used as an ambient full-bleed backdrop. */
-async function blurJpeg(buf: Uint8Array, sigma = 34): Promise<Buffer | null> {
-  let sharp: typeof import("sharp").default;
-  try {
-    ({ default: sharp } = await import("sharp"));
-  } catch {
-    return null;
-  }
-  try {
-    return await sharp(buf).blur(sigma).modulate({ brightness: 0.9 }).jpeg({ quality: 70 }).toBuffer();
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Embed an image from a public path or remote URL, cover-cropped to the target
  * box aspect (w:h) and re-encoded to JPEG. Cropping is required because pdf-lib
@@ -700,9 +685,10 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   const coverSrc = report.coverImage || "/images/hero-editorial.png";
   const coverBytes = await loadBytes(coverSrc);
 
-  // Build the cover-cropped hero once so a centre slice of it can be re-laid
-  // *over* the wordmark, letting the subject stand in front of the masthead.
-  const heroBox = { w: PAGE_W, h: PAGE_H, px: 1400, position: "top" as const };
+  // Full-bleed cover photo. The bespoke cover is composed with the subject to the
+  // right and clean, light negative space (left column, top, bottom) for text —
+  // so this is a bright editorial cover with DARK type, no darkening scrims.
+  const heroBox = { w: PAGE_W, h: PAGE_H, px: 1600, position: "top" as const };
   let heroBuf: Buffer | null = coverBytes ? await cropToBoxJpeg(coverBytes, heroBox) : null;
   let hero: PDFImage | null = null;
   if (heroBuf) {
@@ -721,53 +707,30 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
         : null);
   }
   if (hero) {
-    // Ambient, heavily-blurred full-bleed backdrop so the portrait can sit at a
-    // slightly reduced scale without hard letterbox bars.
-    const bgBuf = heroBuf ? await blurJpeg(heroBuf) : null;
-    let bg: PDFImage | null = null;
-    if (bgBuf) {
-      try {
-        bg = await d.doc.embedJpg(bgBuf);
-      } catch {
-        bg = null;
-      }
-    }
-    coverPage.drawImage(bg ?? hero, { x: 0, y: 0, width: PAGE_W, height: PAGE_H });
-    // Reduced-scale sharp portrait, anchored to the top so the head stays high.
-    const shrink = 0.9;
-    const fw = PAGE_W * shrink;
-    const fh = PAGE_H * shrink;
-    coverPage.drawImage(hero, {
-      x: (PAGE_W - fw) / 2,
-      y: PAGE_H - fh,
-      width: fw,
-      height: fh,
-    });
+    coverPage.drawImage(hero, { x: 0, y: 0, width: PAGE_W, height: PAGE_H });
   } else {
-    coverPage.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: INK });
+    coverPage.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: CREAM });
   }
-
-  // Bottom scrim so the headline + footer read. No top scrim — the masthead
-  // instead flips dark/light to stay legible over the bare photo.
-  coverPage.drawRectangle({
-    x: 0,
-    y: 0,
-    width: PAGE_W,
-    height: 300,
-    color: INK,
-    opacity: 0.55,
-  });
 
   d.page = coverPage;
 
-  // The byline roundel sits over the bare photo, whose brightness we can't
-  // predict. Sample that zone and flip the type dark/light so it always reads.
-  const rightLuma = coverBytes
-    ? await regionLuma(coverBytes, { left: 0.7, top: 0.2, width: 0.28, height: 0.24 })
-    : null;
-  const rightLight = (rightLuma ?? 0) > 0.55;
-  const rightTitle = rightLight ? INK : WHITE;
-  const rightBody = rightLight ? STONE : FOG;
+  // No scrims. Type is dark on the light photo; each text zone samples the photo
+  // behind it and flips to light only if that zone is unexpectedly dark, so the
+  // cover reads whatever the render's brightness.
+  const zoneColors = async (region: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  }) => {
+    const lum = coverBytes ? await regionLuma(coverBytes, region) : null;
+    const light = (lum ?? 1) > 0.52;
+    return { strong: light ? INK : WHITE, soft: light ? STONE : FOG };
+  };
+  const topC = await zoneColors({ left: 0.05, top: 0.0, width: 0.9, height: 0.13 });
+  const leftC = await zoneColors({ left: 0.0, top: 0.28, width: 0.34, height: 0.34 });
+  const botC = await zoneColors({ left: 0.0, top: 0.7, width: 0.55, height: 0.3 });
+  const roundC = await zoneColors({ left: 0.66, top: 0.14, width: 0.32, height: 0.2 });
 
   const emblemBytes = await loadBytes("/images/valetti-emblem.png");
   let emblem: PDFImage | null = null;
@@ -777,15 +740,8 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     emblem = null;
   }
 
-  // Masthead — a large wordmark tracked to fill the measure, drawn on top of the
-  // photo at the very top in translucent white (70%). The smaller strap-line
-  // flips dark/light against the photo so it always reads.
-  const topLuma = coverBytes
-    ? await regionLuma(coverBytes, { left: 0.12, top: 0.02, width: 0.76, height: 0.11 })
-    : null;
-  const topLight = (topLuma ?? 0) > 0.55;
-  const subColor = topLight ? STONE : FOG;
-
+  // Masthead — a large wordmark tracked to fill the measure, in the clear space
+  // above the subject.
   const mast = "VALETTI";
   let mSize = 60;
   let mNat = d.widthTracked(mast, d.serif, mSize, 0);
@@ -794,18 +750,54 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     mNat = d.widthTracked(mast, d.serif, mSize, 0);
   }
   const mTrack = mast.length > 1 ? (CONTENT_W - mNat) / (mast.length - 1) : 0;
-  const mBaseline = PAGE_H - 78;
-  d.drawTracked(mast, MARGIN, mBaseline, mSize, d.serif, WHITE, mTrack, 0.7);
-  d.drawTracked(tt("THE PERSONAL STYLE EDIT"), MARGIN, mBaseline - 24, 8, d.reg, subColor, 5);
+  const mBaseline = PAGE_H - 84;
+  d.drawTracked(mast, MARGIN, mBaseline, mSize, d.serif, topC.strong, mTrack, 1);
+  d.drawTracked(tt("THE PERSONAL STYLE EDIT"), MARGIN, mBaseline - 26, 8, d.bold, topC.soft, 4.5);
   const coverMonth = new Date(report.createdAt)
     .toLocaleDateString("en-GB", { month: "long", year: "numeric" })
     .toUpperCase();
-  d.drawTracked(coverMonth, MARGIN, mBaseline - 40, 8, d.bold, BRASS, 5);
+  d.drawTracked(coverMonth, MARGIN, mBaseline - 42, 8, d.bold, BRASS, 4.5);
 
-  // Right byline roundel.
-  const R = 48;
-  const bcx = PAGE_W - MARGIN - R + 8;
-  const bcy = PAGE_H - 252;
+  // Left-column cover lines — two teasers with a brass rule between, dark on the
+  // clean left of the photo. Both are true of every report (colour + tailoring).
+  const seasonRaw =
+    report.profile.colorSubseason ?? report.profile.colorSeason ?? "";
+  const seasonLabel = seasonRaw
+    .split(/[-\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+  const LCOL_W = 172;
+  let ty = 650;
+  const drawTeaser = (title: string, body: string) => {
+    for (const ln of d.wrapLines(tt(title.toUpperCase()), d.bold, 13.5, LCOL_W)) {
+      d.drawTracked(ln, MARGIN, ty, 13.5, d.bold, leftC.strong, 1.2);
+      ty -= 18;
+    }
+    ty -= 5;
+    for (const ln of d.wrapLines(tt(body), d.reg, 11, LCOL_W)) {
+      coverPage.drawText(ln, { x: MARGIN, y: ty, size: 11, font: d.reg, color: leftC.soft });
+      ty -= 15.5;
+    }
+  };
+  drawTeaser(
+    "Colour confidence",
+    seasonLabel
+      ? `How to wear your ${seasonLabel} palette with quiet impact.`
+      : "How to wear your palette with quiet impact.",
+  );
+  ty -= 12;
+  coverPage.drawRectangle({ x: MARGIN, y: ty, width: 42, height: 1.2, color: BRASS });
+  ty -= 26;
+  drawTeaser(
+    "Tailoring that works",
+    "Modern cuts, timeless proportions, real results.",
+  );
+
+  // Byline roundel, upper-right over the clean wall.
+  const R = 46;
+  const bcx = PAGE_W - MARGIN - R + 6;
+  const bcy = PAGE_H - 224;
   coverPage.drawEllipse({ x: bcx, y: bcy, xScale: R, yScale: R, borderColor: BRASS, borderWidth: 0.9 });
   const centerAt = (
     s: string,
@@ -818,27 +810,26 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     const w = d.widthTracked(s, font, size, track);
     d.drawTracked(s, bcx - w / 2, y, size, font, color, track);
   };
-  centerAt(tt("CARLO"), bcy + 11, 8.5, d.bold, rightTitle, 2.5);
-  centerAt(tt("VALETTI"), bcy + 0.5, 8.5, d.bold, rightTitle, 2.5);
+  centerAt(tt("CARLO"), bcy + 11, 8.5, d.bold, roundC.strong, 2.5);
+  centerAt(tt("VALETTI"), bcy + 0.5, 8.5, d.bold, roundC.strong, 2.5);
   let ry = bcy - 11;
-  for (const ln of d.wrapLines(tt("On timeless style and personal expression"), d.serifItalic, 6.5, R * 1.55)) {
+  for (const ln of d.wrapLines(tt("On timeless style and personal expression"), d.serifItalic, 6.5, R * 1.5)) {
     const w = d.serifItalic.widthOfTextAtSize(ln, 6.5);
-    coverPage.drawText(ln, { x: bcx - w / 2, y: ry - 6.5, size: 6.5, font: d.serifItalic, color: rightBody });
+    coverPage.drawText(ln, { x: bcx - w / 2, y: ry - 6.5, size: 6.5, font: d.serifItalic, color: roundC.soft });
     ry -= 9;
   }
 
-  // Headline block over the bottom scrim.
-  d.drawTracked(tt("THE STYLE REPORT"), MARGIN, 232, 8, d.bold, BRASS, 3);
-  const headSize = 30;
-  const headLines = d.wrapLines(report.headline, d.serifBold, headSize, CONTENT_W);
-  const headGap = headLines.length >= 4 ? 30 : 35;
-  let hy = 214;
-  for (const ln of headLines) {
-    coverPage.drawText(ln, { x: MARGIN, y: hy - headSize, size: headSize, font: d.serifBold, color: WHITE });
-    hy -= headGap;
-  }
+  // Headline block, bottom-left on the clean floor. Dark type, no scrim.
   const tierName = report.tier.charAt(0).toUpperCase() + report.tier.slice(1);
-  d.drawTracked(`${tierName.toUpperCase()} ${tt("EDITION")}`, MARGIN, hy - 4, 8.5, d.bold, BRASS, 2.6);
+  d.drawTracked(tt("THE STYLE REPORT"), MARGIN, 250, 8, d.bold, BRASS, 3);
+  const headSize = 30;
+  const headLines = d.wrapLines(report.headline, d.serifBold, headSize, CONTENT_W * 0.86);
+  let hy = 232;
+  for (const ln of headLines) {
+    coverPage.drawText(ln, { x: MARGIN, y: hy - headSize, size: headSize, font: d.serifBold, color: botC.strong });
+    hy -= 34;
+  }
+  d.drawTracked(`${tierName.toUpperCase()}  ${tt("EDITION")}`, MARGIN, hy - 6, 8.5, d.bold, BRASS, 2.6);
   const when = new Date(report.createdAt).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
@@ -848,7 +839,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     `${[report.profile.demographics.city, report.profile.demographics.country]
       .filter(Boolean)
       .join(", ")}  ·  ${when}`,
-    { x: MARGIN, y: hy - 24, size: 9.5, font: d.reg, color: FOG },
+    { x: MARGIN, y: hy - 24, size: 9.5, font: d.reg, color: botC.soft },
   );
 
   // Footer maker's-mark: emblem + atelier line.
@@ -866,7 +857,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     y: footY - 3,
     size: 9,
     font: d.serifItalic,
-    color: FOG,
+    color: botC.soft,
   });
 
   /* ----------------------------- opening page ---------------------------- */
@@ -1126,6 +1117,16 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       meta: shop ? `${tt("Shop a look like this:")} ${shop}` : undefined,
       label: l.context,
     });
+    // The "on you" render (from the user's own photo) sits beside its look, so
+    // the two land side by side in the 2-col grid. Only when one was generated.
+    if (l.tryOnImage) {
+      lookItems.push({
+        img: await tall(l.tryOnImage),
+        title: tt(`${l.title} — on you`),
+        sub: tt("This look rendered on your photo."),
+        label: tt("On you"),
+      });
+    }
   }
   d.gallery(lookItems, { cols: 2, ratio: LOOK_RATIO });
 
