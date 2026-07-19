@@ -161,6 +161,8 @@ const EYE_SWATCH_OPTIONS: SwatchOption[] = [
   })),
 ];
 
+type ReusePhoto = { path: string; url: string | null; createdAt: string };
+
 export function StartForm({
   userId,
   showWelcome: initialWelcome = false,
@@ -194,6 +196,47 @@ export function StartForm({
     [],
   );
   const [uploadingRole, setUploadingRole] = useState<string | null>(null);
+  // Previously-uploaded photos the user can reuse instead of re-uploading,
+  // grouped BY ROLE so a full-length is never offered for the face slot (or vice
+  // versa). Fetched from /api/photos; empty for first-time users.
+  const [reusePhotos, setReusePhotos] = useState<{
+    full: ReusePhoto[];
+    face: ReusePhoto[];
+    profile: ReusePhoto[];
+  }>({ full: [], face: [], profile: [] });
+
+  useEffect(() => {
+    if (!LIVE || !userId) return;
+    let cancelled = false;
+    fetch("/api/photos", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d) return;
+        setReusePhotos({
+          full: Array.isArray(d.photos)
+            ? d.photos.map((p: { storagePath: string; url: string | null; createdAt: string }) => ({
+                path: p.storagePath,
+                url: p.url,
+                createdAt: p.createdAt,
+              }))
+            : [],
+          face: Array.isArray(d.face) ? (d.face as ReusePhoto[]) : [],
+          profile: Array.isArray(d.profile) ? (d.profile as ReusePhoto[]) : [],
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  /** Reuse a prior photo for ONE role, replacing any current choice for it. */
+  function applyReusePhoto(role: string, path: string) {
+    setPhotoPaths((prev) => [
+      ...prev.filter((p) => p.role !== role),
+      { role, path },
+    ]);
+  }
 
   async function uploadPhoto(role: string, file: File) {
     if (!supabase || !userId) return;
@@ -453,6 +496,71 @@ export function StartForm({
               subtitle="Better photos make the colour, haircut and fit analysis more accurate. They are processed privately and never sold or shared."
             >
               <PhotoQualityGuide />
+              {LIVE &&
+                reusePhotos.full.length +
+                  reusePhotos.face.length +
+                  reusePhotos.profile.length >
+                  0 && (
+                  <div className="mb-6 mt-6 rounded-2xl border hairline bg-cream/40 p-5">
+                    <h3 className="font-display text-xl">Use a previous photo</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-stone">
+                      Reuse photos from an earlier report, or upload new ones
+                      below. Each type is chosen separately.
+                    </p>
+                    <div className="mt-4 space-y-4">
+                      {(
+                        [
+                          { role: "face", label: "Front portrait", items: reusePhotos.face },
+                          { role: "full", label: "Full length", items: reusePhotos.full },
+                          { role: "profile", label: "Profile", items: reusePhotos.profile },
+                        ] as const
+                      ).map(({ role, label, items }) =>
+                        items.length ? (
+                          <div key={role}>
+                            <p className="text-[11px] uppercase tracking-wide text-stone-soft">
+                              {label}
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-3">
+                              {items.map((item) => {
+                                const selected = photoPaths.some(
+                                  (p) => p.role === role && p.path === item.path,
+                                );
+                                return (
+                                  <button
+                                    key={item.path}
+                                    type="button"
+                                    onClick={() => applyReusePhoto(role, item.path)}
+                                    aria-pressed={selected}
+                                    className={`relative h-24 w-[4.5rem] overflow-hidden rounded-lg border bg-cream/40 transition-colors ${
+                                      selected
+                                        ? "border-brass ring-2 ring-brass/40"
+                                        : "border-line hover:border-ink/30"
+                                    }`}
+                                  >
+                                    {item.url ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        src={item.url}
+                                        alt={`Previous ${label.toLowerCase()}`}
+                                        className="h-full w-full object-contain"
+                                        loading="lazy"
+                                      />
+                                    ) : null}
+                                    {selected && (
+                                      <span className="absolute inset-x-0 bottom-0 bg-brass/90 py-0.5 text-center text-[10px] text-paper">
+                                        Selected
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null,
+                      )}
+                    </div>
+                  </div>
+                )}
               <div className="mb-6 mt-6 rounded-2xl border hairline bg-paper p-5">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>

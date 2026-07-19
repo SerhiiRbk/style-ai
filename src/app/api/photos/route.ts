@@ -33,26 +33,61 @@ export async function GET() {
   const rows = (data ?? []) as PhotoRow[];
   const roles = [...new Set(rows.map((p) => p.role as string))];
 
+  // Thumbnail URLs for display (account grid + wizard reuse strips). `contain`
+  // preserves the photo's aspect ratio (no cropping) while capping the long side,
+  // and Supabase auto-negotiates WebP — a ~200 KB original drops to ~10-15 KB.
+  // The report/try-on pipelines sign their own full-resolution URLs from the
+  // storage_path, so generation quality is unaffected.
+  const sign = async (path: string) => {
+    const { data: signed } = await admin.storage
+      .from("photos")
+      .createSignedUrl(path, 600, {
+        transform: { width: 512, height: 512, resize: "contain", quality: 72 },
+      });
+    return signed?.signedUrl ?? null;
+  };
+
   // Full-length photos usable as a try-on model, with short-lived signed URLs.
   const fullRows = rows.filter((p) => p.role === "full");
   const photos = await Promise.all(
-    fullRows.map(async (p) => {
-      const { data: signed } = await admin.storage
-        .from("photos")
-        .createSignedUrl(p.storage_path, 600);
-      return {
-        storagePath: p.storage_path,
-        url: signed?.signedUrl ?? null,
-        isDefault: Boolean(p.is_default_tryon),
-        createdAt: p.created_at,
-      };
-    }),
+    fullRows.map(async (p) => ({
+      storagePath: p.storage_path,
+      url: await sign(p.storage_path),
+      isDefault: Boolean(p.is_default_tryon),
+      createdAt: p.created_at,
+    })),
   );
+
+  // Prior photos grouped BY ROLE (face / profile), each with a signed URL, so the
+  // report wizard can offer "use a previous photo" per role — never mixing a
+  // face shot into the full-length slot or vice-versa. Full-length lives in
+  // `photos` above (also used by the try-on model manager). Deduped by path.
+  const roleList = async (role: string) => {
+    const seen = new Set<string>();
+    const out: { path: string; url: string | null; createdAt: string }[] = [];
+    for (const p of rows) {
+      if (p.role !== role || seen.has(p.storage_path)) continue;
+      seen.add(p.storage_path);
+      out.push({
+        path: p.storage_path,
+        url: await sign(p.storage_path),
+        createdAt: p.created_at,
+      });
+      if (out.length >= 12) break;
+    }
+    return out.filter((p) => p.url);
+  };
+  const [face, profile] = await Promise.all([
+    roleList("face"),
+    roleList("profile"),
+  ]);
 
   return NextResponse.json({
     roles,
     hasFull: roles.includes("full"),
     photos: photos.filter((p) => p.url),
+    face,
+    profile,
   });
 }
 

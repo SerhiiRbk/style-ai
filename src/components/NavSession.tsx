@@ -132,6 +132,11 @@ export function NavDesktopAuthLinks() {
           My looks
         </Link>
       )}
+      {authed && (
+        <Link href="/account" className={navLinkClass}>
+          Account
+        </Link>
+      )}
       {isAdmin && (
         <Link
           href="/admin"
@@ -151,15 +156,15 @@ export function NavCreditPill() {
   return (
     <>
       <Link
-        href="/pricing"
-        title="Your credit balance — buy more"
+        href="/account#credits"
+        title="Your credit balance"
         className={`${creditsPillClass} px-2 py-0.5 text-[11px] xl:hidden`}
       >
         {balance} cr
       </Link>
       <Link
-        href="/pricing"
-        title="Your credit balance — buy more"
+        href="/account#credits"
+        title="Your credit balance"
         className={`${creditsPillClass} hidden px-3 py-1 text-xs xl:inline-flex`}
       >
         {balance} credits

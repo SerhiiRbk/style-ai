@@ -108,7 +108,7 @@ export function NavbarMenu({
         <nav className="flex-1 overflow-y-auto px-6 py-4">
           {authed && balance !== null && (
             <Link
-              href="/pricing"
+              href="/account#credits"
               onClick={() => setOpen(false)}
               className="mb-4 inline-flex rounded-full border border-brass/40 bg-brass/5 px-3 py-1 text-xs text-ink transition-colors hover:border-brass md:hidden"
             >
@@ -147,6 +147,17 @@ export function NavbarMenu({
                   onClick={() => setOpen(false)}
                 >
                   My looks
+                </Link>
+              </li>
+            )}
+            {authed && (
+              <li>
+                <Link
+                  href="/account"
+                  className={linkClass}
+                  onClick={() => setOpen(false)}
+                >
+                  Account
                 </Link>
               </li>
             )}

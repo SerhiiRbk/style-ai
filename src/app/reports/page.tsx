@@ -8,8 +8,6 @@ import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getCreditBalance } from "@/lib/credits";
 import { DeleteReportButton } from "@/components/DeleteReportButton";
-import { DeleteAccountButton } from "@/components/DeleteAccountButton";
-import { ExportDataButton } from "@/components/ExportDataButton";
 import {
   getUserReports,
   reportStatusLabel,
@@ -88,10 +86,10 @@ export default async function ReportsPage() {
                   </span>
                   <span className="text-xs text-stone">credits</span>
                   <Link
-                    href="/pricing"
+                    href="/account#credits"
                     className="text-xs text-brass transition-colors hover:text-ink"
                   >
-                    Buy more →
+                    Manage →
                   </Link>
                 </div>
               )}
@@ -183,35 +181,21 @@ export default async function ReportsPage() {
 
         <section className="container-luxe pb-20">
           <div className="rounded-2xl border hairline bg-cream/30 p-6 sm:p-8">
-            <p className="eyebrow">Privacy &amp; data</p>
+            <p className="eyebrow">Account</p>
             <h2 className="mt-3 font-display text-2xl text-ink">
-              Your GDPR rights
+              Photos, credits &amp; privacy
             </h2>
             <p className="mt-2 max-w-xl text-sm text-stone">
-              Download a structured copy of the personal data we hold about your
-              account, manage your uploaded reference photos, or permanently
-              erase everything.
-            </p>
-            <div className="mt-5 flex flex-wrap items-center gap-4">
-              <ExportDataButton />
-              <Link
-                href="/photos"
-                className="text-sm text-brass underline-offset-2 transition-colors hover:text-ink hover:underline"
-              >
-                Manage my photos →
-              </Link>
-            </div>
-          </div>
-
-          <div className="mt-8 rounded-2xl border border-red-100 bg-red-50/30 p-6 sm:p-8">
-            <h2 className="font-display text-2xl text-ink">Delete your account</h2>
-            <p className="mt-2 max-w-xl text-sm text-stone">
-              Permanently erase your account and all associated data — every
-              report, generated image, uploaded photo, try-on and credit
-              record. This cannot be undone.
+              Manage your reference photos, credit balance, data export and
+              account deletion in one place.
             </p>
             <div className="mt-5">
-              <DeleteAccountButton />
+              <Link
+                href="/account"
+                className="text-sm text-brass underline-offset-2 transition-colors hover:text-ink hover:underline"
+              >
+                Go to your account →
+              </Link>
             </div>
           </div>
         </section>

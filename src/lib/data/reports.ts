@@ -1189,15 +1189,28 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
     await recordBiometricConsent(userId);
   }
 
-  // Persist uploaded photo references (reused later for virtual try-on).
+  // Persist uploaded photo references (reused later for virtual try-on). Skip
+  // paths already on file — a report can REUSE a previous photo set, and we must
+  // not create duplicate rows for the same storage object.
   if (input.photoPaths?.length) {
-    await admin.from("photos").insert(
-      input.photoPaths.map((p) => ({
-        user_id: userId,
-        role: p.role,
-        storage_path: p.path,
-      })),
+    const { data: existing } = await admin
+      .from("photos")
+      .select("storage_path")
+      .eq("user_id", userId)
+      .in("storage_path", input.photoPaths.map((p) => p.path));
+    const known = new Set(
+      (existing ?? []).map((r) => r.storage_path as string),
     );
+    const fresh = input.photoPaths.filter((p) => !known.has(p.path));
+    if (fresh.length) {
+      await admin.from("photos").insert(
+        fresh.map((p) => ({
+          user_id: userId,
+          role: p.role,
+          storage_path: p.path,
+        })),
+      );
+    }
   }
 
   const { data: created, error } = await admin

@@ -16,13 +16,68 @@ type ModelPhoto = {
   createdAt: string;
 };
 
+type RolePhoto = { path: string; url: string; createdAt: string };
+
+/** Read-only grid of one photo role (front portraits / profile shots) with delete. */
+function RoleSection({
+  title,
+  items,
+  onDelete,
+  busy,
+}: {
+  title: string;
+  items: RolePhoto[];
+  onDelete: (path: string) => void;
+  busy: boolean;
+}) {
+  return (
+    <section>
+      <p className="text-[11px] uppercase tracking-wide text-stone-soft">
+        {title}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {items.map((p) => (
+          <div
+            key={p.path}
+            className="group relative overflow-hidden rounded-xl border hairline"
+          >
+            <span className="relative block aspect-[3/4] w-full bg-cream/40">
+              <Image
+                src={p.url}
+                alt={title}
+                fill
+                sizes="200px"
+                className="object-contain"
+                unoptimized
+              />
+            </span>
+            <div className="flex items-center justify-end p-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDelete(p.path)}
+                className="rounded-full border hairline px-2.5 py-1 text-[11px] text-stone transition-colors hover:text-ink disabled:opacity-50"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /**
- * Private manager for the user's uploaded full-length reference photos: upload,
- * set the default try-on model, and delete. These are sensitive/biometric, so
- * they live in their own private page rather than the public looks gallery.
+ * Private manager for the user's uploaded reference photos: full-length shots
+ * (upload / set try-on default / delete), plus read + delete for the front
+ * portraits and profile shots kept from past reports. All kept in their own
+ * private hub, separated by type. These are sensitive/biometric.
  */
 export function MyPhotosManager() {
   const [photos, setPhotos] = useState<ModelPhoto[] | null>(null);
+  const [face, setFace] = useState<RolePhoto[]>([]);
+  const [profile, setProfile] = useState<RolePhoto[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -34,6 +89,8 @@ export function MyPhotosManager() {
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
       if (Array.isArray(data.photos)) setPhotos(data.photos as ModelPhoto[]);
+      setFace(Array.isArray(data.face) ? (data.face as RolePhoto[]) : []);
+      setProfile(Array.isArray(data.profile) ? (data.profile as RolePhoto[]) : []);
     } catch {
       /* ignore */
     }
@@ -47,6 +104,10 @@ export function MyPhotosManager() {
         if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
         if (Array.isArray(data.photos)) setPhotos(data.photos as ModelPhoto[]);
+        setFace(Array.isArray(data.face) ? (data.face as RolePhoto[]) : []);
+        setProfile(
+          Array.isArray(data.profile) ? (data.profile as RolePhoto[]) : [],
+        );
       } catch {
         /* ignore */
       }
@@ -135,8 +196,12 @@ export function MyPhotosManager() {
   const list = photos ?? [];
 
   return (
-    <div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="space-y-10">
+      <section>
+        <p className="text-[11px] uppercase tracking-wide text-stone-soft">
+          Full-length · try-on models
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {list.map((p) => (
           <div
             key={p.storagePath}
@@ -207,10 +272,28 @@ export function MyPhotosManager() {
 
       {!list.length && !uploading ? (
         <p className="mt-6 text-sm text-stone">
-          No photos yet. Upload a clear full-length photo (head to toe, plain
+          No full-length photos yet. Upload a clear head-to-toe photo (plain
           background) to use as your try-on model.
         </p>
       ) : null}
+      </section>
+
+      {face.length > 0 && (
+        <RoleSection
+          title="Front portraits"
+          items={face}
+          onDelete={remove}
+          busy={busy || uploading}
+        />
+      )}
+      {profile.length > 0 && (
+        <RoleSection
+          title="Profile shots"
+          items={profile}
+          onDelete={remove}
+          busy={busy || uploading}
+        />
+      )}
     </div>
   );
 }
