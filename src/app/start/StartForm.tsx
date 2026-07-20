@@ -7,15 +7,22 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { BodyTypePicker } from "@/components/BodyTypePicker";
 import {
+  ColourSwatchPicker,
+  HAIR_SWATCH_OPTIONS,
+  EYE_SWATCH_OPTIONS,
+} from "@/components/ColourSwatchPicker";
+import {
   inferBodyTypeFromMeasurements,
-  HAIR_COLOR_LABELS,
-  EYE_COLOR_LABELS,
+  profileFromIntake,
   type BodyTypeId,
   type HairColorId,
   type EyeColorId,
+  type Intake,
+  type UserProfile,
 } from "@/lib/style-profile";
 import { COUNTRIES } from "@/lib/countries";
 import { PROFILE_CURRENCIES, type Currency } from "@/lib/currency";
+import { OCCUPATIONS } from "@/lib/occupations";
 import {
   REPORT_LANGUAGES,
   DEFAULT_LANGUAGE,
@@ -71,15 +78,6 @@ const LIFESTYLE = [
   "Old Money",
   "Socialite",
 ];
-const OCCUPATIONS = [
-  "Software / IT",
-  "Consulting",
-  "Business / Founder",
-  "Freelance",
-  "Finance",
-  "Creative",
-  "Other",
-];
 const BOLDNESS: { id: string; label: string; desc: string }[] = [
   { id: "conservative", label: "Conservative", desc: "Keep it safe and classic" },
   { id: "moderate", label: "Moderate", desc: "Modern, but not flashy" },
@@ -111,56 +109,6 @@ const STEPS = ["About you", "Photos", "Goals", "Package"];
 
 const LIVE = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
-/** Representative hair swatches (CSS gradients — crisp at any DPI, no assets). */
-const HAIR_SWATCH_CSS: Record<HairColorId, string> = {
-  black: "linear-gradient(145deg,#2b2724,#141210)",
-  "dark-brown": "linear-gradient(145deg,#4a2f1d,#2a1810)",
-  brown: "linear-gradient(145deg,#7d5132,#553620)",
-  blonde: "linear-gradient(145deg,#ead09a,#c39e5b)",
-  red: "linear-gradient(145deg,#aa5630,#7a3318)",
-  gray: "linear-gradient(145deg,#dcd9d3,#9b9893)",
-  other: "linear-gradient(145deg,#bcb5a9,#8a8275)",
-};
-
-/** Iris swatches with a dark pupil centre, approximating each eye colour. */
-const EYE_SWATCH_CSS: Record<EyeColorId, string> = {
-  brown:
-    "radial-gradient(circle at 50% 50%,#161210 20%,#5a3a22 24%,#7d5132 60%,#2e1c10 100%)",
-  hazel:
-    "radial-gradient(circle at 50% 50%,#161210 20%,#6e5a2b 24%,#7d8a4a 58%,#4a3a1f 100%)",
-  amber:
-    "radial-gradient(circle at 50% 50%,#161210 20%,#9a5e1c 24%,#c98a3a 60%,#6b3f10 100%)",
-  green:
-    "radial-gradient(circle at 50% 50%,#141310 20%,#3f6a3a 24%,#6b9a5a 58%,#2f4a2c 100%)",
-  blue:
-    "radial-gradient(circle at 50% 50%,#141310 20%,#3f6f9a 24%,#7aa6c9 58%,#2f4f72 100%)",
-  gray:
-    "radial-gradient(circle at 50% 50%,#141310 20%,#6a7176 24%,#9aa1a6 58%,#566066 100%)",
-  other:
-    "radial-gradient(circle at 50% 50%,#161210 20%,#8a8275 24%,#bcb5a9 60%,#6a6256 100%)",
-};
-
-type SwatchOption = { id: string; label: string; css?: string };
-
-/** "From photo" detect chip first, then each labelled swatch. */
-const HAIR_SWATCH_OPTIONS: SwatchOption[] = [
-  { id: "", label: "From photo" },
-  ...(Object.keys(HAIR_COLOR_LABELS) as HairColorId[]).map((id) => ({
-    id,
-    label: HAIR_COLOR_LABELS[id],
-    css: HAIR_SWATCH_CSS[id],
-  })),
-];
-
-const EYE_SWATCH_OPTIONS: SwatchOption[] = [
-  { id: "", label: "From photo" },
-  ...(Object.keys(EYE_COLOR_LABELS) as EyeColorId[]).map((id) => ({
-    id,
-    label: EYE_COLOR_LABELS[id],
-    css: EYE_SWATCH_CSS[id],
-  })),
-];
-
 type ReusePhoto = { path: string; url: string | null; createdAt: string };
 
 export function StartForm({
@@ -168,12 +116,14 @@ export function StartForm({
   showWelcome: initialWelcome = false,
   userEmail = null,
   creditBalance = null,
+  initialProfile = null,
   initialGeo,
 }: {
   userId: string | null;
   showWelcome?: boolean;
   userEmail?: string | null;
   creditBalance?: number | null;
+  initialProfile?: UserProfile | null;
   initialGeo?: {
     city?: string;
     countryName?: string;
@@ -181,6 +131,8 @@ export function StartForm({
   };
 }) {
   const router = useRouter();
+  const currentYear = new Date().getFullYear();
+  const pf = initialProfile;
   const [showWelcome, setShowWelcome] = useState(initialWelcome);
   const [cameFromWelcome, setCameFromWelcome] = useState(false);
   const [step, setStep] = useState(0);
@@ -261,30 +213,45 @@ export function StartForm({
   }
 
   const [photos, setPhotos] = useState<string[]>([]);
-  const [age, setAge] = useState(40);
-  const [gender, setGender] = useState("male");
-  const [city, setCity] = useState(initialGeo?.city ?? "");
-  const [country, setCountry] = useState(initialGeo?.countryName ?? "");
-  const [currency, setCurrency] = useState<Currency>(initialGeo?.currency ?? "EUR");
-  const [language, setLanguage] = useState<ReportLanguage>(DEFAULT_LANGUAGE);
-  const [height, setHeight] = useState(180);
-  const [weight, setWeight] = useState("");
-  const [bodyType, setBodyType] = useState<BodyTypeId | "">("");
-  const [bodyTypeManual, setBodyTypeManual] = useState(false);
-  const [hairColor, setHairColor] = useState<HairColorId | "">("");
-  const [eyeColor, setEyeColor] = useState<EyeColorId | "">("");
-  const [shoulderCm, setShoulderCm] = useState("");
-  const [chestCm, setChestCm] = useState("");
-  const [waistCm, setWaistCm] = useState("");
-  const [hipCm, setHipCm] = useState("");
-  const [sleeveCm, setSleeveCm] = useState("");
-  const [occupation, setOccupation] = useState(OCCUPATIONS[0]);
-  const [lifestyle, setLifestyle] = useState<string[]>([]);
-  const [goals, setGoals] = useState<string[]>([]);
-  const [boldness, setBoldness] = useState("moderate");
-  const [budget, setBudget] = useState(1);
+  // Seed from the saved profile when present, else geo / sensible defaults.
+  const budgetIndexFromProfile = () => {
+    if (!pf?.budgetEur) return 1;
+    const i = BUDGETS.findIndex(
+      (b) => b.min === pf.budgetEur!.min && b.max === pf.budgetEur!.max,
+    );
+    return i >= 0 ? i : 1;
+  };
+  const m0 = pf?.measurements;
+  const [age, setAge] = useState(pf?.birthYear ? currentYear - pf.birthYear : 40);
+  const [gender, setGender] = useState<string>(pf?.genderPresentation ?? "male");
+  const [city, setCity] = useState(pf?.city ?? initialGeo?.city ?? "");
+  const [country, setCountry] = useState(pf?.country ?? initialGeo?.countryName ?? "");
+  const [currency, setCurrency] = useState<Currency>(
+    pf?.currency ?? initialGeo?.currency ?? "EUR",
+  );
+  const [language, setLanguage] = useState<ReportLanguage>(
+    pf?.language ?? DEFAULT_LANGUAGE,
+  );
+  const [height, setHeight] = useState(pf?.heightCm ?? 180);
+  const [weight, setWeight] = useState(pf?.weightKg ? String(pf.weightKg) : "");
+  const [bodyType, setBodyType] = useState<BodyTypeId | "">(pf?.bodyType ?? "");
+  const [bodyTypeManual, setBodyTypeManual] = useState(Boolean(pf?.bodyType));
+  const [hairColor, setHairColor] = useState<HairColorId | "">(pf?.hairColor ?? "");
+  const [eyeColor, setEyeColor] = useState<EyeColorId | "">(pf?.eyeColor ?? "");
+  const [shoulderCm, setShoulderCm] = useState(m0?.shoulderCm ? String(m0.shoulderCm) : "");
+  const [chestCm, setChestCm] = useState(m0?.chestCm ? String(m0.chestCm) : "");
+  const [waistCm, setWaistCm] = useState(m0?.waistCm ? String(m0.waistCm) : "");
+  const [hipCm, setHipCm] = useState(m0?.hipCm ? String(m0.hipCm) : "");
+  const [sleeveCm, setSleeveCm] = useState(m0?.sleeveCm ? String(m0.sleeveCm) : "");
+  const [occupation, setOccupation] = useState(pf?.occupation ?? OCCUPATIONS[0]);
+  const [lifestyle, setLifestyle] = useState<string[]>(pf?.lifestyle ?? []);
+  const [goals, setGoals] = useState<string[]>(pf?.goals ?? []);
+  const [boldness, setBoldness] = useState<string>(pf?.boldness ?? "moderate");
+  const [budget, setBudget] = useState(budgetIndexFromProfile());
   const [tier, setTier] = useState<Tier>("lookbook");
   const [biometricConsent, setBiometricConsent] = useState(false);
+  // Off by default — never silently overwrite the saved profile from a report.
+  const [saveDefaults, setSaveDefaults] = useState(false);
 
   // Credit gating for the Package step (balance is the server snapshot at load).
   const reportCost = REPORT_COST[tier];
@@ -340,6 +307,27 @@ export function StartForm({
       () => controller.abort(),
       4 * 60 * 1000,
     );
+    const intake = {
+      age,
+      genderPresentation: gender,
+      city,
+      country,
+      language,
+      currency,
+      heightCm: height,
+      weightKg: weight ? Number(weight) : undefined,
+      bodyType: effectiveBodyType || undefined,
+      measurements: Object.values(measurements).some((v) => v != null)
+        ? measurements
+        : undefined,
+      hairColor: hairColor || undefined,
+      eyeColor: eyeColor || undefined,
+      occupation,
+      lifestyle,
+      goals,
+      boldness,
+      budgetEur: { min: BUDGETS[budget].min, max: BUDGETS[budget].max },
+    };
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
@@ -351,27 +339,7 @@ export function StartForm({
           photoPaths,
           biometricConsent: photoPaths.length ? biometricConsent : undefined,
           consentVersion: photoPaths.length ? LEGAL.consentVersion : undefined,
-          intake: {
-            age,
-            genderPresentation: gender,
-            city,
-            country,
-            language,
-            currency,
-            heightCm: height,
-            weightKg: weight ? Number(weight) : undefined,
-            bodyType: effectiveBodyType || undefined,
-            measurements: Object.values(measurements).some((v) => v != null)
-              ? measurements
-              : undefined,
-            hairColor: hairColor || undefined,
-            eyeColor: eyeColor || undefined,
-            occupation,
-            lifestyle,
-            goals,
-            boldness,
-            budgetEur: { min: BUDGETS[budget].min, max: BUDGETS[budget].max },
-          },
+          intake,
         }),
       });
       if (res.status === 401) {
@@ -398,6 +366,16 @@ export function StartForm({
         throw new Error((data.error ?? "Could not generate report") + refundNote);
       }
       if (!data.id) throw new Error("Report created but no id returned");
+      // Persist these answers as the user's defaults only when they opted in.
+      if (saveDefaults && userId) {
+        void fetch("/api/account/profile", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            profile: profileFromIntake(intake as Intake, currentYear),
+          }),
+        }).catch(() => {});
+      }
       notifyReportGenerationStarted(data.id);
       router.push(`/report/${data.id}`);
     } catch (e) {
@@ -896,6 +874,20 @@ export function StartForm({
               {error && (
                 <p className="mt-4 text-sm text-[#9E5C3C]">{error}</p>
               )}
+              {userId && (
+                <label className="mt-5 flex cursor-pointer items-start gap-3 text-sm text-stone">
+                  <input
+                    type="checkbox"
+                    checked={saveDefaults}
+                    onChange={(e) => setSaveDefaults(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[var(--color-ink)]"
+                  />
+                  <span>
+                    Save these answers as my defaults, so my next report starts
+                    pre-filled. You can change them any time in your account.
+                  </span>
+                </label>
+              )}
             </Section>
           )}
         </div>
@@ -1245,55 +1237,6 @@ function Select({
         </option>
       ))}
     </select>
-  );
-}
-
-/** Visual swatch picker for hair / eye colour. Empty id ("") = detect-from-photo. */
-function ColourSwatchPicker({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: SwatchOption[];
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((o) => {
-        const selected = value === o.id;
-        return (
-          <button
-            key={o.id || "detect"}
-            type="button"
-            onClick={() => onChange(o.id)}
-            aria-pressed={selected}
-            title={o.label}
-            className={`flex min-w-[4.75rem] max-w-[5.5rem] flex-col items-center gap-1.5 rounded-xl border px-2 py-2 text-center transition-colors ${
-              selected
-                ? "border-ink bg-cream/60"
-                : "border-line hover:border-ink/40"
-            }`}
-          >
-            <span
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                o.css
-                  ? "ring-1 ring-black/10"
-                  : "border border-dashed border-stone/50"
-              } ${selected ? "ring-2 ring-ink ring-offset-1 ring-offset-paper" : ""}`}
-              style={o.css ? { background: o.css } : undefined}
-            >
-              {!o.css && (
-                <span className="text-[9px] uppercase tracking-wide text-stone-soft">
-                  Auto
-                </span>
-              )}
-            </span>
-            <span className="text-[10px] leading-snug text-stone">{o.label}</span>
-          </button>
-        );
-      })}
-    </div>
   );
 }
 

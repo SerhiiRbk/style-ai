@@ -7,6 +7,7 @@ export async function exportUserData(userId: string) {
 
   const [
     profileRes,
+    userProfileRes,
     reportsRes,
     intakesRes,
     photosRes,
@@ -15,6 +16,7 @@ export async function exportUserData(userId: string) {
     tryonsRes,
   ] = await Promise.all([
     admin.from("profiles").select("*").eq("id", userId).maybeSingle(),
+    admin.from("user_profiles").select("*").eq("user_id", userId).maybeSingle(),
     admin
       .from("reports")
       .select("id, tier, status, headline, summary, created_at, is_public")
@@ -58,6 +60,7 @@ export async function exportUserData(userId: string) {
     exportedAt: new Date().toISOString(),
     format: "valetti-gdpr-export-v1",
     profile: profileRes.data ?? null,
+    styleProfile: userProfileRes.data ?? null,
     reports: reportsWithIntake,
     photos: (photosRes.data ?? []).map((p) => ({
       id: p.id,

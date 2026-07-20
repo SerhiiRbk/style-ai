@@ -5,11 +5,15 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { MyPhotosManager } from "@/components/MyPhotosManager";
+import { AccountProfileForm } from "@/components/AccountProfileForm";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 import { ExportDataButton } from "@/components/ExportDataButton";
 import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getCreditBalance } from "@/lib/credits";
+import { getUserProfile } from "@/lib/data/user-profile";
+import { getGeoPrefill } from "@/lib/geo";
+import { countryNameFromCode } from "@/lib/countries";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +47,36 @@ export default async function AccountPage() {
   } = await sb.auth.getUser();
   if (!user) redirect("/login");
 
-  const balance = await getCreditBalance();
+  const [balance, profile, latestReport] = await Promise.all([
+    getCreditBalance(),
+    getUserProfile(user.id),
+    sb
+      .from("reports")
+      .select("profile")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then((r) => r.data),
+  ]);
+  // Read-only "how your last photo read" — derived appearance from the latest
+  // report's snapshot (never a stored profile field).
+  const prof = latestReport?.profile as
+    | { colorSeason?: string; colorSubseason?: string; physical?: { undertone?: string } }
+    | null;
+  const photoRead = prof
+    ? {
+        season: (prof.colorSubseason ?? prof.colorSeason)?.replace(/-/g, " "),
+        undertone: prof.physical?.undertone,
+      }
+    : null;
+  // Geo prefill for a brand-new profile (same source as the report wizard).
+  const geo = await getGeoPrefill();
+  const initialGeo = {
+    city: geo.city ?? "",
+    countryName: countryNameFromCode(geo.country) ?? "",
+    currency: geo.currency,
+  };
 
   return (
     <>
@@ -60,10 +93,25 @@ export default async function AccountPage() {
               place.
             </p>
             <nav className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-stone">
+              <a href="#profile" className="transition-colors hover:text-ink">Profile</a>
               <a href="#credits" className="transition-colors hover:text-ink">Credits</a>
               <a href="#photos" className="transition-colors hover:text-ink">Photos</a>
               <a href="#privacy" className="transition-colors hover:text-ink">Privacy &amp; data</a>
             </nav>
+          </div>
+        </section>
+
+        {/* Profile */}
+        <section id="profile" className="container-luxe scroll-mt-24 py-10">
+          <div className="rounded-2xl border hairline bg-paper p-6 sm:p-8">
+            <p className="eyebrow">Profile</p>
+            <div className="mt-4">
+              <AccountProfileForm
+                initialProfile={profile}
+                initialGeo={initialGeo}
+                photoRead={photoRead}
+              />
+            </div>
           </div>
         </section>
 

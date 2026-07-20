@@ -251,6 +251,60 @@ export const intakeSchema = z.object({
 });
 export type Intake = z.infer<typeof intakeSchema>;
 
+/**
+ * Persistent user profile — the durable defaults that seed the report wizard.
+ * Stores DECLARED traits, preferences and last-used situational hints only; it
+ * never stores derived appearance (undertone/contrast/faceShape/colorSeason —
+ * those are re-read from the photo per report), and stores birthYear not age.
+ */
+export const userProfileSchema = z.object({
+  country: z.string().optional(),
+  city: z.string().optional(),
+  currency: Currency.optional(),
+  language: z.enum(REPORT_LANGUAGE_IDS).optional(),
+  occupation: z.string().optional(),
+  genderPresentation: GenderPresentation.optional(),
+  birthYear: z.number().int().min(1900).max(2100).optional(),
+  heightCm: z.number().int().min(120).max(230).optional(),
+  weightKg: z.number().int().min(30).max(300).optional(),
+  bodyType: BodyType.optional(),
+  hairColor: HairColor.optional(),
+  eyeColor: EyeColor.optional(),
+  measurements: measurementsSchema.optional(),
+  goals: z.array(z.string()).optional(),
+  boldness: Boldness.optional(),
+  budgetEur: z.object({ min: z.number(), max: z.number() }).optional(),
+  lifestyle: z.array(z.string()).optional(),
+});
+export type UserProfile = z.infer<typeof userProfileSchema>;
+
+/**
+ * Build the durable profile from a report's intake — DECLARED fields only, never
+ * derived appearance. `birthYear` is derived from the entered age and the given
+ * current year so the stored profile ages correctly over time.
+ */
+export function profileFromIntake(intake: Intake, currentYear: number): UserProfile {
+  return {
+    country: intake.country,
+    city: intake.city || undefined,
+    currency: intake.currency,
+    language: intake.language,
+    occupation: intake.occupation,
+    genderPresentation: intake.genderPresentation,
+    birthYear: currentYear - intake.age,
+    heightCm: intake.heightCm,
+    weightKg: intake.weightKg,
+    bodyType: intake.bodyType,
+    hairColor: intake.hairColor,
+    eyeColor: intake.eyeColor,
+    measurements: intake.measurements,
+    goals: intake.goals,
+    boldness: intake.boldness,
+    budgetEur: intake.budgetEur,
+    lifestyle: intake.lifestyle,
+  };
+}
+
 export const colorRecSchema = z.object({
   name: z.string(),
   hex: z.string(),

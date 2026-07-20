@@ -82,7 +82,13 @@ import {
   getReportCreditRecovery,
   type ReportCreditRecovery,
 } from "@/lib/credits";
-import type { Intake, ReportContent, StyleProfile } from "@/lib/style-profile";
+import {
+  profileFromIntake,
+  type Intake,
+  type ReportContent,
+  type StyleProfile,
+} from "@/lib/style-profile";
+import { seedProfileIfMissing } from "@/lib/data/user-profile";
 
 type CreateInput = {
   intake: Intake;
@@ -1254,6 +1260,16 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
     await admin.from("reports").delete().eq("id", reportId);
     throw new Error(intakeErr.message ?? "intake insert failed");
   }
+
+  // Lazily seed the user's persistent profile from this report's intake when
+  // they have none yet — declared fields only (no derived appearance), so future
+  // reports pre-fill. Never overwrites an existing profile; never fatal.
+  await seedProfileIfMissing(
+    admin,
+    userId,
+    profileFromIntake(intake, new Date().getFullYear()),
+    reportId,
+  );
 
   try {
     const photos: PhotoInput[] = [];
