@@ -67,8 +67,10 @@ export const HairColor = z.enum([
   "black",
   "dark-brown",
   "brown",
-  "blonde",
-  "red",
+  "dark-blonde",
+  "light-blonde",
+  "auburn",
+  "bright-red",
   "gray",
   "other",
 ]);
@@ -78,11 +80,34 @@ export const HAIR_COLOR_LABELS: Record<HairColorId, string> = {
   black: "Black",
   "dark-brown": "Dark brown",
   brown: "Brown",
-  blonde: "Blonde",
-  red: "Red / auburn",
+  "dark-blonde": "Dark blonde",
+  "light-blonde": "Light blonde",
+  auburn: "Auburn",
+  "bright-red": "Bright red",
   gray: "Gray / white",
   other: "Other",
 };
+
+/** Legacy intake/profile ids → current ids (pre dark/light blonde & auburn split). */
+const HAIR_COLOR_ALIASES: Record<string, HairColorId> = {
+  blonde: "dark-blonde",
+  red: "auburn",
+};
+
+/** Map a stored or submitted hair-colour id onto the current enum (or undefined). */
+export function normalizeHairColorId(
+  raw: string | null | undefined,
+): HairColorId | undefined {
+  if (!raw) return undefined;
+  if (raw in HAIR_COLOR_LABELS) return raw as HairColorId;
+  return HAIR_COLOR_ALIASES[raw];
+}
+
+/** Zod field that accepts current ids and legacy `blonde` / `red`. */
+export const HairColorField = z.preprocess(
+  (v) => (typeof v === "string" ? normalizeHairColorId(v) ?? v : v),
+  HairColor.optional(),
+);
 
 export const EyeColor = z.enum([
   "brown",
@@ -113,16 +138,30 @@ function depthFromColouring(
 ): "deep" | "light" | "medium" {
   const hair = (hairColor ?? "").toLowerCase();
   const eye = (eyeColor ?? "").toLowerCase();
-  const darkHair = /black|dark|jet|espresso|deep/.test(hair);
-  const lightHair = /blond|light|platinum|gray|grey|white|silver/.test(hair);
-  const darkEye = /brown|black|dark|amber/.test(eye);
-  const lightEye = /blue|gray|grey|green|light/.test(eye);
+  // "dark blonde" must NOT count as dark hair — only truly deep colours.
+  const darkHair =
+    /\b(black|jet|espresso)\b/.test(hair) ||
+    /\bdark[\s-]*brown\b/.test(hair) ||
+    (/\bdark\b/.test(hair) && !/\bblond/.test(hair));
+  // Light blonde / platinum / grey — not dark-blonde (dirty / honey).
+  const lightHair =
+    /\b(platinum|gray|grey|white|silver)\b/.test(hair) ||
+    /\blight[\s-]*blond/.test(hair) ||
+    (/\bblond/.test(hair) && /\blight\b/.test(hair));
+  const darkEye = /\b(brown|black|amber)\b/.test(eye) && !/\blight\b/.test(eye);
+  const lightEye = /\b(blue|gray|grey|green|hazel|light)\b/.test(eye);
 
   if (darkHair && darkEye) return "deep";
   if (lightHair && lightEye) return "light";
   if (contrast === "high") return "deep";
   if (contrast === "low") return "light";
   return "medium";
+}
+
+/** High-chroma reds (bright ginger) tip spring/winter toward the "bright" subseason. */
+function isBrightHair(hairColor?: string | null): boolean {
+  const hair = (hairColor ?? "").toLowerCase();
+  return /\b(bright[\s-]*red|ginger|vibrant\s*red)\b/.test(hair);
 }
 
 /**
@@ -139,15 +178,16 @@ export function classifySubseason(opts: {
 }): SubseasonId {
   const { season, undertone, contrast, hairColor, eyeColor } = opts;
   const depth = depthFromColouring(contrast, hairColor, eyeColor);
+  const brightHair = isBrightHair(hairColor);
 
   switch (season) {
     case "winter":
       if (depth === "deep") return "deep-winter";
-      if (undertone === "cool") return "cool-winter";
+      if (undertone === "cool" && !brightHair) return "cool-winter";
       return "bright-winter";
     case "spring":
       if (depth === "light") return "light-spring";
-      if (contrast === "high") return "bright-spring";
+      if (contrast === "high" || brightHair) return "bright-spring";
       return "warm-spring";
     case "summer":
       if (depth === "light") return "light-summer";
@@ -240,7 +280,8 @@ export const intakeSchema = z.object({
   bodyType: BodyType.optional(),
   measurements: measurementsSchema.optional(),
   // Self-reported colouring — sharpens the seasonal colour analysis (optional).
-  hairColor: HairColor.optional(),
+  // Accepts legacy `blonde` / `red` and maps them onto the split palette.
+  hairColor: HairColorField,
   eyeColor: EyeColor.optional(),
   occupation: z.string().min(1),
   lifestyle: z.array(z.string()).default([]),
@@ -268,7 +309,7 @@ export const userProfileSchema = z.object({
   heightCm: z.number().int().min(120).max(230).optional(),
   weightKg: z.number().int().min(30).max(300).optional(),
   bodyType: BodyType.optional(),
-  hairColor: HairColor.optional(),
+  hairColor: HairColorField,
   eyeColor: EyeColor.optional(),
   measurements: measurementsSchema.optional(),
   goals: z.array(z.string()).optional(),

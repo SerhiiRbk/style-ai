@@ -1,7 +1,11 @@
 import "server-only";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
-import type { Measurements, UserProfile } from "@/lib/style-profile";
+import {
+  normalizeHairColorId,
+  type Measurements,
+  type UserProfile,
+} from "@/lib/style-profile";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
@@ -38,7 +42,10 @@ function rowToProfile(r: ProfileRow): UserProfile {
   if (r.height_cm != null) p.heightCm = r.height_cm;
   if (r.weight_kg != null) p.weightKg = r.weight_kg;
   if (r.body_type) p.bodyType = r.body_type as UserProfile["bodyType"];
-  if (r.hair_color) p.hairColor = r.hair_color as UserProfile["hairColor"];
+  if (r.hair_color) {
+    const hair = normalizeHairColorId(r.hair_color);
+    if (hair) p.hairColor = hair;
+  }
   if (r.eye_color) p.eyeColor = r.eye_color as UserProfile["eyeColor"];
   if (r.measurements) p.measurements = r.measurements;
   if (r.goals) p.goals = r.goals;

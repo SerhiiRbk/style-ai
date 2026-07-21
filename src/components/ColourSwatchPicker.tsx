@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   HAIR_COLOR_LABELS,
   EYE_COLOR_LABELS,
@@ -7,18 +8,76 @@ import {
   type EyeColorId,
 } from "@/lib/style-profile";
 
-/** Representative hair swatches (CSS gradients — crisp at any DPI, no assets). */
+export type SwatchOption = {
+  id: string;
+  label: string;
+  /** Photoreal texture for the chip (hair strands / iris). */
+  image?: string;
+  /** Fallback CSS fill when no image (legacy / detect chip). */
+  css?: string;
+  /** Chip aspect: hair is taller, eyes are rounder. */
+  shape?: "hair" | "eye";
+};
+
+/** Cache-bust when regenerating swatch assets (browser/CDN immutable caches). */
+const SWATCH_V = "4";
+
+const HAIR_IMAGES: Record<HairColorId, string> = {
+  black: `/images/swatches/hair/black.webp?v=${SWATCH_V}`,
+  "dark-brown": `/images/swatches/hair/dark-brown.webp?v=${SWATCH_V}`,
+  brown: `/images/swatches/hair/brown.webp?v=${SWATCH_V}`,
+  "dark-blonde": `/images/swatches/hair/dark-blonde.webp?v=${SWATCH_V}`,
+  "light-blonde": `/images/swatches/hair/light-blonde.webp?v=${SWATCH_V}`,
+  auburn: `/images/swatches/hair/auburn.webp?v=${SWATCH_V}`,
+  "bright-red": `/images/swatches/hair/bright-red.webp?v=${SWATCH_V}`,
+  gray: `/images/swatches/hair/gray.webp?v=${SWATCH_V}`,
+  other: `/images/swatches/hair/other.webp?v=${SWATCH_V}`,
+};
+
+const EYE_IMAGES: Record<EyeColorId, string> = {
+  brown: `/images/swatches/eyes/brown.webp?v=${SWATCH_V}`,
+  hazel: `/images/swatches/eyes/hazel.webp?v=${SWATCH_V}`,
+  amber: `/images/swatches/eyes/amber.webp?v=${SWATCH_V}`,
+  green: `/images/swatches/eyes/green.webp?v=${SWATCH_V}`,
+  blue: `/images/swatches/eyes/blue.webp?v=${SWATCH_V}`,
+  gray: `/images/swatches/eyes/gray.webp?v=${SWATCH_V}`,
+  other: `/images/swatches/eyes/other.webp?v=${SWATCH_V}`,
+};
+
+/** "From photo" detect chip first, then each labelled hair swatch. */
+export const HAIR_SWATCH_OPTIONS: SwatchOption[] = [
+  { id: "", label: "From photo", shape: "hair" },
+  ...(Object.keys(HAIR_COLOR_LABELS) as HairColorId[]).map((id) => ({
+    id,
+    label: HAIR_COLOR_LABELS[id],
+    image: HAIR_IMAGES[id],
+    shape: "hair" as const,
+  })),
+];
+
+export const EYE_SWATCH_OPTIONS: SwatchOption[] = [
+  { id: "", label: "From photo", shape: "eye" },
+  ...(Object.keys(EYE_COLOR_LABELS) as EyeColorId[]).map((id) => ({
+    id,
+    label: EYE_COLOR_LABELS[id],
+    image: EYE_IMAGES[id],
+    shape: "eye" as const,
+  })),
+];
+
+/** Kept for any consumers that still import CSS maps. */
 export const HAIR_SWATCH_CSS: Record<HairColorId, string> = {
   black: "linear-gradient(145deg,#2b2724,#141210)",
   "dark-brown": "linear-gradient(145deg,#4a2f1d,#2a1810)",
   brown: "linear-gradient(145deg,#7d5132,#553620)",
-  blonde: "linear-gradient(145deg,#ead09a,#c39e5b)",
-  red: "linear-gradient(145deg,#aa5630,#7a3318)",
+  "dark-blonde": "linear-gradient(145deg,#c9a06a,#8a6a3e)",
+  "light-blonde": "linear-gradient(145deg,#f0e0b8,#d4b87a)",
+  auburn: "linear-gradient(145deg,#8a3f24,#5c2414)",
+  "bright-red": "linear-gradient(145deg,#c45a28,#9a3518)",
   gray: "linear-gradient(145deg,#dcd9d3,#9b9893)",
   other: "linear-gradient(145deg,#bcb5a9,#8a8275)",
 };
 
-/** Iris swatches with a dark pupil centre, approximating each eye colour. */
 export const EYE_SWATCH_CSS: Record<EyeColorId, string> = {
   brown:
     "radial-gradient(circle at 50% 50%,#161210 20%,#5a3a22 24%,#7d5132 60%,#2e1c10 100%)",
@@ -36,28 +95,10 @@ export const EYE_SWATCH_CSS: Record<EyeColorId, string> = {
     "radial-gradient(circle at 50% 50%,#161210 20%,#8a8275 24%,#bcb5a9 60%,#6a6256 100%)",
 };
 
-export type SwatchOption = { id: string; label: string; css?: string };
-
-/** "From photo" detect chip first, then each labelled swatch. */
-export const HAIR_SWATCH_OPTIONS: SwatchOption[] = [
-  { id: "", label: "From photo" },
-  ...(Object.keys(HAIR_COLOR_LABELS) as HairColorId[]).map((id) => ({
-    id,
-    label: HAIR_COLOR_LABELS[id],
-    css: HAIR_SWATCH_CSS[id],
-  })),
-];
-
-export const EYE_SWATCH_OPTIONS: SwatchOption[] = [
-  { id: "", label: "From photo" },
-  ...(Object.keys(EYE_COLOR_LABELS) as EyeColorId[]).map((id) => ({
-    id,
-    label: EYE_COLOR_LABELS[id],
-    css: EYE_SWATCH_CSS[id],
-  })),
-];
-
-/** Visual swatch picker for hair / eye colour. Empty id ("") = detect-from-photo. */
+/**
+ * Premium colour picker: vertical hair-texture chips (or circular iris chips)
+ * with a quiet "From photo" option — not flat colour dots.
+ */
 export function ColourSwatchPicker({
   value,
   onChange,
@@ -67,41 +108,98 @@ export function ColourSwatchPicker({
   onChange: (v: string) => void;
   options: SwatchOption[];
 }) {
+  const detect = options.find((o) => o.id === "");
+  const colours = options.filter((o) => o.id !== "");
+  const shape = colours[0]?.shape ?? "hair";
+  const isHair = shape === "hair";
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((o) => {
-        const selected = value === o.id;
-        return (
-          <button
-            key={o.id || "detect"}
-            type="button"
-            onClick={() => onChange(o.id)}
-            aria-pressed={selected}
-            title={o.label}
-            className={`flex min-w-[4.75rem] max-w-[5.5rem] flex-col items-center gap-1.5 rounded-xl border px-2 py-2 text-center transition-colors ${
-              selected
-                ? "border-ink bg-cream/60"
-                : "border-line hover:border-ink/40"
+    <div className="space-y-3">
+      {detect && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-pressed={value === ""}
+          className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-[11px] uppercase tracking-[0.14em] transition-colors ${
+            value === ""
+              ? "border-brass/50 bg-brass/10 text-ink"
+              : "border-line text-stone hover:border-ink/30 hover:text-ink"
+          }`}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              value === "" ? "bg-brass" : "bg-stone-soft"
             }`}
-          >
-            <span
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                o.css
-                  ? "ring-1 ring-black/10"
-                  : "border border-dashed border-stone/50"
-              } ${selected ? "ring-2 ring-ink ring-offset-1 ring-offset-paper" : ""}`}
-              style={o.css ? { background: o.css } : undefined}
+            aria-hidden
+          />
+          From photo · Auto
+        </button>
+      )}
+
+      <div className="flex flex-wrap gap-2.5">
+        {colours.map((o) => {
+          const selected = value === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => onChange(o.id)}
+              aria-pressed={selected}
+              title={o.label}
+              className={`group flex w-[4.75rem] flex-col items-center gap-1.5 text-center transition-colors sm:w-[5.25rem] ${
+                selected ? "text-ink" : "text-stone hover:text-ink"
+              }`}
             >
-              {!o.css && (
-                <span className="text-[9px] uppercase tracking-wide text-stone-soft">
-                  Auto
-                </span>
-              )}
-            </span>
-            <span className="text-[10px] leading-snug text-stone">{o.label}</span>
-          </button>
-        );
-      })}
+              <span
+                className={`relative block w-full overflow-hidden bg-cream/50 transition-all duration-300 ${
+                  isHair
+                    ? "aspect-[3/4] rounded-xl"
+                    : "aspect-square rounded-full"
+                } ${
+                  selected
+                    ? "ring-2 ring-brass ring-offset-2 ring-offset-paper shadow-[0_10px_28px_-14px_rgba(0,0,0,0.45)]"
+                    : "ring-1 ring-ink/10 group-hover:ring-ink/25"
+                }`}
+              >
+                {o.image ? (
+                  <Image
+                    src={o.image}
+                    alt=""
+                    fill
+                    sizes="84px"
+                    className="object-cover object-center"
+                  />
+                ) : (
+                  <span
+                    className="absolute inset-0"
+                    style={o.css ? { background: o.css } : undefined}
+                  />
+                )}
+                {/* Soft vignette so the chip reads as a finish sample, not a photo dump. */}
+                <span
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink/25 via-transparent to-ink/5"
+                  aria-hidden
+                />
+              </span>
+              <span
+                className={`text-[10px] leading-snug tracking-wide ${
+                  selected ? "font-medium text-ink" : "text-stone"
+                }`}
+              >
+                {o.label}
+              </span>
+              <span
+                className={`h-px w-6 transition-opacity duration-300 ${
+                  selected
+                    ? "bg-brass opacity-100"
+                    : "bg-transparent opacity-0"
+                }`}
+                aria-hidden
+              />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

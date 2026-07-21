@@ -19,7 +19,6 @@ import {
   classifySubseason,
   HAIR_COLOR_LABELS,
   EYE_COLOR_LABELS,
-  type HairColorId,
   type EyeColorId,
   type Intake,
   type StyleProfile,
@@ -124,7 +123,7 @@ export async function analyzeProfile(
 
   // Self-report takes precedence over the vision estimate for colouring.
   const hairColor = intake.hairColor
-    ? HAIR_COLOR_LABELS[intake.hairColor as HairColorId]
+    ? HAIR_COLOR_LABELS[intake.hairColor]
     : output.hairColor;
   const eyeColor = intake.eyeColor
     ? EYE_COLOR_LABELS[intake.eyeColor as EyeColorId]

@@ -16,6 +16,7 @@ import {
   profileFromIntake,
   type BodyTypeId,
   type HairColorId,
+  normalizeHairColorId,
   type EyeColorId,
   type Intake,
   type UserProfile,
@@ -236,7 +237,9 @@ export function StartForm({
   const [weight, setWeight] = useState(pf?.weightKg ? String(pf.weightKg) : "");
   const [bodyType, setBodyType] = useState<BodyTypeId | "">(pf?.bodyType ?? "");
   const [bodyTypeManual, setBodyTypeManual] = useState(Boolean(pf?.bodyType));
-  const [hairColor, setHairColor] = useState<HairColorId | "">(pf?.hairColor ?? "");
+  const [hairColor, setHairColor] = useState<HairColorId | "">(
+    normalizeHairColorId(pf?.hairColor) ?? "",
+  );
   const [eyeColor, setEyeColor] = useState<EyeColorId | "">(pf?.eyeColor ?? "");
   const [shoulderCm, setShoulderCm] = useState(m0?.shoulderCm ? String(m0.shoulderCm) : "");
   const [chestCm, setChestCm] = useState(m0?.chestCm ? String(m0.chestCm) : "");

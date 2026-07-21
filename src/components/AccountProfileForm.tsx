@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  normalizeHairColorId,
   type UserProfile,
   type BodyTypeId,
   type HairColorId,
@@ -46,7 +47,9 @@ export function AccountProfileForm({
   const [language, setLanguage] = useState(p.language ?? "en");
   const [occupation, setOccupation] = useState(p.occupation ?? OCCUPATIONS[0]);
   const [bodyType, setBodyType] = useState<BodyTypeId | "">(p.bodyType ?? "");
-  const [hairColor, setHairColor] = useState<HairColorId | "">(p.hairColor ?? "");
+  const [hairColor, setHairColor] = useState<HairColorId | "">(
+    normalizeHairColorId(p.hairColor) ?? "",
+  );
   const [eyeColor, setEyeColor] = useState<EyeColorId | "">(p.eyeColor ?? "");
 
   const [saving, setSaving] = useState(false);

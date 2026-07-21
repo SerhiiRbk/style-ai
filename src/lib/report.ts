@@ -3,8 +3,6 @@ import {
   classifySubseason,
   HAIR_COLOR_LABELS,
   EYE_COLOR_LABELS,
-  type HairColorId,
-  type EyeColorId,
   type Intake,
   type StyleProfile,
   type ReportContent,
@@ -289,10 +287,10 @@ export function mockStyleProfile(intake: Intake): StyleProfile {
       weightKg: intake.weightKg,
       measurements: intake.measurements,
       hairColor: intake.hairColor
-        ? HAIR_COLOR_LABELS[intake.hairColor as HairColorId]
+        ? HAIR_COLOR_LABELS[intake.hairColor]
         : undefined,
       eyeColor: intake.eyeColor
-        ? EYE_COLOR_LABELS[intake.eyeColor as EyeColorId]
+        ? EYE_COLOR_LABELS[intake.eyeColor]
         : undefined,
     },
     colorSeason: "autumn",
@@ -301,10 +299,10 @@ export function mockStyleProfile(intake: Intake): StyleProfile {
       undertone: "warm",
       contrast: "low",
       hairColor: intake.hairColor
-        ? HAIR_COLOR_LABELS[intake.hairColor as HairColorId]
+        ? HAIR_COLOR_LABELS[intake.hairColor]
         : undefined,
       eyeColor: intake.eyeColor
-        ? EYE_COLOR_LABELS[intake.eyeColor as EyeColorId]
+        ? EYE_COLOR_LABELS[intake.eyeColor]
         : undefined,
     }),
     currency: intake.currency,
