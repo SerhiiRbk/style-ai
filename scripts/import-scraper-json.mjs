@@ -31,6 +31,7 @@ const sourceType = val("--source-type") ?? "scraper";
 
 const SOURCE_DEFAULT_COUNTRY = [
   { match: /zara/i, country: "ES" },
+  { match: /reserved/i, country: "LU" },
   { match: /marks.?spencer-de|markspencer-de|m&s-de/i, country: "DE" },
   { match: /marks.?spencer-fr|markspencer-fr|m&s-fr/i, country: "FR" },
   { match: /marks.?spencer|markspencer|m&s/i, country: "ES" },

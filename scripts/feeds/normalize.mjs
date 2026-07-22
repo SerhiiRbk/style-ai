@@ -16,14 +16,14 @@ import { CATEGORIES } from "./schema.mjs";
 const CATEGORY_SIGNALS = [
   // Outerwear — specific nouns beat the material words below.
   { c: "Outerwear", w: 4, re: /\bsuit jackets?\b|\bsuit blazers?\b/i },
-  { c: "Outerwear", w: 3, re: /\b(coats?|overcoats?|topcoats?|peacoats?|pea coats?|trench(?:es|coats?)?|parkas?|gilets?|puffers?|raincoats?|windbreakers?|anoraks?|bombers?|harringtons?|blazers?|sport coats?|overshirts?|shackets?|waistcoats?)\b/i },
+  { c: "Outerwear", w: 3, re: /\b(coats?|overcoats?|topcoats?|peacoats?|pea coats?|trench(?:es|coats?)?|parkas?|gilets?|vests?|puffers?|raincoats?|windbreakers?|anoraks?|bombers?|harringtons?|blazers?|sport coats?|overshirts?|shackets?|waistcoats?)\b/i },
   { c: "Outerwear", w: 2, re: /\b(jackets?|jacke|manteau|cappotto|abrigo|chaqueta|giacca)\b/i },
   // Knitwear
   { c: "Knitwear", w: 3, re: /\b(pullovers?|jumpers?|sweaters?|cardigans?|turtlenecks?|rollnecks?|roll necks?|hoodies?|sweatshirts?|maglione)\b/i },
   { c: "Knitwear", w: 2, re: /\b(knit|knitted|crewnecks?|crew necks?|fleece|strick)\b/i },
   // Shirts — polo/tee are more specific than a generic "knitted" adjective.
-  { c: "Shirts", w: 4, re: /\b(polos?|t-?shirts?|tees?|henleys?)\b/i },
-  { c: "Shirts", w: 2, re: /\b(shirts?|blouses?|tank tops?|hemd|camicia|chemise|camisa)\b/i },
+  { c: "Shirts", w: 4, re: /\b(polos?|t-?shirts?|tees?|henleys?|longsleeves?|long[- ]sleeves?)\b/i },
+  { c: "Shirts", w: 2, re: /\b(shirts?|blouses?|tank tops?|tops?|hemd|camicia|chemise|camisa)\b/i },
   // Swimwear — beats "trunks" (Underwear) for swimming trunks.
   { c: "Swimwear", w: 4, re: /\b(swim(?:ming|wear|suits?)?|boardshorts?|board shorts?|bikinis?|badehose|maillot)\b/i },
   // Activewear
@@ -32,7 +32,7 @@ const CATEGORY_SIGNALS = [
   { c: "Trousers", w: 3, re: /\b(trousers?|chinos?|jeans?|slacks?|leggings?|cargos?|shorts|bermudas?|joggers?|sweatpants?|pantalon|pantaloni)\b/i },
   { c: "Trousers", w: 1, re: /\b(pants?|denim|corduroy|cords|hose)\b/i },
   // Footwear
-  { c: "Footwear", w: 3, re: /\b(sneakers?|trainers?|boots?|loafers?|derby|derbies|sandals?|brogues?|espadrilles?|mules?|slippers?|plimsolls?|chukkas?|monk straps?|oxfords?|schuh|scarpa|zapato|chaussure)\b/i },
+  { c: "Footwear", w: 3, re: /\b(sneakers?|trainers?|boots?|loafers?|derby|derbies|sandals?|brogues?|espadrilles?|mules?|slippers?|plimsolls?|chukkas?|monk straps?|oxfords?|slides?|sliders?|flip[- ]?flops?|schuh|scarpa|zapato|chaussure)\b/i },
   { c: "Footwear", w: 2, re: /\b(shoes?|chelsea)\b/i },
   // Accessories (bags folded in)
   { c: "Accessories", w: 3, re: /\b(watch(?:es)?|belts?|scarf|scarves|gloves?|sunglasses|wallets?|cufflinks?|pocket squares?|beanies?|umbrellas?|bow ties?|ties?|caps?|hats?|jewel\w*|keyrings?|backpacks?|rucksacks?|totes?|holdalls?|duffels?|duffles?|weekenders?|briefcases?|satchels?|crossbody|bags?)\b/i },
@@ -74,6 +74,52 @@ export function sanitizeScraperNulls(raw) {
  *  - only the head of the title (before " with …") decides the main garment, so
  *    "shirt with cufflinks" is Shirts, not Accessories.
  */
+/**
+ * Merchant nav labels (Reserved / Zara / M&S etc.) → our enum. Used when the
+ * title is ambiguous ("Cotton top") so we don't drop everything into Other.
+ */
+const MERCHANT_CATEGORY_ALIASES = {
+  "t-shirts": "Shirts",
+  "tshirts": "Shirts",
+  "polo shirts": "Shirts",
+  polos: "Shirts",
+  shirts: "Shirts",
+  "jumpers, cardigans": "Knitwear",
+  jumpers: "Knitwear",
+  cardigans: "Knitwear",
+  "hoodies, sweatshirts": "Knitwear",
+  hoodies: "Knitwear",
+  sweatshirts: "Knitwear",
+  "coats, jackets": "Outerwear",
+  coats: "Outerwear",
+  jackets: "Outerwear",
+  blazers: "Outerwear",
+  trousers: "Trousers",
+  jeans: "Trousers",
+  shorts: "Trousers",
+  "beach shorts": "Swimwear",
+  shoes: "Footwear",
+  "ties, bow ties": "Accessories",
+  "belts, gadgets": "Accessories",
+  "bags, toiletry bags": "Accessories",
+  "caps, hats, scarves": "Accessories",
+  sunglasses: "Accessories",
+  socks: "Underwear",
+  "boxers, briefs": "Underwear",
+  nightwear: "Underwear",
+};
+
+function merchantCategoryHint(rawCategory) {
+  const key = String(rawCategory ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  if (!key) return undefined;
+  const exact = CATEGORIES.find((c) => c.toLowerCase() === key);
+  if (exact) return exact;
+  return MERCHANT_CATEGORY_ALIASES[key];
+}
+
 export function mapCategory(rawCategory, title = "") {
   const rawTitle = String(title ?? "");
   // Guard 1: neutralise the "dress" adjective in "dress shirt/shoes/…".
@@ -104,9 +150,7 @@ export function mapCategory(rawCategory, title = "") {
   let scores = scoreText(head);
   if (scores.size === 0) scores = scoreText(deadjectived);
 
-  const rawExact = CATEGORIES.find(
-    (c) => c.toLowerCase() === String(rawCategory ?? "").trim().toLowerCase(),
-  );
+  const rawExact = merchantCategoryHint(rawCategory);
 
   // No title signal at all → keep the merchant category (or Other).
   if (scores.size === 0) return rawExact ?? "Other";

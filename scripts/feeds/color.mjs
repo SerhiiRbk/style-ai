@@ -73,6 +73,8 @@ export const NAMED_COLORS = {
   green: "#3A6B4E",
   olive: "#6B6B47",
   "olive green": "#6B6B47",
+  "brownish green": "#5C5840",
+  "khaki green": "#6E6A3E",
   khakigreen: "#6E6A3E",
   forest: "#2E4B33",
   "forest green": "#2E4B33",
@@ -82,6 +84,7 @@ export const NAMED_COLORS = {
   mint: "#A7D0BC",
   lime: "#9BB53F",
   moss: "#57632F",
+  "moss green": "#57632F",
   // reds / pinks
   red: "#A22E2A",
   crimson: "#9B1C2E",
@@ -92,9 +95,13 @@ export const NAMED_COLORS = {
   brick: "#8E3B2E",
   coral: "#E07856",
   salmon: "#E39A82",
+  peach: "#E8A882",
   pink: "#E1A0A8",
+  rose: "#C99BA0",
   "dusty pink": "#C99BA0",
+  "dusty rose": "#C99BA0",
   blush: "#E4C1BE",
+  carmine: "#9B1C2E",
   // oranges / yellows
   orange: "#C56A2C",
   amber: "#C68A2E",
@@ -102,12 +109,20 @@ export const NAMED_COLORS = {
   gold: "#C1913A",
   ochre: "#C08A34",
   yellow: "#D9BB4A",
+  copper: "#B87333",
+  wheat: "#D9C7A3",
   // purples
   purple: "#5E4B7B",
   plum: "#5A3A56",
   aubergine: "#3E2A3B",
   lavender: "#B3A6C9",
   lilac: "#C0AED4",
+  mauve: "#9C6B84",
+  violet: "#5E4B7B",
+  "dark violet": "#3E2A3B",
+  grape: "#5A3A56",
+  orchid: "#B3A6C9",
+  hyacinth: "#6E8CA6",
   // extra merchant names seen in the live catalogue
   oyster: "#E7E0D0",
   mink: "#8C7B6B",
@@ -125,7 +140,9 @@ export const NAMED_COLORS = {
   granite: "#6E6E6E",
   onyx: "#1A1A1A",
   tangerine: "#E38A2E",
+  mandarine: "#E38A2E",
   evergreen: "#20402E",
+  "teal green": "#2C6E6A",
   conker: "#5A2E1E",
   brandy: "#8A4B2A",
   ice: "#DCE6EA",
@@ -149,8 +166,30 @@ const COLOR_ALIASES = {
   "dark navy": "navy",
   "light stone": "stone",
   "dark olive": "olive",
+  "light olive": "olive",
+  "brownish-green": "brownish green",
+  brownishgreen: "brownish green",
+  "olive brown": "brownish green",
+  "brown olive": "brownish green",
+  "muddy green": "brownish green",
+  "dusty green": "sage",
+  "pale green": "sage",
+  "fresh green": "lime",
+  "dark green": "forest green",
+  "light green": "sage",
   "dark brown": "chocolate",
+  "dusty brown": "tobacco",
+  "golden brown": "caramel",
   "light brown": "tan",
+  mandarin: "mandarine",
+  "mid grey": "grey",
+  "grey blue": "slate",
+  "blue jeans": "denim",
+  "indigo jeans": "indigo",
+  "anthracite jeans": "anthracite",
+  "dark grey jeans": "dark grey",
+  "dusty brown jeans": "tobacco",
+  "teal green": "teal green",
   "dark grey": "dark grey",
   "dark gray": "dark grey",
   "light gray": "light grey",
@@ -375,6 +414,21 @@ export function colorAttrs(hex) {
  * attributes, or null when the colour can't be resolved (caller keeps the raw
  * name for display and leaves the hex empty).
  */
+/** Named keys whose HSL lands near yellow/brown but should read as green in-app. */
+const FORCE_GREEN_FAMILY = new Set([
+  "olive",
+  "olive green",
+  "brownish green",
+  "khaki green",
+  "khakigreen",
+  "moss",
+  "moss green",
+  "sage",
+  "forest",
+  "forest green",
+  "evergreen",
+]);
+
 export function normalizeColor(rawName, providedHex) {
   const hex = colorToHex(rawName, providedHex);
   if (!hex) return null;
@@ -383,5 +437,7 @@ export function normalizeColor(rawName, providedHex) {
   // hue/saturation would otherwise read as an accent.
   const key = normalizeColorName(rawName);
   const neutral = Boolean(attrs.neutral) || (key ? NEUTRAL_KEYS.has(key) : false);
-  return { hex, ...attrs, neutral };
+  const family =
+    key && FORCE_GREEN_FAMILY.has(key) ? "green" : attrs.family;
+  return { hex, ...attrs, family, neutral };
 }

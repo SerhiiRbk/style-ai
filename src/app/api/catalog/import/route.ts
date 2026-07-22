@@ -36,6 +36,7 @@ const GENDERS = ["men", "women", "unisex", "kids"];
 // country when the row itself doesn't state one and the currency is shared (EUR).
 const SOURCE_DEFAULT_COUNTRY: { match: RegExp; country: string }[] = [
   { match: /zara/i, country: "ES" },
+  { match: /reserved/i, country: "LU" },
   { match: /marks.?spencer-de|markspencer-de|m&s-de/i, country: "DE" },
   { match: /marks.?spencer-fr|markspencer-fr|m&s-fr/i, country: "FR" },
   { match: /marks.?spencer|markspencer|m&s/i, country: "ES" },
