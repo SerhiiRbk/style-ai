@@ -560,6 +560,7 @@ function shoppingItemFromMatch(
     retailer: row.brand ?? row.source ?? "",
     url: row.deeplink ?? "#",
     color: swatchHex(row),
+    ...(row.color?.trim() ? { colorName: row.color.trim() } : {}),
     image: row.image_url ?? undefined,
     productId: row.id,
     similarPick,
@@ -808,6 +809,279 @@ export async function matchLookItems(
     return result;
   } catch {
     return {};
+  }
+}
+
+/* ----------------------------- Shop a Look ------------------------------ */
+
+/** One detected garment slot with its best catalogue candidates (best first). */
+export type InspirationMatchSlot = {
+  slot: number;
+  category: string;
+  garment: string;
+  color: string | null;
+  candidates: ShoppingItem[];
+};
+
+/**
+ * Bumped when "Shop a Look" matching logic changes — invalidates the photo-hash
+ * result cache independently of LOOK_MATCH_VERSION (which would also force a
+ * background re-match of every report). v2: colour-gate alternatives. v3:
+ * per-garment accessory slots (belt + sunglasses no longer collapse). v4:
+ * carry the catalogue colour name on each candidate. v5: lenient category
+ * mapping + vision retry. v6: sanitise noisy query colours (fixes accessories
+ * dropping to zero rows) + bridge light neutrals in the alternative gate. v7:
+ * detection prompt now catalogues face/neck/head-worn accessories (sunglasses,
+ * necklaces, hats) reliably.
+ */
+export const INSPIRATION_MATCH_VERSION = 7;
+/** Catalogue candidates surfaced per detected garment in "Shop a Look". */
+const INSPIRATION_CANDIDATES_PER_SLOT = 3;
+/**
+ * Max distinct garment slots matched from one photo (keeps the vision→embed→rpc
+ * fan-out bounded). Sized for a full outfit plus a couple of accessories:
+ * outerwear + top + shirt + trousers + footwear, and 2 accessories (e.g. belt,
+ * sunglasses) — which live in one category but are distinct pieces.
+ */
+const INSPIRATION_MAX_SLOTS = 7;
+/**
+ * Minimum colour score for a NON-primary "Shop a Look" alternative. When the
+ * detected garment has a clear colour (e.g. cream trousers), we would rather
+ * show one or two colour-consistent options than pad the row with off-colour
+ * items the shopper can plainly see are wrong (e.g. brown trousers). 0.5 keeps
+ * same-hue matches (incl. unknown lightness) and drops wrong-hue / wrong-shade
+ * candidates. `colorMatchScore`: wrong hue 0.1, same hue diff shade 0.3, same
+ * hue unknown shade 0.8, exact 1.
+ */
+const INSPIRATION_MIN_ALT_COLOR = 0.5;
+
+/**
+ * Light neutrals that read as interchangeable to the eye (cream/ivory pair
+ * happily with beige/sand/stone/tan), but which the colour taxonomy splits
+ * across the "white" and "brown" families — so `colorMatchScore` scores them a
+ * wrong-hue 0.1. Used to bridge that gap for alternatives only. Deliberately
+ * excludes mid/dark browns (brown, chocolate, espresso, mole, taupe) so we
+ * never resurface the "brown trousers for a cream look" problem.
+ */
+const LIGHT_NEUTRAL_RE =
+  /\b(cream|ivory|ecru|bone|oyster|off[-\s]?white|offwhite|natural|tan|camel|beige|sand|stone|oat|oatmeal|khaki|buff|biscuit|linen|greige)\b/i;
+
+function isLightNeutral(text: string | null | undefined): boolean {
+  return Boolean(text) && LIGHT_NEUTRAL_RE.test(text as string);
+}
+
+/**
+ * Reduce a detected colour to a clean query token. Vision sometimes returns
+ * descriptive, non-wearable colour strings for accessories (e.g. "gold and dark
+ * lens" for sunglasses) that pull the embedding away from the catalogue enough
+ * to fall under the RPC's similarity floor — returning zero rows and silently
+ * dropping the slot. Keep the primary colour word(s), cut at connectives, and
+ * strip non-colour nouns.
+ */
+const COLOR_QUERY_SPLIT = /\s+(?:and|with|featuring|plus|over|w\/)\s+|\s*[&/,]\s*/i;
+const COLOR_NOISE_WORDS = new Set([
+  "lens",
+  "lenses",
+  "frame",
+  "frames",
+  "case",
+  "buckle",
+  "detail",
+  "details",
+  "accent",
+  "accents",
+  "hardware",
+  "trim",
+  "tint",
+  "tinted",
+  "gradient",
+  "mirror",
+  "mirrored",
+  "polarised",
+  "polarized",
+]);
+
+function sanitizeQueryColor(color: string | null): string | null {
+  if (!color) return null;
+  const primary = color.toLowerCase().split(COLOR_QUERY_SPLIT)[0]?.trim() ?? "";
+  const words = primary
+    .split(/\s+/)
+    .filter((w) => w && !COLOR_NOISE_WORDS.has(w));
+  const capped = words.slice(0, 2).join(" ").trim();
+  return capped || null;
+}
+
+/**
+ * "Shop a Look" matcher: given garments detected in an uploaded outfit photo,
+ * return the closest catalogue products per garment, re-ranked for the user's
+ * own profile (palette, fit, budget, gender). Unlike `matchLookItems` this keeps
+ * the top {@link INSPIRATION_CANDIDATES_PER_SLOT} candidates per slot so the UI
+ * can let the user choose, with the reranker's pick ordered first.
+ *
+ * Reuses the exact embedding + `match_product_offers` + rerank stack as the
+ * report's per-look matching. Returns [] when AI/catalogue is unavailable.
+ */
+export async function matchInspirationItems(
+  profile: StyleProfile,
+  look: { title: string; description: string; palette: string[] },
+  garments: LookGarment[],
+): Promise<InspirationMatchSlot[]> {
+  if (!hasAI || !hasSupabaseAdmin || !garments.length) return [];
+
+  try {
+    const sb = createAdminSupabase();
+    const goal = profile.goals[0]?.toLowerCase() ?? "your goals";
+    const market = marketForCurrency(profile.currency);
+    const country = profile.demographics.country;
+    const currency = profile.currency;
+    const gender = genderFilterFor(profile.demographics.genderPresentation);
+
+    // One slot per category (dedupe), bounded — mirrors matchItemsForLook.
+    // One slot per main clothing category (an outfit has a single top, bottom,
+    // etc.), but ACCESSORIES are deduped per garment — a look legitimately has
+    // several (belt, sunglasses, watch), all in the one "Accessories" category,
+    // and collapsing them to a single slot drops pieces at random between runs.
+    const slots: { slot: number; garment: LookGarment }[] = [];
+    const usedCategories = new Set<string>();
+    const usedAccessories = new Set<string>();
+    for (const g of garments) {
+      if (slots.length >= INSPIRATION_MAX_SLOTS) break;
+      if (g.category === "Accessories") {
+        const key = g.garment.trim().toLowerCase();
+        if (!key || usedAccessories.has(key)) continue;
+        usedAccessories.add(key);
+      } else {
+        if (usedCategories.has(g.category)) continue;
+        usedCategories.add(g.category);
+      }
+      slots.push({ slot: slots.length, garment: g });
+    }
+    if (!slots.length) return [];
+
+    const queries = slots.map(({ garment: g }) =>
+      garmentQueryText(g.garment, sanitizeQueryColor(g.color), g.category, {
+        lookTitle: look.title,
+        clause: g.clause,
+        paletteHints: "",
+        colorSeason: profile.colorSeason,
+        gender,
+      }),
+    );
+
+    const { embeddings } = await embedMany({
+      model: env.embedModel,
+      values: queries,
+    });
+
+    const rankedBySlot = await Promise.all(
+      slots.map(async ({ garment: g }, i) => {
+        const rows = await rpcMatchProducts(sb, {
+          query_embedding: embeddings[i],
+          match_count: LOOK_MATCH_COUNT,
+          filter_category: g.category,
+          max_price: profile.budgetEur.max,
+          country,
+          currency,
+          market,
+          gender_filter: gender,
+        });
+        return rankMatchRows(
+          shoppableRows(rows),
+          g.color,
+          g.garment,
+          profile.boldness,
+        ).sort((a, b) => b.score - a.score);
+      }),
+    );
+
+    // One rerank pass over the whole outfit picks the best candidate per slot
+    // (and writes the "why" copy), exactly like the report's look matching.
+    const rerankInput: RerankGarmentSlot[] = slots
+      .map(({ slot, garment: g }, i) => ({
+        slot,
+        category: g.category,
+        garment: g.garment,
+        color: g.color,
+        clause: g.clause,
+        candidates: rankedBySlot[i]
+          .slice(0, LOOK_RERANK_CANDIDATE_LIMIT)
+          .map((r) => toRerankCandidate(r.row, g.category)),
+      }))
+      .filter((s) => s.candidates.length > 0);
+
+    const picks = await rerankLookItemSlots(
+      look.title,
+      look.description,
+      "",
+      rerankInput,
+    );
+    const pickBySlot = new Map((picks ?? []).map((p) => [p.slot, p]));
+
+    const result: InspirationMatchSlot[] = [];
+    slots.forEach(({ slot, garment: g }, i) => {
+      const ranked = rankedBySlot[i];
+      if (!ranked.length) return;
+
+      // Order the reranker's pick first (when valid), then the rest by score.
+      const pick = pickBySlot.get(slot);
+      const pickedRowId =
+        pick && pick.candidateIndex >= 0 && pick.candidateIndex < ranked.length
+          ? ranked[pick.candidateIndex].row.id
+          : undefined;
+      const ordered = [...ranked];
+      if (pickedRowId) {
+        const at = ordered.findIndex((r) => r.row.id === pickedRowId);
+        if (at > 0) ordered.unshift(ordered.splice(at, 1)[0]);
+      }
+
+      // Colour-gate the ALTERNATIVES (not the primary) when we know the target
+      // colour, so a clearly cream garment never lists brown "alternatives".
+      // Light neutrals (cream ↔ beige/sand/stone/tan…) are bridged across the
+      // white/brown family split so a cream trouser still surfaces its natural
+      // sand/stone alternatives instead of collapsing to a single option.
+      const gateColor = Boolean(g.color);
+      const queryLightNeutral = isLightNeutral(g.color);
+      const gated = ordered.filter((r, idx) => {
+        if (idx === 0 || !gateColor) return true;
+        if (r.colorScore >= INSPIRATION_MIN_ALT_COLOR) return true;
+        return (
+          queryLightNeutral &&
+          isLightNeutral(`${r.row.color ?? ""} ${r.row.title}`)
+        );
+      });
+
+      const candidates: ShoppingItem[] = [];
+      const seen = new Set<string>();
+      for (const r of gated) {
+        if (candidates.length >= INSPIRATION_CANDIDATES_PER_SLOT) break;
+        if (seen.has(r.row.id)) continue;
+        seen.add(r.row.id);
+        candidates.push(
+          shoppingItemFromMatch(
+            r.row,
+            g,
+            profile,
+            goal,
+            r.similarPick,
+            r.row.id === pickedRowId ? pick?.why : undefined,
+          ),
+        );
+      }
+      if (candidates.length) {
+        result.push({
+          slot,
+          category: g.category,
+          garment: g.garment,
+          color: g.color,
+          candidates,
+        });
+      }
+    });
+
+    return result;
+  } catch (err) {
+    console.error("[inspiration] catalogue match failed", err);
+    return [];
   }
 }
 

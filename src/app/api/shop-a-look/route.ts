@@ -1,0 +1,152 @@
+import { NextResponse } from "next/server";
+import { createHash } from "crypto";
+import { hasSupabase, hasAI, hasSupabaseAdmin } from "@/lib/env";
+import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
+import { analyzeInspirationPhoto } from "@/lib/ai/inspiration";
+import {
+  matchInspirationItems,
+  LOOK_MATCH_VERSION,
+  INSPIRATION_MATCH_VERSION,
+  type InspirationMatchSlot,
+} from "@/lib/data/catalog";
+import { getLatestReportProfile } from "@/lib/data/match-profile";
+
+/** Cache key that changes with either the shared match logic or the shop-a-look logic. */
+const CACHE_VERSION = `${LOOK_MATCH_VERSION}.${INSPIRATION_MATCH_VERSION}`;
+
+/** Vision detection + per-garment vector search can exceed the default timeout. */
+export const maxDuration = 120;
+
+/** ~6 MB of base64 ≈ 4.5 MB image — above a 1024px JPEG, below platform limits. */
+const MAX_DATA_URL_CHARS = 6_000_000;
+
+type CachedResult = {
+  version: string;
+  ok: boolean;
+  lookTitle: string;
+  description: string;
+  palette: string[];
+  slots: InspirationMatchSlot[];
+  personalised: boolean;
+};
+
+function cachePath(userId: string, hash: string): string {
+  return `${userId}/inspiration/${hash}.json`;
+}
+
+export async function POST(request: Request) {
+  if (!hasSupabase) {
+    return NextResponse.json(
+      { error: "Shop a Look requires live mode" },
+      { status: 501 },
+    );
+  }
+  if (!hasAI) {
+    return NextResponse.json(
+      { error: "Image analysis is not configured" },
+      { status: 501 },
+    );
+  }
+
+  const sb = await createServerSupabase();
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const body = await request.json().catch(() => null);
+  const image: unknown = body?.image;
+  if (typeof image !== "string" || !image.startsWith("data:image/")) {
+    return NextResponse.json({ error: "Missing image" }, { status: 400 });
+  }
+  if (image.length > MAX_DATA_URL_CHARS) {
+    return NextResponse.json({ error: "Image too large" }, { status: 413 });
+  }
+
+  const hash = createHash("sha256").update(image).digest("hex").slice(0, 32);
+  const admin = hasSupabaseAdmin ? createAdminSupabase() : null;
+  const path = cachePath(user.id, hash);
+
+  // Photo-hash cache: re-uploading the same photo (or coming back to it) skips
+  // the vision + embedding + search cost. Invalidated when match logic bumps.
+  if (admin) {
+    const { data: blob } = await admin.storage.from("assets").download(path);
+    if (blob) {
+      try {
+        const cached = JSON.parse(await blob.text()) as CachedResult;
+        if (cached.version === CACHE_VERSION) {
+          return NextResponse.json({ ...cached, cached: true });
+        }
+      } catch {
+        // Corrupt cache entry — fall through and recompute.
+      }
+    }
+  }
+
+  const analysis = await analyzeInspirationPhoto(image);
+  if (!analysis.ok) {
+    // Distinguish a vision/provider error (retryable) from a photo that
+    // genuinely has no clothing, so the UX and diagnosis stay honest.
+    if (analysis.failed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          slots: [],
+          message:
+            "Reading the look failed — please try again in a moment.",
+          code: "vision_failed",
+        },
+        { status: 502 },
+      );
+    }
+    return NextResponse.json({
+      ok: false,
+      lookTitle: "",
+      description: "",
+      palette: [],
+      slots: [],
+      personalised: false,
+      message:
+        "We couldn't read an outfit in that photo. Try a clearer, full-outfit shot.",
+    });
+  }
+
+  const { profile, personalised } = await getLatestReportProfile(user.id);
+  const slots = await matchInspirationItems(
+    profile,
+    {
+      title: analysis.lookTitle,
+      description: analysis.description,
+      palette: analysis.palette,
+    },
+    analysis.garments,
+  );
+
+  const result: CachedResult = {
+    version: CACHE_VERSION,
+    ok: true,
+    lookTitle: analysis.lookTitle,
+    description: analysis.description,
+    palette: analysis.palette,
+    slots,
+    personalised,
+  };
+
+  // Persist the computed result (not the source photo) for cache hits.
+  if (admin) {
+    try {
+      await admin.storage
+        .from("assets")
+        .upload(path, JSON.stringify(result), {
+          contentType: "application/json",
+          upsert: true,
+        });
+    } catch {
+      // Caching is best-effort — never fail the request over it.
+    }
+  }
+
+  return NextResponse.json({ ...result, cached: false });
+}

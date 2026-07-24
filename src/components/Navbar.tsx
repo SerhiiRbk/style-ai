@@ -5,11 +5,12 @@ import { NavbarMenu, type NavLink } from "./NavbarMenu";
 import { ValettiLogo } from "./brand/ValettiLogo";
 import {
   NavDesktopAuthLinks,
+  NavDesktopReportsLink,
   NavCreditPill,
 } from "./NavSession";
 
 const primaryLinks: NavLink[] = [
-  { href: "/#how", label: "How it works" },
+  { href: "/shop-a-look", label: "Shop a look" },
   { href: "/catalog", label: "Catalog" },
   { href: "/pricing", label: "Pricing" },
   { href: "/#sample", label: "Sample" },
@@ -34,6 +35,7 @@ export function Navbar() {
 
         <div className="hidden min-w-0 flex-1 items-center justify-end gap-4 lg:flex xl:gap-5">
           <div className="flex items-center gap-4 xl:gap-5">
+            <NavDesktopReportsLink />
             {primaryLinks.map((l) => (
               <Link key={l.href} href={l.href} className={navLinkClass}>
                 {l.label}

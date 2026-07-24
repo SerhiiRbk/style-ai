@@ -117,6 +117,17 @@ export function NavbarMenu({
           )}
 
           <ul className="divide-y hairline">
+            {authed && (
+              <li>
+                <Link
+                  href="/reports"
+                  className={linkClass}
+                  onClick={() => setOpen(false)}
+                >
+                  Reports
+                </Link>
+              </li>
+            )}
             {menuLinks.map((l) => (
               <li key={l.href}>
                 <Link
@@ -131,22 +142,11 @@ export function NavbarMenu({
             {authed && (
               <li>
                 <Link
-                  href="/reports"
-                  className={linkClass}
-                  onClick={() => setOpen(false)}
-                >
-                  My reports
-                </Link>
-              </li>
-            )}
-            {authed && (
-              <li>
-                <Link
                   href="/gallery"
                   className={linkClass}
                   onClick={() => setOpen(false)}
                 >
-                  My looks
+                  Looks
                 </Link>
               </li>
             )}

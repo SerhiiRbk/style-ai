@@ -116,8 +116,10 @@ Provider rates are estimates (confirm in billing); order-of-magnitude is reliabl
 2. `/shop-a-look` page + uploader + detected-items + matches UI (reuse `PaletteSwatches`, product cards).
 3. Photo-hash cache for detect/match.
 
-**Phase 2 — try-on (paid).**
-4. Wire the matched outfit into the existing try-on tray, rendering on the user's stored photo, image engine, credit-gated. Carlo's opinion (reuse `tryon-opinion`) after render.
+**Phase 2 — try-on (paid). ✅ shipped**
+4. The user selects pieces (one per detected slot, capped at `MAX_TRYON_ITEMS` = 4) and renders them on their **own default photo** by calling the existing catalogue try-on endpoint `POST /api/tryon` with `productIds` and **no `reportId`** — which resolves the photo via `getCatalogTryOnPhoto` (pinned default → latest full-length) and renders with `generateCatalogTryOnImage`.
+   - **Decision:** the uploaded reference photo is NOT fed into the render (no outfit-reference, no face-crop needed) — the render uses only the chosen catalogue garment images on the user's photo, exactly like catalogue try-on. This is the cleanest third-party-likeness guardrail (§3) and required no new endpoint or try-on `kind`.
+   - **Cost:** `CREDIT_COSTS.tryon` = 1 credit, charged only after a successful render (existing behaviour).
 
 **Phase 3 — retention / cross-sell.**
 5. "Add to wardrobe" hand-off (`docs/wardrobe-as-asset-plan.md`), "See a full report", share card of the assembled look.

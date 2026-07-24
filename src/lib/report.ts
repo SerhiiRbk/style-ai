@@ -166,7 +166,10 @@ export type ShoppingItem = {
   currency?: string;
   retailer: string;
   url: string;
+  /** Swatch colour as a CSS hex (for the colour dot). */
   color: string;
+  /** Human colour name from the catalogue (e.g. "navy"), when known. */
+  colorName?: string;
   image?: string;
   productId?: string;
   /** Catalogue pick is stylistically close, not a guaranteed photo match. */

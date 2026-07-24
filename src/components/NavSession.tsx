@@ -109,6 +109,17 @@ const navLinkClass =
 const creditsPillClass =
   "whitespace-nowrap rounded-full border border-brass/40 bg-brass/5 text-ink transition-colors hover:border-brass";
 
+/** Desktop "Reports" link — rendered first in the nav when signed in. */
+export function NavDesktopReportsLink() {
+  const { authed } = useNavSession();
+  if (!authed) return null;
+  return (
+    <Link href="/reports" className={navLinkClass}>
+      Reports
+    </Link>
+  );
+}
+
 /** Desktop nav links that depend on the visitor's session. */
 export function NavDesktopAuthLinks() {
   const { authed, isAdmin } = useNavSession();
@@ -123,13 +134,8 @@ export function NavDesktopAuthLinks() {
         </Link>
       )}
       {authed && (
-        <Link href="/reports" className={navLinkClass}>
-          My reports
-        </Link>
-      )}
-      {authed && (
         <Link href="/gallery" className={navLinkClass}>
-          My looks
+          Looks
         </Link>
       )}
       {authed && (
