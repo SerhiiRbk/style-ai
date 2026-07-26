@@ -137,6 +137,12 @@ export async function POST(request: Request) {
       ? body.reportId
       : undefined;
 
+  // Where this try-on was initiated — lets the gallery group Shop a Look renders
+  // separately from ad-hoc catalogue try-ons. Only "shop_a_look" is honoured;
+  // anything else (incl. report-linked renders) falls back to "catalog".
+  const origin: "shop_a_look" | "catalog" =
+    body?.origin === "shop_a_look" ? "shop_a_look" : "catalog";
+
   const admin = createAdminSupabase();
 
   // Verify credit balance before running the (paid) render.
@@ -287,19 +293,31 @@ export async function POST(request: Request) {
     imageUrl: garments[i]?.imageUrl ?? null,
   }));
 
-  const { data: savedTryon, error: insertErr } = await admin
+  const tryonRow: Record<string, unknown> = {
+    user_id: user.id,
+    product_id: productIds[0],
+    report_id: reportId ?? null,
+    image_path: path,
+    status: "ready",
+    kind: productIds.length > 1 ? "outfit" : "product",
+    origin,
+    garments: garmentsMeta,
+  };
+  let { data: savedTryon, error: insertErr } = await admin
     .from("tryons")
-    .insert({
-      user_id: user.id,
-      product_id: productIds[0],
-      report_id: reportId ?? null,
-      image_path: path,
-      status: "ready",
-      kind: productIds.length > 1 ? "outfit" : "product",
-      garments: garmentsMeta,
-    })
+    .insert(tryonRow)
     .select("id")
     .single();
+  // Tolerate DBs where migration 0030 (tryons.origin) hasn't run yet: drop the
+  // column and retry so try-on keeps working through the deploy window.
+  if (insertErr && /origin/i.test(insertErr.message)) {
+    delete tryonRow.origin;
+    ({ data: savedTryon, error: insertErr } = await admin
+      .from("tryons")
+      .insert(tryonRow)
+      .select("id")
+      .single());
+  }
   if (insertErr) {
     console.error("[tryon] tryons insert failed", insertErr);
   }

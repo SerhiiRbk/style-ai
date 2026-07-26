@@ -138,7 +138,7 @@ export function ShopALookExperience() {
       const res = await fetch("/api/tryon", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productIds: selectedIds }),
+        body: JSON.stringify({ productIds: selectedIds, origin: "shop_a_look" }),
       });
       const data = await res.json().catch(() => ({}));
       if (typeof data.balance === "number") setBalance(data.balance);
@@ -157,7 +157,10 @@ export function ShopALookExperience() {
       }
       setTryUrl(data.url);
       setTryState("done");
-      void fetchOpinion([...selectedIds]);
+      void fetchOpinion(
+        [...selectedIds],
+        typeof data.tryonId === "string" ? data.tryonId : undefined,
+      );
     } catch {
       setTryState(tryUrl ? "done" : "error");
       setTryMsg("Try-on failed — please try again.");
@@ -165,7 +168,7 @@ export function ShopALookExperience() {
   }
 
   /** Carlo's read on the rendered look — best-effort, never blocks the image. */
-  async function fetchOpinion(productIds: string[]) {
+  async function fetchOpinion(productIds: string[], tryonId?: string) {
     if (!productIds.length) return;
     setOpinion(null);
     setOpinionNoProfile(false);
@@ -174,7 +177,7 @@ export function ShopALookExperience() {
       const res = await fetch("/api/tryon/opinion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productIds }),
+        body: JSON.stringify({ productIds, tryonId }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.opinion) {

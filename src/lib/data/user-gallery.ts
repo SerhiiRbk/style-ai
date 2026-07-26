@@ -7,6 +7,7 @@ import type {
   GalleryItem,
   GalleryItemKind,
   GalleryReportGroup,
+  GalleryTryonGarment,
 } from "@/lib/gallery-types";
 import type {
   AccessoryRec,
@@ -16,6 +17,7 @@ import type {
   HairRec,
   Tier,
 } from "@/lib/report";
+import type { TryOnOpinion } from "@/lib/ai/tryon-opinion";
 
 export type {
   GalleryItem,
@@ -174,41 +176,127 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
     }
   }
 
-  // Catalogue try-ons aren't tied to any report (report_id is null) — surface
-  // them as their own group so they aren't lost.
-  const { data: catalogTryons } = await db
-    .from("tryons")
-    .select("id, image_path, created_at, garments")
-    .eq("user_id", user.id)
-    .is("report_id", null)
-    .order("created_at", { ascending: false });
+  // Try-ons not tied to any report (report_id is null) — surface them as their
+  // own groups so they aren't lost. Split by `origin`: renders started from
+  // Shop a Look get a dedicated group; everything else is a catalogue try-on.
+  let standaloneTryons: {
+    id: string;
+    image_path: string | null;
+    created_at: string;
+    garments: unknown;
+    origin?: string | null;
+    opinion?: TryOnOpinion | null;
+  }[] = [];
+  {
+    const withOrigin = await db
+      .from("tryons")
+      .select("id, image_path, created_at, garments, origin, opinion")
+      .eq("user_id", user.id)
+      .is("report_id", null)
+      .order("created_at", { ascending: false });
+    if (withOrigin.error) {
+      // Pre-migration DB without tryons.origin / opinion — fall back and treat
+      // all as catalogue try-ons so the gallery still renders.
+      const noOrigin = await db
+        .from("tryons")
+        .select("id, image_path, created_at, garments")
+        .eq("user_id", user.id)
+        .is("report_id", null)
+        .order("created_at", { ascending: false });
+      standaloneTryons = (noOrigin.data ?? []) as typeof standaloneTryons;
+    } else {
+      standaloneTryons = (withOrigin.data ?? []) as typeof standaloneTryons;
+    }
+  }
 
+  // Resolve current retailer links for the pieces used across standalone
+  // try-ons, so the "shop these" links in the verdict modal stay live. Pieces
+  // whose catalogue row was since removed simply have no link.
+  const garmentProductIds = new Set<string>();
+  for (const t of standaloneTryons) {
+    const gs = Array.isArray(t.garments) ? t.garments : [];
+    for (const g of gs) {
+      const pid = (g as { productId?: unknown }).productId;
+      if (typeof pid === "string" && pid) garmentProductIds.add(pid);
+    }
+  }
+  const deeplinkByProduct = new Map<string, string>();
+  if (garmentProductIds.size) {
+    const { data: prods } = await db
+      .from("products")
+      .select("id, deeplink")
+      .in("id", [...garmentProductIds]);
+    for (const p of prods ?? []) {
+      if (p.deeplink) deeplinkByProduct.set(p.id as string, p.deeplink as string);
+    }
+  }
+
+  const parseGarments = (raw: unknown): GalleryTryonGarment[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((g) => {
+      const rec = (g ?? {}) as Record<string, unknown>;
+      const pid = typeof rec.productId === "string" ? rec.productId : null;
+      return {
+        title: typeof rec.title === "string" ? rec.title : "Item",
+        category: typeof rec.category === "string" ? rec.category : "",
+        imageUrl: typeof rec.imageUrl === "string" ? rec.imageUrl : null,
+        deeplink: pid ? (deeplinkByProduct.get(pid) ?? null) : null,
+      };
+    });
+  };
+
+  const shopALookItems: GalleryItem[] = [];
   const catalogItems: GalleryItem[] = [];
-  (catalogTryons ?? []).forEach((t) => {
+  (standaloneTryons ?? []).forEach((t) => {
     const path = (t.image_path as string | null) ?? null;
     if (!path) return;
     // Report look/capsule try-ons (`/tryon/look-{reportId}-...`) are also stored
-    // with a null report_id; they belong to a report, not the catalogue, and
-    // some are orphaned (object deleted). Keep only genuine catalogue try-ons.
+    // with a null report_id; they belong to a report, not a standalone group,
+    // and some are orphaned (object deleted). Keep only genuine standalone ones.
     if (path.includes("/tryon/look-")) return;
-    const garments = (t.garments as { title?: string }[] | null) ?? [];
-    const label = garments[0]?.title || `Try-on ${catalogItems.length + 1}`;
-    catalogItems.push({
-      id: `catalog:tryon:${catalogItems.length}`,
+    const isShopALook = (t.origin as string | null) === "shop_a_look";
+    const bucket = isShopALook ? shopALookItems : catalogItems;
+    const garments = parseGarments(t.garments);
+    const label = garments[0]?.title || `Try-on ${bucket.length + 1}`;
+    bucket.push({
+      id: `${isShopALook ? "shop-a-look" : "catalog"}:tryon:${bucket.length}`,
       kind: "tryon",
       src: signedAssetProxyUrl(path),
       label,
       tryonId: t.id as string,
+      opinion: (t.opinion as TryOnOpinion | null) ?? null,
+      garments,
     });
   });
 
+  if (shopALookItems.length) {
+    const firstShopALook = (standaloneTryons ?? []).find(
+      (t) => (t.origin as string | null) === "shop_a_look" && t.image_path,
+    );
+    groups.push({
+      id: "shop-a-look",
+      headline: "Shop a Look",
+      tier: null,
+      createdAt:
+        (firstShopALook?.created_at as string | undefined) ??
+        new Date(0).toISOString(),
+      canShare: false,
+      href: "/shop-a-look",
+      linkLabel: "Open Shop a Look",
+      items: shopALookItems,
+    });
+  }
+
   if (catalogItems.length) {
+    const firstCatalog = (standaloneTryons ?? []).find(
+      (t) => (t.origin as string | null) !== "shop_a_look" && t.image_path,
+    );
     groups.push({
       id: "catalog",
       headline: "Catalogue try-ons",
       tier: null,
       createdAt:
-        (catalogTryons?.[0]?.created_at as string | undefined) ??
+        (firstCatalog?.created_at as string | undefined) ??
         new Date(0).toISOString(),
       canShare: false,
       href: "/catalog",

@@ -50,6 +50,12 @@ export async function POST(request: Request) {
     typeof body?.reportId === "string" && !isDemoReportId(body.reportId)
       ? body.reportId
       : undefined;
+  // The try-on row this verdict belongs to, so we can persist the opinion
+  // alongside the render + garments it describes.
+  const tryonId: string | undefined =
+    typeof body?.tryonId === "string" && body.tryonId.trim()
+      ? body.tryonId.trim()
+      : undefined;
 
   const admin = createAdminSupabase();
 
@@ -76,6 +82,27 @@ export async function POST(request: Request) {
   const profile = await loadUserProfile(admin, user.id, reportId);
 
   const opinion = await generateTryOnOpinion({ garments, profile });
+
+  // Persist the verdict on its try-on row (owner-only). Best-effort: never fail
+  // the response over it, and tolerate DBs where migration 0031 (tryons.opinion)
+  // hasn't run yet.
+  if (opinion && tryonId) {
+    const { data: row } = await admin
+      .from("tryons")
+      .select("id, user_id")
+      .eq("id", tryonId)
+      .maybeSingle();
+    if (row?.user_id === user.id) {
+      const { error: updErr } = await admin
+        .from("tryons")
+        .update({ opinion })
+        .eq("id", tryonId);
+      if (updErr && !/opinion/i.test(updErr.message)) {
+        console.error("[tryon-opinion] persist failed", updErr);
+      }
+    }
+  }
+
   return NextResponse.json({ opinion, hasProfile: Boolean(profile) });
 }
 

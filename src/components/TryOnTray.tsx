@@ -80,7 +80,10 @@ export function TryOnTray({
       if (data.savedToReport) {
         window.dispatchEvent(new CustomEvent(OUTFIT_TRYON_SAVED_EVENT));
       }
-      void fetchOpinion(selection.items.map((i) => i.productId));
+      void fetchOpinion(
+        selection.items.map((i) => i.productId),
+        typeof data.tryonId === "string" ? data.tryonId : undefined,
+      );
     } catch {
       setState("error");
       setMsg("Try-on failed");
@@ -88,7 +91,7 @@ export function TryOnTray({
   }
 
   /** Carlo's expert read — fetched after the image so it never blocks the preview. */
-  async function fetchOpinion(productIds: string[]) {
+  async function fetchOpinion(productIds: string[], tryonId?: string) {
     setOpinion(null);
     setOpinionNoProfile(false);
     setOpinionState("loading");
@@ -96,7 +99,7 @@ export function TryOnTray({
       const res = await fetch("/api/tryon/opinion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productIds, reportId }),
+        body: JSON.stringify({ productIds, reportId, tryonId }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.opinion) {

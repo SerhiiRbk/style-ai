@@ -1,4 +1,5 @@
 import type { Tier } from "@/lib/report";
+import type { TryOnOpinion } from "@/lib/ai/tryon-opinion";
 
 export type GalleryItemKind =
   | "cover"
@@ -11,6 +12,16 @@ export type GalleryItemKind =
   | "headwear"
   | "tryon";
 
+/** A catalogue piece used in a try-on, as captured on the tryon row. */
+export type GalleryTryonGarment = {
+  title: string;
+  category: string;
+  /** Retailer product image (external URL). */
+  imageUrl?: string | null;
+  /** Affiliate / retailer link, resolved from the catalogue when still present. */
+  deeplink?: string | null;
+};
+
 export type GalleryItem = {
   /** Stable key `${reportId}:${kind}:${index}`. */
   id: string;
@@ -21,6 +32,10 @@ export type GalleryItem = {
   label: string;
   /** Set for catalogue try-ons — enables user-initiated deletion. */
   tryonId?: string;
+  /** Carlo's saved verdict for this try-on, when one was generated. */
+  opinion?: TryOnOpinion | null;
+  /** Catalogue pieces used in this try-on (from the tryon's garments jsonb). */
+  garments?: GalleryTryonGarment[];
 };
 
 export type GalleryReportGroup = {
