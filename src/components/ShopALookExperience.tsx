@@ -497,6 +497,14 @@ export function ShopALookExperience() {
                   Balance: {balance} credit{balance === 1 ? "" : "s"}
                 </p>
               ) : null}
+              <p className="mt-2 text-[11px] text-stone-soft">
+                Renders are saved to{" "}
+                <Link href="/gallery" className="text-brass hover:text-ink">
+                  Looks
+                </Link>{" "}
+                — tap <span className="font-display text-ink">V</span> on a
+                tile for Carlo&apos;s verdict.
+              </p>
               {tryMsg ? (
                 <p className="mt-2 text-xs text-stone-soft">
                   {tryMsg}{" "}

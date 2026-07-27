@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { ShopALookExperience } from "@/components/ShopALookExperience";
@@ -39,6 +40,19 @@ export default function ShopALookPage() {
 
         <section className="container-luxe py-12">
           <div className="mx-auto max-w-4xl">
+            <div className="mb-8 rounded-2xl border hairline bg-paper px-4 py-3 text-sm leading-relaxed text-stone">
+              After a try-on, your render, Carlo&apos;s verdict and the pieces
+              you used are saved to{" "}
+              <Link
+                href="/gallery"
+                className="text-ink underline decoration-brass/50 underline-offset-2 transition-colors hover:decoration-brass"
+              >
+                Looks
+              </Link>
+              . Open any past try-on and tap the{" "}
+              <span className="font-display text-ink">V</span> icon to read
+              Carlo&apos;s notes again.
+            </div>
             <ShopALookExperience />
           </div>
         </section>

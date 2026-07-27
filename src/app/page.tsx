@@ -152,7 +152,9 @@ function Hero() {
     <section className="relative">
       <div className="container-luxe grid items-center gap-12 py-20 md:grid-cols-2 md:py-28 md:pb-32">
         <div className="animate-rise">
-          <p className="eyebrow">{BRAND.eyebrow} · {BRAND.tagline}</p>
+          <p className="eyebrow">
+            {BRAND.eyebrow} · {BRAND.tagline}
+          </p>
           <h1 className="mt-5 font-display text-[2.7rem] leading-[1.05] tracking-tight sm:text-6xl">
             Look more{" "}
             <em className="not-italic text-brass">considered</em> — without
@@ -190,6 +192,14 @@ function HeroVisual() {
   const palette = ["#6B6B47", "#9E5C3C", "#EFE6D3", "#27324A", "#B08A5B"];
   return (
     <div className="relative mx-auto w-full max-w-md animate-rise [animation-delay:120ms]">
+      <div className="mb-4 hidden justify-end md:flex">
+        <Link
+          href="/how-it-works"
+          className="text-sm text-brass transition-colors hover:text-ink"
+        >
+          How it works →
+        </Link>
+      </div>
       <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border hairline shadow-[0_40px_80px_-40px_rgba(21,18,13,0.45)]">
         <Image
           src="/images/hero-editorial.png"
