@@ -150,11 +150,20 @@ function Faq() {
 function Hero() {
   return (
     <section className="relative">
-      <div className="container-luxe grid items-center gap-12 py-20 md:grid-cols-2 md:py-28 md:pb-32">
+      <div className="container-luxe py-16 md:py-20 md:pb-28">
+        <div className="grid items-center gap-12 md:grid-cols-2">
         <div className="animate-rise">
-          <p className="eyebrow">
-            {BRAND.eyebrow} · {BRAND.tagline}
-          </p>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+            <p className="eyebrow">
+              {BRAND.eyebrow} · {BRAND.tagline}
+            </p>
+            <Link
+              href="/how-it-works"
+              className="text-sm text-brass transition-colors hover:text-ink"
+            >
+              How it works →
+            </Link>
+          </div>
           <h1 className="mt-5 font-display text-[2.7rem] leading-[1.05] tracking-tight sm:text-6xl">
             Look more{" "}
             <em className="not-italic text-brass">considered</em> — without
@@ -183,6 +192,7 @@ function Hero() {
         </div>
 
         <HeroVisual />
+        </div>
       </div>
     </section>
   );
@@ -192,14 +202,6 @@ function HeroVisual() {
   const palette = ["#6B6B47", "#9E5C3C", "#EFE6D3", "#27324A", "#B08A5B"];
   return (
     <div className="relative mx-auto w-full max-w-md animate-rise [animation-delay:120ms]">
-      <div className="mb-4 hidden justify-end md:flex">
-        <Link
-          href="/how-it-works"
-          className="text-sm text-brass transition-colors hover:text-ink"
-        >
-          How it works →
-        </Link>
-      </div>
       <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border hairline shadow-[0_40px_80px_-40px_rgba(21,18,13,0.45)]">
         <Image
           src="/images/hero-editorial.png"
