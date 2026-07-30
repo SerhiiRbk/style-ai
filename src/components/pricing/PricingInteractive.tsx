@@ -62,9 +62,11 @@ export function PricingPromoPanel() {
 export function PricingCreditPackages({
   paymentsEnabled,
   paymentProvider,
+  cryptoEnabled = false,
 }: {
   paymentsEnabled: boolean;
   paymentProvider: string;
+  cryptoEnabled?: boolean;
 }) {
   const { authed, balance } = useNavSession();
 
@@ -124,6 +126,7 @@ export function PricingCreditPackages({
                   packageId={pkg.id}
                   featured={featured}
                   enabled={paymentsEnabled}
+                  cryptoEnabled={cryptoEnabled}
                 />
               </div>
             );
@@ -131,8 +134,14 @@ export function PricingCreditPackages({
         </div>
         <p className="mt-6 text-sm text-paper/50">
           {paymentsEnabled
-            ? `Secure card payment via ${paymentProvider}. Credits never expire. Every new account also starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`
-            : `Card checkout is rolling out shortly. In the meantime, every new account starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`}
+            ? `Secure card payment via ${paymentProvider}.`
+            : cryptoEnabled
+              ? ""
+              : "Card checkout is rolling out shortly."}
+          {cryptoEnabled
+            ? ` Prefer crypto? Pay in BTC, ETH or stablecoins — credits land after on-chain confirmation (usually a few minutes).`
+            : ""}
+          {` Credits never expire. Every new account also starts with ${SIGNUP_BONUS} free credits — enough for your Starter Report (${REPORT_COST.free} credits) and one try-on (${CREDIT_COSTS.tryon} credit).`}
         </p>
       </div>
     </CreditsProvider>

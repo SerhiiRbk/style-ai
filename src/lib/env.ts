@@ -57,6 +57,18 @@ export const env = {
   lemonSqueezyWebhookSecret: process.env.LEMON_SQUEEZY_WEBHOOK_SECRET,
   lemonSqueezyStoreId: process.env.LEMON_SQUEEZY_STORE_ID,
 
+  // Crypto payments (NOWPayments) — hosted invoice + IPN webhook.
+  // Master switch: ENABLED_CRYPTO_PAYMENT=false makes crypto checkout
+  // unavailable regardless of whether keys are present.
+  cryptoPaymentsEnabled: envFlag(process.env.ENABLED_CRYPTO_PAYMENT),
+  nowPaymentsApiKey: process.env.NOWPAYMENTS_API_KEY,
+  nowPaymentsIpnSecret: process.env.NOWPAYMENTS_IPN_SECRET,
+  /** API base — override to the sandbox host for testing. */
+  nowPaymentsApiUrl:
+    process.env.NOWPAYMENTS_API_URL ?? "https://api.nowpayments.io/v1",
+  /** Optional: pre-select a pay currency (e.g. "usdcbase"); else the hosted page lets the buyer choose. */
+  nowPaymentsPayCurrency: process.env.NOWPAYMENTS_PAY_CURRENCY,
+
   // Error tracking (Sentry). Inert unless a DSN is set — see instrumentation.ts.
   sentryDsn: process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN,
 
@@ -90,6 +102,21 @@ export const hasLemonSqueezy = Boolean(
   env.lemonSqueezyApiKey &&
     env.lemonSqueezyWebhookSecret &&
     env.lemonSqueezyStoreId,
+);
+
+// NOWPayments keys present — required to verify IPNs and settle in-flight
+// payments even if new crypto checkouts are switched off.
+export const hasNowPaymentsKeys = Boolean(
+  env.nowPaymentsApiKey && env.nowPaymentsIpnSecret,
+);
+
+/**
+ * Crypto checkout is offerable: master switch ENABLED_CRYPTO_PAYMENT is on and
+ * the NOWPayments keys are configured. Setting ENABLED_CRYPTO_PAYMENT=false
+ * disables starting new crypto payments (webhooks still settle in-flight ones).
+ */
+export const hasCryptoPay = Boolean(
+  env.cryptoPaymentsEnabled && hasNowPaymentsKeys,
 );
 
 /** Active provider is fully configured and payments are enabled (see PAYMENTS_ENABLED). */

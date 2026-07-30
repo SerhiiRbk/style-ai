@@ -7,24 +7,27 @@ import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 /**
  * Starts hosted checkout for a credit pack. Posts to /api/checkout and
  * redirects to the returned URL. Sends unauthenticated users to /login
- * (returning to the packages section). When payments aren't configured yet it
- * renders a disabled "coming soon" control.
+ * (returning to the packages section). Supports card checkout (`enabled`) and,
+ * when `cryptoEnabled`, a "Pay with crypto" option via NOWPayments. When neither
+ * rail is available it renders a disabled "coming soon" control.
  */
 export function BuyCreditsButton({
   packageId,
   featured,
   enabled,
+  cryptoEnabled = false,
 }: {
   packageId: string;
   featured?: boolean;
   enabled: boolean;
+  cryptoEnabled?: boolean;
 }) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<null | "card" | "crypto">(null);
   const [error, setError] = useState<string | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [digitalDeliveryAccepted, setDigitalDeliveryAccepted] = useState(false);
 
-  if (!enabled) {
+  if (!enabled && !cryptoEnabled) {
     return (
       <button
         type="button"
@@ -39,9 +42,9 @@ export function BuyCreditsButton({
 
   const canBuy = termsAccepted && digitalDeliveryAccepted;
 
-  async function buy() {
-    if (!canBuy) return;
-    setLoading(true);
+  async function buy(provider: "card" | "crypto") {
+    if (!canBuy || loading) return;
+    setLoading(provider);
     setError(null);
     try {
       const res = await fetch("/api/checkout", {
@@ -51,6 +54,7 @@ export function BuyCreditsButton({
           packageId,
           termsAccepted: true,
           digitalDeliveryConsent: true,
+          ...(provider === "crypto" ? { provider: "crypto" } : {}),
         }),
       });
       if (res.status === 401) {
@@ -60,13 +64,13 @@ export function BuyCreditsButton({
       const data = (await res.json()) as { url?: string; error?: string };
       if (!res.ok || !data.url) {
         setError(data.error ?? "Could not start checkout.");
-        setLoading(false);
+        setLoading(null);
         return;
       }
       window.location.href = data.url;
     } catch {
       setError("Network error — please try again.");
-      setLoading(false);
+      setLoading(null);
     }
   }
 
@@ -104,22 +108,42 @@ export function BuyCreditsButton({
           begins.
         </span>
       </label>
-      <button
-        type="button"
-        onClick={buy}
-        disabled={loading || !canBuy}
-        className={`inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm transition-colors disabled:opacity-60 ${
-          featured
-            ? "bg-brass text-paper hover:bg-brass/90"
-            : "border border-paper/30 text-paper hover:bg-paper/10"
-        }`}
-      >
-        {loading ? (
-          <LuxeWorkingLabel message="Opening secure checkout…" tone="paper" />
-        ) : (
-          "Buy credits"
-        )}
-      </button>
+      {enabled ? (
+        <button
+          type="button"
+          onClick={() => buy("card")}
+          disabled={loading !== null || !canBuy}
+          className={`inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm transition-colors disabled:opacity-60 ${
+            featured
+              ? "bg-brass text-paper hover:bg-brass/90"
+              : "border border-paper/30 text-paper hover:bg-paper/10"
+          }`}
+        >
+          {loading === "card" ? (
+            <LuxeWorkingLabel message="Opening secure checkout…" tone="paper" />
+          ) : (
+            "Buy credits"
+          )}
+        </button>
+      ) : null}
+      {cryptoEnabled ? (
+        <button
+          type="button"
+          onClick={() => buy("crypto")}
+          disabled={loading !== null || !canBuy}
+          className={`inline-flex w-full items-center justify-center gap-1.5 rounded-full px-5 py-3 text-sm transition-colors disabled:opacity-60 ${
+            !enabled && featured
+              ? "bg-brass text-paper hover:bg-brass/90"
+              : "border border-paper/30 text-paper hover:bg-paper/10"
+          }`}
+        >
+          {loading === "crypto" ? (
+            <LuxeWorkingLabel message="Opening crypto checkout…" tone="paper" />
+          ) : (
+            "Pay with crypto"
+          )}
+        </button>
+      ) : null}
       {error ? <p className="text-xs text-red-300">{error}</p> : null}
     </div>
   );

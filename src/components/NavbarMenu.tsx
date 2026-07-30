@@ -91,7 +91,8 @@ export function NavbarMenu({
         role="dialog"
         aria-modal="true"
         aria-label="Site navigation"
-        className="fixed inset-y-0 right-0 z-[101] flex w-full max-w-xs flex-col border-l hairline bg-paper shadow-[0_8px_40px_rgba(21,18,13,0.12)] lg:hidden"
+        translate="no"
+        className="notranslate fixed inset-y-0 right-0 z-[101] flex w-full max-w-xs flex-col border-l hairline bg-paper shadow-[0_8px_40px_rgba(21,18,13,0.12)] lg:hidden"
       >
         <div className="flex items-center justify-between border-b hairline px-6 py-4">
           <span className="eyebrow">Menu</span>
