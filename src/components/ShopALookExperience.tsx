@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { BUDGET_BANDS } from "@/lib/budgets";
+import { ITEM_BUDGET_BANDS } from "@/lib/budgets";
 import { formatOfferPrice } from "@/lib/currency";
 import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 import { useNavSession } from "@/components/NavSession";
@@ -11,10 +11,10 @@ import type { TryOnOpinion, TryOnVerdict } from "@/lib/ai/tryon-opinion";
 
 const TRYON_COST = 1;
 
-/** Includes "any" so shoppers can opt out of a price band. */
+/** Includes "any" so shoppers can opt out of a per-piece price band. */
 const BUDGET_OPTIONS = [
   { id: "any", label: "Any" },
-  ...BUDGET_BANDS.map((b) => ({ id: b.id, label: b.label })),
+  ...ITEM_BUDGET_BANDS.map((b) => ({ id: b.id, label: b.label })),
 ] as const;
 
 const VERDICT_STYLE: Record<TryOnVerdict, { dot: string; label: string }> = {
@@ -659,7 +659,7 @@ function BudgetPicker({
   return (
     <div className={className}>
       <p className="text-[11px] uppercase tracking-wider text-stone-soft">
-        Outfit budget
+        Price per piece
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         {BUDGET_OPTIONS.map((opt) => {
@@ -682,8 +682,8 @@ function BudgetPicker({
         })}
       </div>
       <p className="mt-2 text-[12px] leading-relaxed text-stone-soft">
-        Soft preference — we prioritise your band, then fill from outside if
-        needed. Choose Any when price doesn&apos;t matter.
+        Soft preference on each item — we prioritise your band, then fill from
+        outside if needed. Choose Any when price doesn&apos;t matter.
       </p>
     </div>
   );

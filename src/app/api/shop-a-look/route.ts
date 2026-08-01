@@ -12,7 +12,7 @@ import {
 import { getLatestReportProfile } from "@/lib/data/match-profile";
 import {
   budgetCacheKey,
-  budgetPreferenceFromBandId,
+  itemBudgetPreferenceFromBandId,
 } from "@/lib/budgets";
 
 /** Cache key that changes with either the shared match logic or the shop-a-look logic. */
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Image too large" }, { status: 413 });
   }
 
-  const budget = budgetPreferenceFromBandId(
+  const budget = itemBudgetPreferenceFromBandId(
     typeof body?.budgetId === "string" ? body.budgetId : "any",
   );
   const budgetKey = budgetCacheKey(budget);

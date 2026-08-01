@@ -859,8 +859,9 @@ export type InspirationMatchSlot = {
  * v9: mid-grey shade preference + tailored-blazer filter (no knit/zip sport jackets).
  * v10: soft-fill shade-adjacent tailored alts when a strict colour gate leaves
  * fewer than INSPIRATION_CANDIDATES_PER_SLOT (avoids single-card blazer rows).
+ * v11: per-piece item budget bands (not outfit-refresh totals).
  */
-export const INSPIRATION_MATCH_VERSION = 10;
+export const INSPIRATION_MATCH_VERSION = 11;
 /** Catalogue candidates surfaced per detected garment in "Shop a Look". */
 const INSPIRATION_CANDIDATES_PER_SLOT = 3;
 /**
