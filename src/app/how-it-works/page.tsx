@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
@@ -26,6 +27,13 @@ type FeatureSection = {
   intro: string;
   steps: string[];
   links: { href: string; label: string }[];
+  image: {
+    src: string;
+    alt: string;
+    caption: string;
+  };
+  /** Image on the right for even sections — keeps the page from feeling stacked. */
+  reverse?: boolean;
 };
 
 const FEATURES: FeatureSection[] = [
@@ -46,6 +54,11 @@ const FEATURES: FeatureSection[] = [
       { href: "/reports", label: "My reports" },
       { href: "/report/valetti-style-prospect-demo", label: "View sample report" },
     ],
+    image: {
+      src: "/images/look-work.png",
+      alt: "Photorealistic tailored work look from a Valetti style report",
+      caption: "Photorealistic looks · colour story · shopping plan",
+    },
   },
   {
     id: "catalog",
@@ -63,6 +76,12 @@ const FEATURES: FeatureSection[] = [
       { href: "/catalog", label: "Open catalog" },
       { href: "/photos", label: "Manage try-on photos" },
     ],
+    reverse: true,
+    image: {
+      src: "/images/flatlay-essentials.png",
+      alt: "Warm-toned menswear essentials laid flat — navy, cream and brown",
+      caption: "Real retailer pieces · up to four at once",
+    },
   },
   {
     id: "shop-a-look",
@@ -77,6 +96,11 @@ const FEATURES: FeatureSection[] = [
       "Carlo's verdict and the exact pieces tried are saved with the render.",
     ],
     links: [{ href: "/shop-a-look", label: "Shop a Look" }],
+    image: {
+      src: "/images/look-weekend.png",
+      alt: "Relaxed weekend outfit rendered as a shoppable look",
+      caption: "Inspiration in · catalogue matches out",
+    },
   },
   {
     id: "looks",
@@ -91,7 +115,20 @@ const FEATURES: FeatureSection[] = [
       "Report-linked looks, capsules, hair previews and grooming images from your reports appear here too.",
     ],
     links: [{ href: "/gallery", label: "My looks" }],
+    reverse: true,
+    image: {
+      src: "/images/look-dinner.png",
+      alt: "Evening dinner look saved in a personal try-on gallery",
+      caption: "Catalogue · Shop a Look · report looks — one place",
+    },
   },
+];
+
+const JOURNEY = [
+  { n: "01", label: "Profile", detail: "Photos & goals" },
+  { n: "02", label: "Report", detail: "Colours & looks" },
+  { n: "03", label: "Try on", detail: "Catalogue or photo" },
+  { n: "04", label: "Decide", detail: "Carlo's verdict" },
 ];
 
 export default function HowItWorksPage() {
@@ -99,95 +136,206 @@ export default function HowItWorksPage() {
     <>
       <Navbar />
       <main className="flex-1">
-        <section className="border-b hairline bg-cream/40">
-          <div className="container-luxe py-16 sm:py-20">
-            <p className="eyebrow">How it works</p>
-            <h1 className="mt-4 max-w-2xl font-display text-4xl leading-[1.08] tracking-tight sm:text-5xl">
-              Everything Valetti can do for your wardrobe
-            </h1>
-            <p className="mt-5 max-w-xl text-lg leading-relaxed text-stone">
-              From a full style report to a single try-on from the catalogue —
-              here is how each feature connects and where to find your history.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <ButtonLink href="/start">Create a report</ButtonLink>
-              <ButtonLink href="/catalog" variant="outline">
-                Browse catalog
-              </ButtonLink>
+        {/* Hero — one composition: brand signal, headline, support, CTAs, visual */}
+        <section className="relative overflow-hidden border-b hairline">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(169,124,60,0.12),transparent_55%),radial-gradient(ellipse_at_90%_40%,rgba(231,220,199,0.7),transparent_50%)]"
+          />
+          <div className="container-luxe relative grid items-center gap-12 py-16 md:grid-cols-2 md:gap-14 md:py-20 lg:py-24">
+            <div className="animate-rise">
+              <p className="eyebrow">How it works</p>
+              <h1 className="mt-5 font-display text-[2.5rem] leading-[1.05] tracking-tight sm:text-5xl lg:text-[3.25rem]">
+                Everything Valetti can do for your{" "}
+                <em className="not-italic text-brass">wardrobe</em>
+              </h1>
+              <p className="mt-6 max-w-md text-lg leading-relaxed text-stone">
+                From a full style report to a single try-on — each feature
+                connects, and your history lives in one place.
+              </p>
+              <div className="mt-9 flex flex-wrap gap-3">
+                <ButtonLink href="/start">Create a report</ButtonLink>
+                <ButtonLink href="/catalog" variant="outline">
+                  Browse catalog
+                </ButtonLink>
+              </div>
+            </div>
+
+            <div className="relative mx-auto w-full max-w-md animate-rise [animation-delay:120ms] md:max-w-none">
+              <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border hairline shadow-[0_40px_80px_-40px_rgba(21,18,13,0.45)]">
+                <Image
+                  src="/images/hero-editorial.png"
+                  alt="Editorial portrait in a navy blazer and cream knit"
+                  fill
+                  priority
+                  sizes="(max-width: 768px) 100vw, 480px"
+                  className="object-cover object-top"
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/55 via-ink/15 to-transparent px-5 pb-5 pt-16">
+                  <p className="font-display text-lg leading-snug text-paper">
+                    Report · try-on · gallery
+                  </p>
+                  <p className="mt-1 text-xs tracking-wide text-paper/75">
+                    One atelier, four ways in
+                  </p>
+                </div>
+              </div>
+              <div className="absolute -bottom-5 -left-2 hidden w-44 rounded-xl border hairline bg-paper/95 p-3.5 shadow-[0_20px_40px_-24px_rgba(21,18,13,0.4)] backdrop-blur-sm sm:block md:-left-6">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-brass">
+                  Soft Autumn
+                </p>
+                <div className="mt-2.5 flex gap-1.5">
+                  {["#6B6B47", "#9E5C3C", "#EFE6D3", "#27324A", "#B08A5B"].map(
+                    (c) => (
+                      <span
+                        key={c}
+                        className="h-5 w-5 rounded-full border border-ink/10"
+                        style={{ background: c }}
+                      />
+                    ),
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="container-luxe py-12 sm:py-16">
-          <div className="mx-auto max-w-3xl space-y-16">
-            {FEATURES.map((feature, index) => (
-              <article
-                key={feature.id}
-                id={feature.id}
-                className="scroll-mt-24 border-b hairline pb-16 last:border-b-0 last:pb-0"
+        {/* Journey strip */}
+        <section className="border-b hairline bg-ink text-paper">
+          <div className="container-luxe grid grid-cols-2 gap-6 py-8 sm:grid-cols-4 sm:gap-0 sm:divide-x sm:divide-paper/15">
+            {JOURNEY.map((item, i) => (
+              <div
+                key={item.n}
+                className={`animate-rise px-1 sm:px-6 ${i === 0 ? "sm:pl-0" : ""} ${i === JOURNEY.length - 1 ? "sm:pr-0" : ""}`}
+                style={{ animationDelay: `${i * 80}ms` }}
               >
-                <p className="eyebrow">{feature.eyebrow}</p>
-                <h2 className="mt-3 font-display text-2xl leading-tight text-ink sm:text-3xl">
-                  {feature.title}
-                </h2>
-                <p className="mt-4 text-base leading-relaxed text-stone">
-                  {feature.intro}
-                </p>
-                <ol className="mt-6 space-y-3">
-                  {feature.steps.map((step, i) => (
-                    <li
-                      key={i}
-                      className="flex gap-3 text-sm leading-relaxed text-ink"
-                    >
-                      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cream font-display text-xs text-stone">
-                        {i + 1}
-                      </span>
-                      <span>{step}</span>
-                    </li>
-                  ))}
-                </ol>
-                <div className="mt-6 flex flex-wrap gap-x-4 gap-y-2">
-                  {feature.links.map((link) => (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      className="text-sm text-brass transition-colors hover:text-ink"
-                    >
-                      {link.label} →
-                    </Link>
-                  ))}
-                </div>
-                {index < FEATURES.length - 1 ? (
-                  <div className="mt-10 h-px bg-line/60" aria-hidden />
-                ) : null}
-              </article>
+                <p className="font-display text-2xl text-brass-soft">{item.n}</p>
+                <p className="mt-2 text-sm text-paper">{item.label}</p>
+                <p className="mt-0.5 text-xs text-paper/55">{item.detail}</p>
+              </div>
             ))}
           </div>
         </section>
 
-        <section className="border-t hairline bg-cream/30">
-          <div className="container-luxe py-12">
-            <div className="mx-auto max-w-3xl rounded-2xl border hairline bg-paper px-6 py-8">
-              <p className="eyebrow">Credits</p>
-              <h2 className="mt-2 font-display text-xl text-ink">
-                Try-on costs one credit per render
+        {/* Feature sections — alternating editorial image + copy */}
+        <div className="container-luxe py-16 sm:py-24">
+          <div className="space-y-20 sm:space-y-28">
+            {FEATURES.map((feature) => (
+              <article
+                key={feature.id}
+                id={feature.id}
+                className="scroll-mt-28"
+              >
+                <div className="grid items-center gap-10 md:grid-cols-2 md:gap-14 lg:gap-20">
+                  <div
+                    className={`relative ${
+                      feature.reverse ? "md:order-2" : ""
+                    }`}
+                  >
+                    <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border hairline sm:aspect-[5/6]">
+                      <Image
+                        src={feature.image.src}
+                        alt={feature.image.alt}
+                        fill
+                        sizes="(max-width: 768px) 100vw, 520px"
+                        className="object-cover object-top transition-transform duration-700 ease-out hover:scale-[1.03]"
+                      />
+                    </div>
+                    <p className="mt-3 text-xs tracking-wide text-stone-soft">
+                      {feature.image.caption}
+                    </p>
+                  </div>
+
+                  <div className={feature.reverse ? "md:order-1" : ""}>
+                    <p className="eyebrow">{feature.eyebrow}</p>
+                    <h2 className="mt-4 font-display text-3xl leading-tight tracking-tight text-ink sm:text-4xl">
+                      {feature.title}
+                    </h2>
+                    <p className="mt-5 text-base leading-relaxed text-stone sm:text-lg">
+                      {feature.intro}
+                    </p>
+                    <ol className="mt-8 space-y-4">
+                      {feature.steps.map((step, i) => (
+                        <li
+                          key={i}
+                          className="flex gap-3.5 text-sm leading-relaxed text-ink"
+                        >
+                          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border hairline bg-cream/60 font-display text-xs text-brass">
+                            {i + 1}
+                          </span>
+                          <span className="pt-1">{step}</span>
+                        </li>
+                      ))}
+                    </ol>
+                    <div className="mt-8 flex flex-wrap gap-x-5 gap-y-2">
+                      {feature.links.map((link) => (
+                        <Link
+                          key={link.href}
+                          href={link.href}
+                          className="text-sm text-brass transition-colors hover:text-ink"
+                        >
+                          {link.label} →
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        {/* Carlo strip — voice of the product */}
+        <section className="border-y hairline bg-cream/40">
+          <div className="container-luxe grid items-center gap-10 py-16 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:gap-14 md:py-20">
+            <div className="relative mx-auto w-full max-w-sm">
+              <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border hairline">
+                <Image
+                  src="/images/carlo-valetti.png"
+                  alt="Carlo Valetti, Valetti lead stylist persona"
+                  fill
+                  sizes="(max-width: 768px) 100vw, 360px"
+                  className="object-cover object-top"
+                />
+              </div>
+            </div>
+            <div>
+              <p className="eyebrow">The voice behind every call</p>
+              <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
+                Carlo&apos;s verdict comes with every try-on
               </h2>
-              <p className="mt-3 text-sm leading-relaxed text-stone">
-                Catalogue and Shop a Look try-ons use the same credit balance as
-                report extras. Carlo&apos;s verdict is included with every
-                try-on — no extra charge. New accounts receive free credits to
-                get started.
+              <p className="mt-5 max-w-lg text-lg leading-relaxed text-stone">
+                After each catalogue or Shop a Look render, you get a calm expert
+                read — what works, what to pair it with, and why — saved with the
+                image in your Looks gallery. No extra charge.
               </p>
-              <p className="mt-4 text-sm text-stone">
-                Try-on: {CREDIT_COSTS.tryon} credit
-                {CREDIT_COSTS.tryon === 1 ? "" : "s"} ·{" "}
-                <Link
-                  href="/pricing"
-                  className="text-brass transition-colors hover:text-ink"
-                >
-                  See pricing
-                </Link>
-              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <ButtonLink href="/gallery" variant="outline">
+                  Open Looks
+                </ButtonLink>
+                <ButtonLink href="/shop-a-look">Try Shop a Look</ButtonLink>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Credits — quiet closing note */}
+        <section className="container-luxe py-16 sm:py-20">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="eyebrow">Credits</p>
+            <h2 className="mt-3 font-display text-2xl text-ink sm:text-3xl">
+              Try-on costs {CREDIT_COSTS.tryon} credit
+              {CREDIT_COSTS.tryon === 1 ? "" : "s"} per render
+            </h2>
+            <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-stone sm:text-base">
+              Catalogue and Shop a Look try-ons use the same balance as report
+              extras. New accounts receive free credits to get started.
+            </p>
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
+              <ButtonLink href="/pricing" variant="outline">
+                See pricing
+              </ButtonLink>
+              <ButtonLink href="/start">Create a report</ButtonLink>
             </div>
           </div>
         </section>

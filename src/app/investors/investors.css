@@ -40,4 +40,18 @@
   .investors-deck table {
     font-size: 9pt;
   }
+
+  /* Cover hero is dark on screen — flatten for print readability. */
+  .investors-deck .bg-ink {
+    background: #faf6ee !important;
+    color: #15120d !important;
+  }
+
+  .investors-deck .bg-ink .text-paper,
+  .investors-deck .bg-ink .text-paper\/70,
+  .investors-deck .bg-ink .text-paper\/45,
+  .investors-deck .bg-ink .text-paper\/60,
+  .investors-deck .bg-ink .text-paper\/85 {
+    color: #15120d !important;
+  }
 }
