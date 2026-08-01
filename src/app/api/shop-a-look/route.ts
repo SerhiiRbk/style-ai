@@ -10,6 +10,10 @@ import {
   type InspirationMatchSlot,
 } from "@/lib/data/catalog";
 import { getLatestReportProfile } from "@/lib/data/match-profile";
+import {
+  budgetCacheKey,
+  budgetPreferenceFromBandId,
+} from "@/lib/budgets";
 
 /** Cache key that changes with either the shared match logic or the shop-a-look logic. */
 const CACHE_VERSION = `${LOOK_MATCH_VERSION}.${INSPIRATION_MATCH_VERSION}`;
@@ -28,10 +32,11 @@ type CachedResult = {
   palette: string[];
   slots: InspirationMatchSlot[];
   personalised: boolean;
+  budgetKey: string;
 };
 
-function cachePath(userId: string, hash: string): string {
-  return `${userId}/inspiration/${hash}.json`;
+function cachePath(userId: string, hash: string, budgetKey: string): string {
+  return `${userId}/inspiration/${hash}-${budgetKey}.json`;
 }
 
 export async function POST(request: Request) {
@@ -65,18 +70,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Image too large" }, { status: 413 });
   }
 
+  const budget = budgetPreferenceFromBandId(
+    typeof body?.budgetId === "string" ? body.budgetId : "any",
+  );
+  const budgetKey = budgetCacheKey(budget);
+
   const hash = createHash("sha256").update(image).digest("hex").slice(0, 32);
   const admin = hasSupabaseAdmin ? createAdminSupabase() : null;
-  const path = cachePath(user.id, hash);
+  const path = cachePath(user.id, hash, budgetKey);
 
-  // Photo-hash cache: re-uploading the same photo (or coming back to it) skips
+  // Photo+budget cache: re-uploading the same photo with the same budget skips
   // the vision + embedding + search cost. Invalidated when match logic bumps.
   if (admin) {
     const { data: blob } = await admin.storage.from("assets").download(path);
     if (blob) {
       try {
         const cached = JSON.parse(await blob.text()) as CachedResult;
-        if (cached.version === CACHE_VERSION) {
+        if (cached.version === CACHE_VERSION && cached.budgetKey === budgetKey) {
           return NextResponse.json({ ...cached, cached: true });
         }
       } catch {
@@ -122,6 +132,7 @@ export async function POST(request: Request) {
       palette: analysis.palette,
     },
     analysis.garments,
+    budget,
   );
 
   const result: CachedResult = {
@@ -132,6 +143,7 @@ export async function POST(request: Request) {
     palette: analysis.palette,
     slots,
     personalised,
+    budgetKey,
   };
 
   // Persist the computed result (not the source photo) for cache hits.

@@ -140,9 +140,13 @@ const PROMPT =
   `For each item, give the catalogue category, a specific garment type, its ` +
   `main colour (a common wearable colour name AND a coarse family — for ` +
   `sunglasses use the FRAME colour, not the lens tint), any obvious pattern and ` +
-  `material, and a short descriptive clause a shopper would search with. Merge ` +
-  `only true duplicates of the same piece; do not invent garments you cannot ` +
-  `see. Do not list tattoos, logos, hair or bare skin as items.\n\n` +
+  `material, and a short descriptive clause a shopper would search with. For ` +
+  `greys and other neutrals, ALWAYS qualify lightness as light, medium/mid, or ` +
+  `dark (e.g. "medium grey", "light grey", "charcoal") — bare "grey" alone is ` +
+  `too vague. Prefer precise types: "blazer" for a tailored jacket, never call ` +
+  `a structured blazer a sweater/cardigan. Merge only true duplicates of the ` +
+  `same piece; do not invent garments you cannot see. Do not list tattoos, ` +
+  `logos, hair or bare skin as items.\n\n` +
   `Also return up to six dominant OUTFIT colours as hex, and — if a human face ` +
   `is visible — its bounding box as fractions (0..1) of the image width/height, ` +
   `so it can be cropped out. Set ok=false only if there is no wearable clothing ` +

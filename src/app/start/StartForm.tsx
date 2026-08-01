@@ -22,6 +22,7 @@ import {
   type UserProfile,
 } from "@/lib/style-profile";
 import { COUNTRIES } from "@/lib/countries";
+import { BUDGET_BANDS } from "@/lib/budgets";
 import { PROFILE_CURRENCIES, type Currency } from "@/lib/currency";
 import { OCCUPATIONS } from "@/lib/occupations";
 import {
@@ -85,12 +86,11 @@ const BOLDNESS: { id: string; label: string; desc: string }[] = [
   { id: "experimental", label: "Experimental", desc: "Open to trying new things" },
   { id: "statement", label: "Statement", desc: "I want to stand out" },
 ];
-const BUDGETS: { label: string; min: number; max: number }[] = [
-  { label: "€200–500", min: 200, max: 500 },
-  { label: "€400–1200", min: 400, max: 1200 },
-  { label: "€1000–3000", min: 1000, max: 3000 },
-  { label: "€3000+", min: 3000, max: 8000 },
-];
+const BUDGETS = BUDGET_BANDS.map((b) => ({
+  label: b.label,
+  min: b.min,
+  max: b.max,
+}));
 const TIERS: { id: Tier; name: string; note: string }[] = [
   {
     id: "free",

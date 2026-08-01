@@ -1133,6 +1133,13 @@ export const CASUAL_FOOTWEAR_RE =
 const CASUAL_OUTERWEAR_RE =
   /\b(field jacket|hood(?:ed|ie)?|bomber|parka|anorak|gilet|puffer|windbreaker|shacket|denim jacket|track(?:suit| jacket)?|cagoule|fleece)\b/i;
 /**
+ * Soft / athleisure outerwear that must not fill a tailored blazer slot.
+ * "Sport coat" stays allowed (classic synonym); "sport blazer" is usually a
+ * stretch jersey zip piece and is excluded.
+ */
+export const NON_BLAZER_OUTER_RE =
+  /\b(knit|jersey|fleece|hoodie|zip(?:[- ]?up)?|zipper|track|bomber|softshell|quilt(?:ed)?|puffer|cardigan|sweat(?:shirt|er)?|(?:4[- ]?way\s+)?stretch|performance|sport\s+blazer|travel)\b/i;
+/**
  * Loud, gimmicky cues that read cheap or juvenile *regardless* of how bold the
  * wardrobe is — slogan/graphic tees, ripped denim, tie-dye, sequins. Even a
  * "statement" client is better served by well-cut directional pieces than by
@@ -1498,19 +1505,22 @@ const GARMENT_CATEGORY: Record<string, string> = {
   bag: "Accessories", socks: "Accessories",
 };
 
-type Shade = "light" | "dark";
+type Shade = "light" | "mid" | "dark";
 
 /**
  * Colour-word taxonomy: maps each recognised colour token to a hue `family` and,
  * where the word itself implies lightness, a `shade`. Named greys are the key
- * case — "dove/ash/silver" read light while "charcoal/slate/asphalt" read dark,
- * so a light-grey look no longer matches a dark-grey product just because both
- * are "grey".
+ * case — "dove/ash/silver" read light, bare "grey/heather" read mid, and
+ * "charcoal/slate/asphalt" read dark, so a mid-grey look no longer ranks
+ * light-grey and charcoal products as equal matches.
  */
 const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
-  // grey
-  grey: { family: "grey" }, gray: { family: "grey" }, smoke: { family: "grey" },
-  pewter: { family: "grey" }, heather: { family: "grey" },
+  // grey — bare grey/heather imply mid so light and charcoal stop scoring 0.8
+  grey: { family: "grey", shade: "mid" },
+  gray: { family: "grey", shade: "mid" },
+  smoke: { family: "grey", shade: "mid" },
+  pewter: { family: "grey", shade: "mid" },
+  heather: { family: "grey", shade: "mid" },
   dove: { family: "grey", shade: "light" }, ash: { family: "grey", shade: "light" },
   silver: { family: "grey", shade: "light" }, pearl: { family: "grey", shade: "light" },
   charcoal: { family: "grey", shade: "dark" }, slate: { family: "grey", shade: "dark" },
@@ -1553,7 +1563,8 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
 
 /** Synonyms used to verify a catalogue title matches the parsed garment. */
 const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
-  blazer: ["blazer", "jacket", "sport coat"],
+  // No bare "jacket" — knit/zip/sport jackets were scoring as full blazer hits.
+  blazer: ["blazer", "sport coat"],
   jacket: ["jacket", "blazer"],
   coat: ["coat", "overcoat"],
   overshirt: ["overshirt", "shacket", "shirt jacket"],
@@ -1590,6 +1601,7 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
 /** Standalone lightness modifiers; override any shade implied by the hue word. */
 const SHADE_WORDS: Record<string, Shade> = {
   light: "light", pale: "light", soft: "light", dusty: "light", off: "light",
+  mid: "mid", medium: "mid", midtone: "mid",
   dark: "dark", deep: "dark",
 };
 
@@ -1597,7 +1609,6 @@ const SHADE_WORDS: Record<string, Shade> = {
 const COLOR_WORDS = new Set<string>([
   ...Object.keys(COLOR_FAMILY),
   ...Object.keys(SHADE_WORDS),
-  "mid",
 ]);
 
 const GARMENT_KEYS = Object.keys(GARMENT_CATEGORY).sort(
@@ -1662,11 +1673,62 @@ export function paletteColorHints(
   return [...new Set(names)].join(", ");
 }
 
+/** Map free-text garment labels ("structured blazer") onto synonym keys. */
+function normalizeGarmentKey(garment: string): string {
+  const g = garment
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!g) return g;
+  if (GARMENT_TITLE_SYNONYMS[g]) return g;
+  for (const key of GARMENT_KEYS) {
+    if (g === key || g.endsWith(` ${key}`) || g.includes(` ${key} `)) return key;
+    if (g.startsWith(`${key} `)) return key;
+  }
+  return g;
+}
+
+/** True when the target garment is a tailored blazer / sport coat. */
+export function isBlazerGarment(garment: string): boolean {
+  const key = normalizeGarmentKey(garment);
+  return key === "blazer" || /\b(blazer|sport\s*coat)\b/.test(garment.toLowerCase());
+}
+
+/** True when a catalogue title reads as a tailored blazer (not knit/zip/sport). */
+export function isTailoredBlazerTitle(title: string): boolean {
+  const hay = title.toLowerCase();
+  if (NON_BLAZER_OUTER_RE.test(hay)) return false;
+  return /\b(blazer|sport\s*coat)\b/.test(hay);
+}
+
 /** 0–1 whether a catalogue product title mentions the parsed garment type. */
 export function garmentTitleMatchScore(garment: string, title: string): number {
   const hay = title.toLowerCase();
-  const terms = GARMENT_TITLE_SYNONYMS[garment] ?? [garment];
+  const key = normalizeGarmentKey(garment);
+  if (key === "blazer" || isBlazerGarment(garment)) {
+    if (NON_BLAZER_OUTER_RE.test(hay)) return 0;
+    if (/\b(blazer|sport\s*coat)\b/.test(hay)) return 1;
+    // Bare "jacket" only counts with clear tailored cues — not knit/zip shells.
+    if (
+      /\bjacket\b/.test(hay) &&
+      /\b(tailored|suiting|structured|single[- ]breasted|notch|peak\s*lapel)\b/.test(
+        hay,
+      )
+    ) {
+      return 0.7;
+    }
+    return 0;
+  }
+  const terms = GARMENT_TITLE_SYNONYMS[key] ?? [key];
   return terms.some((t) => hay.includes(t)) ? 1 : 0;
+}
+
+/** Same-hue shade affinity: exact 1, adjacent mid↔light/dark 0.35, opposite 0.3. */
+function shadeAffinity(a: Shade, b: Shade): number {
+  if (a === b) return 1;
+  const order: Record<Shade, number> = { light: 0, mid: 1, dark: 2 };
+  return Math.abs(order[a] - order[b]) === 1 ? 0.35 : 0.3;
 }
 
 /** Parse free-text colour into the set of hue families + an implied lightness. */
@@ -1693,8 +1755,8 @@ function parseColorTokens(text: string): { families: Set<string>; shade?: Shade 
 /**
  * 0–1 colour fit between a look garment colour and a catalogue product. Matches
  * on hue family first, then on lightness: same hue + same lightness scores high,
- * same hue + opposite lightness (e.g. dove grey vs asphalt grey) scores low so
- * the picker prefers a true light-grey piece and flags the rest as "similar".
+ * adjacent mid↔light/dark scores soft, opposite lightness (dove vs asphalt)
+ * scores low so the picker prefers a true shade match and flags the rest.
  */
 export function colorMatchScore(
   queryColor: string | null,
@@ -1716,7 +1778,7 @@ export function colorMatchScore(
   if (!hueMatch) return 0.1; // wrong hue family
 
   // Same hue family — discriminate by lightness when both sides express it.
-  if (q.shade && p.shade) return q.shade === p.shade ? 1 : 0.3;
+  if (q.shade && p.shade) return shadeAffinity(q.shade, p.shade);
   return 0.8; // hue matches; lightness unknown on one side
 }
 

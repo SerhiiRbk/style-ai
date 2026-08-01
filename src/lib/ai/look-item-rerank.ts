@@ -81,9 +81,11 @@ function buildRerankPrompt(
     `Look description: ${lookDescription}\n` +
     (paletteHints ? `Palette hints: ${paletteHints}\n` : "") +
     `\nFor each slot, choose the single best candidate index that matches the ` +
-    `garment TYPE (e.g. chinos not jeans, crewneck not blazer), COLOUR family, and ` +
-    `formality of this look. Use -1 only when every candidate is clearly wrong ` +
-    `(wrong category, clashing colour, or unrelated item).\n` +
+    `garment TYPE (e.g. chinos not jeans, blazer not knit/zip sport jacket, ` +
+    `crewneck not blazer), COLOUR shade within the family (medium grey not light ` +
+    `grey or charcoal), and formality of this look. Use -1 only when every ` +
+    `candidate is clearly wrong (wrong category, clashing colour, or unrelated ` +
+    `item).\n` +
     `Set similarPick=true when the pick is the closest available option but not a ` +
     `strong colour or style match.\n` +
     `For every pick with candidateIndex >= 0 also write "why" — ONE calm sentence ` +

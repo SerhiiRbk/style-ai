@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { BUDGET_BANDS } from "@/lib/budgets";
 import { formatOfferPrice } from "@/lib/currency";
 import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 import { useNavSession } from "@/components/NavSession";
@@ -9,6 +10,12 @@ import { MAX_TRYON_ITEMS } from "@/components/TryOnContext";
 import type { TryOnOpinion, TryOnVerdict } from "@/lib/ai/tryon-opinion";
 
 const TRYON_COST = 1;
+
+/** Includes "any" so shoppers can opt out of a price band. */
+const BUDGET_OPTIONS = [
+  { id: "any", label: "Any" },
+  ...BUDGET_BANDS.map((b) => ({ id: b.id, label: b.label })),
+] as const;
 
 const VERDICT_STYLE: Record<TryOnVerdict, { dot: string; label: string }> = {
   great: { dot: "bg-emerald-500", label: "Strong match" },
@@ -30,6 +37,7 @@ type Candidate = {
   image?: string;
   productId?: string;
   similarPick?: boolean;
+  outsideBudget?: boolean;
 };
 
 type Slot = {
@@ -79,6 +87,7 @@ export function ShopALookExperience() {
   const [error, setError] = useState<string | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [budgetId, setBudgetId] = useState<string>("any");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { balance, setBalance } = useNavSession();
@@ -191,24 +200,15 @@ export function ShopALookExperience() {
     }
   }
 
-  async function handleFile(file: File) {
+  async function analyzeImage(dataUrl: string, nextBudgetId: string) {
     setError(null);
     setNeedsAuth(false);
-    let dataUrl: string;
-    try {
-      dataUrl = await toDataUrl(file);
-    } catch {
-      setError("Could not read that image. Try a different photo.");
-      setPhase("error");
-      return;
-    }
-    setPreview(dataUrl);
     setPhase("analyzing");
     try {
       const res = await fetch("/api/shop-a-look", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: dataUrl }),
+        body: JSON.stringify({ image: dataUrl, budgetId: nextBudgetId }),
       });
       if (res.status === 401) {
         setNeedsAuth(true);
@@ -231,10 +231,34 @@ export function ShopALookExperience() {
       setTryState("idle");
       setTryUrl(null);
       setTryMsg(null);
+      setOpinion(null);
+      setOpinionState("idle");
+      setOpinionNoProfile(false);
       setPhase("result");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Analysis failed");
       setPhase("error");
+    }
+  }
+
+  async function handleFile(file: File) {
+    let dataUrl: string;
+    try {
+      dataUrl = await toDataUrl(file);
+    } catch {
+      setError("Could not read that image. Try a different photo.");
+      setPhase("error");
+      return;
+    }
+    setPreview(dataUrl);
+    await analyzeImage(dataUrl, budgetId);
+  }
+
+  function changeBudget(nextId: string) {
+    if (nextId === budgetId) return;
+    setBudgetId(nextId);
+    if (preview && (phase === "result" || phase === "error")) {
+      void analyzeImage(preview, nextId);
     }
   }
 
@@ -259,6 +283,15 @@ export function ShopALookExperience() {
 
   return (
     <div>
+      {(phase === "idle" || phase === "result" || phase === "analyzing") && (
+        <BudgetPicker
+          value={budgetId}
+          onChange={changeBudget}
+          disabled={phase === "analyzing"}
+          className={phase === "idle" ? "mb-6" : "mb-8"}
+        />
+      )}
+
       {phase === "idle" && (
         <label
           onDragOver={(e) => {
@@ -612,6 +645,50 @@ export function ShopALookExperience() {
   );
 }
 
+function BudgetPicker({
+  value,
+  onChange,
+  disabled,
+  className = "",
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <p className="text-[11px] uppercase tracking-wider text-stone-soft">
+        Outfit budget
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {BUDGET_OPTIONS.map((opt) => {
+          const active = value === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(opt.id)}
+              className={`rounded-full border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${
+                active
+                  ? "border-brass/40 bg-brass/10 text-ink"
+                  : "border-line text-stone hover:border-ink/30 hover:text-ink"
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[12px] leading-relaxed text-stone-soft">
+        Soft preference — we prioritise your band, then fill from outside if
+        needed. Choose Any when price doesn&apos;t matter.
+      </p>
+    </div>
+  );
+}
+
 function CandidateCard({
   c,
   primary,
@@ -644,15 +721,22 @@ function CandidateCard({
             aria-hidden
           />
         )}
-        {primary ? (
-          <span className="absolute left-2 top-2 rounded-full bg-brass px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-paper">
-            Best match
-          </span>
-        ) : c.similarPick ? (
-          <span className="absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-[10px] uppercase tracking-wide text-paper">
-            Closest match
-          </span>
-        ) : null}
+        <div className="absolute left-2 top-2 flex flex-col gap-1">
+          {primary ? (
+            <span className="rounded-full bg-brass px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-paper">
+              Best match
+            </span>
+          ) : c.similarPick ? (
+            <span className="rounded-full bg-ink/70 px-2 py-0.5 text-[10px] uppercase tracking-wide text-paper">
+              Closest match
+            </span>
+          ) : null}
+          {c.outsideBudget ? (
+            <span className="rounded-full bg-ink/55 px-2 py-0.5 text-[10px] uppercase tracking-wide text-paper">
+              Outside budget
+            </span>
+          ) : null}
+        </div>
         {onToggle ? (
           <button
             type="button"

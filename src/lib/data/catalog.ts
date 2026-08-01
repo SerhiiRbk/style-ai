@@ -18,6 +18,8 @@ import {
   colorMatchScore,
   decomposeLook,
   garmentTitleMatchScore,
+  isBlazerGarment,
+  isTailoredBlazerTitle,
   paletteColorHints,
   styleFitScore,
   styleIntentPhrase,
@@ -29,6 +31,11 @@ import {
   type RerankGarmentSlot,
 } from "@/lib/ai/look-item-rerank";
 import type { StyleProfile, ReportContent } from "@/lib/style-profile";
+import {
+  BUDGET_ANY_MAX,
+  isPriceInBudget,
+  type BudgetPreference,
+} from "@/lib/budgets";
 
 const CATEGORIES = [
   "Outerwear",
@@ -137,12 +144,15 @@ const MIN_COLOR_MATCH = 0.4;
 const MIN_LOOK_PICK_SCORE = 0.42;
 /** Bumped when look-matching heuristics change — triggers background refresh.
  *  v7: re-derive look_items after looks gained a stable `idx` ordering, so
- *  per-look products realign with the rendered look on legacy reports. */
-export const LOOK_MATCH_VERSION = 7;
+ *  per-look products realign with the rendered look on legacy reports.
+ *  v8: mid-grey shade scoring + tailored-blazer filter (drop knit/zip "sport blazers"). */
+export const LOOK_MATCH_VERSION = 8;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
 const LOOK_MATCH_COUNT = 14;
+/** Wider pool for Shop a Look so tailored-blazer + shade filters still leave alts. */
+const INSPIRATION_MATCH_COUNT = 28;
 
 type MatchProductsArgs = {
   query_embedding: number[];
@@ -457,14 +467,15 @@ function rankMatchRows(
   garment: string,
   boldness: string,
 ): RankedMatch[] {
-  return rows.map((row) => {
+  const ranked = rows.map((row) => {
+    const title = formatCatalogProductTitle(row.brand, row.title);
     const sim = row.similarity ?? 0;
-    const colorScore = colorMatchScore(color, row.color, row.title);
-    const garmentScore = garmentTitleMatchScore(garment, row.title);
+    const colorScore = colorMatchScore(color, row.color, title);
+    const garmentScore = garmentTitleMatchScore(garment, title);
     const similarPick =
       sim < MIN_VECTOR_SIMILARITY || colorScore < MIN_COLOR_MATCH;
     const localBoost = row.same_country ? 0.04 : 0;
-    const styleFit = styleFitScore(row.title, boldness);
+    const styleFit = styleFitScore(title, boldness);
     const tagFit = tagFitScore(row, boldness);
     return {
       row,
@@ -480,6 +491,16 @@ function rankMatchRows(
         tagFit,
     };
   });
+
+  // Blazer slots: hard-drop knit/zip/sport shells when a tailored blazer exists
+  // in the pool (soft garmentScore alone wasn't enough against high vector hits).
+  if (isBlazerGarment(garment)) {
+    const tailored = ranked.filter((r) =>
+      isTailoredBlazerTitle(formatCatalogProductTitle(r.row.brand, r.row.title)),
+    );
+    if (tailored.length) return tailored;
+  }
+  return ranked;
 }
 
 function pickBestMatch(
@@ -538,6 +559,7 @@ function shoppingItemFromMatch(
   similarPick: boolean,
   /** Optional reranker-written reason; used only when it passes the safety guard. */
   llmWhy?: string,
+  outsideBudget?: boolean,
 ): ShoppingItem {
   const colorLabel = g.color ? `${g.color} ` : "";
   const title = formatCatalogProductTitle(row.brand, row.title);
@@ -564,6 +586,7 @@ function shoppingItemFromMatch(
     image: row.image_url ?? undefined,
     productId: row.id,
     similarPick,
+    ...(outsideBudget ? { outsideBudget: true } : {}),
     matchVersion: LOOK_MATCH_VERSION,
   };
 }
@@ -832,9 +855,12 @@ export type InspirationMatchSlot = {
  * mapping + vision retry. v6: sanitise noisy query colours (fixes accessories
  * dropping to zero rows) + bridge light neutrals in the alternative gate. v7:
  * detection prompt now catalogues face/neck/head-worn accessories (sunglasses,
- * necklaces, hats) reliably.
+ * necklaces, hats) reliably. v8: soft budget preference with outside-band fill.
+ * v9: mid-grey shade preference + tailored-blazer filter (no knit/zip sport jackets).
+ * v10: soft-fill shade-adjacent tailored alts when a strict colour gate leaves
+ * fewer than INSPIRATION_CANDIDATES_PER_SLOT (avoids single-card blazer rows).
  */
-export const INSPIRATION_MATCH_VERSION = 7;
+export const INSPIRATION_MATCH_VERSION = 10;
 /** Catalogue candidates surfaced per detected garment in "Shop a Look". */
 const INSPIRATION_CANDIDATES_PER_SLOT = 3;
 /**
@@ -845,15 +871,20 @@ const INSPIRATION_CANDIDATES_PER_SLOT = 3;
  */
 const INSPIRATION_MAX_SLOTS = 7;
 /**
- * Minimum colour score for a NON-primary "Shop a Look" alternative. When the
- * detected garment has a clear colour (e.g. cream trousers), we would rather
- * show one or two colour-consistent options than pad the row with off-colour
- * items the shopper can plainly see are wrong (e.g. brown trousers). 0.5 keeps
- * same-hue matches (incl. unknown lightness) and drops wrong-hue / wrong-shade
- * candidates. `colorMatchScore`: wrong hue 0.1, same hue diff shade 0.3, same
- * hue unknown shade 0.8, exact 1.
+ * Minimum colour score for a preferred NON-primary "Shop a Look" alternative.
+ * When the detected garment has a clear colour (e.g. cream trousers), we would
+ * rather show colour-consistent options first. 0.5 keeps same-hue + unknown
+ * lightness and exact/near shades; adjacent mid↔light (0.35) is soft-filled
+ * only when the preferred pool is short. `colorMatchScore`: wrong hue 0.1,
+ * opposite shade 0.3, adjacent mid↔light/dark 0.35, unknown shade 0.8, exact 1.
  */
 const INSPIRATION_MIN_ALT_COLOR = 0.5;
+/**
+ * Floor for soft-filling alternatives when the preferred colour gate leaves a
+ * short row. Same-hue adjacent/opposite shades (0.3–0.35) can pad; wrong-hue
+ * (0.1) still stays out.
+ */
+const INSPIRATION_SOFT_ALT_COLOR = 0.3;
 
 /**
  * Light neutrals that read as interchangeable to the eye (cream/ivory pair
@@ -914,9 +945,13 @@ function sanitizeQueryColor(color: string | null): string | null {
 /**
  * "Shop a Look" matcher: given garments detected in an uploaded outfit photo,
  * return the closest catalogue products per garment, re-ranked for the user's
- * own profile (palette, fit, budget, gender). Unlike `matchLookItems` this keeps
- * the top {@link INSPIRATION_CANDIDATES_PER_SLOT} candidates per slot so the UI
- * can let the user choose, with the reranker's pick ordered first.
+ * own profile (palette, fit, gender) and an optional soft budget preference.
+ * Unlike `matchLookItems` this keeps the top
+ * {@link INSPIRATION_CANDIDATES_PER_SLOT} candidates per slot so the UI can let
+ * the user choose, with the reranker's pick ordered first.
+ *
+ * Budget preference is soft: in-band matches come first; when a slot is short,
+ * we fill from outside the band and mark those candidates `outsideBudget`.
  *
  * Reuses the exact embedding + `match_product_offers` + rerank stack as the
  * report's per-look matching. Returns [] when AI/catalogue is unavailable.
@@ -925,6 +960,7 @@ export async function matchInspirationItems(
   profile: StyleProfile,
   look: { title: string; description: string; palette: string[] },
   garments: LookGarment[],
+  budget: BudgetPreference = { mode: "any" },
 ): Promise<InspirationMatchSlot[]> {
   if (!hasAI || !hasSupabaseAdmin || !garments.length) return [];
 
@@ -935,6 +971,8 @@ export async function matchInspirationItems(
     const country = profile.demographics.country;
     const currency = profile.currency;
     const gender = genderFilterFor(profile.demographics.genderPresentation);
+    const preferBudget = budget.mode === "range";
+    const preferredMax = preferBudget ? budget.max : BUDGET_ANY_MAX;
 
     // One slot per category (dedupe), bounded — mirrors matchItemsForLook.
     // One slot per main clothing category (an outfit has a single top, bottom,
@@ -973,24 +1011,50 @@ export async function matchInspirationItems(
       values: queries,
     });
 
+    type Ranked = ReturnType<typeof rankMatchRows>[number];
+
+    async function rankForSlot(
+      g: LookGarment,
+      embedding: number[],
+      maxPrice: number,
+    ): Promise<Ranked[]> {
+      const rows = await rpcMatchProducts(sb, {
+        query_embedding: embedding,
+        match_count: INSPIRATION_MATCH_COUNT,
+        filter_category: g.category,
+        max_price: maxPrice,
+        country,
+        currency,
+        market,
+        gender_filter: gender,
+      });
+      return rankMatchRows(
+        shoppableRows(rows),
+        g.color,
+        g.garment,
+        profile.boldness,
+      ).sort((a, b) => b.score - a.score);
+    }
+
+    // Preferred-band search first; widen to any price when a slot is short.
     const rankedBySlot = await Promise.all(
       slots.map(async ({ garment: g }, i) => {
-        const rows = await rpcMatchProducts(sb, {
-          query_embedding: embeddings[i],
-          match_count: LOOK_MATCH_COUNT,
-          filter_category: g.category,
-          max_price: profile.budgetEur.max,
-          country,
-          currency,
-          market,
-          gender_filter: gender,
-        });
-        return rankMatchRows(
-          shoppableRows(rows),
-          g.color,
-          g.garment,
-          profile.boldness,
-        ).sort((a, b) => b.score - a.score);
+        const preferred = await rankForSlot(g, embeddings[i], preferredMax);
+        if (
+          !preferBudget ||
+          preferred.length >= INSPIRATION_CANDIDATES_PER_SLOT
+        ) {
+          return preferred;
+        }
+        const wide = await rankForSlot(g, embeddings[i], BUDGET_ANY_MAX);
+        const seen = new Set(preferred.map((r) => r.row.id));
+        const merged = [...preferred];
+        for (const r of wide) {
+          if (seen.has(r.row.id)) continue;
+          seen.add(r.row.id);
+          merged.push(r);
+        }
+        return merged;
       }),
     );
 
@@ -1022,40 +1086,74 @@ export async function matchInspirationItems(
       const ranked = rankedBySlot[i];
       if (!ranked.length) return;
 
-      // Order the reranker's pick first (when valid), then the rest by score.
+      // Order the reranker's pick first (when valid), then the rest by score —
+      // but when a budget is set, keep in-band candidates ahead of outside-band
+      // ones so the primary pick stays affordable whenever possible.
       const pick = pickBySlot.get(slot);
       const pickedRowId =
         pick && pick.candidateIndex >= 0 && pick.candidateIndex < ranked.length
           ? ranked[pick.candidateIndex].row.id
           : undefined;
-      const ordered = [...ranked];
+
+      const inBand: Ranked[] = [];
+      const outBand: Ranked[] = [];
+      for (const r of ranked) {
+        const price = Number(r.row.price_eur ?? 0);
+        if (isPriceInBudget(price, budget)) inBand.push(r);
+        else outBand.push(r);
+      }
+      let ordered = preferBudget ? [...inBand, ...outBand] : [...ranked];
       if (pickedRowId) {
+        const pool = preferBudget && inBand.some((r) => r.row.id === pickedRowId)
+          ? inBand
+          : ordered;
         const at = ordered.findIndex((r) => r.row.id === pickedRowId);
-        if (at > 0) ordered.unshift(ordered.splice(at, 1)[0]);
+        // Promote the reranker pick only when it stays in the preferred band
+        // (or when there is no band). Otherwise keep the best in-band first.
+        if (
+          at > 0 &&
+          (!preferBudget || pool.some((r) => r.row.id === pickedRowId))
+        ) {
+          ordered.unshift(ordered.splice(at, 1)[0]);
+        }
       }
 
-      // Colour-gate the ALTERNATIVES (not the primary) when we know the target
-      // colour, so a clearly cream garment never lists brown "alternatives".
-      // Light neutrals (cream ↔ beige/sand/stone/tan…) are bridged across the
-      // white/brown family split so a cream trouser still surfaces its natural
-      // sand/stone alternatives instead of collapsing to a single option.
+      // Colour-gate ALTERNATIVES when we know the target colour, so a cream
+      // garment doesn't lead with brown. Soft-fill shade-adjacent same-hue
+      // options (marked similarPick) when the preferred gate would leave the
+      // row with only one card — better than an empty-looking blazer slot.
+      // Light neutrals (cream ↔ beige/sand/stone/tan…) bridge white/brown.
       const gateColor = Boolean(g.color);
       const queryLightNeutral = isLightNeutral(g.color);
-      const gated = ordered.filter((r, idx) => {
+      const passesPreferredColor = (r: Ranked, idx: number): boolean => {
         if (idx === 0 || !gateColor) return true;
         if (r.colorScore >= INSPIRATION_MIN_ALT_COLOR) return true;
         return (
           queryLightNeutral &&
           isLightNeutral(`${r.row.color ?? ""} ${r.row.title}`)
         );
-      });
+      };
+      const preferred = ordered.filter((r, idx) => passesPreferredColor(r, idx));
+      const pool: Ranked[] = [...preferred];
+      if (pool.length < INSPIRATION_CANDIDATES_PER_SLOT) {
+        const seenIds = new Set(pool.map((r) => r.row.id));
+        for (const r of ordered) {
+          if (pool.length >= INSPIRATION_CANDIDATES_PER_SLOT) break;
+          if (seenIds.has(r.row.id)) continue;
+          if (gateColor && r.colorScore < INSPIRATION_SOFT_ALT_COLOR) continue;
+          seenIds.add(r.row.id);
+          pool.push({ ...r, similarPick: true });
+        }
+      }
 
       const candidates: ShoppingItem[] = [];
       const seen = new Set<string>();
-      for (const r of gated) {
+      for (const r of pool) {
         if (candidates.length >= INSPIRATION_CANDIDATES_PER_SLOT) break;
         if (seen.has(r.row.id)) continue;
         seen.add(r.row.id);
+        const price = Number(r.row.price_eur ?? 0);
+        const outside = preferBudget && !isPriceInBudget(price, budget);
         candidates.push(
           shoppingItemFromMatch(
             r.row,
@@ -1064,6 +1162,7 @@ export async function matchInspirationItems(
             goal,
             r.similarPick,
             r.row.id === pickedRowId ? pick?.why : undefined,
+            outside,
           ),
         );
       }

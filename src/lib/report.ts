@@ -174,6 +174,11 @@ export type ShoppingItem = {
   productId?: string;
   /** Catalogue pick is stylistically close, not a guaranteed photo match. */
   similarPick?: boolean;
+  /**
+   * Shop a Look: candidate is outside the shopper's selected budget band
+   * (soft fallback when in-budget matches were scarce).
+   */
+  outsideBudget?: boolean;
   /** Bumped when look-matching logic changes — triggers background refresh. */
   matchVersion?: number;
   /** Set when the "why" was written by the reasons model (src/lib/ai/shopping-reasons). */
