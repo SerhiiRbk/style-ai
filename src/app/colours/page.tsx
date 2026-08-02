@@ -4,6 +4,7 @@ import { Footer } from "@/components/Footer";
 import { ColoursExperience } from "@/components/ColoursExperience";
 import { absoluteUrl } from "@/lib/site-url";
 import { notFound } from "next/navigation";
+import { COLOURS_ENABLED } from "@/lib/colours-feature";
 
 export const metadata: Metadata = {
   title: "Free colour analysis for men — find your colours | Valetti",
@@ -20,11 +21,9 @@ export const metadata: Metadata = {
 
 export default function ColoursPage() {
   // PAUSED — the "colours" (free colour analysis) initiative is on hold, so this
-  // route returns 404 while all page code below is kept intact. `as boolean` keeps
-  // the rest of the component reachable for type-checking; flip ENABLED to true
-  // (or delete this guard) to re-enable the route.
-  const ENABLED = false as boolean;
-  if (!ENABLED) notFound();
+  // route returns 404 while all page code below is kept intact. The same flag
+  // guards `POST /api/colours`; flip it in one place to re-enable both.
+  if (!COLOURS_ENABLED) notFound();
 
   return (
     <>

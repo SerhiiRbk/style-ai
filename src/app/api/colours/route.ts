@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { analyzeColoursOnly } from "@/lib/ai/colour-analysis";
+import { COLOURS_ENABLED } from "@/lib/colours-feature";
 
 export const maxDuration = 60;
 
@@ -34,6 +35,13 @@ function clientIp(request: Request): string {
 }
 
 export async function POST(request: Request) {
+  // PAUSED with the `/colours` page — the initiative is on hold, and until the
+  // durable rate limiter lands this is an unauthenticated endpoint that spends a
+  // paid vision call per request. Answer as if the route did not exist.
+  if (!COLOURS_ENABLED) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const ip = clientIp(request);
   if (rateLimited(ip)) {
     return NextResponse.json(
