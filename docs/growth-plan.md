@@ -14,9 +14,37 @@ How to attract customers to Valetti (AI men's personal stylist, valetti.fit). Th
 
 Men's styling is underserved: nearly all styling content targets women, and men want a **definitive answer** ("just tell me what to wear and buy"), not an endless scroll. A human stylist costs hundreds of euros and feels awkward. Valetti = "a personal expert stylist that privately, quickly and cheaply tells you what suits *you*."
 
-- **Wedge #1 — colour analysis for men.** Colour analysis is peaking virally on TikTok/Instagram but is almost entirely in the female space. "Your colours from one selfie, for men" is a timely, specific, under-contested entry point. Make it the spearhead.
+- **Wedge #1 — colour analysis for men.** Colour analysis is peaking virally on TikTok/Instagram, and "your colours from one selfie, for men" is still the cheapest, most shareable way in. **But it is no longer an under-contested entry point** — see §1.1. Treat it as the funnel entry, not as the differentiator.
+- **The actual differentiator — the combination, not the entry.** Palette, **plus a shoppable edit of real products in your colours, plus virtual try-on on your own body**. Each piece exists somewhere in the market; nobody ships all three. Positioning, content and paywall copy should lead with what happens *after* the palette, not with the palette itself.
 - **ICP & purchase triggers** — man 25–45, disposable income, at a transition: new job / promotion / moving into client-facing roles, dating & dating apps, divorce, weight change, turning 30/40, a wedding (his own or as a guest), relocation.
 - **Secondary segment** — women buying a style report as a gift for their partner (drives gifting channel + seasonal spikes).
+
+---
+
+## 1.1 Competitive landscape (checked August 2026)
+
+The original "under-contested" claim did not survive a check. What exists today:
+
+| Product | What it does | Overlap with Valetti |
+|---|---|---|
+| [Daily Male](https://dailymale.app/) | Men's colour analysis from a selfie, scan-a-garment palette check, jewellery metal advice. Free tier + weekly/annual subscription, claims users in 120+ countries. Native iOS/Android apps. | **Direct on the wedge.** No shoppable catalogue, no try-on. |
+| [Look Maxing](https://look-maxing.com/) | Men's colour analysis + style recommendations | Direct on the wedge |
+| [Color Analysis Tech](https://www.coloranalysistech.com/color-analysis-for-men) | Free AI colour test for men | Direct on the wedge |
+| Dressly | Colour analysis and palette styling, both genders | Partial |
+| TryDrobe | Digital closet, outfit planning, **virtual try-on** | Direct on try-on; no men's colour wedge |
+| Alta | Conversational styling by chat | Adjacent — validates that chat-first discovery is being tried |
+| Stitch Fix Freestyle | Shoppable recommendations | Locked to own inventory, US, women-leaning |
+| Lookastic | Men's outfit inspiration database | Not AI-personalised |
+
+Not competitors, despite appearing in the same articles: **Stylic.ai** and **FashFX** are B2B AI fashion photography for e-commerce sellers (replace the photoshoot). Different customer, different job. Their prominence is itself a signal — the brand-facing side of this market is crowded, the consumer men's side much less so.
+
+**Three conclusions.**
+
+1. **The entry is commoditised; the stack behind it is not.** Daily Male has the palette without a catalogue or try-on. TryDrobe has try-on without the men's colour wedge. Stitch Fix has purchase but only from its own warehouse. The three-way combination is genuinely uncontested — so lead with it.
+2. **Distribution format is a strategic gap.** The closest competitors are native apps with App Store / Play distribution, ASO and push. Valetti is a website. Not something to fix inside 90 days, but it may matter more than several planned features.
+3. **Pricing diverges.** Competitors run subscriptions; Valetti sells credits with the membership still marked "not available yet". Better for one-off buyers, weaker on LTV.
+
+Re-check this table when the wedge is next revisited — this space moves fast.
 
 ---
 
@@ -145,3 +173,5 @@ Higher LTV and repeat purchases let you pay more per customer and strengthen wor
 ## 10. Highest-leverage move
 
 The free men's colour analysis as the spearhead + artifact sharing is the single highest-leverage element: it simultaneously fixes the funnel and feeds the #1 channel (video). Build it first — see `docs/free-colour-analysis-plan.md`.
+
+**Amended (August 2026).** Still the right first move, but for a different reason than originally written. The palette alone is now commoditised (§1.1), so it earns the visit and the email — it does not win the customer. What wins is what sits immediately behind it: a shoppable edit of real products in the user's colours, with try-on gated behind signup. Build the palette *and* the edit as one entry surface, not the palette on its own. Full design: `docs/superpowers/specs/2026-08-01-valetti-growth-design.md` §5.
