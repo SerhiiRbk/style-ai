@@ -3,11 +3,150 @@
 import Image from "next/image";
 import { useRef, useState, type FormEvent } from "react";
 import { ButtonLink } from "@/components/Button";
+import { formatOfferPrice } from "@/lib/currency";
+import { ITEM_BUDGET_BANDS } from "@/lib/budgets";
+import {
+  QUIZ_QUESTIONS,
+  quizToResult,
+  type QuizAnswers,
+} from "@/lib/colour-quiz";
 import type { ColourAnalysisResult } from "@/lib/colour-palette";
 
-type Phase = "idle" | "analyzing" | "result" | "error" | "capped" | "gate";
+type Phase =
+  | "idle"
+  | "analyzing"
+  | "result"
+  | "error"
+  | "capped"
+  | "gate"
+  | "quiz";
 
 const MAX_EDGE = 768;
+
+/** Occasion chips — mirrors LOOK_CONTEXTS (kept inline to stay out of the client bundle's server deps). */
+const OCCASIONS: { id: string; label: string }[] = [
+  { id: "smart_casual", label: "Smart casual" },
+  { id: "work", label: "Work" },
+  { id: "weekend", label: "Weekend" },
+  { id: "dinner", label: "Dinner" },
+  { id: "formal", label: "Formal" },
+  { id: "travel", label: "Travel" },
+];
+
+const BUDGET_OPTIONS: { id: string; label: string }[] = [
+  { id: "any", label: "Any price" },
+  ...ITEM_BUDGET_BANDS.map((b) => ({ id: b.id, label: b.label })),
+];
+
+const DEFAULT_OCCASION = "smart_casual";
+const DEFAULT_BUDGET = "50-150";
+
+type RecCandidate = {
+  title: string;
+  priceEur: number;
+  priceNative?: number;
+  currency?: string;
+  retailer: string;
+  url: string;
+  color: string;
+  colorName?: string;
+  image?: string;
+  productId?: string;
+  outsideBudget?: boolean;
+  similarPick?: boolean;
+};
+
+type RecSlot = {
+  slot: number;
+  category: string;
+  garment: string;
+  color: string | null;
+  candidates: RecCandidate[];
+};
+
+/** Fire-and-forget funnel event (uses sendBeacon so it survives navigation). */
+function trackEvent(name: string, props?: Record<string, unknown>) {
+  try {
+    const body = JSON.stringify({ name, anonId: getAnonId(), props });
+    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+      navigator.sendBeacon(
+        "/api/events",
+        new Blob([body], { type: "application/json" }),
+      );
+    } else {
+      void fetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      });
+    }
+  } catch {
+    /* analytics must never break the UI */
+  }
+}
+
+/** No-photo second entry (§5.2 п.9): one question per screen, computed locally. */
+function ColourQuiz({
+  onComplete,
+  onCancel,
+}: {
+  onComplete: (a: QuizAnswers) => void;
+  onCancel: () => void;
+}) {
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState<Partial<QuizAnswers>>({});
+  const q = QUIZ_QUESTIONS[step];
+
+  function choose(value: string) {
+    const next = { ...answers, [q.id]: value } as Partial<QuizAnswers>;
+    setAnswers(next);
+    if (step + 1 < QUIZ_QUESTIONS.length) setStep(step + 1);
+    else onComplete(next as QuizAnswers);
+  }
+
+  return (
+    <div className="rounded-2xl border hairline bg-paper p-6 sm:p-10">
+      <div className="flex items-center justify-between">
+        <p className="text-xs uppercase tracking-wide text-stone-soft">
+          Question {step + 1} of {QUIZ_QUESTIONS.length}
+        </p>
+        <button
+          type="button"
+          onClick={step === 0 ? onCancel : () => setStep(step - 1)}
+          className="text-sm text-stone underline transition-colors hover:text-ink"
+        >
+          {step === 0 ? "Cancel" : "Back"}
+        </button>
+      </div>
+
+      <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-cream">
+        <div
+          className="h-full bg-ink transition-all"
+          style={{ width: `${((step + 1) / QUIZ_QUESTIONS.length) * 100}%` }}
+        />
+      </div>
+
+      <h2 className="mt-6 font-display text-2xl text-ink">{q.prompt}</h2>
+      {q.help ? (
+        <p className="mt-1 text-sm text-stone">{q.help}</p>
+      ) : null}
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        {q.options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => choose(o.value)}
+            className="rounded-full border border-ink/25 px-4 py-2.5 text-sm text-ink transition-colors hover:border-ink hover:bg-ink hover:text-paper"
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** Stable anonymous id for soft per-visitor limits + funnel stitching (A0/A1). */
 function getAnonId(): string {
@@ -120,7 +259,67 @@ export function ColoursExperience() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [shared, setShared] = useState(false);
+  const [recs, setRecs] = useState<RecSlot[] | null>(null);
+  const [recsLoading, setRecsLoading] = useState(false);
+  const [occasion, setOccasion] = useState(DEFAULT_OCCASION);
+  const [budgetId, setBudgetId] = useState(DEFAULT_BUDGET);
+  const [preliminary, setPreliminary] = useState(false);
+  const recsSource = useRef<"photo" | "quiz">("photo");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  async function fetchRecs(subseason: string, occ: string, budget: string) {
+    setRecsLoading(true);
+    try {
+      const res = await fetch("/api/colours/looks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subseason,
+          occasion: occ,
+          budgetId: budget,
+          source: recsSource.current,
+          anonId: getAnonId(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setRecs(res.ok && Array.isArray(data.slots) ? data.slots : []);
+    } catch {
+      setRecs([]);
+    } finally {
+      setRecsLoading(false);
+    }
+  }
+
+  function changeOccasion(next: string) {
+    if (next === occasion || !result) return;
+    setOccasion(next);
+    trackEvent("filter_changed", { kind: "occasion", value: next });
+    void fetchRecs(result.subseason, next, budgetId);
+  }
+
+  function changeRecBudget(next: string) {
+    if (next === budgetId || !result) return;
+    setBudgetId(next);
+    trackEvent("filter_changed", { kind: "budget", value: next });
+    void fetchRecs(result.subseason, occasion, next);
+  }
+
+  function startQuiz() {
+    trackEvent("quiz_started");
+    setPhase("quiz");
+  }
+
+  function finishQuiz(answers: QuizAnswers) {
+    const computed = quizToResult(answers);
+    recsSource.current = "quiz";
+    setPreliminary(true);
+    setResult(computed);
+    setPhase("result");
+    setOccasion(DEFAULT_OCCASION);
+    setBudgetId(DEFAULT_BUDGET);
+    // `quiz_result` is logged server-side by the recs call (source: "quiz").
+    void fetchRecs(computed.subseason, DEFAULT_OCCASION, DEFAULT_BUDGET);
+  }
 
   async function handleFile(file: File) {
     setError(null);
@@ -135,6 +334,7 @@ export function ColoursExperience() {
     }
     setPreview(dataUrl);
     setPhase("analyzing");
+    trackEvent("colours_started");
     try {
       const res = await fetch("/api/colours", {
         method: "POST",
@@ -159,8 +359,16 @@ export function ColoursExperience() {
         setPhase("gate");
         return;
       }
-      setResult(data.result as ColourAnalysisResult);
+      const analysed = data.result as ColourAnalysisResult;
+      setPreliminary(false);
+      recsSource.current = "photo";
+      setResult(analysed);
       setPhase("result");
+      // Show-then-filter (§5.2 п.1): recommendations load immediately with the
+      // palette, defaulting to smart casual + mid band; filters live below.
+      setOccasion(DEFAULT_OCCASION);
+      setBudgetId(DEFAULT_BUDGET);
+      void fetchRecs(analysed.subseason, DEFAULT_OCCASION, DEFAULT_BUDGET);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Analysis failed");
       setPhase("error");
@@ -173,6 +381,12 @@ export function ColoursExperience() {
     setResult(null);
     setError(null);
     setNotice(null);
+    setRecs(null);
+    setRecsLoading(false);
+    setOccasion(DEFAULT_OCCASION);
+    setBudgetId(DEFAULT_BUDGET);
+    setPreliminary(false);
+    recsSource.current = "photo";
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -230,7 +444,21 @@ export function ColoursExperience() {
           <p className="mt-6 text-xs text-stone-soft">
             We analyse your photo to read your colours and don&apos;t keep it.
           </p>
+          <p className="mt-4 text-sm text-stone">
+            Prefer not to share a photo?{" "}
+            <button
+              type="button"
+              onClick={startQuiz}
+              className="text-ink underline underline-offset-2 transition-colors hover:text-stone"
+            >
+              Answer 5 quick questions
+            </button>
+          </p>
         </div>
+      )}
+
+      {phase === "quiz" && (
+        <ColourQuiz onComplete={finishQuiz} onCancel={reset} />
       )}
 
       {phase === "analyzing" && (
@@ -290,6 +518,21 @@ export function ColoursExperience() {
           <div className="border-b hairline bg-cream/50 px-6 py-4 sm:px-8">
             <p className="eyebrow">Your colours — free</p>
           </div>
+          {preliminary && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b hairline bg-brass/10 px-6 py-3 sm:px-8">
+              <p className="text-sm text-ink">
+                Preliminary result from your answers. A photo reads your
+                undertone far more accurately.
+              </p>
+              <button
+                type="button"
+                onClick={reset}
+                className="shrink-0 text-sm text-ink underline underline-offset-2 transition-colors hover:text-stone"
+              >
+                Refine with a photo →
+              </button>
+            </div>
+          )}
           <div className="px-6 py-8 sm:px-8">
             <div className="flex items-start gap-5">
               {preview && (
@@ -371,8 +614,147 @@ export function ColoursExperience() {
               </div>
             </blockquote>
 
+            {/* Shop your colours — anonymous palette-based recommendations (§5). */}
+            <div className="mt-8 border-t hairline pt-7">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="font-display text-2xl text-ink">
+                  Shop your colours
+                </h3>
+                <span className="text-xs text-stone-soft">
+                  Real pieces in your palette
+                </span>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {OCCASIONS.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => changeOccasion(o.id)}
+                    className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+                      occasion === o.id
+                        ? "border-ink bg-ink text-paper"
+                        : "border-ink/20 text-ink hover:border-ink/50"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-2">
+                {BUDGET_OPTIONS.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => changeRecBudget(b.id)}
+                    className={`rounded-full border px-3.5 py-1.5 text-xs transition-colors ${
+                      budgetId === b.id
+                        ? "border-brass bg-brass/10 text-ink"
+                        : "border-ink/15 text-stone hover:border-ink/40"
+                    }`}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-6">
+                {recsLoading ? (
+                  <p className="text-sm text-stone">
+                    Finding pieces in your colours…
+                  </p>
+                ) : recs && recs.length ? (
+                  <div className="flex flex-col gap-7">
+                    {recs.map((slot) => (
+                      <div key={slot.slot}>
+                        <p className="text-xs uppercase tracking-wide text-stone-soft">
+                          {slot.color ? `${slot.color} ` : ""}
+                          {slot.garment}
+                        </p>
+                        <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          {slot.candidates.map((c, i) => (
+                            <a
+                              key={(c.productId ?? c.url) + i}
+                              href={c.url}
+                              target="_blank"
+                              rel="nofollow sponsored noopener noreferrer"
+                              onClick={() =>
+                                trackEvent("affiliate_click", {
+                                  productId: c.productId,
+                                  retailer: c.retailer,
+                                  category: slot.category,
+                                })
+                              }
+                              className="group flex flex-col overflow-hidden rounded-xl border hairline bg-paper transition-colors hover:border-ink/40"
+                            >
+                              <span className="relative block aspect-[3/4] w-full overflow-hidden bg-cream">
+                                {c.image ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={c.image}
+                                    alt={c.title}
+                                    className="h-full w-full object-cover"
+                                    loading="lazy"
+                                  />
+                                ) : null}
+                                {c.outsideBudget ? (
+                                  <span className="absolute left-2 top-2 rounded-full bg-ink/80 px-2 py-0.5 text-[10px] text-paper">
+                                    Outside budget
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="flex flex-1 flex-col gap-1 p-2.5">
+                                <span className="line-clamp-2 text-xs text-ink">
+                                  {c.title}
+                                </span>
+                                <span className="mt-auto flex items-center justify-between gap-2">
+                                  <span className="text-sm text-ink">
+                                    {formatOfferPrice({
+                                      priceEur: c.priceEur,
+                                      displayCurrency: c.currency ?? "EUR",
+                                      offerCurrency: c.currency,
+                                      priceNative: c.priceNative,
+                                    })}
+                                  </span>
+                                  <span className="truncate text-[11px] text-stone">
+                                    {c.retailer}
+                                  </span>
+                                </span>
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-stone">
+                    No pieces for this combination yet — try another occasion or
+                    budget.
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-7 rounded-xl border hairline bg-cream/40 p-4 sm:p-5">
+                <p className="font-display text-lg text-ink">
+                  See these on yourself
+                </p>
+                <p className="mt-1 text-sm text-stone">
+                  Create a free account to try any of these on your own photo.
+                </p>
+                <div className="mt-3">
+                  <ButtonLink
+                    href="/start"
+                    onClick={() => trackEvent("tryon_gate_click")}
+                  >
+                    Try it on yourself — free →
+                  </ButtonLink>
+                </div>
+              </div>
+            </div>
+
             <div className="mt-7 flex flex-wrap items-center gap-3">
-              <ButtonLink href="/start">Unlock my full look →</ButtonLink>
               <button
                 type="button"
                 onClick={share}
