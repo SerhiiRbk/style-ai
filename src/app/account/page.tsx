@@ -14,6 +14,7 @@ import { getCreditBalance } from "@/lib/credits";
 import { getUserProfile } from "@/lib/data/user-profile";
 import { getGeoPrefill } from "@/lib/geo";
 import { countryNameFromCode } from "@/lib/countries";
+import { COLOURS_ENABLED } from "@/lib/colours-feature";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,9 @@ export default async function AccountPage() {
               <a href="#profile" className="transition-colors hover:text-ink">Profile</a>
               <a href="#credits" className="transition-colors hover:text-ink">Credits</a>
               <a href="#photos" className="transition-colors hover:text-ink">Photos</a>
+              {COLOURS_ENABLED && (
+                <Link href="/colours" className="transition-colors hover:text-ink">My Colours</Link>
+              )}
               <a href="#privacy" className="transition-colors hover:text-ink">Privacy &amp; data</a>
             </nav>
           </div>

@@ -4,6 +4,7 @@ import { CreateReportButton } from "./CreateReportButton";
 import { NavbarMenu, type NavLink } from "./NavbarMenu";
 import { NavErrorBoundary } from "./NavErrorBoundary";
 import { ValettiLogo } from "./brand/ValettiLogo";
+import { COLOURS_ENABLED } from "@/lib/colours-feature";
 import {
   NavDesktopAuthLinks,
   NavDesktopReportsLink,
@@ -17,8 +18,13 @@ const primaryLinks: NavLink[] = [
   { href: "/#sample", label: "Sample" },
 ];
 
+// "Colours" is anon-only (hidden once signed in — logged-in users reach it via
+// Account → "My Colours"), so it lives here rather than in `primaryLinks`.
 const secondaryLinks: NavLink[] = [
   { href: "/report/valetti-style-prospect-demo", label: "View example", hideWhenAuthed: true },
+  ...(COLOURS_ENABLED
+    ? [{ href: "/colours", label: "Colours", hideWhenAuthed: true } as NavLink]
+    : []),
 ];
 
 const navLinkClass =

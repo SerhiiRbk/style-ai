@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { COLOURS_ENABLED } from "@/lib/colours-feature";
 
 type NavSessionValue = {
   authed: boolean;
@@ -125,6 +126,11 @@ export function NavDesktopAuthLinks() {
   const { authed, isAdmin } = useNavSession();
   return (
     <>
+      {!authed && COLOURS_ENABLED && (
+        <Link href="/colours" className={navLinkClass}>
+          Colours
+        </Link>
+      )}
       {!authed && (
         <Link
           href="/report/valetti-style-prospect-demo"
