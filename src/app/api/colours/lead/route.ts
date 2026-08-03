@@ -65,6 +65,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
+  // Per-anon (per-browser) daily cap — an extra anti-spam layer so one visitor
+  // can't mail themselves the palette endlessly even from rotating IPs. Fails
+  // OPEN and is skipped when there is no anonId (cookie cleared/blocked).
+  if (anonId) {
+    const anonGate = await checkLimit(
+      `lead:anon:${anonId}:${day}`,
+      env.leadAnonDailyCap,
+      26 * 60 * 60, // > 24h so a day's bucket never expires mid-day
+      { failOpen: true },
+    );
+    if (!anonGate.allowed) {
+      return NextResponse.json(
+        { error: "You've already been emailed your palette today." },
+        { status: 429 },
+      );
+    }
+  }
+
   // Deliver the follow-up email (A3), then persist the lead. A result capture
   // gets the palette; a cap capture gets an acknowledgement. Best-effort — a
   // send failure still records the lead so it can be fulfilled later.

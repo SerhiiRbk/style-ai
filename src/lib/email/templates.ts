@@ -53,7 +53,10 @@ function layout(opts: {
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:${C.paper};border:1px solid ${C.line};border-radius:16px;overflow:hidden;">
 <tr><td style="padding:28px 32px;border-bottom:1px solid ${C.line};">
-<img src="${logoUrl}" width="40" height="40" alt="${esc(BRAND.name)}" style="display:block;border-radius:8px;"/>
+<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+<td style="vertical-align:middle;"><img src="${logoUrl}" width="40" height="40" alt="${esc(BRAND.name)}" style="display:block;border-radius:8px;"/></td>
+<td style="vertical-align:middle;padding-left:14px;font-size:26px;font-weight:700;letter-spacing:4px;color:${C.ink};text-transform:uppercase;">${esc(BRAND.name)}</td>
+</tr></table>
 </td></tr>
 <tr><td style="padding:32px;">
 ${opts.bodyHtml}
@@ -122,18 +125,33 @@ export function paletteEmail(opts: {
   note: string;
   ctaUrl: string;
 }): EmailContent {
-  const cells = opts.swatches
-    .map(
-      (s) =>
-        `<td style="padding:4px;"><div style="width:44px;height:44px;border-radius:8px;background:${esc(
-          s.hex,
-        )};border:1px solid rgba(0,0,0,0.08);" title="${esc(s.name)}"></div></td>`,
-    )
-    .join("");
+  // Swatch styled to echo the site: rounded, subtly bordered, with an inset
+  // sheen + shadow for a tactile "relief". box-shadow is honoured by Apple Mail
+  // and most mobile clients; where it's stripped (Gmail web) the border keeps a
+  // clean edge. Each colour carries its name label underneath. Laid out 4-per-row
+  // (like the site's mobile grid) so labels have room and nothing overflows the
+  // fixed-width card.
+  const swatchCell = (s: { hex: string; name: string }) =>
+    `<td align="center" valign="top" width="25%" style="padding:0 6px 14px;">
+<div style="width:52px;height:52px;margin:0 auto;border-radius:12px;background:${esc(
+      s.hex,
+    )};border:1px solid rgba(21,18,13,0.14);box-shadow:inset 0 2px 3px rgba(255,255,255,0.35),inset 0 -8px 13px rgba(21,18,13,0.18);" title="${esc(
+      s.name,
+    )}"></div>
+<div style="margin-top:8px;font-size:11px;line-height:1.3;color:${C.stone};">${esc(
+      s.name,
+    )}</div>
+</td>`;
+  const rows: string[] = [];
+  for (let i = 0; i < opts.swatches.length; i += 4) {
+    rows.push(`<tr>${opts.swatches.slice(i, i + 4).map(swatchCell).join("")}</tr>`);
+  }
   const bodyHtml = `
 ${h1(`Your colours: ${opts.subseasonLabel}`)}
 ${p(opts.note)}
-<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 20px;"><tr>${cells}</tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0 22px;table-layout:fixed;">${rows.join(
+    "",
+  )}</table>
 ${p("Want the full picture? A complete report adds your wardrobe, photorealistic looks, try-on, and a shopping list — new accounts get free credits to start.")}
 <div style="margin:20px 0 8px;">${button(opts.ctaUrl, "Unlock my full look")}</div>
 `;

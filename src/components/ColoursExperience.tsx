@@ -316,6 +316,110 @@ async function toDataUrl(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.85);
 }
 
+/**
+ * Shared, off-screen SVG filters that give the palette swatches an organic
+ * woven-fabric feel: `#coloursFabricNoise` distorts a soft sheen with fractal
+ * turbulence (micro-fibres / dye unevenness) and `#coloursLooseFibres` warps
+ * fine stray threads. Rendered once and referenced by every swatch so the
+ * expensive turbulence isn't rebuilt per swatch.
+ */
+function FabricFilterDefs() {
+  return (
+    <svg width="0" height="0" aria-hidden className="absolute">
+      <filter id="coloursFabricNoise">
+        <feTurbulence
+          type="fractalNoise"
+          baseFrequency="0.025 0.45"
+          numOctaves={4}
+          seed={8}
+          result="noise"
+        />
+        <feDisplacementMap
+          in="SourceGraphic"
+          in2="noise"
+          scale={6}
+          xChannelSelector="R"
+          yChannelSelector="B"
+          result="distorted"
+        />
+        <feBlend in="distorted" in2="noise" mode="soft-light" />
+      </filter>
+      <filter id="coloursLooseFibres">
+        <feTurbulence
+          type="turbulence"
+          baseFrequency="0.012 0.2"
+          numOctaves={2}
+          seed={19}
+          result="noise"
+        />
+        <feDisplacementMap
+          in="SourceGraphic"
+          in2="noise"
+          scale={10}
+          xChannelSelector="R"
+          yChannelSelector="G"
+        />
+      </filter>
+    </svg>
+  );
+}
+
+/**
+ * A single palette colour rendered as a woven-fabric swatch: real warp/weft
+ * threads (repeating gradients of varied thickness), a diagonal sheen, an
+ * SVG-turbulence fibre layer, and layered inset shadows for tactile relief.
+ * The colour comes straight from the analysis (`hex`). Static by request — no
+ * hover animation.
+ */
+function FabricSwatch({ hex, name }: { hex: string; name: string }) {
+  return (
+    <span
+      className="relative h-14 w-14 overflow-hidden rounded-xl sm:h-16 sm:w-16"
+      title={name}
+      style={{
+        backgroundColor: hex,
+        border: "1px solid rgba(0,0,0,0.16)",
+        backgroundImage: [
+          // Warp threads (vertical texture)
+          "repeating-linear-gradient(0deg, rgba(255,255,255,0.10) 0, rgba(255,255,255,0.10) 0.7px, transparent 0.7px, transparent 2.4px, rgba(0,0,0,0.08) 2.4px, rgba(0,0,0,0.08) 3.2px, transparent 3.2px, transparent 5px)",
+          // Weft threads (horizontal texture)
+          "repeating-linear-gradient(90deg, rgba(0,0,0,0.11) 0, rgba(0,0,0,0.11) 0.8px, transparent 0.8px, transparent 2.8px, rgba(255,255,255,0.08) 2.8px, rgba(255,255,255,0.08) 3.6px, transparent 3.6px, transparent 5.4px)",
+          // Diagonal sheen
+          "linear-gradient(135deg, rgba(255,255,255,0.22), transparent 32%, transparent 65%, rgba(0,0,0,0.20))",
+        ].join(", "),
+        boxShadow:
+          "inset 0 1px 1px rgba(255,255,255,0.35), inset 3px 3px 8px rgba(255,255,255,0.07), inset -4px -5px 10px rgba(0,0,0,0.18), 0 4px 8px rgba(0,0,0,0.12)",
+      }}
+    >
+      {/* SVG-distorted sheen — micro-fibres / dye unevenness */}
+      <span
+        className="pointer-events-none absolute"
+        aria-hidden
+        style={{
+          inset: "-15%",
+          backgroundImage:
+            "linear-gradient(110deg, transparent 15%, rgba(255,255,255,0.18) 45%, transparent 70%)",
+          filter: "url(#coloursFabricNoise)",
+          mixBlendMode: "soft-light",
+          opacity: 0.85,
+        }}
+      />
+      {/* Fine stray fibres */}
+      <span
+        className="pointer-events-none absolute inset-0"
+        aria-hidden
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(23deg, transparent 0 11px, rgba(255,255,255,0.11) 11.2px 11.7px, transparent 11.9px 27px), repeating-linear-gradient(157deg, transparent 0 17px, rgba(0,0,0,0.08) 17.2px 17.6px, transparent 17.8px 33px)",
+          filter: "url(#coloursLooseFibres)",
+          mixBlendMode: "overlay",
+          opacity: 0.48,
+        }}
+      />
+    </span>
+  );
+}
+
 export function ColoursExperience() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [preview, setPreview] = useState<string | null>(null);
@@ -683,33 +787,11 @@ export function ColoursExperience() {
               </div>
             </div>
 
+            <FabricFilterDefs />
             <div className="mt-7 grid grid-cols-4 gap-3.5 sm:grid-cols-8 sm:gap-4">
               {result.palette.map((s) => (
                 <div key={s.hex} className="flex flex-col items-center gap-2">
-                  <span
-                    className="relative h-14 w-14 overflow-hidden rounded-xl ring-1 ring-ink/10 sm:h-16 sm:w-16"
-                    style={{ background: s.hex }}
-                    title={s.name}
-                  >
-                    {/* Soft fabric sheen + weave grain */}
-                    <span
-                      className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-ink/20"
-                      aria-hidden
-                    />
-                    <span
-                      className="pointer-events-none absolute inset-0 opacity-[0.22] mix-blend-multiply"
-                      style={{
-                        backgroundImage:
-                          "repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(21,18,13,0.06) 1px, rgba(21,18,13,0.06) 2px), repeating-linear-gradient(90deg, transparent, transparent 1px, rgba(21,18,13,0.05) 1px, rgba(21,18,13,0.05) 2px)",
-                        backgroundSize: "3px 3px",
-                      }}
-                      aria-hidden
-                    />
-                    <span
-                      className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-6px_12px_rgba(21,18,13,0.12)]"
-                      aria-hidden
-                    />
-                  </span>
+                  <FabricSwatch hex={s.hex} name={s.name} />
                   <span className="text-[10px] leading-tight text-stone">
                     {s.name}
                   </span>

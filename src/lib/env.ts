@@ -93,6 +93,10 @@ export const env = {
   // Per-anon daily limit — a soft nudge to register; fails OPEN.
   looksAnonDailyCap: intEnv(process.env.LOOKS_ANON_DAILY_CAP, 25),
 
+  // Per-anon (per-browser) daily cap on palette/lead emails — anti-spam layer
+  // on top of the per-IP cap; fails OPEN. A person only needs their palette once.
+  leadAnonDailyCap: intEnv(process.env.LEAD_ANON_DAILY_CAP, 5),
+
   // Salt for hashing IPs before they become rate-limit bucket keys (IP is PII).
   rateLimitSalt: process.env.RATE_LIMIT_SALT ?? "",
 
