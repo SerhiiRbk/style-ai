@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRef, useState, type FormEvent } from "react";
 import { ButtonLink } from "@/components/Button";
+import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 import { formatOfferPrice } from "@/lib/currency";
 import { ITEM_BUDGET_BANDS } from "@/lib/budgets";
 import {
@@ -270,6 +271,9 @@ export function ColoursExperience() {
   const [shared, setShared] = useState(false);
   const [recs, setRecs] = useState<RecSlot[] | null>(null);
   const [recsLoading, setRecsLoading] = useState(false);
+  // The occasion|budget the currently-shown recs were fetched for, so we can
+  // flag when the filters have drifted and offer an "Update matches" refresh.
+  const [fetchedKey, setFetchedKey] = useState<string | null>(null);
   const [occasion, setOccasion] = useState(DEFAULT_OCCASION);
   const [budgetId, setBudgetId] = useState(DEFAULT_BUDGET);
   const [preliminary, setPreliminary] = useState(false);
@@ -292,25 +296,33 @@ export function ColoursExperience() {
       });
       const data = await res.json().catch(() => ({}));
       setRecs(res.ok && Array.isArray(data.slots) ? data.slots : []);
+      setFetchedKey(`${occ}|${budget}`);
     } catch {
       setRecs([]);
+      setFetchedKey(`${occ}|${budget}`);
     } finally {
       setRecsLoading(false);
     }
   }
 
+  /** Fetch recommendations on demand for the current palette + filters. */
+  function runRecs() {
+    if (!result || recsLoading) return;
+    trackEvent("shop_colours_click", { occasion, budget: budgetId });
+    void fetchRecs(result.subseason, occasion, budgetId);
+  }
+
+  // Filters only update the selection now — matching runs when the user asks.
   function changeOccasion(next: string) {
-    if (next === occasion || !result) return;
+    if (next === occasion) return;
     setOccasion(next);
     trackEvent("filter_changed", { kind: "occasion", value: next });
-    void fetchRecs(result.subseason, next, budgetId);
   }
 
   function changeRecBudget(next: string) {
-    if (next === budgetId || !result) return;
+    if (next === budgetId) return;
     setBudgetId(next);
     trackEvent("filter_changed", { kind: "budget", value: next });
-    void fetchRecs(result.subseason, occasion, next);
   }
 
   function startQuiz() {
@@ -326,8 +338,8 @@ export function ColoursExperience() {
     setPhase("result");
     setOccasion(DEFAULT_OCCASION);
     setBudgetId(DEFAULT_BUDGET);
-    // `quiz_result` is logged server-side by the recs call (source: "quiz").
-    void fetchRecs(computed.subseason, DEFAULT_OCCASION, DEFAULT_BUDGET);
+    setRecs(null);
+    setFetchedKey(null);
   }
 
   async function handleFile(file: File) {
@@ -373,11 +385,12 @@ export function ColoursExperience() {
       recsSource.current = "photo";
       setResult(analysed);
       setPhase("result");
-      // Show-then-filter (§5.2 п.1): recommendations load immediately with the
-      // palette, defaulting to smart casual + mid band; filters live below.
+      // Recommendations are now on-demand: the palette shows first, and the
+      // visitor runs "Shop your colours" themselves via the button below.
       setOccasion(DEFAULT_OCCASION);
       setBudgetId(DEFAULT_BUDGET);
-      void fetchRecs(analysed.subseason, DEFAULT_OCCASION, DEFAULT_BUDGET);
+      setRecs(null);
+      setFetchedKey(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Analysis failed");
       setPhase("error");
@@ -392,6 +405,7 @@ export function ColoursExperience() {
     setNotice(null);
     setRecs(null);
     setRecsLoading(false);
+    setFetchedKey(null);
     setOccasion(DEFAULT_OCCASION);
     setBudgetId(DEFAULT_BUDGET);
     setPreliminary(false);
@@ -668,12 +682,38 @@ export function ColoursExperience() {
                 ))}
               </div>
 
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={runRecs}
+                  disabled={recsLoading}
+                  className="inline-flex items-center gap-2 rounded-full bg-ink px-6 py-2.5 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-50"
+                >
+                  {recs === null ? "Shop your colours →" : "Update matches"}
+                </button>
+                {recs !== null &&
+                !recsLoading &&
+                fetchedKey !== `${occasion}|${budgetId}` ? (
+                  <span className="text-xs text-stone-soft">
+                    Filters changed — update to refresh.
+                  </span>
+                ) : null}
+              </div>
+
               <div className="mt-6">
                 {recsLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-4 py-14 text-center">
+                    <LuxeSpinner size="lg" tone="brass" />
+                    <p className="text-sm text-stone">
+                      Matching pieces to your colour profile…
+                    </p>
+                  </div>
+                ) : recs === null ? (
                   <p className="text-sm text-stone">
-                    Finding pieces in your colours…
+                    Pick an occasion and budget, then tap “Shop your colours” to
+                    see real pieces in your palette.
                   </p>
-                ) : recs && recs.length ? (
+                ) : recs.length ? (
                   <div className="flex flex-col gap-7">
                     {recs.map((slot) => (
                       <div key={slot.slot}>

@@ -17,6 +17,7 @@ const ALLOWED = new Set([
   "quiz_result",
   "affiliate_click",
   "filter_changed",
+  "shop_colours_click",
   "tryon_gate_click",
 ]);
 
