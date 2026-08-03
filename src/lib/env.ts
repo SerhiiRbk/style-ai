@@ -83,6 +83,16 @@ export const env = {
   coloursIpHourlyCap: intEnv(process.env.COLOURS_IP_HOURLY_CAP, 25),
   // Polite per-anon daily limit — a soft-gate trigger, not a spend defence.
   coloursAnonDailyCap: intEnv(process.env.COLOURS_ANON_DAILY_CAP, 10),
+
+  // A0 cost fuse for the anonymous "Shop your colours" recommendations, whose
+  // cost is one LLM rerank per run (~$0.015). Same shape as the colours caps.
+  // Global daily cap — the real spend control, fails CLOSED. ~$0.015/run → 2000 ≈ $30/day.
+  looksDailyCap: intEnv(process.env.LOOKS_DAILY_CAP, 2000),
+  // Per-IP hourly limit — one rerank per button press; fails OPEN (comfort).
+  looksIpHourlyCap: intEnv(process.env.LOOKS_IP_HOURLY_CAP, 20),
+  // Per-anon daily limit — a soft nudge to register; fails OPEN.
+  looksAnonDailyCap: intEnv(process.env.LOOKS_ANON_DAILY_CAP, 25),
+
   // Salt for hashing IPs before they become rate-limit bucket keys (IP is PII).
   rateLimitSalt: process.env.RATE_LIMIT_SALT ?? "",
 

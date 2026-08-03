@@ -60,20 +60,85 @@ export async function POST(request: Request) {
   const anonId =
     typeof body?.anonId === "string" && body.anonId ? body.anonId : null;
 
-  // Generous per-IP guard, fail-open — comfort, not spend defence.
+  // A0 cost fuse — each run is one paid LLM rerank. Cheap/global checks first:
+  // global daily cap (fail CLOSED) → per-IP hourly (fail open) → per-anon daily.
+  const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const hour = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
+
+  // 1) Global daily cap — the real spend control. Fail CLOSED.
+  const globalBucket = `looks:global:${day}`;
+  const globalCheck = await checkLimit(
+    globalBucket,
+    env.looksDailyCap,
+    26 * 60 * 60, // > 24h so a day's bucket never expires mid-day
+    { failOpen: false },
+  );
+  if (!globalCheck.allowed) {
+    await logEvent({
+      name: "rate_limited",
+      anonId,
+      props: { level: "global", bucket: "looks", count: globalCheck.count },
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        slots: [],
+        capped: true,
+        message:
+          "We're at capacity for free styling today. Create a free account to keep going.",
+      },
+      { status: 200 },
+    );
+  }
+
+  // 2) Per-IP hourly limit — one rerank per button press. Fail OPEN (carrier NAT).
   const ipHash = createHash("sha256")
     .update(`${clientIp(request)}:${env.rateLimitSalt}`)
     .digest("hex")
     .slice(0, 16);
-  const hour = new Date().toISOString().slice(0, 13);
-  const gate = await checkLimit(`colourslooks:ip:${ipHash}:${hour}`, 60, 60 * 60, {
-    failOpen: true,
-  });
-  if (!gate.allowed) {
+  const ipCheck = await checkLimit(
+    `looks:ip:${ipHash}:${hour}`,
+    env.looksIpHourlyCap,
+    60 * 60,
+    { failOpen: true },
+  );
+  if (!ipCheck.allowed) {
+    await logEvent({
+      name: "rate_limited",
+      anonId,
+      props: { level: "ip", bucket: "looks", count: ipCheck.count },
+    });
     return NextResponse.json(
       { error: "Too many requests — try again shortly." },
       { status: 429 },
     );
+  }
+
+  // 3) Per-anon daily soft gate — nudge sign-up. Fail OPEN; skip when no anonId.
+  if (anonId) {
+    const anonCheck = await checkLimit(
+      `looks:anon:${anonId}:${day}`,
+      env.looksAnonDailyCap,
+      26 * 60 * 60,
+      { failOpen: true },
+    );
+    if (!anonCheck.allowed) {
+      await logEvent({
+        name: "rate_limited",
+        anonId,
+        props: { level: "anon", bucket: "looks", count: anonCheck.count },
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          slots: [],
+          softGate: true,
+          message:
+            "You've reached today's free styling limit. Create a free account to run more.",
+        },
+        { status: 200 },
+      );
+    }
   }
 
   const geo = await getGeo();

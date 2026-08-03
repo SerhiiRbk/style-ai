@@ -271,6 +271,9 @@ export function ColoursExperience() {
   const [shared, setShared] = useState(false);
   const [recs, setRecs] = useState<RecSlot[] | null>(null);
   const [recsLoading, setRecsLoading] = useState(false);
+  // Cap / soft-gate message from the server (spend fuse) — shown instead of the
+  // neutral empty state so visitors don't keep retrying a capped endpoint.
+  const [recsNotice, setRecsNotice] = useState<string | null>(null);
   // The occasion|budget the currently-shown recs were fetched for, so we can
   // flag when the filters have drifted and offer an "Update matches" refresh.
   const [fetchedKey, setFetchedKey] = useState<string | null>(null);
@@ -296,9 +299,11 @@ export function ColoursExperience() {
       });
       const data = await res.json().catch(() => ({}));
       setRecs(res.ok && Array.isArray(data.slots) ? data.slots : []);
+      setRecsNotice(typeof data.message === "string" ? data.message : null);
       setFetchedKey(`${occ}|${budget}`);
     } catch {
       setRecs([]);
+      setRecsNotice(null);
       setFetchedKey(`${occ}|${budget}`);
     } finally {
       setRecsLoading(false);
@@ -405,6 +410,7 @@ export function ColoursExperience() {
     setNotice(null);
     setRecs(null);
     setRecsLoading(false);
+    setRecsNotice(null);
     setFetchedKey(null);
     setOccasion(DEFAULT_OCCASION);
     setBudgetId(DEFAULT_BUDGET);
@@ -707,6 +713,18 @@ export function ColoursExperience() {
                     <p className="text-sm text-stone">
                       Matching pieces to your colour profile…
                     </p>
+                  </div>
+                ) : recsNotice ? (
+                  <div className="rounded-xl border hairline bg-cream/40 p-5">
+                    <p className="text-sm text-stone">{recsNotice}</p>
+                    <div className="mt-3">
+                      <ButtonLink
+                        href="/start"
+                        onClick={() => trackEvent("tryon_gate_click")}
+                      >
+                        Create a free account →
+                      </ButtonLink>
+                    </div>
                   </div>
                 ) : recs === null ? (
                   <p className="text-sm text-stone">
