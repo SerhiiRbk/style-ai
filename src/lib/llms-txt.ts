@@ -1,4 +1,5 @@
 import { BRAND } from "@/lib/brand";
+import { COLOURS_ENABLED } from "@/lib/colours-feature";
 import { SIGNUP_BONUS } from "@/lib/credit-costs";
 import { DEMO_REPORT_SLUG } from "@/lib/demo-report";
 import { getSiteUrl } from "@/lib/site-url";
@@ -24,7 +25,11 @@ General contact: ${BRAND.contactEmail} · Privacy & data requests: ${BRAND.legal
 
 ## Product
 
-- [Catalog](${url("/catalog")}): Browse shoppable menswear the stylist engine can recommend; affiliate links disclosed
+- [Catalog](${url("/catalog")}): Browse shoppable menswear the stylist engine can recommend; affiliate links disclosed${
+    COLOURS_ENABLED
+      ? `\n- [Free colour analysis](${url("/colours")}): Upload one selfie for a free seasonal colour palette (undertone, contrast, subseason) — no signup, built for men`
+      : ""
+  }
 
 ## Instructions
 

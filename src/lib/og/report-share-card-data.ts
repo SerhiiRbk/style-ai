@@ -27,14 +27,39 @@ function cap(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 
+/**
+ * Inline image bytes as a data URL. When `maxWidth` is set the source is
+ * downscaled first (jpeg) so a full-res hero can't blow the render function's
+ * memory — a real risk for the 1080×1920 vertical card (A4).
+ */
+async function inlineImage(
+  bytes: Buffer,
+  contentType: string,
+  maxWidth?: number,
+): Promise<string> {
+  if (maxWidth) {
+    try {
+      const sharp = (await import("sharp")).default;
+      const jpeg = await sharp(bytes)
+        .resize({ width: maxWidth, withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+      return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+    } catch {
+      // sharp unavailable — fall back to the raw bytes below.
+    }
+  }
+  return `data:${contentType};base64,${bytes.toString("base64")}`;
+}
+
 /** Turn a resolved OG image (storage bytes or public asset) into a data URL. */
 async function ogResultToDataUrl(
   resolved: ReportOgImageResult,
+  maxWidth?: number,
 ): Promise<string | null> {
   try {
     if (resolved.kind === "bytes") {
-      const base64 = Buffer.from(resolved.bytes).toString("base64");
-      return `data:${resolved.contentType};base64,${base64}`;
+      return inlineImage(Buffer.from(resolved.bytes), resolved.contentType, maxWidth);
     }
     const filePath = path.join(
       process.cwd(),
@@ -42,15 +67,15 @@ async function ogResultToDataUrl(
       resolved.path.replace(/^\//, ""),
     );
     const bytes = await readFile(filePath);
-    return `data:${resolved.contentType};base64,${bytes.toString("base64")}`;
+    return inlineImage(bytes, resolved.contentType, maxWidth);
   } catch {
     return null;
   }
 }
 
 /** Resolve the hero image to an inline data URL (storage bytes or a public asset). */
-async function heroDataUrl(id: string): Promise<string | null> {
-  return ogResultToDataUrl(await resolveReportOgImage(id));
+async function heroDataUrl(id: string, maxWidth?: number): Promise<string | null> {
+  return ogResultToDataUrl(await resolveReportOgImage(id), maxWidth);
 }
 
 /**
@@ -59,6 +84,7 @@ async function heroDataUrl(id: string): Promise<string | null> {
  */
 export async function getReportShareCard(
   id: string,
+  opts?: { heroWidth?: number },
 ): Promise<ShareCardData | null> {
   const view = await getReportViewForDownload(id).catch(() => null);
   if (!view || !view.isPublic) return null;
@@ -90,7 +116,7 @@ export async function getReportShareCard(
     contrast: `${cap(profile.physical.contrast)} contrast`,
     archetype,
     palette,
-    heroDataUrl: await heroDataUrl(id),
+    heroDataUrl: await heroDataUrl(id, opts?.heroWidth),
   };
 }
 

@@ -6,6 +6,23 @@ import {
   refreshCatalogWorkflow,
   type FeedJob,
 } from "@/workflows/refresh-catalog";
+import { hasSupabaseAdmin } from "@/lib/env";
+import { createAdminSupabase } from "@/lib/supabase/server";
+
+/**
+ * Garbage-collect expired rate-limit counters (A0). The atomic RPC self-heals
+ * counters, so this is housekeeping only — a day's grace keeps recent windows.
+ */
+async function gcRateLimits(): Promise<void> {
+  if (!hasSupabaseAdmin) return;
+  try {
+    const admin = createAdminSupabase();
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    await admin.from("rate_limits").delete().lt("window_end", cutoff);
+  } catch (err) {
+    console.error("[cron] rate_limits GC failed", err);
+  }
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +45,9 @@ export async function GET(request: Request) {
       { status: 503 },
     );
   }
+
+  // Housekeeping alongside the daily refresh — no extra cron infrastructure.
+  await gcRateLimits();
 
   const limit = process.env.CATALOG_REFRESH_LIMIT
     ? parseInt(process.env.CATALOG_REFRESH_LIMIT, 10)

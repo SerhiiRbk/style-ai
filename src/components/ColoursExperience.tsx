@@ -1,13 +1,99 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { ButtonLink } from "@/components/Button";
 import type { ColourAnalysisResult } from "@/lib/colour-palette";
 
-type Phase = "idle" | "analyzing" | "result" | "error";
+type Phase = "idle" | "analyzing" | "result" | "error" | "capped" | "gate";
 
 const MAX_EDGE = 768;
+
+/** Stable anonymous id for soft per-visitor limits + funnel stitching (A0/A1). */
+function getAnonId(): string {
+  try {
+    const KEY = "valetti_anon";
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(KEY, id);
+    }
+    return id;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Soft email capture — shown after a result ("email my palette") and behind the
+ * A0 daily-cap lead magnet. Stores a lead; the email itself is A3.
+ */
+function LeadForm({
+  source,
+  subseason,
+}: {
+  source: "colours_result" | "colours_cap";
+  subseason?: string;
+}) {
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState<"idle" | "sending" | "done" | "error">(
+    "idle",
+  );
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (state === "sending" || state === "done") return;
+    setState("sending");
+    setErr(null);
+    try {
+      const res = await fetch("/api/colours/lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, source, subseason, anonId: getAnonId() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Something went wrong");
+      setState("done");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Something went wrong");
+      setState("error");
+    }
+  }
+
+  if (state === "done") {
+    return (
+      <p className="text-sm text-stone">
+        Thanks — we&apos;ll send your palette to{" "}
+        <span className="text-ink">{email}</span> shortly.
+      </p>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex w-full max-w-sm flex-col gap-2 sm:flex-row"
+    >
+      <input
+        type="email"
+        required
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="you@email.com"
+        className="min-w-0 flex-1 rounded-full border border-ink/25 bg-paper px-4 py-2.5 text-sm text-ink outline-none placeholder:text-stone-soft focus:border-ink"
+      />
+      <button
+        type="submit"
+        disabled={state === "sending"}
+        className="inline-flex items-center justify-center rounded-full bg-ink px-5 py-2.5 text-sm text-paper transition-colors hover:bg-ink/90 disabled:opacity-60"
+      >
+        {state === "sending" ? "Sending…" : "Email my palette"}
+      </button>
+      {err && <p className="text-sm text-red-700 sm:hidden">{err}</p>}
+    </form>
+  );
+}
 
 /** Downscale + re-encode client-side so uploads stay small and EXIF-rotated. */
 async function toDataUrl(file: File): Promise<string> {
@@ -32,6 +118,7 @@ export function ColoursExperience() {
   const [preview, setPreview] = useState<string | null>(null);
   const [result, setResult] = useState<ColourAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [shared, setShared] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -52,10 +139,26 @@ export function ColoursExperience() {
       const res = await fetch("/api/colours", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: dataUrl }),
+        body: JSON.stringify({ image: dataUrl, anonId: getAnonId() }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Analysis failed");
+      // Daily cap reached (A0): capture the visitor instead of losing them.
+      if (data.capped) {
+        setNotice(
+          data.message ?? "We're at capacity for free readings today.",
+        );
+        setPhase("capped");
+        return;
+      }
+      // Per-visitor soft gate: their palette is saved, nudge sign-up.
+      if (data.softGate) {
+        setNotice(
+          data.message ?? "You've used your free readings for today.",
+        );
+        setPhase("gate");
+        return;
+      }
       setResult(data.result as ColourAnalysisResult);
       setPhase("result");
     } catch (e) {
@@ -69,6 +172,7 @@ export function ColoursExperience() {
     setPreview(null);
     setResult(null);
     setError(null);
+    setNotice(null);
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -147,6 +251,37 @@ export function ColoursExperience() {
           <p className="mt-4 font-display text-lg italic text-stone">
             Carlo is reading your colouring…
           </p>
+        </div>
+      )}
+
+      {phase === "capped" && (
+        <div className="rounded-2xl border hairline bg-paper p-6 text-center sm:p-10">
+          <h2 className="font-display text-2xl text-ink">
+            We&apos;re at capacity today
+          </h2>
+          <p className="mx-auto mt-3 max-w-md text-sm text-stone">{notice}</p>
+          <div className="mt-6 flex justify-center">
+            <LeadForm source="colours_cap" />
+          </div>
+          <button
+            type="button"
+            onClick={reset}
+            className="mt-6 text-sm text-stone underline transition-colors hover:text-ink"
+          >
+            Try again later
+          </button>
+        </div>
+      )}
+
+      {phase === "gate" && (
+        <div className="rounded-2xl border hairline bg-paper p-6 text-center sm:p-10">
+          <h2 className="font-display text-2xl text-ink">
+            Your palette is saved
+          </h2>
+          <p className="mx-auto mt-3 max-w-md text-sm text-stone">{notice}</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <ButtonLink href="/start">Create a free account →</ButtonLink>
+          </div>
         </div>
       )}
 
@@ -252,6 +387,37 @@ export function ColoursExperience() {
               >
                 Try another photo
               </button>
+            </div>
+
+            <div className="mt-6">
+              <p className="text-xs uppercase tracking-wide text-stone-soft">
+                Save for social
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <a
+                  href={`/api/og/colours/${result.subseason}?format=story&u=${result.undertone}&c=${result.contrast}`}
+                  download={`valetti-colours-${result.subseason}-story.jpg`}
+                  className="rounded-full border border-ink/25 px-4 py-2 text-sm text-ink transition-colors hover:border-ink"
+                >
+                  Stories · 9:16
+                </a>
+                <a
+                  href={`/api/og/colours/${result.subseason}?format=pin&u=${result.undertone}&c=${result.contrast}`}
+                  download={`valetti-colours-${result.subseason}-pin.jpg`}
+                  className="rounded-full border border-ink/25 px-4 py-2 text-sm text-ink transition-colors hover:border-ink"
+                >
+                  Pinterest · 2:3
+                </a>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-xl border hairline bg-cream/40 p-4 sm:p-5">
+              <p className="text-sm text-ink">
+                Want your palette as a PDF? We&apos;ll email it.
+              </p>
+              <div className="mt-3">
+                <LeadForm source="colours_result" subseason={result.subseason} />
+              </div>
             </div>
 
             <p className="mt-6 text-xs text-stone-soft">
