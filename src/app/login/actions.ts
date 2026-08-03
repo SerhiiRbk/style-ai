@@ -10,6 +10,7 @@ import {
   applyWelcomeCredits,
   PENDING_PROMO_COOKIE,
 } from "@/lib/welcome-credits";
+import { linkAnonToUser } from "@/lib/events";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 
 /** Only allow same-origin relative paths (blocks open redirects). */
@@ -36,6 +37,13 @@ export async function signIn(formData: FormData) {
   if (data.user && hasSupabaseAdmin) {
     const admin = createAdminSupabase();
     const cookieStore = await cookies();
+
+    // Stitch the anonymous funnel to this account on return sign-in (§5.2 п.7).
+    await linkAnonToUser(
+      data.user.id,
+      cookieStore.get("valetti_anon")?.value ?? null,
+    );
+
     const pendingPromo = cookieStore.get(PENDING_PROMO_COOKIE)?.value ?? null;
     if (pendingPromo) {
       cookieStore.delete(PENDING_PROMO_COOKIE);

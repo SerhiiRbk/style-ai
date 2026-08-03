@@ -152,11 +152,20 @@ function ColourQuiz({
 function getAnonId(): string {
   try {
     const KEY = "valetti_anon";
+    // Prefer the server-set cookie (proxy bootstrap) so client + server agree —
+    // that shared id is what lets registration stitch the anon funnel (§5.2 п.7).
+    const cookie = document.cookie.match(/(?:^|;\s*)valetti_anon=([^;]+)/);
+    if (cookie) {
+      const id = decodeURIComponent(cookie[1]);
+      localStorage.setItem(KEY, id);
+      return id;
+    }
     let id = localStorage.getItem(KEY);
     if (!id) {
       id = crypto.randomUUID();
       localStorage.setItem(KEY, id);
     }
+    document.cookie = `valetti_anon=${id}; path=/; max-age=31536000; samesite=lax`;
     return id;
   } catch {
     return "";

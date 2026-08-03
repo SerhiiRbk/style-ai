@@ -32,3 +32,28 @@ export async function logEvent(event: EventInput): Promise<void> {
     console.error("[events] log failed", event.name, err);
   }
 }
+
+/**
+ * Stitch an anonymous visitor to their new account at registration/first auth
+ * (§5.2 п.7). Emits an `identify` bridge row and backfills the visitor's prior
+ * anonymous events with the user id, so "anon viewed → registered → bought"
+ * joins into one funnel. Best-effort — never blocks the auth flow.
+ */
+export async function linkAnonToUser(
+  userId: string,
+  anonId: string | null,
+): Promise<void> {
+  if (!hasSupabaseAdmin) return;
+  await logEvent({ name: "identify", anonId, userId });
+  if (!anonId) return;
+  try {
+    const admin = createAdminSupabase();
+    await admin
+      .from("events")
+      .update({ user_id: userId })
+      .eq("anon_id", anonId)
+      .is("user_id", null);
+  } catch (err) {
+    console.error("[events] anon link failed", err);
+  }
+}
