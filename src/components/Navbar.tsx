@@ -21,7 +21,7 @@ const primaryLinks: NavLink[] = [
 // "Colours" is anon-only (hidden once signed in — logged-in users reach it via
 // Account → "My Colours"), so it lives here rather than in `primaryLinks`.
 const secondaryLinks: NavLink[] = [
-  { href: "/report/valetti-style-prospect-demo", label: "View example", hideWhenAuthed: true },
+  { href: "/report/valetti-style-prospect-demo", label: "Demo", hideWhenAuthed: true },
   ...(COLOURS_ENABLED
     ? [{ href: "/colours", label: "Colours", hideWhenAuthed: true } as NavLink]
     : []),

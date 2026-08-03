@@ -136,7 +136,7 @@ export function NavDesktopAuthLinks() {
           href="/report/valetti-style-prospect-demo"
           className={`${navLinkClass} hidden 2xl:inline-flex`}
         >
-          View example
+          Demo
         </Link>
       )}
       {authed && (
