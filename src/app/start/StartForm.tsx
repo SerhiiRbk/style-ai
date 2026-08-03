@@ -173,6 +173,12 @@ export function StartForm({
   const [draftReady, setDraftReady] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [quotaWarn, setQuotaWarn] = useState(false);
+  // A just-registered user whose drafted tier costs more than their balance:
+  // we drop them back on the Package step (photos still staged) and hold them
+  // there until they top up or switch to the Starter Report (§5.4 cond.4).
+  const [resumedDraft, setResumedDraft] = useState(false);
+  // "Draft mode" = photos are staged on-device (IndexedDB), not yet uploaded.
+  const draftMode = isAnon || resumedDraft;
 
   // Previously-uploaded photos the user can reuse instead of re-uploading,
   // grouped BY ROLE so a full-length is never offered for the face slot (or vice
@@ -315,8 +321,12 @@ export function StartForm({
     set(arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]);
   };
 
-  const hasRequiredPhotos = isAnon
-    ? stagedRoles.includes("face") && stagedRoles.includes("full")
+  // In draft mode a role counts as present if staged on-device OR reused from a
+  // prior report (a returning user who resumed a draft can mix the two).
+  const roleReady = (role: string) =>
+    stagedRoles.includes(role) || photoPaths.some((p) => p.role === role);
+  const hasRequiredPhotos = draftMode
+    ? roleReady("face") && roleReady("full")
     : LIVE
       ? photoPaths.some((p) => p.role === "face") &&
         photoPaths.some((p) => p.role === "full")
@@ -570,36 +580,46 @@ export function StartForm({
     router.push("/login");
   }
 
-  /**
-   * After registration: upload the staged photos under the now-authenticated
-   * session, then post the report from the saved draft. Credits are spent only
-   * here, once, keyed by the draft's reportId.
-   */
-  async function resume(draft: DraftAnswers) {
-    setShowWelcome(false);
+  /** Upload every staged (on-device) photo under the authenticated session. */
+  async function uploadStagedPhotos(): Promise<{ role: string; path: string }[]> {
+    const staged = await loadPhotoBlobs();
+    const paths: { role: string; path: string }[] = [];
+    if (supabase && userId) {
+      if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID();
+      for (const p of staged) {
+        const ext = p.name.split(".").pop() || "jpg";
+        const path = `${userId}/${sessionIdRef.current}/${p.role}.${ext}`;
+        const file = new File([p.blob], p.name, { type: p.type });
+        const { error: upErr } = await supabase.storage
+          .from("photos")
+          .upload(path, file, { upsert: true, contentType: p.type });
+        if (!upErr) paths.push({ role: p.role, path });
+      }
+    }
+    // Fold in any reused (already-in-Storage) photos for roles not staged.
+    const roles = new Set(paths.map((p) => p.role));
+    for (const pp of photoPaths) if (!roles.has(pp.role)) paths.push(pp);
+    return paths;
+  }
+
+  /** Upload staged photos, then post the report. Credits are spent once here. */
+  async function runStagedGenerate(args: {
+    intake: ReturnType<typeof buildIntake>;
+    tier: string;
+    reportId: string;
+    biometricConsent: boolean;
+    saveAsDefault: boolean;
+  }) {
     setResuming(true);
     try {
-      const staged = await loadPhotoBlobs();
-      const paths: { role: string; path: string }[] = [];
-      if (supabase && userId) {
-        if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID();
-        for (const p of staged) {
-          const ext = p.name.split(".").pop() || "jpg";
-          const path = `${userId}/${sessionIdRef.current}/${p.role}.${ext}`;
-          const file = new File([p.blob], p.name, { type: p.type });
-          const { error: upErr } = await supabase.storage
-            .from("photos")
-            .upload(path, file, { upsert: true, contentType: p.type });
-          if (!upErr) paths.push({ role: p.role, path });
-        }
-      }
+      const paths = await uploadStagedPhotos();
       await postReport({
-        intake: buildIntake(draft),
-        tier: draft.tier,
+        intake: args.intake,
+        tier: args.tier,
         photoPaths: paths,
-        biometricConsent: draft.biometricConsent,
-        reportId: draft.reportId,
-        saveAsDefault: false,
+        biometricConsent: args.biometricConsent,
+        reportId: args.reportId,
+        saveAsDefault: args.saveAsDefault,
       });
     } catch (e) {
       setResuming(false);
@@ -607,47 +627,106 @@ export function StartForm({
     }
   }
 
-  // Hydrate the wizard from a saved draft (draft wins over profile — §5.4 cond.5).
+  /** After registration with enough credits: generate straight from the draft. */
+  async function resume(draft: DraftAnswers) {
+    setShowWelcome(false);
+    await runStagedGenerate({
+      intake: buildIntake(draft),
+      tier: draft.tier,
+      reportId: draft.reportId,
+      biometricConsent: draft.biometricConsent,
+      saveAsDefault: false,
+    });
+  }
+
+  /** Generate for a logged-in user still holding on-device (staged) photos. */
+  async function generateFromStaged() {
+    const rid = reportId || crypto.randomUUID();
+    if (!reportId) setReportId(rid);
+    await runStagedGenerate({
+      intake: buildIntake({
+        age,
+        gender,
+        city,
+        country,
+        language,
+        currency,
+        height,
+        weight,
+        bodyType: effectiveBodyType || "",
+        bodyTypeManual: true,
+        hairColor,
+        eyeColor,
+        shoulderCm,
+        chestCm,
+        waistCm,
+        hipCm,
+        sleeveCm,
+        occupation,
+        lifestyle,
+        goals,
+        boldness,
+        budget,
+      }),
+      tier,
+      reportId: rid,
+      biometricConsent,
+      saveAsDefault: saveDefaults,
+    });
+  }
+
+  // Copy a saved draft into the live form (draft wins over profile — §5.4 cond.5).
+  function applyDraftToForm(d: DraftAnswers) {
+    setStep(d.step ?? 0);
+    setAge(d.age);
+    setGender(d.gender);
+    setCity(d.city);
+    setCountry(d.country);
+    setCurrency(d.currency as Currency);
+    setLanguage(d.language as ReportLanguage);
+    setHeight(d.height);
+    setWeight(d.weight);
+    setBodyType((d.bodyType as BodyTypeId) || "");
+    setBodyTypeManual(d.bodyTypeManual);
+    setHairColor((d.hairColor as HairColorId) || "");
+    setEyeColor((d.eyeColor as EyeColorId) || "");
+    setShoulderCm(d.shoulderCm);
+    setChestCm(d.chestCm);
+    setWaistCm(d.waistCm);
+    setHipCm(d.hipCm);
+    setSleeveCm(d.sleeveCm);
+    setOccupation(d.occupation);
+    setLifestyle(d.lifestyle);
+    setGoals(d.goals);
+    setBoldness(d.boldness);
+    setBudget(d.budget);
+    setTier(d.tier as Tier);
+    setBiometricConsent(d.biometricConsent);
+    setReportId(d.reportId || crypto.randomUUID());
+    void loadPhotoBlobs().then((ps) => {
+      setStagedRoles(ps.map((p) => p.role));
+      setStagedPreviews(
+        Object.fromEntries(ps.map((p) => [p.role, URL.createObjectURL(p.blob)])),
+      );
+    });
+  }
+
   function hydrateDraft() {
     if (!isAnon) return;
     const d = loadDraftAnswers();
-    if (d) {
-      setStep(d.step ?? 0);
-      setAge(d.age);
-      setGender(d.gender);
-      setCity(d.city);
-      setCountry(d.country);
-      setCurrency(d.currency as Currency);
-      setLanguage(d.language as ReportLanguage);
-      setHeight(d.height);
-      setWeight(d.weight);
-      setBodyType((d.bodyType as BodyTypeId) || "");
-      setBodyTypeManual(d.bodyTypeManual);
-      setHairColor((d.hairColor as HairColorId) || "");
-      setEyeColor((d.eyeColor as EyeColorId) || "");
-      setShoulderCm(d.shoulderCm);
-      setChestCm(d.chestCm);
-      setWaistCm(d.waistCm);
-      setHipCm(d.hipCm);
-      setSleeveCm(d.sleeveCm);
-      setOccupation(d.occupation);
-      setLifestyle(d.lifestyle);
-      setGoals(d.goals);
-      setBoldness(d.boldness);
-      setBudget(d.budget);
-      setTier(d.tier as Tier);
-      setBiometricConsent(d.biometricConsent);
-      setReportId(d.reportId || crypto.randomUUID());
-      void loadPhotoBlobs().then((ps) => {
-        setStagedRoles(ps.map((p) => p.role));
-        setStagedPreviews(
-          Object.fromEntries(ps.map((p) => [p.role, URL.createObjectURL(p.blob)])),
-        );
-      });
-    } else {
-      setReportId(crypto.randomUUID());
-    }
+    if (d) applyDraftToForm(d);
+    else setReportId(crypto.randomUUID());
     setDraftReady(true);
+  }
+
+  // Hold a just-registered user on the Package step until they can afford their
+  // drafted tier (top up) or switch to the Starter Report (§5.4 cond.4).
+  function enterTopUpMode(d: DraftAnswers) {
+    applyDraftToForm(d);
+    setResumedDraft(true);
+    setDraftReady(true);
+    setShowWelcome(false);
+    setStep(3);
   }
 
   useEffect(() => {
@@ -656,13 +735,13 @@ export function StartForm({
     hydrateDraft();
   }, []);
 
-  // Persist answers as they change, once hydration is done (anon only).
+  // Persist answers as they change, once hydration is done (draft mode only).
   useEffect(() => {
-    if (!isAnon || !draftReady || !reportId) return;
+    if (!draftMode || !draftReady || !reportId) return;
     saveDraftAnswers(currentDraft(reportId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    isAnon,
+    draftMode,
     draftReady,
     reportId,
     step,
@@ -692,7 +771,8 @@ export function StartForm({
     biometricConsent,
   ]);
 
-  // After registration, resume a pending draft: upload photos, then generate.
+  // After registration, resume a pending draft. Enough credits → generate now;
+  // otherwise land on the Package step and hold for a top-up / tier switch.
   useEffect(() => {
     if (!LIVE || !userId || !isDraftPending()) return;
     const d = loadDraftAnswers();
@@ -700,8 +780,14 @@ export function StartForm({
       clearDraftPending();
       return;
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
-    void resume(d);
+    const cost = REPORT_COST[(d.tier as Tier)] ?? 0;
+    if (knownBalance == null || knownBalance >= cost) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+      void resume(d);
+    } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+      enterTopUpMode(d);
+    }
   }, [userId]);
 
   function beginReport() {
@@ -886,14 +972,14 @@ export function StartForm({
                         label={label}
                         desc={desc}
                         filled={
-                          isAnon
-                            ? stagedRoles.includes(role)
+                          draftMode
+                            ? roleReady(role)
                             : photoPaths.some((p) => p.role === role)
                         }
                         uploading={uploadingRole === role}
-                        preview={isAnon ? stagedPreviews[role] : undefined}
+                        preview={draftMode ? stagedPreviews[role] : undefined}
                         onFile={(file) =>
-                          isAnon
+                          draftMode
                             ? stagePhoto(role, file)
                             : uploadPhoto(role, file)
                         }
@@ -1129,9 +1215,11 @@ export function StartForm({
               eyebrow="Step 4"
               title="Choose your package"
               subtitle={
-                isAnon
-                  ? `You'll create a free account to generate — it takes a moment and comes with ${SIGNUP_BONUS} credits. Nothing is charged until your report is generated.`
-                  : "New accounts get signup credits; the Starter Report uses credits like paid tiers."
+                resumedDraft
+                  ? "Almost there — your photos and answers are saved. Top up to generate this package, or switch to the Starter Report to begin right away."
+                  : isAnon
+                    ? `You'll create a free account to generate — it takes a moment and comes with ${SIGNUP_BONUS} credits. Nothing is charged until your report is generated.`
+                    : "New accounts get signup credits; the Starter Report uses credits like paid tiers."
               }
             >
               {effectiveBalance != null && (
@@ -1192,12 +1280,22 @@ export function StartForm({
               </p>
               {insufficientCredits && (
                 <p className="mt-4 rounded-xl border border-[#9E5C3C]/30 bg-[#9E5C3C]/5 px-5 py-3 text-sm text-[#9E5C3C]">
-                  {isAnon ? (
+                  {resumedDraft ? (
                     <>
-                      A new account comes with {effectiveBalance}{" "}
-                      {effectiveBalance === 1 ? "credit" : "credits"} — this
-                      package needs {reportCost}. Pick the Starter Report to begin
-                      now, then top up any time for larger packages.
+                      This package needs {reportCost} credits and you have{" "}
+                      {effectiveBalance}.{" "}
+                      <Link href="/pricing" className="underline hover:text-ink">
+                        Top up your credits
+                      </Link>{" "}
+                      to generate it, or choose the Starter Report above to begin
+                      now.
+                    </>
+                  ) : isAnon ? (
+                    <>
+                      Heads up: this package needs {reportCost} credits and a new
+                      account comes with {effectiveBalance}. You can continue and
+                      create your account now — then top up to generate, or pick
+                      the Starter Report to begin right away.
                     </>
                   ) : (
                     <>
@@ -1259,8 +1357,16 @@ export function StartForm({
             </button>
           ) : (
             <button
-              onClick={isAnon ? onAnonGenerate : submit}
-              disabled={submitting || insufficientCredits}
+              onClick={
+                isAnon
+                  ? onAnonGenerate
+                  : resumedDraft
+                    ? generateFromStaged
+                    : submit
+              }
+              // Anon may proceed even when over budget (they register, then top
+              // up). Logged-in users are still blocked until they can afford it.
+              disabled={submitting || (!isAnon && insufficientCredits)}
               className="rounded-full bg-ink px-7 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-50"
             >
               {submitting ? (
