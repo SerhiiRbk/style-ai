@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ButtonLink } from "@/components/Button";
 import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 import { formatOfferPrice } from "@/lib/currency";
@@ -84,6 +84,60 @@ function trackEvent(name: string, props?: Record<string, unknown>) {
     }
   } catch {
     /* analytics must never break the UI */
+  }
+}
+
+// --- Local session persistence: survive a page refresh ----------------------
+// Keep the palette, the uploaded photo preview and the matched products on the
+// device so a reload shows exactly what the visitor saw. Best-effort: quota /
+// private-mode failures degrade silently. Cleared by "Clear" / "Try another".
+const COLOURS_SESSION_KEY = "valetti_colours_session";
+const COLOURS_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+type ColoursSession = {
+  result: ColourAnalysisResult;
+  preview: string | null;
+  recs: RecSlot[] | null;
+  occasion: string;
+  budgetId: string;
+  fetchedKey: string | null;
+  preliminary: boolean;
+  source: "photo" | "quiz";
+  savedAt: number;
+};
+
+function loadColoursSession(): ColoursSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(COLOURS_SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as ColoursSession;
+    if (!s?.result || typeof s.savedAt !== "number") return null;
+    if (Date.now() - s.savedAt > COLOURS_SESSION_TTL_MS) {
+      localStorage.removeItem(COLOURS_SESSION_KEY);
+      return null;
+    }
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+function saveColoursSession(s: ColoursSession): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(COLOURS_SESSION_KEY, JSON.stringify(s));
+  } catch {
+    // Quota (large preview dataURL) or private mode — persistence is optional.
+  }
+}
+
+function clearColoursSession(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(COLOURS_SESSION_KEY);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -403,6 +457,7 @@ export function ColoursExperience() {
   }
 
   function reset() {
+    clearColoursSession();
     setPhase("idle");
     setPreview(null);
     setResult(null);
@@ -418,6 +473,51 @@ export function ColoursExperience() {
     recsSource.current = "photo";
     if (inputRef.current) inputRef.current.value = "";
   }
+
+  /** Clear everything (incl. local storage) and open the file picker to re-upload. */
+  function tryAnotherPhoto() {
+    reset();
+    setTimeout(() => inputRef.current?.click(), 0);
+  }
+
+  /** Restore a persisted session so a page refresh shows the same result. */
+  function applySession(s: ColoursSession) {
+    setResult(s.result);
+    setPreview(s.preview ?? null);
+    setRecs(s.recs ?? null);
+    setRecsNotice(null);
+    setOccasion(s.occasion ?? DEFAULT_OCCASION);
+    setBudgetId(s.budgetId ?? DEFAULT_BUDGET);
+    setFetchedKey(s.fetchedKey ?? null);
+    setPreliminary(Boolean(s.preliminary));
+    recsSource.current = s.source === "quiz" ? "quiz" : "photo";
+    setPhase("result");
+  }
+
+  // Rehydrate a saved session on mount (survives refresh).
+  useEffect(() => {
+    const s = loadColoursSession();
+    if (!s) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+    applySession(s);
+  }, []);
+
+  // Persist the current result + photo + matches whenever they change.
+  useEffect(() => {
+    if (phase !== "result" || !result) return;
+    saveColoursSession({
+      result,
+      preview,
+      recs,
+      occasion,
+      budgetId,
+      fetchedKey,
+      preliminary,
+      source: recsSource.current,
+      savedAt: Date.now(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, result, preview, recs, occasion, budgetId, fetchedKey, preliminary]);
 
   async function share() {
     if (!result) return;
@@ -831,10 +931,17 @@ export function ColoursExperience() {
               </button>
               <button
                 type="button"
+                onClick={tryAnotherPhoto}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-ink/25 px-7 py-3 text-sm tracking-wide text-ink transition-all hover:border-ink hover:bg-ink hover:text-paper"
+              >
+                Try another photo
+              </button>
+              <button
+                type="button"
                 onClick={reset}
                 className="text-sm text-stone underline transition-colors hover:text-ink"
               >
-                Try another photo
+                Clear
               </button>
             </div>
 

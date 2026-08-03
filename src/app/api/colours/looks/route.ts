@@ -15,9 +15,19 @@ import {
 } from "@/lib/colours-looks";
 import { checkLimit } from "@/lib/rate-limit";
 import { logEvent } from "@/lib/events";
+import { createAdminSupabase } from "@/lib/supabase/server";
 
 /** Vector search + rerank over several slots can exceed the default timeout. */
 export const maxDuration = 60;
+
+/** Bump when the matcher/garment/profile logic changes so cached looks recompute. */
+const LOOKS_CACHE_VERSION = "1";
+/** Cached looks are catalogue-dependent, so expire them daily. */
+const LOOKS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function looksCachePath(hash: string): string {
+  return `looks/cache/${LOOKS_CACHE_VERSION}/${hash}.json`;
+}
 
 function clientIp(request: Request): string {
   const fwd = request.headers.get("x-forwarded-for");
@@ -59,6 +69,64 @@ export async function POST(request: Request) {
   const source = body?.source === "quiz" ? "quiz" : "photo";
   const anonId =
     typeof body?.anonId === "string" && body.anonId ? body.anonId : null;
+
+  const geo = await getGeo();
+
+  // Level 0 — result cache. Recommendations are deterministic for a given
+  // (palette, occasion, budget, boldness, market), so a cache hit skips BOTH the
+  // caps and the paid rerank. Keyed on the same inputs buildAnonProfile + the
+  // matcher read; bump LOOKS_CACHE_VERSION when that logic changes.
+  const admin = createAdminSupabase();
+  const cacheHash = createHash("sha256")
+    .update(
+      [
+        subseason,
+        occasion,
+        budgetId,
+        boldness,
+        (geo.country ?? "Global").toLowerCase(),
+        (geo.currency ?? "EUR").toLowerCase(),
+      ].join("|"),
+    )
+    .digest("hex")
+    .slice(0, 32);
+  try {
+    const { data: blob } = await admin.storage
+      .from("assets")
+      .download(looksCachePath(cacheHash));
+    if (blob) {
+      const cached = JSON.parse(await blob.text()) as {
+        slots: unknown[];
+        savedAt: number;
+      };
+      if (
+        cached?.savedAt &&
+        Date.now() - cached.savedAt < LOOKS_CACHE_TTL_MS &&
+        Array.isArray(cached.slots)
+      ) {
+        await logEvent({
+          name: source === "quiz" ? "quiz_result" : "colours_result",
+          anonId,
+          props: {
+            occasion,
+            budgetId,
+            slots: cached.slots.length,
+            source,
+            cached: true,
+          },
+        });
+        return NextResponse.json({
+          ok: true,
+          slots: cached.slots,
+          occasion,
+          budgetId,
+          cached: true,
+        });
+      }
+    }
+  } catch {
+    // Cache miss / corrupt entry — fall through, recompute, and re-cache.
+  }
 
   // A0 cost fuse — each run is one paid LLM rerank. Cheap/global checks first:
   // global daily cap (fail CLOSED) → per-IP hourly (fail open) → per-anon daily.
@@ -141,7 +209,6 @@ export async function POST(request: Request) {
     }
   }
 
-  const geo = await getGeo();
   const profile = buildAnonProfile(subseason, geo, boldness);
   const palette = paletteForSubseason(subseason);
   const garments = buildAnonLookGarments(palette, occasion);
@@ -159,6 +226,19 @@ export async function POST(request: Request) {
       budget,
     )
   ).filter((s) => s.candidates.length > 0);
+
+  // Cache the result (best-effort) so identical filters are free next time.
+  try {
+    await admin.storage
+      .from("assets")
+      .upload(
+        looksCachePath(cacheHash),
+        JSON.stringify({ slots, savedAt: Date.now() }),
+        { contentType: "application/json", upsert: true },
+      );
+  } catch {
+    // Caching is best-effort — never fail the request over it.
+  }
 
   // The path event — `quiz_result` vs `colours_result` — so the two entries can
   // be told apart in the funnel (§5.2 п.9). Fires even with zero slots: the
