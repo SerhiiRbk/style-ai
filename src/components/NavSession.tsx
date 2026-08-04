@@ -7,6 +7,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -23,6 +24,17 @@ type NavSessionValue = {
 
 const LIVE = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
+// Last-known session, cached so a returning visitor's nav paints in its final
+// (signed-in or anon) shape on first render instead of flipping once /api/nav
+// resolves. Reconciled by the live fetch on every mount.
+const NAV_CACHE_KEY = "valetti_nav";
+
+// useLayoutEffect runs before the browser paints, so applying the cache there
+// (rather than in useEffect) removes the visible flash. Fall back to useEffect
+// on the server to avoid the SSR warning.
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 const NavSessionContext = createContext<NavSessionValue | null>(null);
 
 type NavPayload = {
@@ -30,6 +42,25 @@ type NavPayload = {
   isAdmin?: boolean;
   balance?: number | null;
 };
+
+function readNavCache(): NavPayload | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(NAV_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as NavPayload) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeNavCache(p: NavPayload): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(NAV_CACHE_KEY, JSON.stringify(p));
+  } catch {
+    /* private mode / quota — the cache is an optimisation, not required */
+  }
+}
 
 async function fetchNavSession(): Promise<NavPayload | null> {
   const res = await fetch("/api/nav", { cache: "no-store" });
@@ -60,11 +91,27 @@ export function NavSessionProvider({ children }: { children: ReactNode }) {
       setReady(true);
       return;
     }
-    setAuthed(Boolean(data.authed));
-    setIsAdmin(Boolean(data.isAdmin));
-    setBalanceState(typeof data.balance === "number" ? data.balance : null);
+    const next: NavPayload = {
+      authed: Boolean(data.authed),
+      isAdmin: Boolean(data.isAdmin),
+      balance: typeof data.balance === "number" ? data.balance : null,
+    };
+    setAuthed(next.authed!);
+    setIsAdmin(next.isAdmin!);
+    setBalanceState(next.balance ?? null);
     setReady(true);
+    writeNavCache(next);
   }, []);
+
+  // Paint the last-known session synchronously (before first paint) so the nav
+  // renders in its final shape immediately, avoiding the anon→signed-in flip.
+  useIsomorphicLayoutEffect(() => {
+    if (!LIVE) return;
+    const cached = readNavCache();
+    if (!cached) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    applyPayload(cached);
+  }, [applyPayload]);
 
   useEffect(() => {
     if (!LIVE) return;

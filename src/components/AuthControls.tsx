@@ -1,29 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useNavSession } from "./NavSession";
 
 const LIVE = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
 export function AuthControls({ className }: { className?: string }) {
   const router = useRouter();
-  const [email, setEmail] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (!LIVE) return;
-    const sb = createClient();
-    sb.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? null);
-      setReady(true);
-    });
-  }, []);
+  // Drive off the shared nav session so this button appears in sync with the
+  // rest of the nav (including the optimistic cache) instead of resolving its
+  // own auth call on a different clock — which caused the "renders in parts" jump.
+  const { authed, ready } = useNavSession();
 
   if (!LIVE || !ready) return null;
 
-  if (email) {
+  if (authed) {
     return (
       <button
         onClick={async () => {
