@@ -9,6 +9,12 @@ function envFlag(raw: string | undefined): boolean {
   return raw === "true" || raw === "1" || raw === "yes";
 }
 
+function intEnv(raw: string | undefined, fallback: number): number {
+  if (raw == null || raw === "") return fallback;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export const env = {
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -69,6 +75,44 @@ export const env = {
   /** Optional: pre-select a pay currency (e.g. "usdcbase"); else the hosted page lets the buyer choose. */
   nowPaymentsPayCurrency: process.env.NOWPAYMENTS_PAY_CURRENCY,
 
+  // A0 cost fuse for the free colour-analysis endpoint.
+  // Global daily cap on paid vision runs; reaching it returns a lead-magnet
+  // response, not an error. At ~€0.04/run, 2500 ≈ €100/day.
+  coloursDailyCap: intEnv(process.env.COLOURS_DAILY_CAP, 2500),
+  // Generous per-IP hourly limit — carrier NAT puts many real users behind one IP.
+  coloursIpHourlyCap: intEnv(process.env.COLOURS_IP_HOURLY_CAP, 25),
+  // Polite per-anon daily limit — a soft-gate trigger, not a spend defence.
+  coloursAnonDailyCap: intEnv(process.env.COLOURS_ANON_DAILY_CAP, 10),
+
+  // A0 cost fuse for the anonymous "Shop your colours" recommendations, whose
+  // cost is one LLM rerank per run (~$0.015). Same shape as the colours caps.
+  // Global daily cap — the real spend control, fails CLOSED. ~$0.015/run → 2000 ≈ $30/day.
+  looksDailyCap: intEnv(process.env.LOOKS_DAILY_CAP, 2000),
+  // Per-IP hourly limit — one rerank per button press; fails OPEN (comfort).
+  looksIpHourlyCap: intEnv(process.env.LOOKS_IP_HOURLY_CAP, 20),
+  // Per-anon daily limit — a soft nudge to register; fails OPEN.
+  looksAnonDailyCap: intEnv(process.env.LOOKS_ANON_DAILY_CAP, 25),
+
+  // Per-anon (per-browser) daily cap on palette/lead emails — anti-spam layer
+  // on top of the per-IP cap; fails OPEN. A person only needs their palette once.
+  leadAnonDailyCap: intEnv(process.env.LEAD_ANON_DAILY_CAP, 5),
+
+  // Salt for hashing IPs before they become rate-limit bucket keys (IP is PII).
+  rateLimitSalt: process.env.RATE_LIMIT_SALT ?? "",
+
+  // Transactional email (Resend). Inert unless RESEND_API_KEY is set (A3).
+  resendApiKey: process.env.RESEND_API_KEY,
+  // From-address on the Resend-verified sending domain. Reply-To routes human
+  // replies to the monitored inbox.
+  emailFrom: process.env.EMAIL_FROM ?? "Valetti <carlo@system.valetti.fit>",
+  emailReplyTo: process.env.EMAIL_REPLY_TO ?? "contact@valetti.fit",
+  // Secret for signing unsubscribe links (HMAC). Reminder mail is suppressed if
+  // absent, so a missing secret can't leak an unauthenticated unsubscribe.
+  emailUnsubscribeSecret: process.env.EMAIL_UNSUBSCRIBE_SECRET,
+  // Unused-credits reminder (A3 email #4) is paused: off unless explicitly
+  // enabled. Code is kept intact; the cron is also unscheduled in vercel.json.
+  creditRemindersEnabled: envFlag(process.env.CREDIT_REMINDERS_ENABLED),
+
   // Error tracking (Sentry). Inert unless a DSN is set — see instrumentation.ts.
   sentryDsn: process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN,
 
@@ -86,6 +130,7 @@ export const hasSupabaseAdmin = Boolean(
   env.supabaseUrl && env.supabaseServiceKey,
 );
 export const hasAI = Boolean(env.aiGatewayKey);
+export const hasResend = Boolean(env.resendApiKey);
 export const hasVTON = Boolean(env.falKey);
 export const hasCatalogImportKey = Boolean(env.catalogImportKey);
 export const hasSentry = Boolean(env.sentryDsn);

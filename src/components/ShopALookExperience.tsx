@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ITEM_BUDGET_BANDS } from "@/lib/budgets";
 import { formatOfferPrice } from "@/lib/currency";
 import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
@@ -80,6 +80,60 @@ async function toDataUrl(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.85);
 }
 
+// --- Local session persistence: survive a page refresh ----------------------
+// Keep the uploaded photo, the matched look, the chosen budget, the try-on
+// selection and any rendered try-on on the device so a reload shows exactly
+// what the shopper saw. Best-effort: quota / private-mode failures degrade
+// silently. Cleared by "Shop another look".
+const SHOP_SESSION_KEY = "valetti_shop_a_look_session";
+const SHOP_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+type ShopSession = {
+  preview: string | null;
+  result: Analysis;
+  budgetId: string;
+  selected: Record<number, string>;
+  tryUrl: string | null;
+  opinion: TryOnOpinion | null;
+  opinionNoProfile: boolean;
+  savedAt: number;
+};
+
+function loadShopSession(): ShopSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(SHOP_SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as ShopSession;
+    if (!s?.result || typeof s.savedAt !== "number") return null;
+    if (Date.now() - s.savedAt > SHOP_SESSION_TTL_MS) {
+      localStorage.removeItem(SHOP_SESSION_KEY);
+      return null;
+    }
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+function saveShopSession(s: ShopSession): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SHOP_SESSION_KEY, JSON.stringify(s));
+  } catch {
+    // Quota (large preview dataURL) or private mode — persistence is optional.
+  }
+}
+
+function clearShopSession(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(SHOP_SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function ShopALookExperience() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [preview, setPreview] = useState<string | null>(null);
@@ -104,6 +158,44 @@ export function ShopALookExperience() {
     "idle",
   );
   const [opinionNoProfile, setOpinionNoProfile] = useState(false);
+
+  /** Restore a persisted session so a page refresh shows the same result. */
+  function applySession(s: ShopSession) {
+    setPreview(s.preview ?? null);
+    setResult(s.result);
+    setBudgetId(s.budgetId ?? "any");
+    setSelected(s.selected ?? {});
+    setTryUrl(s.tryUrl ?? null);
+    setTryState(s.tryUrl ? "done" : "idle");
+    setOpinion(s.opinion ?? null);
+    setOpinionState(s.opinion ? "done" : "idle");
+    setOpinionNoProfile(Boolean(s.opinionNoProfile));
+    setPhase("result");
+  }
+
+  // Rehydrate a saved session on mount (survives refresh).
+  useEffect(() => {
+    const s = loadShopSession();
+    if (!s) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    applySession(s);
+  }, []);
+
+  // Persist the current photo + look + selection + try-on whenever they change.
+  useEffect(() => {
+    if (phase !== "result" || !result) return;
+    saveShopSession({
+      preview,
+      result,
+      budgetId,
+      selected,
+      tryUrl,
+      opinion,
+      opinionNoProfile,
+      savedAt: Date.now(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, result, preview, budgetId, selected, tryUrl, opinion, opinionNoProfile]);
 
   /** Pre-select the best match of each slot, capped at the try-on item limit. */
   function defaultSelection(slots: Slot[]): Record<number, string> {
@@ -263,6 +355,7 @@ export function ShopALookExperience() {
   }
 
   function reset() {
+    clearShopSession();
     setPhase("idle");
     setPreview(null);
     setResult(null);

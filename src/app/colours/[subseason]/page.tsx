@@ -5,6 +5,7 @@ import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { PaletteSwatches } from "@/components/PaletteSwatches";
 import { Subseason } from "@/lib/style-profile";
+import { COLOURS_ENABLED } from "@/lib/colours-feature";
 import {
   paletteForSubseason,
   subseasonLabel,
@@ -72,12 +73,9 @@ export default async function ColoursSharePage({
   params: Params;
   searchParams: Search;
 }) {
-  // PAUSED — the "colours" initiative is on hold, so this shared-palette route
-  // returns 404 while all page code below is kept intact. `as boolean` keeps the
-  // rest of the component reachable for type-checking; flip ENABLED to true (or
-  // delete this guard) to re-enable the route.
-  const ENABLED = false as boolean;
-  if (!ENABLED) notFound();
+  // Gated by the single `COLOURS_ENABLED` flag shared with `/colours` and the
+  // API route, so the whole initiative flips on/off in one place.
+  if (!COLOURS_ENABLED) notFound();
 
   const { subseason } = await params;
   const { u, c } = await searchParams;

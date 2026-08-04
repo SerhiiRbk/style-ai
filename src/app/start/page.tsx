@@ -1,6 +1,7 @@
-import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { countryNameFromCode } from "@/lib/countries";
 import { getCreditBalance } from "@/lib/credits";
+import { logEvent } from "@/lib/events";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { getGeoPrefill } from "@/lib/geo";
 import { applyWelcomeCredits } from "@/lib/welcome-credits";
@@ -25,18 +26,25 @@ export default async function StartPage({
     const {
       data: { user },
     } = await sb.auth.getUser();
-    if (!user) redirect("/login");
-    userId = user.id;
-    userEmail = user.email ?? null;
+    if (user) {
+      userId = user.id;
+      userEmail = user.email ?? null;
 
-    if (hasSupabaseAdmin) {
-      try {
-        await applyWelcomeCredits(createAdminSupabase(), userId);
-      } catch {
-        // Non-fatal — Navbar and /reports also attempt the grant.
+      if (hasSupabaseAdmin) {
+        try {
+          await applyWelcomeCredits(createAdminSupabase(), userId);
+        } catch {
+          // Non-fatal — Navbar and /reports also attempt the grant.
+        }
       }
+      creditBalance = await getCreditBalance();
+    } else {
+      // Deferred registration (§5.4): the wizard is now open to anonymous
+      // visitors — they fill it in and hit the sign-in wall only at "generate".
+      // `wizard_viewed` replaces the old `start_gated` redirect metric.
+      const anonId = (await cookies()).get("valetti_anon")?.value ?? null;
+      await logEvent({ name: "wizard_viewed", anonId });
     }
-    creditBalance = await getCreditBalance();
   }
 
   const geo = await getGeoPrefill();

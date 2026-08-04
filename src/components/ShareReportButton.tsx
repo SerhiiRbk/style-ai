@@ -101,6 +101,27 @@ export function ShareReportButton({
               {copied ? "Copied" : "Copy"}
             </button>
           </div>
+          <div className="mt-4 border-t border-paper/10 pt-3">
+            <p className="text-xs uppercase tracking-wide text-paper/50">
+              Save for social
+            </p>
+            <div className="mt-2 flex gap-2">
+              <a
+                href={`/api/og/report/${reportId}?format=story`}
+                download={`valetti-${reportId}-story.jpg`}
+                className="flex-1 rounded-lg border border-paper/20 px-3 py-2 text-center text-xs text-paper transition-colors hover:bg-paper/10"
+              >
+                Stories · 9:16
+              </a>
+              <a
+                href={`/api/og/report/${reportId}?format=pin`}
+                download={`valetti-${reportId}-pin.jpg`}
+                className="flex-1 rounded-lg border border-paper/20 px-3 py-2 text-center text-xs text-paper transition-colors hover:bg-paper/10"
+              >
+                Pinterest · 2:3
+              </a>
+            </div>
+          </div>
           <button
             type="button"
             disabled={busy}

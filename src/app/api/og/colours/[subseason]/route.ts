@@ -5,7 +5,11 @@ import {
   paletteForSubseason,
   subseasonLabel,
 } from "@/lib/colour-palette";
-import { renderColoursShareCard } from "@/lib/og/colours-share-card";
+import {
+  renderColoursShareCard,
+  renderColoursShareCardVertical,
+} from "@/lib/og/colours-share-card";
+import { parseVerticalFormat } from "@/lib/og/formats";
 import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
@@ -39,14 +43,19 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const undertone = searchParams.get("u") ?? undefined;
   const contrast = searchParams.get("c") ?? undefined;
+  const format = parseVerticalFormat(searchParams.get("format"));
+
+  const data = {
+    subseasonLabel: subseasonLabel(parsed.data),
+    palette: paletteForSubseason(parsed.data),
+    undertone,
+    contrast,
+  };
 
   try {
-    return await renderColoursShareCard({
-      subseasonLabel: subseasonLabel(parsed.data),
-      palette: paletteForSubseason(parsed.data),
-      undertone,
-      contrast,
-    });
+    return format
+      ? await renderColoursShareCardVertical(data, format)
+      : await renderColoursShareCard(data);
   } catch {
     return readStaticAsset(BRAND.ogImage);
   }

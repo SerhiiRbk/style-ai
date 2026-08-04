@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { BRAND } from "@/lib/brand";
 import type { PaletteSwatch } from "@/lib/colour-palette";
+import { VERTICAL_SIZE, type VerticalFormat } from "@/lib/og/formats";
 
 export const OG_SIZE = { width: 1200, height: 630 } as const;
 
@@ -236,6 +237,159 @@ function Card({ subseasonLabel, palette, undertone, contrast }: ColoursCardData)
   );
 }
 
+/** Vertical typographic palette card (A4) — no photo, sized for the caller. */
+function VerticalCard({
+  data,
+  width,
+  height,
+}: {
+  data: ColoursCardData;
+  width: number;
+  height: number;
+}) {
+  const { subseasonLabel, palette, undertone, contrast } = data;
+  const meta = [undertone, contrast ? `${contrast} contrast` : null]
+    .filter(Boolean)
+    .join("  ·  ");
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        width,
+        height,
+        backgroundColor: INK,
+        fontFamily: "Inter",
+        padding: 80,
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <Watermark />
+
+      {/* Masthead */}
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <span
+          style={{
+            fontFamily: "Fraunces",
+            fontSize: 34,
+            letterSpacing: 8,
+            color: PAPER,
+            textTransform: "uppercase",
+          }}
+        >
+          {BRAND.name}
+        </span>
+        <span
+          style={{
+            fontFamily: "Inter",
+            fontSize: 15,
+            letterSpacing: 4,
+            color: BRASS_SOFT,
+            textTransform: "uppercase",
+            marginTop: 8,
+          }}
+        >
+          {BRAND.eyebrow}
+        </span>
+      </div>
+
+      {/* Result */}
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <span
+          style={{
+            fontFamily: "Inter",
+            fontSize: 20,
+            letterSpacing: 4,
+            color: BRASS_SOFT,
+            textTransform: "uppercase",
+          }}
+        >
+          My colours
+        </span>
+        <span
+          style={{
+            fontFamily: "Fraunces",
+            fontSize: 104,
+            lineHeight: 1,
+            color: PAPER,
+            marginTop: 14,
+          }}
+        >
+          {subseasonLabel}
+        </span>
+        {meta ? (
+          <span
+            style={{
+              fontFamily: "Inter",
+              fontSize: 24,
+              letterSpacing: 2,
+              color: CREAM,
+              textTransform: "capitalize",
+              marginTop: 18,
+            }}
+          >
+            {meta}
+          </span>
+        ) : null}
+        <div style={{ display: "flex", flexWrap: "wrap", marginTop: 48 }}>
+          {palette.map((s, i) => (
+            <div
+              key={`${s.hex}-${i}`}
+              style={{
+                width: 78,
+                height: 78,
+                borderRadius: 16,
+                backgroundColor: s.hex,
+                border: "1px solid rgba(250,246,238,0.18)",
+                marginRight: 18,
+                marginBottom: 18,
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          paddingTop: 24,
+          borderTop: "1px solid rgba(250,246,238,0.12)",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "Inter",
+            fontSize: 17,
+            letterSpacing: 2,
+            color: STONE_SOFT,
+            textTransform: "uppercase",
+          }}
+        >
+          Free colour analysis for men
+        </span>
+        <span
+          style={{
+            fontFamily: "Inter",
+            fontSize: 18,
+            letterSpacing: 2,
+            color: BRASS_SOFT,
+            textTransform: "uppercase",
+          }}
+        >
+          valetti.fit
+        </span>
+      </div>
+
+      <Frame />
+    </div>
+  );
+}
+
 const CARD_CACHE = "public, max-age=3600, s-maxage=86400";
 
 /** Flatten Satori's alpha PNG to a JPEG (Facebook-friendly); fall back to PNG. */
@@ -262,5 +416,19 @@ export async function renderColoursShareCard(
 ): Promise<Response> {
   const fonts = await loadFonts();
   const image = new ImageResponse(<Card {...data} />, { ...OG_SIZE, fonts });
+  return toShareResponse(image);
+}
+
+/** Render the vertical colours palette asset for a given format (A4). */
+export async function renderColoursShareCardVertical(
+  data: ColoursCardData,
+  format: VerticalFormat,
+): Promise<Response> {
+  const fonts = await loadFonts();
+  const { width, height } = VERTICAL_SIZE[format];
+  const image = new ImageResponse(
+    <VerticalCard data={data} width={width} height={height} />,
+    { width, height, fonts },
+  );
   return toShareResponse(image);
 }

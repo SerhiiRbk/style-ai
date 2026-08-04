@@ -16,6 +16,10 @@ import { signedAssetProxyUrl, signedAssetProxyUrls } from "@/lib/asset-token";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
+  sendReportReadyEmail,
+  // sendReportFailedEmail, // PAUSED: "generation failed" email is disabled.
+} from "@/lib/email/send";
+import {
   parseGarmentsJson,
   type SavedOutfitTryOn,
 } from "@/lib/outfit-tryon";
@@ -617,6 +621,87 @@ async function generateCoverImageJob(input: ImageJobInput) {
 }
 
 /** Look + capsule photos — slow; runs after the HTTP response via `after()`. */
+/** Owner email from the profiles mirror, or null when unknown. */
+async function emailForUser(
+  admin: ReturnType<typeof createAdminSupabase>,
+  userId: string,
+): Promise<string | null> {
+  const { data } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle();
+  const email = data?.email;
+  return typeof email === "string" && email ? email : null;
+}
+
+/**
+ * Send the "report ready" email exactly once. The claim on `ready_email_at` is
+ * atomic, so the inline `after()` run and the finish-reports backstop cron can't
+ * both fire it. On send failure the claim is released so a later run retries.
+ */
+async function notifyReportReady(
+  admin: ReturnType<typeof createAdminSupabase>,
+  reportId: string,
+  userId: string,
+): Promise<void> {
+  try {
+    const email = await emailForUser(admin, userId);
+    if (!email) return;
+    const { data: claimed } = await admin
+      .from("reports")
+      .update({ ready_email_at: new Date().toISOString() })
+      .eq("id", reportId)
+      .is("ready_email_at", null)
+      .select("id, headline")
+      .maybeSingle();
+    if (!claimed) return; // already sent by another run
+    const ok = await sendReportReadyEmail(email, {
+      reportId,
+      headline: (claimed.headline as string | null) ?? null,
+    });
+    if (!ok) {
+      await admin
+        .from("reports")
+        .update({ ready_email_at: null })
+        .eq("id", reportId);
+    }
+  } catch (err) {
+    console.error("[report ready email]", err);
+  }
+}
+
+// PAUSED: the "generation failed" email is disabled. Kept intact so it can be
+// re-enabled by uncommenting this function, its import, and the two call sites.
+// /** Send the "generation failed" email at most once (claims `failed_email_at`). */
+// async function notifyReportFailed(
+//   admin: ReturnType<typeof createAdminSupabase>,
+//   reportId: string,
+//   userId: string,
+// ): Promise<void> {
+//   try {
+//     const email = await emailForUser(admin, userId);
+//     if (!email) return;
+//     const { data: claimed } = await admin
+//       .from("reports")
+//       .update({ failed_email_at: new Date().toISOString() })
+//       .eq("id", reportId)
+//       .is("failed_email_at", null)
+//       .select("id")
+//       .maybeSingle();
+//     if (!claimed) return;
+//     const ok = await sendReportFailedEmail(email);
+//     if (!ok) {
+//       await admin
+//         .from("reports")
+//         .update({ failed_email_at: null })
+//         .eq("id", reportId);
+//     }
+//   } catch (err) {
+//     console.error("[report failed email]", err);
+//   }
+// }
+
 async function generateReportImages(input: ImageJobInput) {
   await generateHairImages(input);
   await generatePremiumGroomingImages(input);
@@ -752,6 +837,9 @@ async function generateReportImages(input: ImageJobInput) {
       },
     );
   }
+
+  // Images are the last stage — this matches the "your report is ready" toast.
+  await notifyReportReady(admin, reportId, userId);
 }
 
 /**
@@ -1166,6 +1254,7 @@ export async function retryFailedReport(
     await executeReportGeneration(admin, { reportId, userId, tier, intake, photos });
   } catch (e) {
     await admin.from("reports").update({ status: "failed" }).eq("id", reportId);
+    // await notifyReportFailed(admin, reportId, userId); // PAUSED (email #3)
     throw e;
   }
 
@@ -1289,6 +1378,7 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
     });
   } catch (e) {
     await admin.from("reports").update({ status: "failed" }).eq("id", reportId);
+    // await notifyReportFailed(admin, reportId, userId); // PAUSED (email #3)
     throw e;
   }
 

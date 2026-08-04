@@ -4,6 +4,7 @@ import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { LEGAL } from "@/lib/legal";
 import { applyWelcomeCredits, PENDING_PROMO_COOKIE } from "@/lib/welcome-credits";
 import { redeemPromotion } from "@/lib/promotions";
+import { linkAnonToUser } from "@/lib/events";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 
 /** Exchange Supabase auth codes (email confirm, password recovery, OAuth). */
@@ -62,6 +63,13 @@ export async function GET(request: Request) {
       }
 
       const cookieStore = await cookies();
+
+      // Stitch the anonymous funnel to this account (§5.2 п.7).
+      await linkAnonToUser(
+        user.id,
+        cookieStore.get("valetti_anon")?.value ?? null,
+      );
+
       const pendingPromo = cookieStore.get(PENDING_PROMO_COOKIE)?.value ?? null;
       if (pendingPromo) {
         cookieStore.delete(PENDING_PROMO_COOKIE);

@@ -31,6 +31,17 @@ import {
   type ReportLanguage,
 } from "@/lib/languages";
 import { REPORT_COST, CREDIT_COSTS, SIGNUP_BONUS } from "@/lib/credit-costs";
+import {
+  type DraftAnswers,
+  saveDraftAnswers,
+  loadDraftAnswers,
+  setDraftPending,
+  isDraftPending,
+  clearDraftPending,
+  savePhotoBlob,
+  loadPhotoBlobs,
+  clearDraft,
+} from "@/lib/draft-storage";
 import { lookCountForTier } from "@/lib/report";
 import { BRAND } from "@/lib/brand";
 import { LEGAL } from "@/lib/legal";
@@ -149,6 +160,26 @@ export function StartForm({
     [],
   );
   const [uploadingRole, setUploadingRole] = useState<string | null>(null);
+
+  // Deferred registration (§5.4): an anonymous visitor fills the wizard here;
+  // answers persist to localStorage and photos to IndexedDB, and only reach our
+  // servers after they register at "generate".
+  const isAnon = LIVE && !userId;
+  const [stagedRoles, setStagedRoles] = useState<string[]>([]);
+  const [stagedPreviews, setStagedPreviews] = useState<Record<string, string>>(
+    {},
+  );
+  const [reportId, setReportId] = useState("");
+  const [draftReady, setDraftReady] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  const [quotaWarn, setQuotaWarn] = useState(false);
+  // A just-registered user whose drafted tier costs more than their balance:
+  // we drop them back on the Package step (photos still staged) and hold them
+  // there until they top up or switch to the Starter Report (§5.4 cond.4).
+  const [resumedDraft, setResumedDraft] = useState(false);
+  // "Draft mode" = photos are staged on-device (IndexedDB), not yet uploaded.
+  const draftMode = isAnon || resumedDraft;
+
   // Previously-uploaded photos the user can reuse instead of re-uploading,
   // grouped BY ROLE so a full-length is never offered for the face slot (or vice
   // versa). Fetched from /api/photos; empty for first-time users.
@@ -251,7 +282,7 @@ export function StartForm({
   const [goals, setGoals] = useState<string[]>(pf?.goals ?? []);
   const [boldness, setBoldness] = useState<string>(pf?.boldness ?? "moderate");
   const [budget, setBudget] = useState(budgetIndexFromProfile());
-  const [tier, setTier] = useState<Tier>("lookbook");
+  const [tier, setTier] = useState<Tier>(isAnon ? "free" : "lookbook");
   const [biometricConsent, setBiometricConsent] = useState(false);
   // Off by default — never silently overwrite the saved profile from a report.
   const [saveDefaults, setSaveDefaults] = useState(false);
@@ -259,8 +290,11 @@ export function StartForm({
   // Credit gating for the Package step (balance is the server snapshot at load).
   const reportCost = REPORT_COST[tier];
   const knownBalance = creditBalance != null ? creditBalance : null;
+  // Anon sees the balance they'll HAVE after signup (§5.4 cond.4) so they can't
+  // pick a tier that would strand them at a paywall right after registering.
+  const effectiveBalance = isAnon ? SIGNUP_BONUS : knownBalance;
   const insufficientCredits =
-    knownBalance != null && reportCost > 0 && knownBalance < reportCost;
+    effectiveBalance != null && reportCost > 0 && effectiveBalance < reportCost;
 
   const measurements = useMemo(
     () => ({
@@ -287,10 +321,16 @@ export function StartForm({
     set(arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]);
   };
 
-  const hasRequiredPhotos = LIVE
-    ? photoPaths.some((p) => p.role === "face") &&
-      photoPaths.some((p) => p.role === "full")
-    : photos.length >= 2;
+  // In draft mode a role counts as present if staged on-device OR reused from a
+  // prior report (a returning user who resumed a draft can mix the two).
+  const roleReady = (role: string) =>
+    stagedRoles.includes(role) || photoPaths.some((p) => p.role === role);
+  const hasRequiredPhotos = draftMode
+    ? roleReady("face") && roleReady("full")
+    : LIVE
+      ? photoPaths.some((p) => p.role === "face") &&
+        photoPaths.some((p) => p.role === "full")
+      : photos.length >= 2;
 
   const canNext = () => {
     if (step === 0) return country.trim();
@@ -299,50 +339,126 @@ export function StartForm({
     return true;
   };
 
-  async function submit() {
-    setSubmitting(true);
-    setError(null);
-    // Generate once per submission; keep it across retries so a re-send maps to
-    // the same report (server charges credits at most once for this key).
-    if (!reportIdRef.current) reportIdRef.current = crypto.randomUUID();
-    const controller = new AbortController();
-    const timeout = window.setTimeout(
-      () => controller.abort(),
-      4 * 60 * 1000,
-    );
-    const intake = {
+  /** Build the /api/reports intake payload from a set of raw answers. */
+  function buildIntake(a: {
+    age: number;
+    gender: string;
+    city: string;
+    country: string;
+    language: string;
+    currency: string;
+    height: number;
+    weight: string;
+    bodyType: string;
+    bodyTypeManual: boolean;
+    hairColor: string;
+    eyeColor: string;
+    shoulderCm: string;
+    chestCm: string;
+    waistCm: string;
+    hipCm: string;
+    sleeveCm: string;
+    occupation: string;
+    lifestyle: string[];
+    goals: string[];
+    boldness: string;
+    budget: number;
+  }) {
+    const meas = {
+      shoulderCm: a.shoulderCm ? Number(a.shoulderCm) : undefined,
+      chestCm: a.chestCm ? Number(a.chestCm) : undefined,
+      waistCm: a.waistCm ? Number(a.waistCm) : undefined,
+      hipCm: a.hipCm ? Number(a.hipCm) : undefined,
+      sleeveCm: a.sleeveCm ? Number(a.sleeveCm) : undefined,
+    };
+    const effective = a.bodyTypeManual
+      ? a.bodyType
+      : (inferBodyTypeFromMeasurements(meas, a.gender) ?? a.bodyType);
+    return {
+      age: a.age,
+      genderPresentation: a.gender,
+      city: a.city,
+      country: a.country,
+      language: a.language,
+      currency: a.currency,
+      heightCm: a.height,
+      weightKg: a.weight ? Number(a.weight) : undefined,
+      bodyType: effective || undefined,
+      measurements: Object.values(meas).some((v) => v != null) ? meas : undefined,
+      hairColor: a.hairColor || undefined,
+      eyeColor: a.eyeColor || undefined,
+      occupation: a.occupation,
+      lifestyle: a.lifestyle,
+      goals: a.goals,
+      boldness: a.boldness,
+      budgetEur: { min: BUDGETS[a.budget].min, max: BUDGETS[a.budget].max },
+    };
+  }
+
+  /** Snapshot the current answers into a draft record (§5.4). */
+  function currentDraft(id: string): DraftAnswers {
+    return {
+      step,
       age,
-      genderPresentation: gender,
+      gender,
       city,
       country,
-      language,
       currency,
-      heightCm: height,
-      weightKg: weight ? Number(weight) : undefined,
-      bodyType: effectiveBodyType || undefined,
-      measurements: Object.values(measurements).some((v) => v != null)
-        ? measurements
-        : undefined,
-      hairColor: hairColor || undefined,
-      eyeColor: eyeColor || undefined,
+      language,
+      height,
+      weight,
+      bodyType,
+      bodyTypeManual,
+      hairColor,
+      eyeColor,
+      shoulderCm,
+      chestCm,
+      waistCm,
+      hipCm,
+      sleeveCm,
       occupation,
       lifestyle,
       goals,
       boldness,
-      budgetEur: { min: BUDGETS[budget].min, max: BUDGETS[budget].max },
+      budget,
+      tier,
+      biometricConsent,
+      reportId: id,
     };
+  }
+
+  /**
+   * POST /api/reports and handle navigation/errors. Shared by the logged-in
+   * submit and the post-registration resume. Clears the client draft on success.
+   */
+  async function postReport(args: {
+    intake: ReturnType<typeof buildIntake>;
+    tier: string;
+    photoPaths: { role: string; path: string }[];
+    biometricConsent: boolean;
+    reportId: string;
+    saveAsDefault: boolean;
+  }): Promise<void> {
+    setSubmitting(true);
+    setError(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 4 * 60 * 1000);
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          tier,
-          reportId: reportIdRef.current,
-          photoPaths,
-          biometricConsent: photoPaths.length ? biometricConsent : undefined,
-          consentVersion: photoPaths.length ? LEGAL.consentVersion : undefined,
-          intake,
+          tier: args.tier,
+          reportId: args.reportId,
+          photoPaths: args.photoPaths,
+          biometricConsent: args.photoPaths.length
+            ? args.biometricConsent
+            : undefined,
+          consentVersion: args.photoPaths.length
+            ? LEGAL.consentVersion
+            : undefined,
+          intake: args.intake,
         }),
       });
       if (res.status === 401) {
@@ -358,6 +474,7 @@ export function StartForm({
       };
       if (!res.ok) {
         if (data.reportId) {
+          await clearDraft();
           notifyReportGenerationStarted(data.reportId);
           router.push(`/report/${data.reportId}`);
           return;
@@ -370,15 +487,16 @@ export function StartForm({
       }
       if (!data.id) throw new Error("Report created but no id returned");
       // Persist these answers as the user's defaults only when they opted in.
-      if (saveDefaults && userId) {
+      if (args.saveAsDefault && userId) {
         void fetch("/api/account/profile", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            profile: profileFromIntake(intake as Intake, currentYear),
+            profile: profileFromIntake(args.intake as Intake, currentYear),
           }),
         }).catch(() => {});
       }
+      await clearDraft();
       notifyReportGenerationStarted(data.id);
       router.push(`/report/${data.id}`);
     } catch (e) {
@@ -389,11 +507,288 @@ export function StartForm({
       } else {
         setError(e instanceof Error ? e.message : "Something went wrong");
       }
+      setResuming(false);
     } finally {
       window.clearTimeout(timeout);
       setSubmitting(false);
     }
   }
+
+  /** Logged-in submit — build intake from live state and post immediately. */
+  async function submit() {
+    // Generate once per submission; keep it across retries so a re-send maps to
+    // the same report (server charges credits at most once for this key).
+    if (!reportIdRef.current) reportIdRef.current = crypto.randomUUID();
+    await postReport({
+      intake: buildIntake({
+        age,
+        gender,
+        city,
+        country,
+        language,
+        currency,
+        height,
+        weight,
+        bodyType: effectiveBodyType || "",
+        bodyTypeManual: true,
+        hairColor,
+        eyeColor,
+        shoulderCm,
+        chestCm,
+        waistCm,
+        hipCm,
+        sleeveCm,
+        occupation,
+        lifestyle,
+        goals,
+        boldness,
+        budget,
+      }),
+      tier,
+      photoPaths,
+      biometricConsent,
+      reportId: reportIdRef.current,
+      saveAsDefault: saveDefaults,
+    });
+  }
+
+  /** Stage a photo on-device for an anonymous visitor (IndexedDB, no upload). */
+  async function stagePhoto(role: string, file: File) {
+    setUploadingRole(role);
+    const ok = await savePhotoBlob(role, file);
+    setUploadingRole(null);
+    if (!ok) {
+      setQuotaWarn(true);
+      return;
+    }
+    setStagedPreviews((prev) => {
+      if (prev[role]) URL.revokeObjectURL(prev[role]);
+      return { ...prev, [role]: URL.createObjectURL(file) };
+    });
+    setStagedRoles((prev) => (prev.includes(role) ? prev : [...prev, role]));
+  }
+
+  /** Anon "generate": snapshot the draft, mark it pending, send to registration. */
+  function onAnonGenerate() {
+    const id = reportId || crypto.randomUUID();
+    if (!reportId) setReportId(id);
+    if (!saveDraftAnswers(currentDraft(id))) {
+      setQuotaWarn(true);
+      return;
+    }
+    setDraftPending();
+    router.push("/login");
+  }
+
+  /** Upload every staged (on-device) photo under the authenticated session. */
+  async function uploadStagedPhotos(): Promise<{ role: string; path: string }[]> {
+    const staged = await loadPhotoBlobs();
+    const paths: { role: string; path: string }[] = [];
+    if (supabase && userId) {
+      if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID();
+      for (const p of staged) {
+        const ext = p.name.split(".").pop() || "jpg";
+        const path = `${userId}/${sessionIdRef.current}/${p.role}.${ext}`;
+        const file = new File([p.blob], p.name, { type: p.type });
+        const { error: upErr } = await supabase.storage
+          .from("photos")
+          .upload(path, file, { upsert: true, contentType: p.type });
+        if (!upErr) paths.push({ role: p.role, path });
+      }
+    }
+    // Fold in any reused (already-in-Storage) photos for roles not staged.
+    const roles = new Set(paths.map((p) => p.role));
+    for (const pp of photoPaths) if (!roles.has(pp.role)) paths.push(pp);
+    return paths;
+  }
+
+  /** Upload staged photos, then post the report. Credits are spent once here. */
+  async function runStagedGenerate(args: {
+    intake: ReturnType<typeof buildIntake>;
+    tier: string;
+    reportId: string;
+    biometricConsent: boolean;
+    saveAsDefault: boolean;
+  }) {
+    setResuming(true);
+    try {
+      const paths = await uploadStagedPhotos();
+      await postReport({
+        intake: args.intake,
+        tier: args.tier,
+        photoPaths: paths,
+        biometricConsent: args.biometricConsent,
+        reportId: args.reportId,
+        saveAsDefault: args.saveAsDefault,
+      });
+    } catch (e) {
+      setResuming(false);
+      setError(e instanceof Error ? e.message : "Could not finish your report.");
+    }
+  }
+
+  /** After registration with enough credits: generate straight from the draft. */
+  async function resume(draft: DraftAnswers) {
+    setShowWelcome(false);
+    await runStagedGenerate({
+      intake: buildIntake(draft),
+      tier: draft.tier,
+      reportId: draft.reportId,
+      biometricConsent: draft.biometricConsent,
+      saveAsDefault: false,
+    });
+  }
+
+  /** Generate for a logged-in user still holding on-device (staged) photos. */
+  async function generateFromStaged() {
+    const rid = reportId || crypto.randomUUID();
+    if (!reportId) setReportId(rid);
+    await runStagedGenerate({
+      intake: buildIntake({
+        age,
+        gender,
+        city,
+        country,
+        language,
+        currency,
+        height,
+        weight,
+        bodyType: effectiveBodyType || "",
+        bodyTypeManual: true,
+        hairColor,
+        eyeColor,
+        shoulderCm,
+        chestCm,
+        waistCm,
+        hipCm,
+        sleeveCm,
+        occupation,
+        lifestyle,
+        goals,
+        boldness,
+        budget,
+      }),
+      tier,
+      reportId: rid,
+      biometricConsent,
+      saveAsDefault: saveDefaults,
+    });
+  }
+
+  // Copy a saved draft into the live form (draft wins over profile — §5.4 cond.5).
+  function applyDraftToForm(d: DraftAnswers) {
+    setStep(d.step ?? 0);
+    setAge(d.age);
+    setGender(d.gender);
+    setCity(d.city);
+    setCountry(d.country);
+    setCurrency(d.currency as Currency);
+    setLanguage(d.language as ReportLanguage);
+    setHeight(d.height);
+    setWeight(d.weight);
+    setBodyType((d.bodyType as BodyTypeId) || "");
+    setBodyTypeManual(d.bodyTypeManual);
+    setHairColor((d.hairColor as HairColorId) || "");
+    setEyeColor((d.eyeColor as EyeColorId) || "");
+    setShoulderCm(d.shoulderCm);
+    setChestCm(d.chestCm);
+    setWaistCm(d.waistCm);
+    setHipCm(d.hipCm);
+    setSleeveCm(d.sleeveCm);
+    setOccupation(d.occupation);
+    setLifestyle(d.lifestyle);
+    setGoals(d.goals);
+    setBoldness(d.boldness);
+    setBudget(d.budget);
+    setTier(d.tier as Tier);
+    setBiometricConsent(d.biometricConsent);
+    setReportId(d.reportId || crypto.randomUUID());
+    void loadPhotoBlobs().then((ps) => {
+      setStagedRoles(ps.map((p) => p.role));
+      setStagedPreviews(
+        Object.fromEntries(ps.map((p) => [p.role, URL.createObjectURL(p.blob)])),
+      );
+    });
+  }
+
+  function hydrateDraft() {
+    if (!isAnon) return;
+    const d = loadDraftAnswers();
+    if (d) applyDraftToForm(d);
+    else setReportId(crypto.randomUUID());
+    setDraftReady(true);
+  }
+
+  // Hold a just-registered user on the Package step until they can afford their
+  // drafted tier (top up) or switch to the Starter Report (§5.4 cond.4).
+  function enterTopUpMode(d: DraftAnswers) {
+    applyDraftToForm(d);
+    setResumedDraft(true);
+    setDraftReady(true);
+    setShowWelcome(false);
+    setStep(3);
+  }
+
+  useEffect(() => {
+    // Mount-time sync of on-device draft into React state (legit external sync).
+    // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+    hydrateDraft();
+  }, []);
+
+  // Persist answers as they change, once hydration is done (draft mode only).
+  useEffect(() => {
+    if (!draftMode || !draftReady || !reportId) return;
+    saveDraftAnswers(currentDraft(reportId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    draftMode,
+    draftReady,
+    reportId,
+    step,
+    age,
+    gender,
+    city,
+    country,
+    currency,
+    language,
+    height,
+    weight,
+    bodyType,
+    bodyTypeManual,
+    hairColor,
+    eyeColor,
+    shoulderCm,
+    chestCm,
+    waistCm,
+    hipCm,
+    sleeveCm,
+    occupation,
+    lifestyle,
+    goals,
+    boldness,
+    budget,
+    tier,
+    biometricConsent,
+  ]);
+
+  // After registration, resume a pending draft. Enough credits → generate now;
+  // otherwise land on the Package step and hold for a top-up / tier switch.
+  useEffect(() => {
+    if (!LIVE || !userId || !isDraftPending()) return;
+    const d = loadDraftAnswers();
+    if (!d) {
+      clearDraftPending();
+      return;
+    }
+    const cost = REPORT_COST[(d.tier as Tier)] ?? 0;
+    if (knownBalance == null || knownBalance >= cost) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+      void resume(d);
+    } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+      enterTopUpMode(d);
+    }
+  }, [userId]);
 
   function beginReport() {
     setCameFromWelcome(true);
@@ -429,11 +824,19 @@ export function StartForm({
 
   return (
     <main className="flex-1">
-      {submitting ? (
+      {submitting || resuming ? (
         <LuxeBlockingWait
-          eyebrow="Creating report"
-          title="Crafting your report"
-          message={`${BRAND.stylist.first} is analysing your photos and building your personalised style profile. This typically takes one to two minutes.`}
+          eyebrow={resuming && !submitting ? "Finishing up" : "Creating report"}
+          title={
+            resuming && !submitting
+              ? "Picking up where you left off"
+              : "Crafting your report"
+          }
+          message={
+            resuming && !submitting
+              ? "Securely uploading your photos and preparing your report — this only takes a moment."
+              : `${BRAND.stylist.first} is analysing your photos and building your personalised style profile. This typically takes one to two minutes.`
+          }
         />
       ) : null}
       <div className="border-b hairline bg-paper/80 backdrop-blur-md">
@@ -568,9 +971,18 @@ export function StartForm({
                         key={role}
                         label={label}
                         desc={desc}
-                        filled={photoPaths.some((p) => p.role === role)}
+                        filled={
+                          draftMode
+                            ? roleReady(role)
+                            : photoPaths.some((p) => p.role === role)
+                        }
                         uploading={uploadingRole === role}
-                        onFile={(file) => uploadPhoto(role, file)}
+                        preview={draftMode ? stagedPreviews[role] : undefined}
+                        onFile={(file) =>
+                          draftMode
+                            ? stagePhoto(role, file)
+                            : uploadPhoto(role, file)
+                        }
                       />
                     ))
                   : PHOTO_ROLES.map(({ label, desc }) => (
@@ -802,13 +1214,22 @@ export function StartForm({
             <Section
               eyebrow="Step 4"
               title="Choose your package"
-              subtitle="Sign in required. New accounts get signup credits; the Starter Report uses credits like paid tiers."
+              subtitle={
+                resumedDraft
+                  ? "Almost there — your photos and answers are saved. Top up to generate this package, or switch to the Starter Report to begin right away."
+                  : isAnon
+                    ? `You'll create a free account to generate — it takes a moment and comes with ${SIGNUP_BONUS} credits. Nothing is charged until your report is generated.`
+                    : "New accounts get signup credits; the Starter Report uses credits like paid tiers."
+              }
             >
-              {knownBalance != null && (
+              {effectiveBalance != null && (
                 <div className="mb-5 flex items-center justify-between rounded-xl border border-line bg-cream/40 px-5 py-3">
-                  <span className="text-sm text-stone">Your balance</span>
+                  <span className="text-sm text-stone">
+                    {isAnon ? "Balance after signup" : "Your balance"}
+                  </span>
                   <span className="font-display text-lg text-ink">
-                    {knownBalance} {knownBalance === 1 ? "credit" : "credits"}
+                    {effectiveBalance}{" "}
+                    {effectiveBalance === 1 ? "credit" : "credits"}
                   </span>
                 </div>
               )}
@@ -816,19 +1237,13 @@ export function StartForm({
                 {TIERS.map((t) => {
                   const tierCost = REPORT_COST[t.id];
                   const unaffordable =
-                    knownBalance != null &&
+                    effectiveBalance != null &&
                     tierCost > 0 &&
-                    knownBalance < tierCost;
+                    effectiveBalance < tierCost;
                   return (
                   <button
                     key={t.id}
-                    onClick={() => {
-                      if (t.id === "free" && LIVE && !userId) {
-                        router.push("/login");
-                        return;
-                      }
-                      setTier(t.id);
-                    }}
+                    onClick={() => setTier(t.id)}
                     className={`flex items-center justify-between rounded-xl border p-5 text-left transition-colors ${
                       tier === t.id
                         ? "border-ink bg-cream/60"
@@ -846,7 +1261,7 @@ export function StartForm({
                       <div className="text-[11px] text-stone-soft">credits</div>
                       {unaffordable && (
                         <div className="mt-1 text-[11px] text-[#9E5C3C]">
-                          need {tierCost - (knownBalance as number)} more
+                          need {tierCost - (effectiveBalance as number)} more
                         </div>
                       )}
                     </div>
@@ -865,13 +1280,41 @@ export function StartForm({
               </p>
               {insufficientCredits && (
                 <p className="mt-4 rounded-xl border border-[#9E5C3C]/30 bg-[#9E5C3C]/5 px-5 py-3 text-sm text-[#9E5C3C]">
-                  You have {knownBalance}{" "}
-                  {knownBalance === 1 ? "credit" : "credits"} — this package needs{" "}
-                  {reportCost}. Pick a smaller package above or{" "}
-                  <Link href="/pricing" className="underline hover:text-ink">
-                    top up your credits
-                  </Link>
-                  .
+                  {resumedDraft ? (
+                    <>
+                      This package needs {reportCost} credits and you have{" "}
+                      {effectiveBalance}.{" "}
+                      <Link href="/pricing" className="underline hover:text-ink">
+                        Top up your credits
+                      </Link>{" "}
+                      to generate it, or choose the Starter Report above to begin
+                      now.
+                    </>
+                  ) : isAnon ? (
+                    <>
+                      Heads up: this package needs {reportCost} credits and a new
+                      account comes with {effectiveBalance}. You can continue and
+                      create your account now — then top up to generate, or pick
+                      the Starter Report to begin right away.
+                    </>
+                  ) : (
+                    <>
+                      You have {effectiveBalance}{" "}
+                      {effectiveBalance === 1 ? "credit" : "credits"} — this
+                      package needs {reportCost}. Pick a smaller package above or{" "}
+                      <Link href="/pricing" className="underline hover:text-ink">
+                        top up your credits
+                      </Link>
+                      .
+                    </>
+                  )}
+                </p>
+              )}
+              {quotaWarn && (
+                <p className="mt-4 rounded-xl border border-[#9E5C3C]/30 bg-[#9E5C3C]/5 px-5 py-3 text-sm text-[#9E5C3C]">
+                  We couldn&apos;t save your draft on this device (storage may be
+                  full or blocked). You can still create your account and generate
+                  now without leaving this page.
                 </p>
               )}
               {error && (
@@ -914,12 +1357,22 @@ export function StartForm({
             </button>
           ) : (
             <button
-              onClick={submit}
-              disabled={submitting || insufficientCredits}
+              onClick={
+                isAnon
+                  ? onAnonGenerate
+                  : resumedDraft
+                    ? generateFromStaged
+                    : submit
+              }
+              // Anon may proceed even when over budget (they register, then top
+              // up). Logged-in users are still blocked until they can afford it.
+              disabled={submitting || (!isAnon && insufficientCredits)}
               className="rounded-full bg-ink px-7 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-50"
             >
               {submitting ? (
                 <LuxeWorkingLabel message={WORKING.report} />
+              ) : isAnon ? (
+                "Create account & generate"
               ) : (
                 "Generate my report"
               )}
@@ -1090,12 +1543,15 @@ function UploadTile({
   filled,
   uploading,
   onFile,
+  preview,
 }: {
   label: string;
   desc: string;
   filled: boolean;
   uploading: boolean;
   onFile: (file: File) => void;
+  /** Local object-URL thumbnail for a not-yet-uploaded (staged) photo. */
+  preview?: string;
 }) {
   return (
     <label
@@ -1112,16 +1568,33 @@ function UploadTile({
           if (f) onFile(f);
         }}
       />
-      <span
-        className={`flex h-10 w-10 items-center justify-center rounded-full text-lg ${
-          filled ? "bg-ink text-paper" : "bg-sand text-stone"
-        }`}
-      >
-        {uploading ? <LuxeSpinner size="xs" tone="ink" /> : filled ? "✓" : "+"}
-      </span>
+      {preview ? (
+        <span className="mb-3 block h-24 w-[4.5rem] overflow-hidden rounded-lg border border-line bg-cream/40">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={preview}
+            alt={`${label} preview`}
+            className="h-full w-full object-contain"
+          />
+        </span>
+      ) : (
+        <span
+          className={`flex h-10 w-10 items-center justify-center rounded-full text-lg ${
+            filled ? "bg-ink text-paper" : "bg-sand text-stone"
+          }`}
+        >
+          {uploading ? <LuxeSpinner size="xs" tone="ink" /> : filled ? "✓" : "+"}
+        </span>
+      )}
       <span className="mt-3 text-sm text-ink">{label}</span>
       <span className="mt-1 text-xs text-stone-soft">
-        {uploading ? WORKING.upload : filled ? "Uploaded" : "Click to upload"}
+        {uploading
+          ? WORKING.upload
+          : filled
+            ? preview
+              ? "Ready · click to change"
+              : "Uploaded"
+            : "Click to upload"}
       </span>
       <span className="mt-3 max-w-[13rem] text-xs leading-relaxed text-stone-soft">
         {desc}

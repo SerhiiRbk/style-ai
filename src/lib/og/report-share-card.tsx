@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { BRAND } from "@/lib/brand";
 import type { ShareCardData } from "@/lib/og/report-share-card-data";
+import { VERTICAL_SIZE, type VerticalFormat } from "@/lib/og/formats";
 
 /** Standard 1.91:1 social card — matches the width/height in report metadata. */
 export const OG_SIZE = { width: 1200, height: 630 } as const;
@@ -12,7 +13,6 @@ const INK_SOFT = "#2a251d";
 const PAPER = "#faf6ee";
 const CREAM = "#f1e9da";
 const STONE_SOFT = "#938878";
-const BRASS = "#a97c3c";
 const BRASS_SOFT = "#c2a06a";
 
 type FontSpec = {
@@ -333,6 +333,197 @@ function BrandCard() {
   );
 }
 
+/**
+ * Vertical composition (A4) — a new layout, not a resize: hero across the top,
+ * palette and caption stacked below. Used for both 9:16 (Stories/Reels/TikTok)
+ * and 2:3 (Pinterest); the caller picks the canvas size.
+ */
+function VerticalCard({
+  data,
+  width,
+  height,
+}: {
+  data: ShareCardData;
+  width: number;
+  height: number;
+}) {
+  const heroHeight = data.heroDataUrl ? Math.round(height * 0.6) : 0;
+  const meta = [data.seasonLabel, data.undertone, data.contrast]
+    .filter(Boolean)
+    .join("  ·  ");
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width,
+        height,
+        backgroundColor: INK,
+        fontFamily: "Inter",
+        position: "relative",
+      }}
+    >
+      {data.heroDataUrl ? (
+        <div style={{ display: "flex", width, height: heroHeight, position: "relative" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={data.heroDataUrl}
+            alt=""
+            width={width}
+            height={heroHeight}
+            style={{ width, height: heroHeight, objectFit: "cover", objectPosition: "center top" }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 240,
+              backgroundImage: `linear-gradient(to bottom, rgba(21,18,13,0), ${INK})`,
+            }}
+          />
+        </div>
+      ) : null}
+
+      {/* Lower panel */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          flexGrow: 1,
+          padding: 72,
+        }}
+      >
+        <Wordmark />
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {meta ? (
+            <span
+              style={{
+                fontFamily: "Inter",
+                fontSize: 20,
+                letterSpacing: 3,
+                color: BRASS_SOFT,
+                textTransform: "uppercase",
+              }}
+            >
+              {meta}
+            </span>
+          ) : null}
+          <span
+            style={{
+              fontFamily: "Fraunces",
+              fontSize: 68,
+              lineHeight: 1.05,
+              color: PAPER,
+              marginTop: 20,
+            }}
+          >
+            {data.headline}
+          </span>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {data.palette.length ? <Swatches palette={data.palette} /> : null}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginTop: 28,
+              paddingTop: 24,
+              borderTop: "1px solid rgba(250,246,238,0.12)",
+            }}
+          >
+            <span
+              style={{
+                fontFamily: "Inter",
+                fontSize: 18,
+                letterSpacing: 2,
+                color: STONE_SOFT,
+                textTransform: "uppercase",
+              }}
+            >
+              Your colour palette
+            </span>
+            <span
+              style={{
+                fontFamily: "Inter",
+                fontSize: 19,
+                letterSpacing: 2,
+                color: BRASS_SOFT,
+                textTransform: "uppercase",
+              }}
+            >
+              valetti.fit
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <Frame />
+    </div>
+  );
+}
+
+/** Vertical branded fallback (private/unshareable report). */
+function VerticalBrandCard({ width, height }: { width: number; height: number }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        width,
+        height,
+        backgroundImage: `linear-gradient(160deg, ${INK}, ${INK_SOFT})`,
+        fontFamily: "Inter",
+        position: "relative",
+        padding: 72,
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "Fraunces",
+          fontSize: 84,
+          letterSpacing: 14,
+          color: PAPER,
+          textTransform: "uppercase",
+        }}
+      >
+        {BRAND.name}
+      </span>
+      <span
+        style={{
+          fontFamily: "Inter",
+          fontSize: 22,
+          letterSpacing: 5,
+          color: BRASS_SOFT,
+          textTransform: "uppercase",
+          marginTop: 18,
+        }}
+      >
+        {BRAND.eyebrow}
+      </span>
+      <span
+        style={{
+          fontFamily: "Fraunces",
+          fontSize: 34,
+          color: CREAM,
+          marginTop: 48,
+          textAlign: "center",
+        }}
+      >
+        See what genuinely suits you — and why.
+      </span>
+      <Frame />
+    </div>
+  );
+}
+
 const CARD_CACHE = "public, max-age=3600, s-maxage=86400";
 
 /**
@@ -367,6 +558,24 @@ export async function renderReportShareCard(
   const image = new ImageResponse(
     data ? <PersonalizedCard {...data} /> : <BrandCard />,
     { ...OG_SIZE, fonts },
+  );
+  return toShareResponse(image);
+}
+
+/** Render the vertical report share asset for a given format (A4). */
+export async function renderReportShareCardVertical(
+  data: ShareCardData | null,
+  format: VerticalFormat,
+): Promise<Response> {
+  const fonts = await loadFonts();
+  const { width, height } = VERTICAL_SIZE[format];
+  const image = new ImageResponse(
+    data ? (
+      <VerticalCard data={data} width={width} height={height} />
+    ) : (
+      <VerticalBrandCard width={width} height={height} />
+    ),
+    { width, height, fonts },
   );
   return toShareResponse(image);
 }
