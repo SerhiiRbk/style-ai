@@ -7,11 +7,11 @@ import { FabricSwatch } from "@/components/FabricSwatch";
  */
 export function PaletteSwatches({ palette }: { palette: PaletteSwatch[] }) {
   return (
-    <div className="grid grid-cols-4 gap-3.5 sm:grid-cols-8 sm:gap-4">
+    <div className="grid grid-cols-2 gap-5 sm:grid-cols-4 sm:gap-6">
       {palette.map((s, i) => (
-        <div key={`${s.hex}-${i}`} className="flex flex-col items-center gap-2">
-          <FabricSwatch hex={s.hex} name={s.name} uid={`ps${i}`} />
-          <span className="text-[10px] leading-tight text-stone">{s.name}</span>
+        <div key={`${s.hex}-${i}`} className="flex flex-col items-center gap-2.5">
+          <FabricSwatch hex={s.hex} name={s.name} uid={`ps${i}`} size="lg" />
+          <span className="text-xs leading-tight text-stone">{s.name}</span>
         </div>
       ))}
     </div>

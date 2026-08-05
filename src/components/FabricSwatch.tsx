@@ -67,6 +67,13 @@ export function buildColoursSwatchSvg(hex: string, uid: string): string {
  */
 export const COLOURS_SWATCH_ASPECT_RATIO = 132 / 214;
 
+const SWATCH_WIDTH = {
+  /** Default size used on `/colours` result. */
+  md: "w-14 sm:w-16",
+  /** ~2× default — used on subseason showcase pages. */
+  lg: "w-28 sm:w-32",
+} as const;
+
 /**
  * A single palette colour rendered as the atelier fabric card: textured woven
  * cloth with pinked (zig-zag) shear edges, a soft sheen and a light drop
@@ -77,15 +84,17 @@ export function FabricSwatch({
   hex,
   name,
   uid,
+  size = "md",
 }: {
   hex: string;
   name: string;
   uid: string;
+  size?: keyof typeof SWATCH_WIDTH;
 }) {
   const safeUid = uid.replace(/[^a-zA-Z0-9]/g, "") || "swatch";
   return (
     <span
-      className="block w-14 sm:w-16"
+      className={`block ${SWATCH_WIDTH[size]}`}
       title={name}
       role="img"
       aria-label={name}
