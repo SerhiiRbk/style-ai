@@ -6,8 +6,9 @@
  * - `story` 9:16 1080×1920 — Stories, Reels, TikTok, Shorts. 1080×1920 is the
  *   native upload resolution: larger gets downscaled, smaller gets stretched.
  * - `pin` 2:3 1000×1500 — Pinterest, where a 9:16 pin is cropped and demoted.
+ * - `feed` 4:5 1080×1350 — portrait Facebook and Instagram feed posts.
  */
-export type VerticalFormat = "story" | "pin";
+export type VerticalFormat = "story" | "pin" | "feed";
 
 export const VERTICAL_SIZE: Record<
   VerticalFormat,
@@ -15,10 +16,11 @@ export const VERTICAL_SIZE: Record<
 > = {
   story: { width: 1080, height: 1920 },
   pin: { width: 1000, height: 1500 },
+  feed: { width: 1080, height: 1350 },
 };
 
 export function parseVerticalFormat(
   value: string | null | undefined,
 ): VerticalFormat | null {
-  return value === "story" || value === "pin" ? value : null;
+  return value === "story" || value === "pin" || value === "feed" ? value : null;
 }

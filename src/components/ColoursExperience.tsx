@@ -3,7 +3,9 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ButtonLink } from "@/components/Button";
+import { FabricSwatch } from "@/components/FabricSwatch";
 import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
+import { PreparingPill } from "@/components/PreparingPill";
 import { formatOfferPrice } from "@/lib/currency";
 import { ITEM_BUDGET_BANDS } from "@/lib/budgets";
 import {
@@ -316,109 +318,15 @@ async function toDataUrl(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.85);
 }
 
-/**
- * Shared, off-screen SVG filters that give the palette swatches an organic
- * woven-fabric feel: `#coloursFabricNoise` distorts a soft sheen with fractal
- * turbulence (micro-fibres / dye unevenness) and `#coloursLooseFibres` warps
- * fine stray threads. Rendered once and referenced by every swatch so the
- * expensive turbulence isn't rebuilt per swatch.
- */
-function FabricFilterDefs() {
-  return (
-    <svg width="0" height="0" aria-hidden className="absolute">
-      <filter id="coloursFabricNoise">
-        <feTurbulence
-          type="fractalNoise"
-          baseFrequency="0.025 0.45"
-          numOctaves={4}
-          seed={8}
-          result="noise"
-        />
-        <feDisplacementMap
-          in="SourceGraphic"
-          in2="noise"
-          scale={6}
-          xChannelSelector="R"
-          yChannelSelector="B"
-          result="distorted"
-        />
-        <feBlend in="distorted" in2="noise" mode="soft-light" />
-      </filter>
-      <filter id="coloursLooseFibres">
-        <feTurbulence
-          type="turbulence"
-          baseFrequency="0.012 0.2"
-          numOctaves={2}
-          seed={19}
-          result="noise"
-        />
-        <feDisplacementMap
-          in="SourceGraphic"
-          in2="noise"
-          scale={10}
-          xChannelSelector="R"
-          yChannelSelector="G"
-        />
-      </filter>
-    </svg>
-  );
-}
-
-/**
- * A single palette colour rendered as a woven-fabric swatch: real warp/weft
- * threads (repeating gradients of varied thickness), a diagonal sheen, an
- * SVG-turbulence fibre layer, and layered inset shadows for tactile relief.
- * The colour comes straight from the analysis (`hex`). Static by request — no
- * hover animation.
- */
-function FabricSwatch({ hex, name }: { hex: string; name: string }) {
-  return (
-    <span
-      className="relative h-14 w-14 overflow-hidden rounded-xl sm:h-16 sm:w-16"
-      title={name}
-      style={{
-        backgroundColor: hex,
-        border: "1px solid rgba(0,0,0,0.16)",
-        backgroundImage: [
-          // Warp threads (vertical texture)
-          "repeating-linear-gradient(0deg, rgba(255,255,255,0.10) 0, rgba(255,255,255,0.10) 0.7px, transparent 0.7px, transparent 2.4px, rgba(0,0,0,0.08) 2.4px, rgba(0,0,0,0.08) 3.2px, transparent 3.2px, transparent 5px)",
-          // Weft threads (horizontal texture)
-          "repeating-linear-gradient(90deg, rgba(0,0,0,0.11) 0, rgba(0,0,0,0.11) 0.8px, transparent 0.8px, transparent 2.8px, rgba(255,255,255,0.08) 2.8px, rgba(255,255,255,0.08) 3.6px, transparent 3.6px, transparent 5.4px)",
-          // Diagonal sheen
-          "linear-gradient(135deg, rgba(255,255,255,0.22), transparent 32%, transparent 65%, rgba(0,0,0,0.20))",
-        ].join(", "),
-        boxShadow:
-          "inset 0 1px 1px rgba(255,255,255,0.35), inset 3px 3px 8px rgba(255,255,255,0.07), inset -4px -5px 10px rgba(0,0,0,0.18), 0 4px 8px rgba(0,0,0,0.12)",
-      }}
-    >
-      {/* SVG-distorted sheen — micro-fibres / dye unevenness */}
-      <span
-        className="pointer-events-none absolute"
-        aria-hidden
-        style={{
-          inset: "-15%",
-          backgroundImage:
-            "linear-gradient(110deg, transparent 15%, rgba(255,255,255,0.18) 45%, transparent 70%)",
-          filter: "url(#coloursFabricNoise)",
-          mixBlendMode: "soft-light",
-          opacity: 0.85,
-        }}
-      />
-      {/* Fine stray fibres */}
-      <span
-        className="pointer-events-none absolute inset-0"
-        aria-hidden
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(23deg, transparent 0 11px, rgba(255,255,255,0.11) 11.2px 11.7px, transparent 11.9px 27px), repeating-linear-gradient(157deg, transparent 0 17px, rgba(0,0,0,0.08) 17.2px 17.6px, transparent 17.8px 33px)",
-          filter: "url(#coloursLooseFibres)",
-          mixBlendMode: "overlay",
-          opacity: 0.48,
-        }}
-      />
-    </span>
-  );
-}
+export const COLOURS_SOCIAL_FORMATS = [
+  { format: "story", label: "Stories · 9:16", filenameSuffix: "story" },
+  { format: "pin", label: "Pinterest · 2:3", filenameSuffix: "pin" },
+  {
+    format: "feed",
+    label: "Facebook / Instagram · 4:5",
+    filenameSuffix: "feed",
+  },
+] as const;
 
 export function ColoursExperience() {
   const [phase, setPhase] = useState<Phase>("idle");
@@ -427,6 +335,16 @@ export function ColoursExperience() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [shared, setShared] = useState(false);
+  const [downloadingFormat, setDownloadingFormat] = useState<string | null>(
+    null,
+  );
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!downloadError) return;
+    const t = setTimeout(() => setDownloadError(null), 4000);
+    return () => clearTimeout(t);
+  }, [downloadError]);
   const [recs, setRecs] = useState<RecSlot[] | null>(null);
   const [recsLoading, setRecsLoading] = useState(false);
   // Cap / soft-gate message from the server (spend fuse) — shown instead of the
@@ -623,6 +541,37 @@ export function ColoursExperience() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, result, preview, recs, occasion, budgetId, fetchedKey, preliminary]);
 
+  /**
+   * Fetch→blob download so we can show a preparing indicator while the OG
+   * image is generated. A plain `<a download>` gives no "started" signal.
+   */
+  async function downloadSocial(format: string, filename: string) {
+    if (downloadingFormat || !result) return;
+    setDownloadError(null);
+    setDownloadingFormat(format);
+    try {
+      const url =
+        `/api/og/colours/${result.subseason}?format=${format}` +
+        `&u=${encodeURIComponent(result.undertone)}` +
+        `&c=${encodeURIComponent(result.contrast)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Share image failed (${res.status})`);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      setDownloadError("Couldn't prepare the image. Please try again.");
+    } finally {
+      setDownloadingFormat(null);
+    }
+  }
+
   async function share() {
     if (!result) return;
     // Keep the domain out of `text` so it isn't duplicated next to `url`.
@@ -787,11 +736,10 @@ export function ColoursExperience() {
               </div>
             </div>
 
-            <FabricFilterDefs />
             <div className="mt-7 grid grid-cols-4 gap-3.5 sm:grid-cols-8 sm:gap-4">
-              {result.palette.map((s) => (
-                <div key={s.hex} className="flex flex-col items-center gap-2">
-                  <FabricSwatch hex={s.hex} name={s.name} />
+              {result.palette.map((s, i) => (
+                <div key={`${s.hex}-${i}`} className="flex flex-col items-center gap-2">
+                  <FabricSwatch hex={s.hex} name={s.name} uid={`cx${i}`} />
                   <span className="text-[10px] leading-tight text-stone">
                     {s.name}
                   </span>
@@ -1032,21 +980,34 @@ export function ColoursExperience() {
                 Save for social
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
-                <a
-                  href={`/api/og/colours/${result.subseason}?format=story&u=${result.undertone}&c=${result.contrast}`}
-                  download={`valetti-colours-${result.subseason}-story.jpg`}
-                  className="rounded-full border border-ink/25 px-4 py-2 text-sm text-ink transition-colors hover:border-ink"
-                >
-                  Stories · 9:16
-                </a>
-                <a
-                  href={`/api/og/colours/${result.subseason}?format=pin&u=${result.undertone}&c=${result.contrast}`}
-                  download={`valetti-colours-${result.subseason}-pin.jpg`}
-                  className="rounded-full border border-ink/25 px-4 py-2 text-sm text-ink transition-colors hover:border-ink"
-                >
-                  Pinterest · 2:3
-                </a>
+                {COLOURS_SOCIAL_FORMATS.map((social) => {
+                  const busy = downloadingFormat === social.format;
+                  return (
+                    <button
+                      key={social.format}
+                      type="button"
+                      disabled={Boolean(downloadingFormat)}
+                      aria-busy={busy}
+                      onClick={() =>
+                        void downloadSocial(
+                          social.format,
+                          `valetti-colours-${result.subseason}-${social.filenameSuffix}.jpg`,
+                        )
+                      }
+                      className="inline-flex items-center gap-2 rounded-full border border-ink/25 px-4 py-2 text-sm text-ink transition-colors hover:border-ink disabled:opacity-60"
+                    >
+                      {busy ? <LuxeSpinner size="xs" tone="brass" /> : null}
+                      {busy ? "Preparing…" : social.label}
+                    </button>
+                  );
+                })}
               </div>
+              {downloadingFormat ? (
+                <PreparingPill message="Preparing your share image…" />
+              ) : null}
+              {downloadError ? (
+                <PreparingPill message={downloadError} tone="error" />
+              ) : null}
             </div>
 
             <div className="mt-6 rounded-xl border hairline bg-cream/40 p-4 sm:p-5">
