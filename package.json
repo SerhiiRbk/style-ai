@@ -14,6 +14,7 @@
     "import:feed": "node --env-file=.env.local scripts/import-feed.mjs",
     "import:feed:test": "node scripts/import-feed.mjs --all-samples --dry-run",
     "grant:credits": "node --env-file=.env.local scripts/grant-credits.mjs",
+    "eval:colours": "node --env-file=.env.local --import tsx scripts/eval-colours-model.ts",
     "deck:pptx": "node scripts/generate-investor-pptx.mjs"
   },
   "dependencies": {

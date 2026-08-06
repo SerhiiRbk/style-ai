@@ -43,6 +43,8 @@ import {
   clearDraft,
 } from "@/lib/draft-storage";
 import { lookCountForTier } from "@/lib/report";
+import { checkPhotoGateClient } from "@/lib/client/photo-gate";
+import type { PhotoGatePurpose } from "@/lib/photo-gate-types";
 import { BRAND } from "@/lib/brand";
 import { LEGAL } from "@/lib/legal";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
@@ -160,6 +162,7 @@ export function StartForm({
     [],
   );
   const [uploadingRole, setUploadingRole] = useState<string | null>(null);
+  const [photoGateError, setPhotoGateError] = useState<string | null>(null);
 
   // Deferred registration (§5.4): an anonymous visitor fills the wizard here;
   // answers persist to localStorage and photos to IndexedDB, and only reach our
@@ -553,6 +556,34 @@ export function StartForm({
   }
 
   /** Stage a photo on-device for an anonymous visitor (IndexedDB, no upload). */
+  function gatePurposeForRole(role: string): PhotoGatePurpose | null {
+    if (role === "face") return "report_face";
+    if (role === "full") return "report_full";
+    if (role === "profile") return "report_profile";
+    return null;
+  }
+
+  /**
+   * Gate a chosen file before it is staged (draft) or uploaded (live). A reject
+   * never reaches `stagePhoto`/`uploadPhoto`, so a rejected photo is never
+   * written to IndexedDB or Storage. The spinner covers the gate wait too, so
+   * the tile shows "…" through gate + upload as one step.
+   */
+  async function acceptPhoto(role: string, file: File) {
+    setPhotoGateError(null);
+    const purpose = gatePurposeForRole(role);
+    if (purpose) {
+      setUploadingRole(role);
+      const gate = await checkPhotoGateClient({ file, purpose });
+      if (!gate.ok) {
+        setUploadingRole(null);
+        setPhotoGateError(gate.error);
+        return;
+      }
+    }
+    await (draftMode ? stagePhoto(role, file) : uploadPhoto(role, file));
+  }
+
   async function stagePhoto(role: string, file: File) {
     setUploadingRole(role);
     const ok = await savePhotoBlob(role, file);
@@ -978,11 +1009,7 @@ export function StartForm({
                         }
                         uploading={uploadingRole === role}
                         preview={draftMode ? stagedPreviews[role] : undefined}
-                        onFile={(file) =>
-                          draftMode
-                            ? stagePhoto(role, file)
-                            : uploadPhoto(role, file)
-                        }
+                        onFile={(file) => acceptPhoto(role, file)}
                       />
                     ))
                   : PHOTO_ROLES.map(({ label, desc }) => (
@@ -1001,6 +1028,14 @@ export function StartForm({
                       />
                     ))}
               </div>
+              {photoGateError ? (
+                <p
+                  role="alert"
+                  className="mt-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-700"
+                >
+                  {photoGateError}
+                </p>
+              ) : null}
               <div className="mt-5 rounded-xl border border-brass/25 bg-brass/5 p-4 text-sm leading-relaxed text-stone">
                 <span className="font-medium text-ink">Photo not perfect?</span>{" "}
                 Continue if your face and body are clear. If lighting is poor or

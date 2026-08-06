@@ -444,6 +444,16 @@ export function ColoursExperience() {
         body: JSON.stringify({ image: dataUrl, anonId: getAnonId() }),
       });
       const data = await res.json().catch(() => ({}));
+      // Unusable photo (422) — the analysis folded in a face check. Show the
+      // reject copy in the error phase; not a transient failure.
+      if (data.unusable) {
+        setError(
+          data.error ??
+            "We couldn't read your colours from that photo. Try a clear, front-facing selfie.",
+        );
+        setPhase("error");
+        return;
+      }
       if (!res.ok) throw new Error(data.error ?? "Analysis failed");
       // Daily cap reached (A0): capture the visitor instead of losing them.
       if (data.capped) {

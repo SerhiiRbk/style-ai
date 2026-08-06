@@ -97,8 +97,31 @@ const SKIN_TONE: Record<QuizSun, string> = {
   deep: "deep",
 };
 
+/**
+ * Deep colouring — dark hair AND dark eyes — reads as LOW feature-contrast yet
+ * high overall depth (a "Deep" season). `contrast` cannot capture this because,
+ * for dark skin, contrast-between-features and depth-of-colouring decouple. So
+ * we detect depth from hair+eye directly (mirroring {@link depthFromColouring}
+ * in style-profile) and let it override the contrast-based lightness below —
+ * otherwise a cool, deep-skinned person who honestly reports "low contrast" is
+ * misrouted to Summer instead of Deep Winter.
+ */
+function isDeepColouring(a: QuizAnswers): boolean {
+  const darkHair = a.hair === "black" || a.hair === "dark-brown";
+  const darkEye = a.eye === "brown" || a.eye === "amber";
+  return darkHair && darkEye;
+}
+
 /** Coarse lightness from sun reaction + contrast — the season-routing signal. */
-function lightnessOf(sun: QuizSun, contrast: Contrast): "light" | "medium" | "deep" {
+function lightnessOf(
+  sun: QuizSun,
+  contrast: Contrast,
+  deepColouring: boolean,
+): "light" | "medium" | "deep" {
+  // Dark hair + dark eyes → deep, regardless of self-reported contrast. This is
+  // the inclusivity fix: it stops "everything is dark, so low contrast" from
+  // capping deep-skinned users at "medium" and steering them off Deep seasons.
+  if (deepColouring && sun !== "burn") return "deep";
   if (sun === "burn") return contrast === "high" ? "medium" : "light";
   if (sun === "deep") return contrast === "low" ? "medium" : "deep";
   return contrast === "high" ? "deep" : contrast === "low" ? "light" : "medium";
@@ -112,14 +135,17 @@ function lightnessOf(sun: QuizSun, contrast: Contrast): "light" | "medium" | "de
 function seasonFromQuiz(a: QuizAnswers): Season {
   const warm =
     a.undertone === "warm" || (a.undertone === "neutral" && a.sun !== "burn");
-  const l = lightnessOf(a.sun, a.contrast);
+  const deep = isDeepColouring(a);
+  const l = lightnessOf(a.sun, a.contrast, deep);
   if (warm) {
     if (l === "deep") return "autumn";
     if (l === "light" || a.contrast === "high") return "spring";
     return "autumn";
   }
-  if (l === "light") return "summer";
+  // Cool + deep colouring → Winter (→ deep-winter downstream), even when the
+  // person reports low feature-contrast (dark hair/skin/eyes blend).
   if (l === "deep" || a.contrast === "high") return "winter";
+  if (l === "light") return "summer";
   return "summer";
 }
 

@@ -11,6 +11,7 @@ import { MAX_TRYON_ITEMS, useTryOnSelection } from "./TryOnContext";
 import { OUTFIT_TRYON_SAVED_EVENT } from "./SavedOutfitTryOns";
 import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 import { WORKING } from "@/components/luxe/messages";
+import { checkPhotoGateClient } from "@/lib/client/photo-gate";
 
 const LIVE = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -69,6 +70,16 @@ export function TryOnButton({
     setUploading(true);
     setMsg(null);
     try {
+      // Reject a face-only crop before it hits Storage — try-on needs a
+      // full-length photo. Fail-open (checkPhotoGateClient) so gate flakiness
+      // never blocks a valid upload.
+      const gate = await checkPhotoGateClient({ file, purpose: "tryon_full" });
+      if (!gate.ok) {
+        setMsg(gate.error);
+        setState("error");
+        return;
+      }
+
       const sb = createClient();
       const {
         data: { user },
