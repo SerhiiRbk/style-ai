@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { ASSET_PROXY_PREFIX, isGeneratedReportImage } from "@/lib/asset-url";
+import { FabricStripe } from "@/components/FabricSwatch";
 import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
 import { RegenPhotoHint } from "@/components/RegenPhotoHint";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
@@ -172,8 +173,10 @@ export function Moodboard({
       ) : null}
 
       <div className="relative flex aspect-[4/5] flex-col overflow-hidden rounded-2xl">
-        {palette.slice(0, 5).map((hex) => (
-          <span key={hex} className="flex-1" style={{ background: hex }} />
+        {palette.slice(0, 5).map((hex, i) => (
+          <span key={`${hex}-${i}`} className="relative min-h-0 flex-1">
+            <FabricStripe hex={hex} uid={`mb${i}`} />
+          </span>
         ))}
         <span className="absolute bottom-3 left-3 rounded-full bg-paper/90 px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink">
           {tt("Your palette")}
@@ -193,18 +196,108 @@ export function Moodboard({
         </figure>
       )}
 
-      <div className="flex aspect-[4/5] flex-col justify-end rounded-2xl bg-ink p-5 text-paper">
+      <DirectionTile
+        archetypeName={archetypeName}
+        archetypeLine={archetypeLine}
+        label={tt("Your direction")}
+      />
+    </div>
+  );
+}
+
+/** Moodboard "Your direction" tile — ink atelier card, not an empty black slab. */
+function DirectionTile({
+  archetypeName,
+  archetypeLine,
+  label,
+}: {
+  archetypeName: string;
+  archetypeLine?: string;
+  label: string;
+}) {
+  const mark = (archetypeName.trim().charAt(0) || "V").toUpperCase();
+  return (
+    <div className="relative flex aspect-[4/5] flex-col justify-end overflow-hidden rounded-2xl bg-ink p-5 text-paper">
+      <svg
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        viewBox="0 0 200 250"
+        preserveAspectRatio="xMidYMid slice"
+        aria-hidden
+      >
+        <defs>
+          <radialGradient id="dirGlow" cx="42%" cy="28%" r="72%">
+            <stop offset="0" stopColor="#2a251d" />
+            <stop offset="0.55" stopColor="#1a1610" />
+            <stop offset="1" stopColor="#0c0a07" />
+          </radialGradient>
+          <linearGradient id="dirVignette" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#000" stopOpacity="0.15" />
+            <stop offset="0.45" stopColor="#000" stopOpacity="0" />
+            <stop offset="1" stopColor="#000" stopOpacity="0.55" />
+          </linearGradient>
+          <pattern
+            id="dirGrain"
+            width="8"
+            height="8"
+            patternUnits="userSpaceOnUse"
+          >
+            <path
+              d="M0 2H8 M0 6H8"
+              stroke="#e2c58f"
+              strokeOpacity="0.045"
+              strokeWidth="0.5"
+            />
+            <path
+              d="M2 0V8 M6 0V8"
+              stroke="#000"
+              strokeOpacity="0.14"
+              strokeWidth="0.55"
+            />
+          </pattern>
+        </defs>
+        <rect width="200" height="250" fill="url(#dirGlow)" />
+        <rect width="200" height="250" fill="url(#dirGrain)" />
+        <rect width="200" height="250" fill="url(#dirVignette)" />
+        {/* Faint construction marks */}
+        <g
+          fill="none"
+          stroke="#c2a06a"
+          strokeOpacity="0.16"
+          strokeWidth="0.7"
+        >
+          <path d="M18 22H182" />
+          <path d="M18 228H182" />
+          <path d="M22 18V232" />
+          <path d="M178 18V232" />
+          <path d="M100 36 L106 42 L100 48 L94 42 Z" fill="#c2a06a" fillOpacity="0.28" stroke="none" />
+        </g>
+        <text
+          x="100"
+          y="128"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="#c2a06a"
+          fillOpacity="0.14"
+          fontFamily="Georgia, 'Times New Roman', serif"
+          fontSize="148"
+          fontWeight="400"
+        >
+          {mark}
+        </text>
+      </svg>
+
+      <div className="relative z-10">
         <span className="text-[10px] uppercase tracking-[0.2em] text-brass-soft">
-          {tt("Your direction")}
+          {label}
         </span>
-        <span className="mt-1 font-display text-xl leading-tight">
+        <span className="mt-1 block font-display text-xl leading-tight">
           {archetypeName}
         </span>
-        {archetypeLine && (
-          <span className="mt-2 text-xs leading-relaxed text-paper/60">
+        {archetypeLine ? (
+          <span className="mt-2 block text-xs leading-relaxed text-paper/65">
             {archetypeLine}
           </span>
-        )}
+        ) : null}
       </div>
     </div>
   );
