@@ -46,9 +46,18 @@ function CheckIcon() {
   );
 }
 
-function withParam(src: string, param: string): string {
-  const sep = src.includes("?") ? "&" : "?";
-  return `${src}${sep}${param}`;
+/**
+ * Ask the asset proxy for the watermarked variant (bottom-right `valetti.fit`)
+ * so a shared image carries attribution wherever it lands. Drops `orig`/`dl`
+ * so the proxy composites the mark instead of serving raw bytes.
+ */
+function withWatermark(src: string): string {
+  const [base, query = ""] = src.split("?");
+  const params = new URLSearchParams(query);
+  params.delete("orig");
+  params.delete("dl");
+  params.set("wm", "1");
+  return `${base}?${params.toString()}`;
 }
 
 function absolute(url: string): string {
@@ -61,10 +70,10 @@ function absolute(url: string): string {
 }
 
 /**
- * Shares the actual full-resolution image (not a report link). Uses the Web
- * Share API to share the original file where supported; otherwise copies a
- * direct link to the original image. Works regardless of report visibility —
- * the signed asset URL is self-authenticating.
+ * Shares the actual image (not a report link), watermarked with `valetti.fit`
+ * so it doubles as attribution wherever it's reposted. Uses the Web Share API
+ * where supported; otherwise copies a direct link. Works regardless of report
+ * visibility — the signed asset URL is self-authenticating.
  */
 export function ShareImageButton({
   src,
@@ -81,9 +90,9 @@ export function ShareImageButton({
 
   async function share() {
     setStatus("idle");
-    // A direct, self-authenticating web link to the original image (valid ~7
-    // days). Works for anyone with the link, regardless of report visibility.
-    const link = absolute(withParam(src, "orig=1"));
+    // A direct, self-authenticating web link to the watermarked image (valid
+    // ~7 days). Works for anyone with the link, regardless of report visibility.
+    const link = absolute(withWatermark(src));
     try {
       // On touch devices, offer the native share sheet with the link. On
       // desktop we copy the link directly — desktop share sheets tend to hand

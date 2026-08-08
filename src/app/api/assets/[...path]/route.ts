@@ -32,10 +32,13 @@ export async function GET(
   const exp = searchParams.get("exp");
   const sig = searchParams.get("sig");
   // `dl=1` forces the original full-resolution bytes as a download attachment;
-  // `orig=1` serves the original inline (both skip WebP transcoding). Extra
+  // `orig=1` serves the original inline (both skip WebP transcoding);
+  // `wm=1` burns a `valetti.fit` watermark bottom-right (share / zoom views —
+  // never the stored original or the PDF, which read bytes directly). Extra
   // params don't affect the signature, which only covers the path + expiry.
   const download = searchParams.get("dl") === "1";
-  const original = download || searchParams.get("orig") === "1";
+  const watermark = searchParams.get("wm") === "1";
+  const original = (download || searchParams.get("orig") === "1") && !watermark;
 
   const signedOk = verifySignedAssetProxyUrl(storagePath, exp, sig);
   const allowed = signedOk || (await canAccessAssetPath(storagePath));
@@ -73,7 +76,9 @@ export async function GET(
     return new Response(bytes as BodyInit, { headers });
   }
 
-  const { body, contentType } = await maybeWebp(request, bytes, sourceType);
+  const { body, contentType } = watermark
+    ? await watermarked(request, bytes, sourceType)
+    : await maybeWebp(request, bytes, sourceType);
 
   return new Response(body as BodyInit, {
     headers: {
@@ -84,6 +89,67 @@ export async function GET(
       Vary: "Accept",
     },
   });
+}
+
+/**
+ * Burns a semi-transparent `valetti.fit` wordmark into the bottom-right corner
+ * of a raster photo. Used only for share links and the report zoom view so the
+ * image carries attribution when it leaves the site; the stored original and
+ * PDF exports read raw bytes and stay clean. Falls back to the untouched bytes
+ * if the asset isn't a raster or sharp is unavailable.
+ */
+async function watermarked(
+  request: Request,
+  bytes: Uint8Array,
+  sourceType: string,
+): Promise<{ body: Uint8Array; contentType: string }> {
+  const original = { body: bytes, contentType: sourceType };
+
+  if (
+    sourceType !== "image/png" &&
+    sourceType !== "image/jpeg" &&
+    sourceType !== "image/webp"
+  ) {
+    return original;
+  }
+
+  try {
+    const sharp = (await import("sharp")).default;
+    // Bake EXIF orientation first so the overlay lands on the right corner.
+    const rotated = await sharp(bytes).rotate().toBuffer({ resolveWithObject: true });
+    const width = rotated.info.width ?? 0;
+    const height = rotated.info.height ?? 0;
+    if (!width || !height) return original;
+
+    const fontSize = Math.min(64, Math.max(14, Math.round(width * 0.032)));
+    const pad = Math.round(fontSize * 0.7);
+    const font = "Arial, Helvetica, sans-serif";
+    const svg = Buffer.from(
+      `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">` +
+        `<text x="${width - pad + 1}" y="${height - pad + 1}" text-anchor="end" ` +
+        `font-family="${font}" font-weight="600" font-size="${fontSize}" ` +
+        `fill="#000000" fill-opacity="0.35">valetti.fit</text>` +
+        `<text x="${width - pad}" y="${height - pad}" text-anchor="end" ` +
+        `font-family="${font}" font-weight="600" font-size="${fontSize}" ` +
+        `fill="#ffffff" fill-opacity="0.72">valetti.fit</text>` +
+        `</svg>`,
+    );
+
+    const pipeline = sharp(rotated.data).composite([{ input: svg, top: 0, left: 0 }]);
+    const accept = request.headers.get("accept") ?? "";
+    if (accept.includes("image/webp")) {
+      const out = await pipeline.webp({ quality: 82 }).toBuffer();
+      return { body: new Uint8Array(out), contentType: "image/webp" };
+    }
+    if (sourceType === "image/png") {
+      const out = await pipeline.png().toBuffer();
+      return { body: new Uint8Array(out), contentType: "image/png" };
+    }
+    const out = await pipeline.jpeg({ quality: 85 }).toBuffer();
+    return { body: new Uint8Array(out), contentType: "image/jpeg" };
+  } catch {
+    return original;
+  }
 }
 
 /**

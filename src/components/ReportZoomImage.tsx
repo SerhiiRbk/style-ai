@@ -20,6 +20,20 @@ type Props = {
 const DEFAULT_SIZES =
   "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw";
 
+/**
+ * Request the watermarked variant from the asset proxy (bottom-right
+ * `valetti.fit`). Only the full-size zoom uses this — grid thumbnails stay
+ * clean. Drops `orig`/`dl` so the proxy transcodes + composites.
+ */
+function withWatermark(src: string): string {
+  const [base, query = ""] = src.split("?");
+  const params = new URLSearchParams(query);
+  params.delete("orig");
+  params.delete("dl");
+  params.set("wm", "1");
+  return `${base}?${params.toString()}`;
+}
+
 /** Click-to-zoom overlay for report photos (looks, hair, moodboard, header). */
 export function ReportZoomImage({
   src,
@@ -47,6 +61,7 @@ export function ReportZoomImage({
   }, [open, close]);
 
   const isAssetProxy = src.startsWith(ASSET_PROXY_PREFIX);
+  const zoomSrc = isAssetProxy ? withWatermark(src) : src;
   const useFill =
     fill ??
     (wrapperClassName.includes("relative") && wrapperClassName.includes("h-full"));
@@ -122,7 +137,7 @@ export function ReportZoomImage({
               </button>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={src}
+                src={zoomSrc}
                 alt={alt}
                 className="max-h-[90vh] max-w-full object-contain"
                 onClick={(e) => e.stopPropagation()}
