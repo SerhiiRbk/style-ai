@@ -14,9 +14,9 @@ export const BRAND = {
   /** Honest, understated AI disclosure. */
   tagline: "AI-assisted personal styling",
   /** Privacy, terms, and data-subject requests. */
-  legalContactEmail: "contact@valetti.fit",
+  legalContactEmail: "contact@system.valetti.fit",
   /** General contact (footer, support). */
-  contactEmail: "contact@valetti.fit",
+  contactEmail: "contact@system.valetti.fit",
 
   /** Square brand logo (schema.org Organization.logo, PWA icon). */
   logo: "/images/valetti-logo-512.png",

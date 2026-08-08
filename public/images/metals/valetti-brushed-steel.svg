@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Brushed steel</title><desc id="desc">Cool brushed steel with directional machining lines.</desc>
+  <defs>
+    <radialGradient id="steel" cx="34%" cy="25%" r="82%"><stop stop-color="#eef2f2"/><stop offset=".26" stop-color="#aab3b5"/><stop offset=".52" stop-color="#687477"/><stop offset=".73" stop-color="#c4cbcb"/><stop offset="1" stop-color="#566164"/></radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#152024" flood-opacity=".42"/></filter>
+    <filter id="brush"><feTurbulence type="fractalNoise" baseFrequency=".008 .78" numOctaves="2" seed="41" result="n"/><feColorMatrix in="n" type="saturate" values="0"/><feBlend in="SourceGraphic" mode="soft-light"/></filter>
+    <clipPath id="disc"><circle cx="128" cy="122" r="100"/></clipPath>
+  </defs>
+  <circle cx="128" cy="122" r="100" fill="url(#steel)" filter="url(#shadow)"/>
+  <g clip-path="url(#disc)"><circle cx="128" cy="122" r="100" fill="url(#steel)" filter="url(#brush)"/><g stroke="#f4f8f8" stroke-opacity=".18" stroke-width=".7"><path d="M25 70h206M20 82h216M18 96h220M18 111h220M18 127h220M19 143h218M22 159h212M28 176h200"/></g><ellipse cx="91" cy="69" rx="66" ry="30" fill="#fff" opacity=".16" transform="rotate(-19 91 69)"/></g>
+  <circle cx="128" cy="122" r="99" fill="none" stroke="#eaf0f0" stroke-opacity=".55"/><circle cx="128" cy="122" r="96.5" fill="none" stroke="#384548" stroke-opacity=".48"/>
+</svg>

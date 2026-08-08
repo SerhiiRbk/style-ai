@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Two-tone</title><desc id="desc">Premium two-tone swatch combining soft gold and steel.</desc>
+  <defs>
+    <radialGradient id="gold" cx="30%" cy="20%" r="92%"><stop stop-color="#f6e5ad"/><stop offset=".28" stop-color="#c6a159"/><stop offset=".62" stop-color="#866637"/><stop offset="1" stop-color="#d2b978"/></radialGradient>
+    <radialGradient id="steel" cx="35%" cy="24%" r="88%"><stop stop-color="#fff"/><stop offset=".27" stop-color="#c7ccca"/><stop offset=".58" stop-color="#707977"/><stop offset="1" stop-color="#d9dbd6"/></radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#25241f" flood-opacity=".4"/></filter>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".42 .025" numOctaves="2" seed="65" result="n"/><feColorMatrix in="n" type="saturate" values="0"/><feBlend in="SourceGraphic" mode="soft-light"/></filter>
+    <clipPath id="disc"><circle cx="128" cy="122" r="100"/></clipPath>
+  </defs>
+  <circle cx="128" cy="122" r="100" fill="#aaa" filter="url(#shadow)"/><g clip-path="url(#disc)" filter="url(#grain)"><path d="M28 22h100v200H28z" fill="url(#gold)"/><path d="M128 22h100v200H128z" fill="url(#steel)"/><path d="M111 20h34v204h-34z" fill="#fff" opacity=".16"/><ellipse cx="92" cy="68" rx="71" ry="35" fill="#fff" opacity=".2" transform="rotate(-21 92 68)"/></g>
+  <circle cx="128" cy="122" r="99" fill="none" stroke="#f4ead0" stroke-opacity=".62"/><circle cx="128" cy="122" r="96.5" fill="none" stroke="#55544e" stroke-opacity=".4"/>
+</svg>

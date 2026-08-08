@@ -633,6 +633,16 @@ export function ColoursExperience() {
             </span>
           </button>
           {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+          <div className="mx-auto mt-6 max-w-md rounded-xl border hairline bg-cream/40 px-4 py-4 text-left sm:px-5">
+            <p className="text-xs uppercase tracking-wide text-stone-soft">
+              For a more accurate reading
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-stone">
+              How well we can read your palette and season depends on the photo.
+              Use soft natural daylight, let your face fill at least half the
+              frame, and skip sunglasses or hats that cover the upper face.
+            </p>
+          </div>
           <p className="mt-6 text-xs text-stone-soft">
             We analyse your photo to read your colours and don&apos;t keep it.
           </p>

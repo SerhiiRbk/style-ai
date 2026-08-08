@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Латунь и бронза</title>
+  <desc id="desc">Круглый образец тёплой состаренной латуни с бронзовой патиной, микроцарапинами и мягкой тенью.</desc>
+  <defs>
+    <radialGradient id="bronze" cx="31%" cy="24%" r="82%">
+      <stop offset="0" stop-color="#efd88d"/><stop offset=".2" stop-color="#b88936"/>
+      <stop offset=".48" stop-color="#765027"/><stop offset=".7" stop-color="#aa7934"/>
+      <stop offset=".9" stop-color="#51331f"/><stop offset="1" stop-color="#8b612d"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#26160d" flood-opacity=".42"/></filter>
+    <filter id="patina" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency=".035 .22" numOctaves="4" seed="29" result="noise"/>
+      <feColorMatrix in="noise" values=".35 0 0 0 .08  0 .48 0 0 .12  0 0 .42 0 .10  0 0 0 .52 0" result="tint"/>
+      <feBlend in="SourceGraphic" in2="tint" mode="multiply"/>
+    </filter>
+    <clipPath id="disc"><circle cx="128" cy="122" r="100"/></clipPath>
+  </defs>
+  <circle cx="128" cy="122" r="100" fill="url(#bronze)" filter="url(#shadow)"/>
+  <g clip-path="url(#disc)">
+    <circle cx="128" cy="122" r="100" fill="url(#bronze)" filter="url(#patina)"/>
+    <ellipse cx="88" cy="67" rx="67" ry="34" fill="#fff0b0" opacity=".18" transform="rotate(-24 88 67)"/>
+    <g fill="none" stroke="#f5dda0" stroke-linecap="round" opacity=".20">
+      <path d="M45 86l131-31M35 116l172-42M47 150l159-39M73 181l120-29" stroke-width="1"/>
+      <path d="M63 77l110 90M44 103l126 100" stroke="#2f2018" opacity=".45" stroke-width=".8"/>
+    </g>
+  </g>
+  <circle cx="128" cy="122" r="99" fill="none" stroke="#e6c278" stroke-opacity=".48"/>
+  <circle cx="128" cy="122" r="96.5" fill="none" stroke="#3b2517" stroke-opacity=".48"/>
+</svg>

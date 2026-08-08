@@ -10,6 +10,10 @@ import type { Currency } from "@/lib/currency";
 import { humanizeProductTitle } from "@/lib/product-title";
 import { makeT } from "@/lib/i18n/report";
 import type { ReportLanguage } from "@/lib/languages";
+import {
+  metalAvoidSwatchSrc,
+  metalSwatchSrc,
+} from "@/lib/metal-swatches";
 import { LookTryOn } from "./LookTryOn";
 import type {
   ShoppingItem,
@@ -658,32 +662,61 @@ export function MetalChips({
   lang?: ReportLanguage;
 }) {
   const tt = makeT(lang);
+  const avoidSrc = metalAvoidSwatchSrc(metals.recommend.map((m) => m.name));
   return (
     <div>
       <h3 className="text-sm uppercase tracking-wider text-stone-soft">
         {tt("Metals & hardware")}
       </h3>
       <div className="mt-4 space-y-3">
-        {metals.recommend.map((m) => (
-          <div key={m.name} className="flex items-start gap-3">
-            <span
-              className="mt-0.5 h-9 w-9 shrink-0 rounded-full ring-1 ring-ink/10"
-              style={{ background: m.hex }}
-            />
-            <div>
-              <div className="font-display text-base leading-tight">
-                {m.name}
+        {metals.recommend.map((m) => {
+          const src = metalSwatchSrc(m.name);
+          return (
+            <div key={m.name} className="flex items-start gap-3">
+              {src ? (
+                // Static public SVG — plain <img> avoids next/image SVG quirks.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={src}
+                  alt=""
+                  width={40}
+                  height={40}
+                  className="mt-0.5 h-10 w-10 shrink-0"
+                />
+              ) : (
+                <span
+                  className="mt-0.5 h-10 w-10 shrink-0 rounded-full ring-1 ring-ink/10"
+                  style={{ background: m.hex }}
+                  aria-hidden
+                />
+              )}
+              <div>
+                <div className="font-display text-base leading-tight">
+                  {m.name}
+                </div>
+                <p className="mt-0.5 text-sm leading-relaxed text-stone">
+                  {m.why}
+                </p>
               </div>
-              <p className="mt-0.5 text-sm leading-relaxed text-stone">
-                {m.why}
-              </p>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-      <p className="mt-3 text-xs leading-relaxed text-stone-soft">
-        {metals.avoidNote}
-      </p>
+      <div className="mt-3 flex items-start gap-2.5">
+        {avoidSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avoidSrc}
+            alt=""
+            width={28}
+            height={28}
+            className="mt-0.5 h-7 w-7 shrink-0 opacity-90"
+          />
+        ) : null}
+        <p className="text-xs leading-relaxed text-stone-soft">
+          {metals.avoidNote}
+        </p>
+      </div>
     </div>
   );
 }

@@ -42,6 +42,19 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "*.supabase.in" },
     ],
   },
+  async headers() {
+    const xmlHeaders = [
+      {
+        key: "Cache-Control",
+        value: "public, max-age=3600, stale-while-revalidate=86400",
+      },
+    ];
+    return [
+      { source: "/google-sitemap.xml", headers: xmlHeaders },
+      { source: "/sitemaps/:path*", headers: xmlHeaders },
+      { source: "/sitemap.xml", headers: xmlHeaders },
+    ];
+  },
 };
 
 export default withWorkflow(nextConfig);

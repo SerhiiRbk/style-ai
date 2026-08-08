@@ -118,7 +118,7 @@ export const env = {
   // From-address on the Resend-verified sending domain. Reply-To routes human
   // replies to the monitored inbox.
   emailFrom: process.env.EMAIL_FROM ?? "Valetti <carlo@system.valetti.fit>",
-  emailReplyTo: process.env.EMAIL_REPLY_TO ?? "contact@valetti.fit",
+  emailReplyTo: process.env.EMAIL_REPLY_TO ?? "contact@system.valetti.fit",
   // Secret for signing unsubscribe links (HMAC). Reminder mail is suppressed if
   // absent, so a missing secret can't leak an unauthenticated unsubscribe.
   emailUnsubscribeSecret: process.env.EMAIL_UNSUBSCRIBE_SECRET,

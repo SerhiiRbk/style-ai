@@ -45,8 +45,8 @@ General contact: ${BRAND.contactEmail} · Privacy & data requests: ${BRAND.legal
 
 ## Optional
 
-- [Sitemap](${url("/sitemap.xml")}): Machine-readable list of public indexable URLs
-- [Robots](${url("/robots.txt")}): Crawler rules — private routes, APIs, and user reports are disallowed
+- [Sitemap](${url("/sitemaps/pages.xml")}): Machine-readable list of public indexable URLs
+- [Robots](${url("/robots.txt")}): Crawler rules for search engines
 - [Web app manifest](${url("/manifest.webmanifest")}): PWA metadata
 `;
 }
