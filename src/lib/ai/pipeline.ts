@@ -470,6 +470,34 @@ export async function generateLookImage(opts: {
           `only: copy the garments, and take NOTHING facial, body or pose-related from them. `;
       }
     }
+
+    // Text anchor for the face. The model regenerates the whole scene, so a
+    // reference photo alone can drift; these explicit traits + "do not alter"
+    // rules keep the rendered face true to the real person.
+    let faceAnchor = "";
+    if (personImageCount > 0) {
+      const traits = [
+        profile.physical.faceShape
+          ? `${profile.physical.faceShape} face shape`
+          : null,
+        profile.physical.hairColor ? `${profile.physical.hairColor} hair` : null,
+        profile.physical.eyeColor ? `${profile.physical.eyeColor} eyes` : null,
+        profile.physical.skinTone
+          ? `${profile.physical.skinTone} skin tone`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      faceAnchor =
+        (traits ? `The person has ${traits}. ` : "") +
+        `Keep the SAME facial proportions as the reference photo — the same forehead ` +
+        `height, nose size and shape, jawline, cheekbones, eye spacing and lip shape; ` +
+        `do not idealise, slim or restyle the face. ` +
+        `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
+        `Do NOT change the hair colour. ` +
+        `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
+        `what the reference photo shows. `;
+    }
     if (!personImageCount && !catalogImageUrls.length) {
       imageRoles = `Do not show identifiable facial features. `;
     } else if (!personImageCount && catalogImageUrls.length) {
@@ -485,6 +513,7 @@ export async function generateLookImage(opts: {
       `Colour palette: ${look.palette.join(", ")}. ` +
       subject +
       imageRoles +
+      faceAnchor +
       NO_TEXT_RULE;
 
     const content: (
