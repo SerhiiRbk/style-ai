@@ -17,6 +17,7 @@ import {
   lookContentSchema,
   inferBodyTypeFromMeasurements,
   classifySubseason,
+  refineSeasonForClarity,
   HAIR_COLOR_LABELS,
   EYE_COLOR_LABELS,
   type EyeColorId,
@@ -86,6 +87,14 @@ const visionSchema = z.object({
     .describe("natural hair colour, e.g. 'dark brown', 'blonde', 'gray'"),
   eyeColor: z.string().describe("eye colour, e.g. 'brown', 'blue', 'green'"),
   colorSeason: z.enum(["winter", "spring", "summer", "autumn"]),
+  clarity: z
+    .enum(["muted", "clear"])
+    .describe(
+      "overall colouring quality by CHROMA/SATURATION, not light/dark contrast: " +
+        "'muted' = soft, greyed, dusty, low-saturation; 'clear' = bright, vivid, " +
+        "high-saturation. Fair skin with dark hair is high value-contrast but is " +
+        "often still 'muted' — judge saturation, not lightness.",
+    ),
 });
 
 /** Step 1 — Vision analysis → physical attributes + colour season. */
@@ -98,6 +107,11 @@ export async function analyzeProfile(
   const { output } = await generateText({
     model: env.modelVision,
     output: Output.object({ schema: visionSchema }),
+    // Colour analysis must be repeatable: the same photos should always yield the
+    // same season. A near-zero temperature (plus a fixed seed) removes the run-to-
+    // run drift that previously flipped borderline cases between summer and winter.
+    temperature: 0,
+    seed: 1,
     messages: [
       {
         role: "user",
@@ -108,6 +122,10 @@ export async function analyzeProfile(
               `Analyse these photos of a person for a professional, respectful style consultation. ` +
               `Determine skin tone, undertone, facial contrast, face shape, body type, natural hair colour ` +
               `and eye colour, and assign a seasonal colour analysis. Be objective and tactful — never judgmental. ` +
+              `Also judge overall colouring CLARITY by chroma/saturation ('muted' vs 'clear'): ` +
+              `muted = soft, greyed, dusty; clear = bright, vivid. Do NOT confuse high light/dark ` +
+              `(value) contrast — e.g. fair skin with dark hair — for 'clear'; such colouring is ` +
+              `frequently muted, which points to Summer rather than Winter. ` +
               `Context: age ${intake.age}, height ${intake.heightCm}cm, ${intake.genderPresentation}.` +
               (intake.hairColor
                 ? ` Self-reported hair: ${HAIR_COLOR_LABELS[intake.hairColor]}.`
@@ -129,6 +147,14 @@ export async function analyzeProfile(
   const eyeColor = intake.eyeColor
     ? EYE_COLOR_LABELS[intake.eyeColor as EyeColorId]
     : output.eyeColor;
+
+  // Correct the base season using the chroma signal: a muted cool/neutral person
+  // read as "winter" from value-contrast alone is really a Summer.
+  const colorSeason = refineSeasonForClarity({
+    season: output.colorSeason,
+    undertone: output.undertone,
+    clarity: output.clarity,
+  });
 
   return {
     version: "1.0",
@@ -158,11 +184,12 @@ export async function analyzeProfile(
       hairColor,
       eyeColor,
     },
-    colorSeason: output.colorSeason,
+    colorSeason,
     colorSubseason: classifySubseason({
-      season: output.colorSeason,
+      season: colorSeason,
       undertone: output.undertone,
       contrast: output.contrast,
+      clarity: output.clarity,
       hairColor,
       eyeColor,
     }),
