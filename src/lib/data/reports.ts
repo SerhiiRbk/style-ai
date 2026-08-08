@@ -1108,14 +1108,16 @@ async function executeReportGeneration(
           }),
         );
 
-  // The narrative (headline/summary/colours/hair/silhouette/do-dont/looks) is
-  // already generated natively in `language`. Only the deterministic parts need
-  // translating — skipped entirely for English.
+  // The narrative (headline/summary/hair/silhouette/do-dont/looks) is already
+  // generated natively in `language`. The colour palette is now deterministic
+  // (English), so it joins the other deterministic parts for translation.
+  // Skipped entirely for English.
   const translated =
     language === "en"
       ? null
       : await translateReportParts(
           {
+            colors: content.colors,
             shopping,
             lookItems,
             ...(premiumGrooming
@@ -1138,7 +1140,7 @@ async function executeReportGeneration(
       profile,
       headline: content.headline,
       summary: content.summary,
-      colors: content.colors,
+      colors: translated?.colors ?? content.colors,
       hair: content.hair,
       silhouette: content.silhouette,
       shopping: translated?.shopping ?? shopping,

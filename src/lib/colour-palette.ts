@@ -243,3 +243,205 @@ export function seasonForSubseason(subseason: SubseasonId): Season {
     seasons.find((s) => SUBSEASON_BY_SEASON[s].includes(subseason)) ?? "autumn"
   );
 }
+
+/* --------------------- deterministic report palette ---------------------- */
+
+/** A named swatch plus a one-line rationale — the report's colour card shape. */
+export type ColorRec = { name: string; hex: string; why: string };
+
+/** Minimal hex → HSL for classifying a swatch's role (neutral / accent / depth). */
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  const m = hex.replace("#", "");
+  const r = parseInt(m.slice(0, 2), 16) / 255;
+  const g = parseInt(m.slice(2, 4), 16) / 255;
+  const b = parseInt(m.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  let s = 0;
+  let h = 0;
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    switch (max) {
+      case r:
+        h = ((g - b) / d) % 6;
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      default:
+        h = (r - g) / d + 4;
+    }
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s, l };
+}
+
+const UNDERTONE_ADJ: Record<Undertone, string> = {
+  warm: "warm",
+  cool: "cool",
+  neutral: "balanced",
+};
+
+/**
+ * Deterministic, on-voice rationale for a best-palette swatch. Derived from the
+ * swatch's role (neutral / accent) and depth plus the client's undertone and
+ * contrast — so the same colouring always yields the same copy (no LLM call).
+ */
+function whyForBestSwatch(
+  swatch: PaletteSwatch,
+  opts: { undertone: Undertone; contrast: Contrast; label: string },
+): string {
+  const { s, l } = hexToHsl(swatch.hex);
+  const u = UNDERTONE_ADJ[opts.undertone];
+  const isAccent = s >= 0.32;
+  const isNeutral = s < 0.2;
+  const deep = l < 0.3;
+  const light = l > 0.72;
+
+  if (isAccent) {
+    return `Your accent near the face — ${u} and clear, it lifts your complexion without shouting, sitting squarely in your ${opts.label} range.`;
+  }
+  if (deep) {
+    return `A deep ${u} anchor that grounds an outfit with more depth than black and none of its harshness.`;
+  }
+  if (light && isNeutral) {
+    return `A soft, light ${u} neutral that brightens the face and layers cleanly under everything.`;
+  }
+  if (isNeutral) {
+    return `A versatile ${u} neutral — the quiet base that pairs with every other tone in your ${opts.label} palette.`;
+  }
+  return `A muted ${u} tone that adds interest at ${opts.contrast} contrast while staying true to your ${opts.label} colouring.`;
+}
+
+/**
+ * Season-level "colours to avoid" — deterministic, defensible picks that fight
+ * each season's undertone / chroma. Kept season-level (not per-subseason) since
+ * the clash logic is driven by temperature and contrast, not fine subtype.
+ */
+const SEASON_AVOID: Record<Season, ColorRec[]> = {
+  summer: [
+    {
+      name: "Pure Black",
+      hex: "#000000",
+      why: "Too stark for soft, cool colouring — it overpowers your features and casts hard shadows on the face.",
+    },
+    {
+      name: "Bright Orange",
+      hex: "#FF6B35",
+      why: "A hot, warm hue that fights your cool undertone and reads garish beside muted summer tones.",
+    },
+    {
+      name: "Golden Yellow",
+      hex: "#F4C430",
+      why: "Warm and high-chroma — it drains cool skin and looks brash against your soft palette.",
+    },
+    {
+      name: "Rust",
+      hex: "#B7410E",
+      why: "An earthy, warm tone that clashes with your cool undertone and dulls your natural freshness.",
+    },
+  ],
+  winter: [
+    {
+      name: "Rust",
+      hex: "#A85A2E",
+      why: "Muted and earthy — it muddies the clear, cool contrast that winter colouring wears best.",
+    },
+    {
+      name: "Mustard",
+      hex: "#C99A3A",
+      why: "Warm and dusty; it fights your cool undertone and flattens your natural clarity.",
+    },
+    {
+      name: "Warm Beige",
+      hex: "#C7A26B",
+      why: "Too soft and warm — winter colouring needs crisp, cool tones, not muddy neutrals.",
+    },
+    {
+      name: "Olive",
+      hex: "#6E6A34",
+      why: "A warm, muted green that dulls the sharp contrast your colouring carries best.",
+    },
+  ],
+  spring: [
+    {
+      name: "Pure Black",
+      hex: "#000000",
+      why: "Too heavy for warm, bright colouring — it overwhelms your natural glow.",
+    },
+    {
+      name: "Dusty Mauve",
+      hex: "#9C6B84",
+      why: "Cool and muted; it greys out the warm clarity that lights up your complexion.",
+    },
+    {
+      name: "Charcoal Slate",
+      hex: "#54606E",
+      why: "A cool, muddy grey that fights your warmth and flattens your bright colouring.",
+    },
+    {
+      name: "Cool Burgundy",
+      hex: "#6E1330",
+      why: "Deep and cool-muted — it sits heavy against your light, warm palette.",
+    },
+  ],
+  autumn: [
+    {
+      name: "Pure Black",
+      hex: "#000000",
+      why: "Too stark for warm, muted colouring — it drains the richness from your skin.",
+    },
+    {
+      name: "Icy Pink",
+      hex: "#F2C6D2",
+      why: "A cool pastel that clashes with your warm undertone and washes you out.",
+    },
+    {
+      name: "Fuchsia",
+      hex: "#B01455",
+      why: "Cool and high-chroma; it fights the earthy warmth your colouring wears best.",
+    },
+    {
+      name: "Cool Cobalt",
+      hex: "#0E63C4",
+      why: "A bright, cool blue that overwhelms your soft, warm palette.",
+    },
+  ],
+};
+
+/** Deterministic "best" colours for a subseason (curated hexes + names + why). */
+export function bestColorsForSubseason(
+  subseason: SubseasonId,
+  opts: { undertone: Undertone; contrast: Contrast },
+): ColorRec[] {
+  const label = SUBSEASON_LABELS[subseason];
+  return SUBSEASON_PALETTES[subseason].map((sw) => ({
+    name: sw.name,
+    hex: sw.hex,
+    why: whyForBestSwatch(sw, { ...opts, label }),
+  }));
+}
+
+/** Deterministic "avoid" colours for a subseason's base season. */
+export function avoidColorsForSubseason(subseason: SubseasonId): ColorRec[] {
+  return SEASON_AVOID[seasonForSubseason(subseason)];
+}
+
+/**
+ * The full deterministic report palette (best + avoid) for a client's colouring.
+ * Same subseason + undertone + contrast always produce identical output, so two
+ * reports from the same photo can never show different palettes.
+ */
+export function reportPalette(opts: {
+  subseason: SubseasonId;
+  undertone: Undertone;
+  contrast: Contrast;
+}): { best: ColorRec[]; avoid: ColorRec[] } {
+  return {
+    best: bestColorsForSubseason(opts.subseason, opts),
+    avoid: avoidColorsForSubseason(opts.subseason),
+  };
+}

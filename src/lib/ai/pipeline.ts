@@ -25,6 +25,7 @@ import {
   type ReportContent,
 } from "@/lib/style-profile";
 import { languageInstruction, type ReportLanguage } from "@/lib/languages";
+import { reportPalette } from "@/lib/colour-palette";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -212,6 +213,27 @@ function measurementsSummary(m?: {
   return parts.length ? ` (${parts.join(", ")})` : "";
 }
 
+/**
+ * Deterministic best/avoid palette for a profile — same colouring always yields
+ * the same palette, so two reports from one photo can't show different colours.
+ * The reasoning model still writes the rest of the report; only the palette is
+ * pinned. Uses the stored subseason, or classifies one from the profile signals.
+ */
+function deterministicColors(profile: StyleProfile): ReportContent["colors"] {
+  const undertone = profile.physical.undertone;
+  const contrast = profile.physical.contrast;
+  const subseason =
+    profile.colorSubseason ??
+    classifySubseason({
+      season: profile.colorSeason,
+      undertone,
+      contrast,
+      hairColor: profile.physical.hairColor,
+      eyeColor: profile.physical.eyeColor,
+    });
+  return reportPalette({ subseason, undertone, contrast });
+}
+
 /** Step 3 — Explainable report content grounded in the retrieved rules. */
 export async function recommend(
   intake: Intake,
@@ -222,7 +244,9 @@ export async function recommend(
   tier: Tier = "basic",
   language: ReportLanguage = "en",
 ): Promise<ReportContent> {
-  if (!hasAI) return mockReportContent(intake);
+  if (!hasAI) {
+    return { ...mockReportContent(intake), colors: deterministicColors(profile) };
+  }
 
   const hairRecommend = hairRecommendGenLimit(tier);
   const hairAvoid = HAIR_AVOID_GEN_LIMIT;
@@ -257,12 +281,8 @@ export async function recommend(
       `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
       `${grounding}\n` +
       `Produce an explainable style report. Requirements:\n` +
-      `- For every colour (best AND avoid) include a hex code and a concrete "why" tied to the profile.\n` +
-      (profile.colorSubseason
-        ? `- Calibrate the palette to the client's ${profile.colorSubseason.replace("-", " ")} colouring ` +
-          `(hair: ${profile.physical.hairColor ?? "n/a"}, eyes: ${profile.physical.eyeColor ?? "n/a"}) — ` +
-          `respect its depth, temperature and chroma.\n`
-        : "") +
+      `- The colour palette (best AND avoid) is supplied separately and will be replaced — ` +
+      `you may return placeholder colours; do not spend effort there.\n` +
       `- For hair: exactly ${hairRecommend} recommended hairstyles and exactly ${hairAvoid} styles to avoid, ` +
       `each with a concrete reason tied to face shape (${profile.physical.faceShape}).\n` +
       `- Tailor the silhouette "fit" line and all 3 rules specifically to the "${profile.physical.bodyType}" body type: ` +
@@ -274,6 +294,10 @@ export async function recommend(
       languageInstruction(language),
   });
 
+  // Pin the palette to the deterministic, subseason-curated set so identical
+  // colouring always produces identical colours (the model's own palette,
+  // which drifts run-to-run, is discarded).
+  output.colors = deterministicColors(profile);
   return output;
 }
 
