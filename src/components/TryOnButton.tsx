@@ -156,21 +156,21 @@ export function TryOnButton({
 
   return (
     <div className="mt-3 border-t border-paper/10 pt-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={run}
           disabled={state === "loading" || insufficient || uploading}
           title={
             insufficient ? "Not enough credits — top up to try on" : undefined
           }
-          className="text-xs text-brass-soft transition-colors hover:text-paper disabled:opacity-50"
+          className="inline-flex cursor-pointer items-center rounded-full border border-brass-soft/50 bg-brass-soft/10 px-3.5 py-1.5 text-xs font-medium text-brass-soft transition-colors hover:border-brass-soft hover:bg-brass-soft/20 hover:text-paper disabled:cursor-not-allowed disabled:opacity-50"
         >
           {state === "loading" ? (
             <LuxeWorkingLabel message={WORKING.tryon} tone="paper" />
           ) : (
             <>
               Try this on
-              <span className="text-paper/40">
+              <span className="text-brass-soft/60">
                 {" "}
                 · {cost} credit{cost === 1 ? "" : "s"} →
               </span>
@@ -189,10 +189,10 @@ export function TryOnButton({
                 ? `Outfit set is full (${MAX_TRYON_ITEMS} max)`
                 : "Combine up to 4 pieces in one try-on"
             }
-            className={`text-[11px] transition-colors disabled:opacity-40 ${
+            className={`inline-flex cursor-pointer items-center rounded-full border px-3.5 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               inSet
-                ? "text-brass-soft hover:text-paper"
-                : "text-paper/40 hover:text-paper"
+                ? "border-brass-soft/50 bg-brass-soft/10 text-brass-soft hover:border-brass-soft hover:text-paper"
+                : "border-paper/25 text-paper/70 hover:border-paper/50 hover:bg-paper/5 hover:text-paper"
             }`}
           >
             {inSet ? "✓ In outfit — remove" : "+ Add to outfit"}
@@ -228,7 +228,7 @@ export function TryOnButton({
             type="button"
             disabled={uploading}
             onClick={() => fileRef.current?.click()}
-            className="mt-2 text-xs text-brass-soft transition-colors hover:text-paper disabled:opacity-50"
+            className="mt-2 cursor-pointer text-xs text-brass-soft transition-colors hover:text-paper disabled:cursor-not-allowed disabled:opacity-50"
           >
             {uploading ? "Uploading…" : "Upload full-length photo →"}
           </button>

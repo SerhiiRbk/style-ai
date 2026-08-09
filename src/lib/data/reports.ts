@@ -594,6 +594,7 @@ async function generateCoverImageJob(input: ImageJobInput) {
   const referenceImageUrl =
     photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
   if (!referenceImageUrl) return;
+  const faceReferenceImageUrl = photos.find((p) => p.role === "face")?.url;
 
   // Idempotent: skip if the cover already exists (resume passes only fill gaps).
   const { data: existing } = await admin
@@ -607,6 +608,7 @@ async function generateCoverImageJob(input: ImageJobInput) {
     profile,
     palette: (content.colors?.best ?? []).map((c) => c.name).filter(Boolean),
     referenceImageUrl,
+    faceReferenceImageUrl,
   });
   if (!img) return;
 

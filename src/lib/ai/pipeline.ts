@@ -671,11 +671,62 @@ export async function generateCoverImage(opts: {
   palette?: string[];
   archetype?: string;
   referenceImageUrl?: string;
+  /** Close-up portrait anchor for identity when a full-length photo is also provided. */
+  faceReferenceImageUrl?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
-    const { profile, referenceImageUrl } = opts;
+    const { profile, referenceImageUrl, faceReferenceImageUrl } = opts;
     const palette = (opts.palette ?? []).filter(Boolean);
+
+    const hasFace = Boolean(faceReferenceImageUrl);
+    const hasFull = Boolean(referenceImageUrl);
+    const hasPerson = hasFace || hasFull;
+
+    // Explain the role of each input image so the model takes the face from the
+    // close-up portrait (many pixels, reliable likeness) and body/pose from the
+    // full-length shot — the face is tiny on a full-length frame and drifts if
+    // used alone.
+    let imageRoles = "";
+    if (hasFace && hasFull) {
+      imageRoles =
+        `The FIRST image is a close-up portrait — match this person's face, hair and ` +
+        `identity exactly. The SECOND image is a full-length photo of the same person — ` +
+        `use only for body proportions. `;
+    } else if (hasPerson) {
+      imageRoles =
+        `The provided image is a photo of the person — preserve their face, hair, skin ` +
+        `tone and identity exactly; this is that same person. `;
+    }
+
+    // Text anchor for the face. The cover regenerates the whole scene, so a
+    // reference photo alone can drift; these explicit traits + "do not alter"
+    // rules keep the rendered face true to the real person (mirrors the look
+    // renderer, which produces noticeably better likeness).
+    let faceAnchor = "";
+    if (hasPerson) {
+      const traits = [
+        profile.physical.faceShape
+          ? `${profile.physical.faceShape} face shape`
+          : null,
+        profile.physical.hairColor ? `${profile.physical.hairColor} hair` : null,
+        profile.physical.eyeColor ? `${profile.physical.eyeColor} eyes` : null,
+        profile.physical.skinTone
+          ? `${profile.physical.skinTone} skin tone`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      faceAnchor =
+        (traits ? `The person has ${traits}. ` : "") +
+        `Keep the SAME facial proportions as the reference photo — the same forehead ` +
+        `height, nose size and shape, jawline, cheekbones, eye spacing and lip shape; ` +
+        `do not idealise, slim or restyle the face. ` +
+        `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
+        `Do NOT change the hair colour. ` +
+        `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
+        `what the reference photo shows. Render the face at maximum fidelity to the portrait. `;
+    }
 
     const prompt =
       `Cover photograph for a luxury men's style magazine — a single full-length ` +
@@ -694,18 +745,21 @@ export async function generateCoverImage(opts: {
       `Bright and evenly lit so dark text overlays read cleanly on the empty areas. ` +
       `Vertical cover framing (taller than wide), head-to-shoes fully visible, sharp focus, ` +
       `high-end retouching, editorial magazine-cover quality. ` +
-      (referenceImageUrl
-        ? `Preserve the face, hair, skin tone and identity of the person in the provided ` +
-          `photo exactly — this is a portrait of that same person.`
-        : `Do not show identifiable facial features.`) +
+      imageRoles +
+      faceAnchor +
+      (hasPerson ? "" : `Do not show identifiable facial features. `) +
       NO_TEXT_RULE;
 
-    const content = referenceImageUrl
-      ? [
-          { type: "text" as const, text: prompt },
-          { type: "image" as const, image: new URL(referenceImageUrl) },
-        ]
-      : [{ type: "text" as const, text: prompt }];
+    const content: (
+      | { type: "text"; text: string }
+      | { type: "image"; image: URL }
+    )[] = [{ type: "text", text: prompt }];
+    if (faceReferenceImageUrl) {
+      content.push({ type: "image", image: new URL(faceReferenceImageUrl) });
+    }
+    if (referenceImageUrl) {
+      content.push({ type: "image", image: new URL(referenceImageUrl) });
+    }
 
     return await renderImage(content);
   } catch {
