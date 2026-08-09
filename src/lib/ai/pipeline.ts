@@ -261,6 +261,61 @@ function deterministicColors(profile: StyleProfile): ReportContent["colors"] {
   return reportPalette({ subseason, undertone, contrast });
 }
 
+/**
+ * Snap a model-produced look palette onto the report's deterministic BEST
+ * colours (nearest RGB), so the generated look image renders in the exact
+ * colours Carlo recommends — not the model's own, possibly off-season, picks.
+ * Without this the swatch section (pinned) and the look images (free-form) drift
+ * apart: a light-summer report can show warm-tan / charcoal outfits.
+ */
+function snapPaletteToBest(
+  palette: string[],
+  best: ReportContent["colors"]["best"],
+): string[] {
+  const swatches = best
+    .map((c) => c.hex)
+    .filter((h): h is string => typeof h === "string")
+    .map((h) => (h.startsWith("#") ? h : `#${h}`))
+    .filter((h) => /^#[0-9a-fA-F]{6}$/.test(h));
+  if (!swatches.length) return palette;
+  const toRgb = (hex: string): [number, number, number] => {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const swRgb = swatches.map((h) => [h, toRgb(h)] as const);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of palette) {
+    if (typeof raw !== "string") continue;
+    const hex = raw.startsWith("#") ? raw : `#${raw}`;
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) continue;
+    const t = toRgb(hex);
+    let pick = swRgb[0]![0];
+    let bestD = Infinity;
+    for (const [sw, rgb] of swRgb) {
+      const d =
+        (rgb[0] - t[0]) ** 2 + (rgb[1] - t[1]) ** 2 + (rgb[2] - t[2]) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        pick = sw;
+      }
+    }
+    if (!seen.has(pick)) {
+      seen.add(pick);
+      out.push(pick);
+    }
+  }
+  // Top up to at least 3 swatches so the palette line / chips stay meaningful.
+  for (const sw of swatches) {
+    if (out.length >= 3) break;
+    if (!seen.has(sw)) {
+      seen.add(sw);
+      out.push(sw);
+    }
+  }
+  return out.length ? out : swatches.slice(0, 4);
+}
+
 /** Step 3 — Explainable report content grounded in the retrieved rules. */
 export async function recommend(
   intake: Intake,
@@ -278,6 +333,14 @@ export async function recommend(
   const hairRecommend = hairRecommendGenLimit(tier);
   const hairAvoid = HAIR_AVOID_GEN_LIMIT;
 
+  // Pin the palette up front so the looks — and the images generated from them —
+  // are built from the exact colours the report recommends, not the model's own.
+  const colors = deterministicColors(profile);
+  const bestPaletteText = colors.best
+    .map((c) => `${c.name} ${c.hex}`)
+    .join(", ");
+  const avoidPaletteText = colors.avoid.map((c) => c.name).join(", ");
+
   const looksLine =
     lookCount <= 1
       ? `- Provide exactly 1 versatile look for everyday wear, with a ` +
@@ -285,7 +348,7 @@ export async function recommend(
       : `- Provide exactly ${lookCount} looks for different contexts (work, smart-casual, weekend), each with a ` +
         `3–4 colour hex palette and a one-line description of the outfit.\n` +
         `- Each look description MUST list every garment with its colour, comma-separated ` +
-        `(e.g. "Rust crewneck knit, olive chinos, brown leather loafers"). Use concrete catalogue words ` +
+        `(e.g. "Powder-blue crewneck knit, grey-blue chinos, soft-denim loafers"). Use concrete catalogue words ` +
         `(blazer, overshirt, crewneck, chinos, trousers, loafers, sneakers) — not vague phrases like ` +
         `"textured layers" or "warm accents".\n`;
 
@@ -308,8 +371,13 @@ export async function recommend(
       `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
       `${grounding}\n` +
       `Produce an explainable style report. Requirements:\n` +
-      `- The colour palette (best AND avoid) is supplied separately and will be replaced — ` +
-      `you may return placeholder colours; do not spend effort there.\n` +
+      `- The colour palette (best AND avoid) is supplied and fixed — you may return ` +
+      `placeholder colours in "colors" (they are replaced), but the LOOKS must obey it.\n` +
+      `- CRITICAL — colours: every look's "palette" hex codes AND every garment colour ` +
+      `named in its "description" MUST be drawn ONLY from the client's BEST colours: ` +
+      `${bestPaletteText}. Do not introduce colours outside this set — in particular no ` +
+      `black, no charcoal, and no warm tan/camel/brown/olive/rust unless it literally appears ` +
+      `above. Never use the AVOID colours (${avoidPaletteText}).\n` +
       `- For hair: exactly ${hairRecommend} recommended hairstyles and exactly ${hairAvoid} styles to avoid, ` +
       `each with a concrete reason tied to face shape (${profile.physical.faceShape}).\n` +
       `- Tailor the silhouette "fit" line and all 3 rules specifically to the "${profile.physical.bodyType}" body type: ` +
@@ -324,7 +392,14 @@ export async function recommend(
   // Pin the palette to the deterministic, subseason-curated set so identical
   // colouring always produces identical colours (the model's own palette,
   // which drifts run-to-run, is discarded).
-  output.colors = deterministicColors(profile);
+  output.colors = colors;
+  // Snap each look's palette onto the best colours so the generated look IMAGE
+  // (which is prompted with look.palette) can't drift off-season even if the
+  // model ignored the colour instruction above.
+  output.looks = (output.looks ?? []).map((l) => ({
+    ...l,
+    palette: snapPaletteToBest(l.palette ?? [], colors.best),
+  }));
   return output;
 }
 
@@ -364,6 +439,10 @@ export async function generateExtraLook(opts: {
     ? `User request for this specific look: "${note.trim()}". Honour it within the occasion and the profile.\n`
     : "";
 
+  const colors = deterministicColors(profile);
+  const bestPaletteText = colors.best.map((c) => `${c.name} ${c.hex}`).join(", ");
+  const avoidPaletteText = colors.avoid.map((c) => c.name).join(", ");
+
   const { output } = await generateText({
     model: env.modelReasoning,
     output: Output.object({ schema: lookContentSchema }),
@@ -385,13 +464,18 @@ export async function generateExtraLook(opts: {
       `- context: "${context}".\n` +
       `- title: a short evocative name (2–4 words).\n` +
       `- description: ONE line naming each garment with its colour, comma-separated ` +
-        `(e.g. "Camel crewneck knit, taupe chinos, brown loafers") — concrete catalogue words only.\n` +
-      `- palette: 3–4 hex codes aligned with the client's best colours.\n` +
+        `— concrete catalogue words only.\n` +
+      `- CRITICAL — colours: the "palette" hex codes AND every garment colour in the ` +
+        `"description" MUST be drawn ONLY from the client's BEST colours: ${bestPaletteText}. ` +
+        `No black/charcoal and no warm tan/camel/brown/olive/rust unless it appears above. ` +
+        `Never use the AVOID colours (${avoidPaletteText}).\n` +
       `Keep the tone refined and practical.` +
       languageInstruction(intake.language),
   });
 
-  return { ...output, context };
+  // Guarantee the returned palette is on-report even if the model drifted; the
+  // look image is prompted from this palette.
+  return { ...output, palette: snapPaletteToBest(output.palette ?? [], colors.best), context };
 }
 
 /**

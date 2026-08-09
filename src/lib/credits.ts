@@ -322,22 +322,25 @@ export async function ensureSignupBonus(
 ): Promise<void> {
   if (await userHasPromoRedemption(admin, userId)) return;
 
-  const { data, error } = await admin
-    .from("credits_ledger")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("reason", "signup_bonus")
-    .limit(1);
-  if (error) {
-    if (isMissingFunction(error.message)) return;
-    throw new Error(error.message);
+  // Grant via the idempotent external-reference path keyed by the user id, so
+  // the advisory lock + the unique index on ref_ext make this safe under the
+  // burst of concurrent callers on first sign-in (auth callback + first page
+  // render + /start + api/reports). A plain select-then-insert raced here and
+  // handed out the bonus 2–3× (all callers saw an empty ledger, all inserted).
+  try {
+    await grantCreditsExternal(admin, {
+      userId,
+      amount: SIGNUP_BONUS,
+      reason: "signup_bonus",
+      refExt: `signup_bonus:${userId}`,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (isMissingFunction(msg)) return; // schema not migrated (local/dev)
+    // A concurrent grant won the unique-index race first → idempotent no-op.
+    if (/duplicate key|unique/i.test(msg)) return;
+    throw e;
   }
-  if (data && data.length > 0) return;
-  await grantCredits(admin, {
-    userId,
-    amount: SIGNUP_BONUS,
-    reason: "signup_bonus",
-  });
 }
 
 /**

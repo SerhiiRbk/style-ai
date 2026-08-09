@@ -938,15 +938,8 @@ function PriorityColumn({
         </h4>
       </div>
       <ul className="mt-4 space-y-3">
-        {items.map((i) => (
-          <li
-            key={i.title}
-            className="flex items-center justify-between gap-3 rounded-xl border hairline bg-paper px-4 py-3"
-          >
-            <span className="flex min-w-0 items-center gap-3">
-              <ShoppingItemThumb item={i} />
-              <span className="truncate text-sm">{humanizeProductTitle(i.title)}</span>
-            </span>
+        {items.map((i) => {
+          const price = (
             <span className="shrink-0 font-display text-sm text-stone">
               {formatOfferPrice({
                 priceEur: i.priceEur,
@@ -955,8 +948,34 @@ function PriorityColumn({
                 priceNative: i.priceNative,
               })}
             </span>
-          </li>
-        ))}
+          );
+          return (
+            <li
+              key={i.title}
+              className="flex items-start justify-between gap-3 rounded-xl border hairline bg-paper px-4 py-3"
+            >
+              {i.url ? (
+                <a
+                  href={i.url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow sponsored"
+                  className="group flex min-w-0 items-center gap-3 transition-colors hover:text-ink"
+                >
+                  <ShoppingItemThumb item={i} />
+                  <span className="text-sm group-hover:underline">
+                    {humanizeProductTitle(i.title)}
+                  </span>
+                </a>
+              ) : (
+                <span className="flex min-w-0 items-center gap-3">
+                  <ShoppingItemThumb item={i} />
+                  <span className="text-sm">{humanizeProductTitle(i.title)}</span>
+                </span>
+              )}
+              {price}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

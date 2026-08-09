@@ -37,7 +37,7 @@ export async function GET(
   const adminDb = isAdmin && hasSupabaseAdmin ? createAdminSupabase() : null;
 
   const ownerCols =
-    "status, tier, capsule_images, hair, facial_hair, eyewear, accessories, headwear, user_id, is_public, intake, headline, summary, colors";
+    "status, tier, capsule_images, hair, facial_hair, eyewear, accessories, headwear, user_id, is_public, headline, summary, colors";
   // Public view omits user_id (and intake) — read it for non-owners.
   const publicCols =
     "status, tier, capsule_images, hair, facial_hair, eyewear, accessories, headwear, is_public";
@@ -53,7 +53,6 @@ export async function GET(
     headwear?: HeadwearRec[] | null;
     user_id?: string;
     is_public?: boolean;
-    intake?: unknown;
     headline?: string | null;
     summary?: string | null;
     colors?: { best: unknown[]; avoid: unknown[] } | null;
@@ -131,11 +130,19 @@ export async function GET(
   let state = reportGenerationState(row, looks ?? [], { hasReferencePhoto });
 
   if (state.status === "failed" && isOwner && hasSupabaseAdmin && row.user_id) {
-    const recovery = await buildReportRecoveryInfo(createAdminSupabase(), {
+    const recoveryAdmin = createAdminSupabase();
+    // Intake moved to its own owner-only table (migration 0020); the base
+    // `reports` row no longer carries it.
+    const { data: intakeRow } = await recoveryAdmin
+      .from("report_intake")
+      .select("intake")
+      .eq("report_id", id)
+      .maybeSingle();
+    const recovery = await buildReportRecoveryInfo(recoveryAdmin, {
       userId: row.user_id,
       reportId: id,
       tier: row.tier as Tier,
-      intake: row.intake as Intake | null | undefined,
+      intake: (intakeRow?.intake as Intake | null) ?? null,
       headline: row.headline,
       summary: row.summary,
       colors: row.colors,
