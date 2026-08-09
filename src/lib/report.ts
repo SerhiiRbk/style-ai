@@ -255,6 +255,8 @@ export type StyleReport = {
   coverImage?: string | null;
   /** Premium/lookbook — generated flat-lay of recommended watch variants (signed URL). */
   watchImage?: string | null;
+  /** Premium/lookbook — generated flat-lay of the footwear system (signed URL). */
+  shoeImage?: string | null;
   /** Per-look matched products keyed by look index (Shop the Look). Optional for backward compatibility. */
   lookItems?: Record<number, ShoppingItem[]>;
   /** Owner-only — saved catalogue / outfit try-on renders for this report. */
@@ -679,6 +681,7 @@ export function assembleReport(opts: {
   capsuleImages?: (string | null | undefined)[];
   coverImage?: string | null;
   watchImage?: string | null;
+  shoeImage?: string | null;
   lookItems?: Record<number, ShoppingItem[]>;
   outfitTryons?: SavedOutfitTryOn[];
   generation?: ReportGenerationState;
@@ -726,6 +729,7 @@ export function assembleReport(opts: {
     capsuleImages: opts.capsuleImages,
     coverImage: opts.coverImage,
     watchImage: opts.watchImage,
+    shoeImage: opts.shoeImage,
     lookItems: opts.lookItems,
     outfitTryons: opts.outfitTryons,
     generation: opts.generation,

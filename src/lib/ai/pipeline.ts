@@ -907,6 +907,73 @@ export async function generateWatchBoardImage(opts: {
   }
 }
 
+/**
+ * One editorial flat-lay of the report's footwear system (3–4 shoe roles) —
+ * no brands, no text. Generated once per premium/lookbook report so the
+ * footwear section has a visual, without a per-shoe image cost.
+ */
+export async function generateShoeBoardImage(opts: {
+  palette?: string[];
+  variants: {
+    role: string;
+    style: string;
+    color: string;
+    colorHex?: string;
+  }[];
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI || !opts.variants.length) return null;
+  try {
+    const lines = opts.variants.map((v, i) => {
+      const hex = v.colorHex?.trim() ? ` (${v.colorHex.trim()})` : "";
+      return `${i + 1}. ${v.style} (${v.role}) — leather/material colour MUST be ${v.color}${hex}.`;
+    });
+    // Only forbid black when none of the recommended variants are black —
+    // deep winters (etc.) may legitimately recommend black dress shoes.
+    const recommendsBlack = opts.variants.some((v) =>
+      /\bblack\b/i.test(v.color),
+    );
+    const colourFidelity =
+      `Each pair's colour is FIXED by the list above — render exactly that leather/material ` +
+      `colour (use the hex when given). Do NOT invent shoe colours and do NOT tint the shoes ` +
+      `with any surrounding or wardrobe palette. ` +
+      (recommendsBlack
+        ? ""
+        : `None of these shoes are black — do NOT default dress oxfords/derbies to pure black ` +
+          `or near-black. `);
+
+    // NOTE: intentionally do NOT pass the client's wardrobe palette here — it is
+    // the colour of their CLOTHES, and feeding it into a shoes-only flat-lay makes
+    // the model tint the shoes with those tones. Shoe colours are set per pair.
+    const prompt =
+      `A clean, editorial product-photography sheet of ${opts.variants.length} pairs of men's ` +
+      `shoes on a plain, neutral off-white / greige surface (smooth plaster or fine linen), ` +
+      `gentle daylight, soft shadows, high-end catalogue quality, sharp focus. Tall / portrait ` +
+      `composition. Lay it out as a grid of EXACTLY ${opts.variants.length} rows and EXACTLY 2 ` +
+      `columns (${opts.variants.length}×2) — total ${opts.variants.length * 2} shoe photographs, ` +
+      `one pair per row:\n` +
+      `  • LEFT column = view (a): the pair standing upright on its soles, toes pointing toward ` +
+      `the bottom of the frame (front three-quarter view);\n` +
+      `  • RIGHT column = view (b): a clean side profile of the SAME pair.\n` +
+      `Each pair appears on exactly ONE row and nowhere else. Do NOT duplicate, repeat or add ` +
+      `extra columns/copies of any pair — only two images per pair (front + side). Use these exact ` +
+      `same two angles for every row and keep the two views of a pair identical in style and ` +
+      `colour. Each pair is a DIFFERENT style AND colour, described below:\n` +
+      `${lines.join("\n")}\n` +
+      colourFidelity +
+      `Formal-shoe rule: any oxfords or derbies must be a classic formal leather ` +
+      `(black, dark brown or burgundy) exactly as named above — NEVER navy, blue, slate ` +
+      `or any coloured leather on an oxford/derby; coloured leather only ever appears on loafers. ` +
+      `Render generic, unbranded shoes — NO brand names, NO logos, NO text of any kind on ` +
+      `the shoes, soles or background. Classic, refined menswear silhouettes. ` +
+      `The pairs must clearly differ in style and colour exactly as described. ` +
+      NO_TEXT_RULE;
+
+    return await renderImage([{ type: "text", text: prompt }]);
+  } catch {
+    return null;
+  }
+}
+
 export type CatalogTryOnGarment = {
   title: string;
   category: string;

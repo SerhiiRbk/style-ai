@@ -12,6 +12,7 @@ const REPORT_NAV_ITEMS = [
   ["grooming", "Hair"],
   ["fit", "Fit"],
   ["looks", "Looks"],
+  ["finishing", "Finishing"],
   ["capsule", "Capsule"],
   ["shopping", "Shopping"],
   ["details", "Details"],
@@ -19,9 +20,19 @@ const REPORT_NAV_ITEMS = [
   ["dos-donts", "Do / Don't"],
 ] as const;
 
-export function ReportSectionNav({ lang }: { lang?: ReportLanguage }) {
+export function ReportSectionNav({
+  lang,
+  includeFinishing = false,
+}: {
+  lang?: ReportLanguage;
+  /** Premium/lookbook — watches, footwear (+ future leather/ties). */
+  includeFinishing?: boolean;
+}) {
   const { balance } = useCredits();
   const tt = makeT(lang);
+  const items = includeFinishing
+    ? REPORT_NAV_ITEMS
+    : REPORT_NAV_ITEMS.filter(([id]) => id !== "finishing");
 
   return (
     <nav
@@ -31,7 +42,7 @@ export function ReportSectionNav({ lang }: { lang?: ReportLanguage }) {
       <div className="container-luxe">
         <div className="flex items-center gap-3 py-3">
           <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {REPORT_NAV_ITEMS.map(([id, label]) => (
+            {items.map(([id, label]) => (
               <a
                 key={id}
                 href={`#${id}`}

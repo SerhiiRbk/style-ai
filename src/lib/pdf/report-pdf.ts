@@ -999,34 +999,6 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   d.text(extras.metals.avoidNote, { size: 9, color: STONE });
   d.gap(6);
 
-  if (report.tier === "lookbook" || report.tier === "premium") {
-    const watch = extras.watchGuide;
-    d.subhead(tt("Watches"), { keepWith: 20 });
-    d.text(watch.intro, { size: 9.5, color: STONE, lineGap: 3.5 });
-    d.gap(4);
-    const watchImg = report.watchImage
-      ? await embedImage(d.doc, report.watchImage, { w: 4, h: 3, px: 700 })
-      : null;
-    if (watchImg) d.banner(watchImg, Math.round((CONTENT_W * 3) / 4));
-    for (const v of watch.variants) {
-      d.text(`${v.type} — ${v.context}`, { size: 11, font: d.bold, lineGap: 2 });
-      if (v.shape) d.text(`${tt("Shape")}: ${v.shape}`, { size: 8.5, color: STONE });
-      d.swatch(v.caseHex, `${tt("Case")}: ${v.caseMetal}`);
-      d.swatch(v.dialHex, `${tt("Dial")}: ${v.dial}`);
-      d.swatch(v.strapHex, `${tt("Strap")}: ${v.strap}`);
-      d.text(v.why, { size: 9, color: STONE, lineGap: 3 });
-      d.gap(5);
-    }
-    if (watch.shapeNote) {
-      d.text(watch.shapeNote, { size: 9, color: STONE, lineGap: 3.5 });
-      d.gap(2);
-    }
-    d.text(watch.cuffNote, { size: 9, color: STONE, lineGap: 3.5 });
-    d.gap(2);
-    d.text(watch.avoidNote, { size: 9, color: STONE, lineGap: 3.5 });
-    d.gap(6);
-  }
-
   d.subhead(`${tt("Your colour DNA")} — ${extras.colorDNA.subseason}`, { keepWith: 14 });
   d.text(`${tt("Neutrals:")} ${extras.colorDNA.neutrals.map((c) => c.name).join(", ")}`, {
     color: STONE,
@@ -1235,6 +1207,67 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     }
   }
   d.gallery(lookItems, { cols: 2, ratio: LOOK_RATIO });
+
+  /* ------------------------- the finishing kit --------------------------- */
+  // Premium/lookbook — watches, footwear (+ leather, ties, trousers later).
+  if (report.tier === "lookbook" || report.tier === "premium") {
+    chapter("The finishing kit");
+    d.text(
+      tt(
+        "The pieces that hold every look together — watch, shoes, and the details that finish the picture.",
+      ),
+      { size: 9.5, color: STONE, lineGap: 3.5 },
+    );
+    d.gap(6);
+
+    const watch = extras.watchGuide;
+    d.subhead(tt("Watches"), { keepWith: 20 });
+    d.text(watch.intro, { size: 9.5, color: STONE, lineGap: 3.5 });
+    d.gap(4);
+    const watchImg = report.watchImage
+      ? await embedImage(d.doc, report.watchImage, { w: 4, h: 3, px: 700 })
+      : null;
+    if (watchImg) d.banner(watchImg, Math.round((CONTENT_W * 3) / 4));
+    for (const v of watch.variants) {
+      d.text(`${v.type} — ${v.context}`, { size: 11, font: d.bold, lineGap: 2 });
+      if (v.shape) d.text(`${tt("Shape")}: ${v.shape}`, { size: 8.5, color: STONE });
+      d.swatch(v.caseHex, `${tt("Case")}: ${v.caseMetal}`);
+      d.swatch(v.dialHex, `${tt("Dial")}: ${v.dial}`);
+      d.swatch(v.strapHex, `${tt("Strap")}: ${v.strap}`);
+      d.text(v.why, { size: 9, color: STONE, lineGap: 3 });
+      d.gap(5);
+    }
+    if (watch.shapeNote) {
+      d.text(watch.shapeNote, { size: 9, color: STONE, lineGap: 3.5 });
+      d.gap(2);
+    }
+    d.text(watch.cuffNote, { size: 9, color: STONE, lineGap: 3.5 });
+    d.gap(2);
+    d.text(watch.avoidNote, { size: 9, color: STONE, lineGap: 3.5 });
+    d.gap(6);
+
+    const shoes = extras.shoeGuide;
+    if (shoes?.variants?.length) {
+      d.subhead(tt("Footwear system"), { keepWith: 20 });
+      d.text(shoes.intro, { size: 9.5, color: STONE, lineGap: 3.5 });
+      d.gap(4);
+      const shoeImg = report.shoeImage
+        ? await embedImage(d.doc, report.shoeImage, { w: 4, h: 3, px: 700 })
+        : null;
+      if (shoeImg) d.banner(shoeImg, Math.round((CONTENT_W * 3) / 4));
+      for (const v of shoes.variants) {
+        d.text(`${v.style} — ${v.role}`, { size: 11, font: d.bold, lineGap: 2 });
+        d.swatch(v.colorHex, `${tt("Colour")}: ${v.color}`);
+        d.text(v.wearWith, { size: 8.5, color: STONE });
+        d.text(v.why, { size: 9, color: STONE, lineGap: 3 });
+        d.gap(5);
+      }
+      d.text(shoes.leatherRule, { size: 9, color: STONE, lineGap: 3.5 });
+      d.gap(2);
+      d.text(shoes.avoidNote, { size: 9, color: STONE, lineGap: 3.5 });
+      d.gap(6);
+    }
+  }
 
   /* -------------------------- capsule & buying plan ---------------------- */
   // Lookbook & Premium only — the wardrobe system is not part of a Basic report.

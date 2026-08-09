@@ -126,6 +126,20 @@ function trExtras(e: StyleExtras, tr: TranslateFn): StyleExtras {
       shapeNote: tr(e.watchGuide.shapeNote),
       avoidNote: tr(e.watchGuide.avoidNote),
     },
+    shoeGuide: {
+      ...e.shoeGuide,
+      intro: tr(e.shoeGuide.intro),
+      variants: e.shoeGuide.variants.map((v) => ({
+        ...v,
+        role: tr(v.role),
+        style: tr(v.style),
+        color: tr(v.color),
+        wearWith: tr(v.wearWith),
+        why: tr(v.why),
+      })),
+      leatherRule: tr(e.shoeGuide.leatherRule),
+      avoidNote: tr(e.shoeGuide.avoidNote),
+    },
   };
 }
 

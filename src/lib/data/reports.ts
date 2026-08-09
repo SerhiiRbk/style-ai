@@ -56,6 +56,7 @@ import {
   generateReportContent,
   generateCoverImage,
   generateWatchBoardImage,
+  generateShoeBoardImage,
   generateLookImage,
   generateHairImage,
   generateFacialHairImage,
@@ -72,6 +73,7 @@ import {
   premiumEyewearPicks,
   buildExtras,
   watchGuideFor,
+  shoeGuideFor,
   FORMAL_CONTEXTS,
   type StyleExtras,
 } from "@/lib/style-extras";
@@ -674,6 +676,53 @@ async function generateWatchImageJob(input: ImageJobInput) {
   }
 }
 
+/**
+ * One editorial flat-lay of the footwear system (3–4 shoe roles, no brands) for
+ * the premium/lookbook footwear section. Generated once, idempotent — a single
+ * image so it barely adds to report cost.
+ */
+async function generateShoeImageJob(input: ImageJobInput) {
+  if (input.tier !== "lookbook" && input.tier !== "premium") return;
+
+  const admin = createAdminSupabase();
+  const { reportId, userId, profile, content } = input;
+
+  // Idempotent: skip if already generated (resume only fills gaps).
+  const { data: existing } = await admin
+    .from("reports")
+    .select("shoe_image")
+    .eq("id", reportId)
+    .single();
+  if (existing?.shoe_image) return;
+
+  const guide = shoeGuideFor(
+    profile,
+    content.colors?.best ?? [],
+    content.colors?.avoid ?? [],
+  );
+  const img = await generateShoeBoardImage({
+    palette: (content.colors?.best ?? []).map((c) => c.name).filter(Boolean),
+    variants: guide.variants.map((v) => ({
+      role: v.role,
+      style: v.style,
+      color: v.color,
+      colorHex: v.colorHex,
+    })),
+  });
+  if (!img) return;
+
+  // Versioned filename so CDN/browser caches never keep a previous (e.g. black)
+  // flat-lay after a colour-corrected regen.
+  const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
+  const path = `${userId}/${reportId}/shoes-v${Date.now()}.${ext}`;
+  const { error: upErr } = await admin.storage
+    .from("assets")
+    .upload(path, img.bytes, { contentType: img.mediaType, upsert: true });
+  if (!upErr) {
+    await admin.from("reports").update({ shoe_image: path }).eq("id", reportId);
+  }
+}
+
 /** Look + capsule photos — slow; runs after the HTTP response via `after()`. */
 /** Owner email from the profiles mirror, or null when unknown. */
 async function emailForUser(
@@ -761,9 +810,10 @@ async function generateReportImages(input: ImageJobInput) {
   await generatePremiumGroomingImages(input);
   await generateCoverImageJob(input);
   await generateWatchImageJob(input);
+  await generateShoeImageJob(input);
 
   const admin = createAdminSupabase();
-  const { reportId, userId, tier, profile, photos, shopping } = input;
+  const { reportId, userId, tier, profile, photos, shopping, content } = input;
 
   const referenceImageUrl =
     photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
@@ -772,6 +822,65 @@ async function generateReportImages(input: ImageJobInput) {
   const faceReferenceImageUrl = photos.find((p) => p.role === "face")?.url;
   // Optional extra face-geometry anchor from the (optional) profile shot.
   const profileReferenceImageUrl = photos.find((p) => p.role === "profile")?.url;
+
+  // Keep the shoe colours on look/capsule renders in the same family as the
+  // deterministic footwear section — but offer the WHOLE set (dress, smart,
+  // everyday, accent) so shoes vary sensibly by look instead of every outfit
+  // getting the single dark anchor. The model otherwise defaults leather to
+  // warm brown/tan even for cool clients whose palette rejects it.
+  const shoeGuide = shoeGuideFor(
+    profile,
+    content.colors?.best ?? [],
+    content.colors?.avoid ?? [],
+  );
+  const dressShoe = shoeGuide.variants[0];
+  const smartShoe =
+    shoeGuide.variants.find((v) => /smart|loafer|chelsea/i.test(v.role + v.style)) ??
+    shoeGuide.variants[1];
+  const everydayShoe =
+    shoeGuide.variants.find((v) => /everyday|trainer|sneaker/i.test(v.role)) ??
+    shoeGuide.variants[2];
+  // Only steer away from warm brown when the client's palette actually rejects it.
+  const avoidBrown = (content.colors?.avoid ?? []).some((c) =>
+    /brown|cognac|tan|camel|chestnut|espresso|chocolate|mocha/i.test(
+      c.name || "",
+    ),
+  );
+  // Light / soft colour subseasons carry lower contrast best — for CASUAL looks
+  // with light trousers a soft mid-brown / suede / light trainer reads more
+  // gracefully than dark, high-contrast leather. Deep/bright seasons can wear the
+  // dark leather comfortably, so this is a gentle preference, not a rule.
+  const softPalette = /light-|soft-|cool-summer/.test(
+    profile.colorSubseason ?? "",
+  );
+  // Non-formal shoes may use ANY colour from the client's BEST palette — that's
+  // where colour and variety live. Only the dress oxford/derby is locked to a
+  // strict formal leather.
+  const bestPaletteText = (content.colors?.best ?? [])
+    .map((c) => `${c.name}${c.hex ? ` (${c.hex})` : ""}`)
+    .filter(Boolean)
+    .join(", ");
+  const footwearColorText = dressShoe
+    ? `Footwear — choose the shoe to suit the outfit and VARY the colour across looks:\n` +
+      `• Business / suit / tailored looks: oxfords or derbies in a STRICT formal leather ONLY ` +
+      `(black, dark brown or burgundy) — never coloured oxfords.\n` +
+      `• Smart-casual looks: loafers, Chelsea or derby boots in ANY colour from the client's ` +
+      `palette (${bestPaletteText}) — lean into richer tones such as ${smartShoe?.color?.toLowerCase() ?? "navy"}.\n` +
+      `• Relaxed / weekend looks: minimal leather trainers in a light palette neutral ` +
+      `(${everydayShoe?.color?.toLowerCase() ?? "off-white"}), or a casual shoe in a palette colour.\n` +
+      `Use ONLY colours from that palette or the formal set above; do not invent off-palette colours` +
+      (avoidBrown ? ` and avoid warm tan / cognac leather` : "") +
+      `. No two looks should repeat the same shoe colour. ` +
+      (softPalette
+        ? `The client's colouring is light / soft, so for CASUAL looks with light or pale trousers ` +
+          `prefer softer, lower-contrast footwear — ` +
+          (avoidBrown
+            ? `a light neutral leather trainer or grey suede`
+            : `a mid-brown or brown-suede shoe, or a light leather trainer`) +
+          ` — rather than dark, high-contrast leather. (Business looks stay in the strict formal ` +
+          `leather regardless.) `
+        : "")
+    : "";
 
   // Look photos — DB-driven and idempotent: read the look rows ordered by their
   // stable content index (`idx`), skip rows that already have an image, and
@@ -796,6 +905,13 @@ async function generateReportImages(input: ImageJobInput) {
         title: (row.title as string | null) ?? "",
         description: (row.description as string | null) ?? "",
         palette: (row.palette as string[] | null) ?? [],
+        ...(footwearColorText
+          ? {
+              footwearRule:
+                footwearColorText +
+                "NO sandals, slides, flip-flops or open-toe shoes.",
+            }
+          : {}),
       },
       referenceImageUrl,
       faceReferenceImageUrl,
@@ -849,12 +965,18 @@ async function generateReportImages(input: ImageJobInput) {
       async ({ combo, i }) => {
         const shoe = combo.pieces[combo.pieces.length - 1];
         const isFormal = FORMAL_CONTEXTS.has(combo.context);
-        const footwearRule = shoe
+        const footwearStyleRule = shoe
           ? isFormal
             ? `Footwear MUST be ${shoe} — polished closed-toe leather dress shoes. ` +
               `Absolutely NO sandals, slides, clogs, mules, espadrilles or open-toe shoes.`
             : `Footwear MUST be ${shoe}. NO sandals, slides, flip-flops or open-toe shoes.`
           : undefined;
+        // Prepend the palette-correct shoe colour so capsule renders match the
+        // footwear section instead of the model's default brown leather.
+        const footwearRule =
+          [footwearColorText.trim(), footwearStyleRule]
+            .filter(Boolean)
+            .join(" ") || undefined;
         const img = await generateLookImage({
           profile,
           look: {
@@ -1047,7 +1169,7 @@ export async function finishIncompleteReports(opts?: {
   const { data: rows } = await admin
     .from("reports")
     .select(
-      "id, user_id, status, tier, capsule_images, watch_image, hair, facial_hair, eyewear, accessories, headwear",
+      "id, user_id, status, tier, capsule_images, watch_image, shoe_image, hair, facial_hair, eyewear, accessories, headwear",
     )
     .eq("status", "ready")
     .gte("created_at", since)
@@ -1081,10 +1203,13 @@ export async function finishIncompleteReports(opts?: {
       { hasReferencePhoto: usersWithPhoto.has(r.user_id as string) },
     );
     if (state.pending && state.status !== "failed") return true;
-    // Best-effort watch flat-lay for recent premium/lookbook reports that
-    // finished before the watch section shipped (or whose watch job missed).
-    const needsWatch = r.tier === "lookbook" || r.tier === "premium";
-    return needsWatch && !(typeof r.watch_image === "string" && r.watch_image);
+    // Best-effort watch / shoe flat-lays for recent premium/lookbook reports
+    // that finished before those sections shipped (or whose job missed).
+    const needsExtras = r.tier === "lookbook" || r.tier === "premium";
+    if (!needsExtras) return false;
+    const missingWatch = !(typeof r.watch_image === "string" && r.watch_image);
+    const missingShoe = !(typeof r.shoe_image === "string" && r.shoe_image);
+    return missingWatch || missingShoe;
   });
 
   const resumed: string[] = [];
@@ -1489,6 +1614,7 @@ type ReportRow = {
   capsule_images: (string | null)[] | null;
   cover_image: string | null;
   watch_image: string | null;
+  shoe_image: string | null;
   language?: string | null;
   extras?: StyleExtras | null;
 };
@@ -1729,6 +1855,9 @@ async function fetchReportView(
   const watchImage = row.watch_image
     ? signedAssetProxyUrl(row.watch_image)
     : undefined;
+  const shoeImage = row.shoe_image
+    ? signedAssetProxyUrl(row.shoe_image)
+    : undefined;
   const signedHair = attachHairImages(rawHair);
   const signedFacialHair = rawFacialHair
     ? attachGroomingImages(rawFacialHair)
@@ -1852,6 +1981,7 @@ async function fetchReportView(
     capsuleImages,
     coverImage,
     watchImage,
+    shoeImage,
     lookItems,
     outfitTryons,
     language: normalizeLanguage(row.language),

@@ -47,6 +47,28 @@ export type WatchGuide = {
   shapeNote: string;
   avoidNote: string;
 };
+
+/** One recommended shoe "role" in the footwear system. */
+export type ShoeVariant = {
+  /** Role, e.g. "Dress", "Smart casual", "Everyday", "Seasonal". */
+  role: string;
+  /** Style archetype, e.g. "Oxfords / derbies", "Loafers", "Minimal white trainers". */
+  style: string;
+  /** Leather / material colour name, drawn from the client's neutral anchor. */
+  color: string;
+  colorHex: string;
+  /** Contexts this pair covers, e.g. "Boardroom · client meeting". */
+  wearWith: string;
+  why: string;
+};
+
+export type ShoeGuide = {
+  intro: string;
+  variants: ShoeVariant[];
+  /** The single-leather-tone rule (belt / bag / shoes match). */
+  leatherRule: string;
+  avoidNote: string;
+};
 export type FrameRec = { shape: FrameShapeId; name: string; why: string };
 export type FitSpec = { part: string; spec: string; why: string };
 export type ColorCombo = { name: string; hexes: string[]; why: string };
@@ -117,6 +139,8 @@ export type StyleExtras = {
   fragrance: string;
   /** Premium/lookbook watch styling guide (case, dial, strap tuned to palette). */
   watchGuide: WatchGuide;
+  /** Premium/lookbook footwear system (3–4 shoe roles tuned to lifestyle + palette). */
+  shoeGuide: ShoeGuide;
 };
 
 /* ---------------------------------- utils --------------------------------- */
@@ -235,10 +259,20 @@ export function watchGuideFor(
   });
 
   // Straps: dark leather for dress, matching-metal bracelet for daily, a softer
-  // suede/fabric for weekend. Leather tone follows undertone.
+  // suede/fabric for weekend. Black leather only when Black is in BEST (e.g.
+  // deep winter); otherwise cool → charcoal/navy, warm → dark brown.
+  const blackFromBest = best.find((c) => /^black$/i.test((c.name || "").trim()));
+  const deepDialLeather = pickByLightness(best, 0.28, {
+    name: warm ? "Espresso" : "Charcoal",
+    hex: warm ? "#3B322A" : "#3A3F47",
+  });
   const dressLeather = warm
     ? { name: "Dark brown leather", hex: "#4A3526" }
-    : { name: "Black leather", hex: "#1C1C1E" };
+    : blackFromBest
+      ? { name: "Black leather", hex: blackFromBest.hex }
+      : /navy|blue|slate|indigo/i.test(deepDialLeather.name)
+        ? { name: `${deepDialLeather.name} leather`, hex: deepDialLeather.hex }
+        : { name: "Charcoal leather", hex: deepDialLeather.hex };
   const bracelet = { name: `${primaryMetal.name} bracelet`, hex: primaryMetal.hex };
   const casualStrap = warm
     ? { name: "Tan suede / fabric", hex: "#9A7B54" }
@@ -367,6 +401,248 @@ export function watchGuideFor(
       "keep true squares small and dressy.",
     avoidNote:
       `${metalsFor(undertone).avoidNote} Also skip oversized, high-contrast or logo-heavy dials — they fight tailoring and date quickly.`,
+  };
+}
+
+/* --------------------------------- shoes ---------------------------------- */
+
+/**
+ * Deterministic footwear system — 3–4 shoe "roles" (dress → smart casual →
+ * everyday → seasonal) chosen from the client's undertone, palette, lifestyle,
+ * goals and occupation. Leather colour follows one dominant anchor so belt /
+ * strap / bag / shoes stay in a single tone. Pure/rule-based like the watch and
+ * metals guides; the report renders these plus one generated flat-lay (no
+ * brands). Emphasis on a small, versatile system rather than a long list.
+ */
+export function shoeGuideFor(
+  profile: StyleProfile,
+  best: ColorRec[],
+  avoid: ColorRec[] = [],
+): ShoeGuide {
+  const undertone = lc(profile.physical.undertone);
+  const warm = undertone === "warm";
+  const cool = undertone === "cool";
+
+  // Brown is broadly versatile, but only when the client's palette doesn't
+  // actively reject warm brown. If any brown-family colour sits in AVOID we skip
+  // the brown accent pair and fall back to a palette-safe suede.
+  const avoidBrown = (avoid ?? []).some((c) =>
+    /brown|cognac|tan|camel|chestnut|espresso|chocolate|mocha/i.test(
+      c.name || "",
+    ),
+  );
+
+  // DRESS shoes (oxfords/derbies) are the most formal item — their colour is
+  // restricted to the CLASSIC formal leathers only: black, dark brown or
+  // burgundy/oxblood. Coloured leather (navy/slate) is NOT worn on oxfords — it
+  // clashes with suit trousers — so it lives on the smart-casual loafer instead.
+  const darkBrown = { name: "Dark brown", hex: "#4A3526" };
+  const cognac = { name: "Cognac", hex: "#8A5A33" };
+  // Burgundy / oxblood: the cool-friendly formal dark (red-purple cast) — the
+  // elegant answer to "not black" for a cool client's dress shoe.
+  const burgundy = { name: "Burgundy", hex: "#5A2A2E" };
+  const whiteLeather = { name: "White / off-white", hex: "#ECEAE3" };
+  const suedeTaupe = warm
+    ? { name: "Tan suede", hex: "#9A7B54" }
+    : { name: "Grey suede", hex: "#7C818A" };
+
+  const blackFromBest = best.find((c) => /^black$/i.test((c.name || "").trim()));
+  // Coloured smart-casual leather (loafers): a blue-cast BEST swatch at mid-dark
+  // lightness so it reads as navy/slate in photos, not near-black.
+  const coolPool = best.filter((c) =>
+    /navy|blue|slate|indigo|teal|plum|grey|gray|charcoal/i.test(c.name),
+  );
+  const deepFromPalette = pickByLightness(
+    coolPool.length ? coolPool : best,
+    0.38,
+    { name: "Muted navy", hex: "#3E4C63" },
+  );
+  // Dress leather — classic formal only, never coloured oxfords.
+  const dressLeather = blackFromBest
+    ? { name: "Black", hex: blackFromBest.hex }
+    : warm
+      ? darkBrown
+      : cool
+        ? burgundy
+        : darkBrown;
+  // Loafer / smart-casual leather — the palette's most CHARACTERFUL wearable
+  // colour (navy, green, teal, plum, burgundy, olive, tobacco...) rather than a
+  // fixed navy, so smart-casual shoes carry real, client-specific colour. Pick
+  // the most saturated mid-dark BEST swatch that isn't the dress anchor.
+  const richLoafer = best
+    .filter((c) => {
+      if (!/^#?[0-9a-f]{6}$/i.test((c.hex || "").trim())) return false;
+      if (c.hex.toLowerCase() === dressLeather.hex.toLowerCase()) return false;
+      const { s, l } = hexToHsl(c.hex);
+      return l >= 0.22 && l <= 0.6 && s >= 0.18;
+    })
+    .sort((a, b) => hexToHsl(b.hex).s - hexToHsl(a.hex).s)[0];
+  const smartLeather = richLoafer
+    ? { name: richLoafer.name, hex: richLoafer.hex }
+    : warm
+      ? cognac
+      : blackFromBest
+        ? { name: "Dark charcoal", hex: "#2A2E34" }
+        : {
+            name: /navy|blue|slate|indigo|teal/i.test(deepFromPalette.name)
+              ? deepFromPalette.name
+              : "Slate blue",
+            hex: deepFromPalette.hex,
+          };
+  const blackIsOk = Boolean(blackFromBest);
+
+  // Everyday trainer — the palette's LIGHTEST NEUTRAL (cream / stone / greige /
+  // light grey) rather than a hard white, so the sneaker stays on-palette. Only
+  // falls back to a universal off-white when the palette has no genuinely light
+  // neutral swatch.
+  const lightNeutralPool = best.filter(
+    (c) =>
+      /white|cream|ivory|ecru|linen|pearl|oat|oatmeal|sand|stone|greige|beige|taupe|mushroom|grey|gray|silver|dove|fog|mist|pewter|bone|chalk|alabaster|porcelain|vanilla|almond/i.test(
+        c.name || "",
+      ) && hexToHsl(c.hex).l >= 0.62,
+  );
+  const everydayLeather = lightNeutralPool.length
+    ? pickByLightness(lightNeutralPool, 0.92, whiteLeather)
+    : whiteLeather;
+
+  // Lifestyle / goals / occupation signals (same source as the watch guide).
+  const occ = lc(profile.occupation ?? "");
+  const signal = `${profile.goals.join(" ")} ${(profile.lifestyle ?? []).join(" ")} ${occ} ${profile.boldness}`.toLowerCase();
+  const has = (re: RegExp) => re.test(signal);
+  const formalPro = has(
+    /law|legal|attorney|lawyer|solicitor|barrister|finance|bank|invest|consult|business|founder|exec|corporate|office|boardroom|suit|profession/,
+  );
+  const active = has(/active|outdoor|sport|gym|fitness|run|hike|athlet|dive|swim|surf/);
+  const travels = has(/travel|flight|flies|jet|frequent flyer|abroad|nomad/);
+
+  const variants: ShoeVariant[] = [];
+
+  // 1) Dress — Oxfords for the suit-heavy, Derbies (a touch more versatile) else.
+  variants.push({
+    role: "Dress",
+    style: formalPro ? "Oxfords (cap-toe)" : "Derbies",
+    color: dressLeather.name,
+    colorHex: dressLeather.hex,
+    wearWith: formalPro ? "Boardroom · client meetings · formal" : "Weddings · evenings out · tailoring",
+    why:
+      `Your dressiest shoe — a sleek ${dressLeather.name.toLowerCase()} ` +
+      `${formalPro ? "oxford" : "derby"} anchors every suit and dark trouser. ` +
+      `Closed, clean lines; leather sole or a discreet rubber one for grip.`,
+  });
+
+  // 2) Smart casual — loafers (or Chelsea boots for the more rugged/cool set).
+  variants.push({
+    role: "Smart casual",
+    style: cool && active ? "Chelsea boots" : "Loafers",
+    color: smartLeather.name,
+    colorHex: smartLeather.hex,
+    wearWith: "Client lunch · smart casual · dinner",
+    why:
+      `A ${smartLeather.name.toLowerCase()} ${cool && active ? "chelsea boot" : "loafer"} bridges tailoring and denim — ` +
+      `wear with chinos, unstructured blazers and dark jeans. The workhorse of the system.`,
+  });
+
+  // 3) Everyday — minimal leather trainers in the palette's lightest neutral.
+  variants.push({
+    role: "Everyday",
+    style: "Minimal leather trainers",
+    color: everydayLeather.name,
+    colorHex: everydayLeather.hex,
+    wearWith: "Weekend · travel · everyday",
+    why:
+      `A clean, low-profile ${everydayLeather.name.toLowerCase()} leather sneaker — the lightest ` +
+      `neutral in your palette, no bulky soles or loud branding. Dresses down a blazer and lifts ` +
+      `jeans-and-a-tee; keep them genuinely clean.`,
+  });
+
+  // 4) Fourth pair — ALWAYS present so the system is a complete four. Preference:
+  //    active clients get a weatherproof boot; otherwise a versatile brown accent
+  //    (the most useful non-black leather) when the palette allows it; failing
+  //    that (brown in AVOID) a palette-safe suede.
+  const brownWearable = !avoidBrown;
+  // Cool clients who CAN wear brown get a cooler, greyed brown so it still sits
+  // with a cool palette instead of a warm cognac.
+  const versatileBrown = warm
+    ? cognac
+    : cool
+      ? { name: "Cool taupe brown", hex: "#6E5A47" }
+      : darkBrown;
+
+  let fourth: ShoeVariant;
+  if (active) {
+    // Weatherproof boot: brown when allowed, else a dark palette leather.
+    const bootColor = brownWearable
+      ? darkBrown
+      : blackIsOk
+        ? { name: "Dark charcoal", hex: "#2A2E34" }
+        : { name: dressLeather.name, hex: dressLeather.hex };
+    fourth = {
+      role: "Seasonal",
+      style: "Rugged boots",
+      color: bootColor.name,
+      colorHex: bootColor.hex,
+      wearWith: "Outdoors · cold / wet weather",
+      why:
+        "A weatherproof leather boot for cold, wet or outdoor days — grippy sole, " +
+        "still refined enough with denim and knitwear.",
+    };
+  } else if (brownWearable) {
+    fourth = {
+      role: "Versatile brown",
+      style: warm ? "Suede chukka boots" : "Suede loafers",
+      color: versatileBrown.name,
+      colorHex: versatileBrown.hex,
+      wearWith: "Smart casual · weekend · autumn",
+      why:
+        `Brown is the most versatile non-black leather — a ${versatileBrown.name.toLowerCase()} ` +
+        `pair adds warmth and range beyond your dark anchor. Wears with chinos, denim and knitwear.` +
+        (cool
+          ? " Chosen in a cooler, greyed brown so it still sits with your palette."
+          : ""),
+    };
+  } else {
+    // Brown sits in AVOID — offer a palette-safe suede instead of forcing brown.
+    fourth = {
+      role: travels ? "Seasonal" : "Weekend",
+      style: travels ? "Dark suede trainers" : "Suede loafers",
+      color: suedeTaupe.name,
+      colorHex: suedeTaupe.hex,
+      wearWith: travels
+        ? "Travel · off-duty · shoulder seasons"
+        : "Weekend · smart casual",
+      why: travels
+        ? "A darker suede trainer hides travel wear and reads a notch dressier than white leather when you're on the move."
+        : `A ${suedeTaupe.name.toLowerCase()} suede pair adds soft texture for weekends without leaving your palette.`,
+    };
+  }
+  variants.push(fourth);
+
+  const anchorName = dressLeather.name.toLowerCase();
+  return {
+    intro:
+      "You don't need many shoes — you need the right few that cover every context. " +
+      "This is a small, versatile system of four: one dress pair, one smart-casual pair, " +
+      "one clean everyday pair, plus a versatile fourth. " +
+      "Colours follow a single leather anchor so everything coordinates.",
+    variants,
+    leatherRule:
+      `Keep your belt, watch strap, bag and shoes to one leather tone per outfit — ${anchorName} is your anchor. ` +
+      (warm
+        ? "Warm brown / cognac leathers flatter your undertone; skip pure black — it fights your palette."
+        : blackIsOk
+          ? "Black leather is a clean formal anchor for your colouring — keep brown out of the same outfit."
+          : cool
+            ? "Burgundy or dark-brown leather is your formal dress shoe — skip pure black (too harsh) " +
+              "and skip coloured oxfords (navy oxfords fight suit trousers). Save navy/slate for loafers." +
+              (brownWearable
+                ? " A cooler, greyed brown works as a relaxed accent — just don't mix it with your dress anchor in one outfit."
+                : "")
+            : "Dark brown or burgundy leather is your formal dress shoe — save navy/slate for loafers, and skip pure black."),
+    avoidNote: blackIsOk
+      ? "Avoid chunky or logo-heavy trainers with tailoring, square-toe dress shoes, " +
+        "and mixing black with brown leather in the same outfit."
+      : "Avoid pure black leather (harsh against your palette), chunky or logo-heavy trainers with " +
+        "tailoring, square-toe dress shoes, and mixing mismatched leather tones in the same outfit.",
   };
 }
 
@@ -2412,11 +2688,32 @@ export function extrasForReport(report: StyleReport): StyleExtras {
   // in both cases so premium/lookbook renders never read undefined. The backfill
   // is computed in English; new reports translate it in `trExtras`.
   const wg = report.extras.watchGuide;
-  const stale = !wg || !wg.shapeNote || !wg.variants?.[0]?.type;
-  if (stale) {
+  const watchStale =
+    !wg ||
+    !wg.shapeNote ||
+    !wg.variants?.[0]?.type ||
+    // Pre-"instead of black" snapshots still push pure black leather straps.
+    wg.variants.some((v) => /\bblack\b/i.test(v.strap));
+  const shoeStale =
+    !report.extras.shoeGuide?.variants?.length ||
+    // Pre-four-pair snapshots only carried 3 roles — backfill to the full system.
+    report.extras.shoeGuide.variants.length < 4 ||
+    // Pre-"instead of black" snapshots still push pure black dress shoes.
+    report.extras.shoeGuide.variants.some((v) => /\bblack\b/i.test(v.color)) ||
+    // Pre-"classic formal only" snapshots put coloured (navy/slate) leather on
+    // the DRESS oxford — that's now moved to the loafer, so recompute.
+    /navy|slate|blue|indigo|teal/i.test(
+      report.extras.shoeGuide.variants[0]?.color ?? "",
+    );
+  if (watchStale || shoeStale) {
     return {
       ...report.extras,
-      watchGuide: watchGuideFor(report.profile, report.colors.best),
+      watchGuide: watchStale
+        ? watchGuideFor(report.profile, report.colors.best)
+        : report.extras.watchGuide,
+      shoeGuide: shoeStale
+        ? shoeGuideFor(report.profile, report.colors.best, report.colors.avoid)
+        : report.extras.shoeGuide,
     };
   }
   return report.extras;
@@ -2442,5 +2739,6 @@ export function buildExtras(report: StyleReport): StyleExtras {
     care: CARE_GUIDE,
     fragrance: fragranceFor(profile),
     watchGuide: watchGuideFor(profile, report.colors.best),
+    shoeGuide: shoeGuideFor(profile, report.colors.best, report.colors.avoid),
   };
 }
