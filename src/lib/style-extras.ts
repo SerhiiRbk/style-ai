@@ -20,6 +20,33 @@ export type FrameShapeId =
   | "geometric";
 
 export type Metal = { name: string; hex: string; why: string };
+
+/** One recommended watch configuration (type + case × dial × strap) for a context. */
+export type WatchVariant = {
+  /** Context this variant is best for, e.g. "Boardroom", "Everyday", "Weekend". */
+  context: string;
+  /** Watch archetype, e.g. "Classic dress watch", "Field watch", "Dive watch". */
+  type: string;
+  /** Case shape, e.g. "Round", "Rectangular", "Square" (round is prioritised). */
+  shape: string;
+  caseMetal: string;
+  caseHex: string;
+  dial: string;
+  dialHex: string;
+  strap: string;
+  strapHex: string;
+  why: string;
+};
+
+export type WatchGuide = {
+  intro: string;
+  variants: WatchVariant[];
+  /** How the watch reads from under the shirt cuff. */
+  cuffNote: string;
+  /** Case-shape guidance (round-first, with rectangular/square as alternatives). */
+  shapeNote: string;
+  avoidNote: string;
+};
 export type FrameRec = { shape: FrameShapeId; name: string; why: string };
 export type FitSpec = { part: string; spec: string; why: string };
 export type ColorCombo = { name: string; hexes: string[]; why: string };
@@ -88,6 +115,8 @@ export type StyleExtras = {
   styling: string[];
   care: string[];
   fragrance: string;
+  /** Premium/lookbook watch styling guide (case, dial, strap tuned to palette). */
+  watchGuide: WatchGuide;
 };
 
 /* ---------------------------------- utils --------------------------------- */
@@ -144,6 +173,200 @@ function metalsFor(undertone: string): {
       { name: "Two-tone", hex: "#B8A06A", why: "A two-tone watch is a safe, versatile anchor for a neutral undertone." },
     ],
     avoidNote: "You can wear most metals — just keep the whole outfit to one dominant tone.",
+  };
+}
+
+/* --------------------------------- watch ---------------------------------- */
+
+/** Pick a palette hex nearest a target lightness (0..1); falls back to `def`. */
+function pickByLightness(
+  palette: ColorRec[],
+  target: number,
+  def: { name: string; hex: string },
+): { name: string; hex: string } {
+  let best: { name: string; hex: string } | null = null;
+  let bestGap = Infinity;
+  for (const c of palette) {
+    if (!/^#?[0-9a-f]{6}$/i.test((c.hex || "").trim())) continue;
+    const gap = Math.abs(hexToHsl(c.hex).l - target);
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = { name: c.name, hex: c.hex };
+    }
+  }
+  return best ?? def;
+}
+
+/**
+ * Deterministic watch styling guide — case metal (from undertone), dial and
+ * strap tuned to the client's own palette, and watch *type* (dress, field,
+ * diver, pilot, chronograph, skeleton, smartwatch…) chosen from the client's
+ * lifestyle, goals and occupation. Three variants across a dress / everyday /
+ * off-duty spread. Pure/rule-based like {@link metalsFor}; the report renders
+ * these variants plus one generated flat-lay image (no brands). Dials are drawn
+ * from the BEST palette so the section stays consistent with the colour chapter.
+ * Case shapes are round-first (most versatile), with rectangular/square offered
+ * only as a deliberate dress alternative.
+ */
+export function watchGuideFor(
+  profile: StyleProfile,
+  best: ColorRec[],
+): WatchGuide {
+  const undertone = lc(profile.physical.undertone);
+  const metals = metalsFor(undertone).recommend;
+  const primaryMetal = metals[0] ?? { name: "Steel", hex: "#A2AAB2" };
+  const secondaryMetal = metals[1] ?? primaryMetal;
+
+  const warm = undertone === "warm";
+  const cool = undertone === "cool";
+
+  // Dial anchors, drawn from the client's own palette by lightness band.
+  const lightDial = pickByLightness(best, 0.82, {
+    name: warm ? "Warm cream" : "Silver white",
+    hex: warm ? "#EFE7D6" : "#E7E9EC",
+  });
+  const midDial = pickByLightness(best, 0.5, {
+    name: warm ? "Olive" : "Slate blue",
+    hex: warm ? "#6E6A4A" : "#4E6076",
+  });
+  const darkDial = pickByLightness(best, 0.3, {
+    name: warm ? "Espresso" : "Soft charcoal",
+    hex: warm ? "#3B322A" : "#3A3F47",
+  });
+
+  // Straps: dark leather for dress, matching-metal bracelet for daily, a softer
+  // suede/fabric for weekend. Leather tone follows undertone.
+  const dressLeather = warm
+    ? { name: "Dark brown leather", hex: "#4A3526" }
+    : { name: "Black leather", hex: "#1C1C1E" };
+  const bracelet = { name: `${primaryMetal.name} bracelet`, hex: primaryMetal.hex };
+  const casualStrap = warm
+    ? { name: "Tan suede / fabric", hex: "#9A7B54" }
+    : { name: "Grey suede / fabric", hex: "#7C818A" };
+  const rubberStrap = warm
+    ? { name: "Khaki rubber / NATO", hex: "#6E6A4A" }
+    : { name: "Navy rubber / NATO", hex: "#2E3A4A" };
+
+  const metalLine = cool
+    ? "cool steel or white metal keeps the wrist crisp against your undertone"
+    : warm
+      ? "warm gold or bronze glows with your undertone"
+      : "steel, gold or two-tone all sit comfortably on a neutral undertone";
+
+  // --- Lifestyle / goals / occupation signals -----------------------------
+  const occ = lc(profile.occupation ?? "");
+  const signal = `${profile.goals.join(" ")} ${(profile.lifestyle ?? []).join(" ")} ${occ} ${profile.boldness}`.toLowerCase();
+  const has = (re: RegExp) => re.test(signal);
+
+  const formalPro = has(
+    /law|legal|attorney|lawyer|solicitor|barrister|finance|bank|invest|consult|business|founder|exec|corporate|office|boardroom|suit|profession/,
+  );
+  const active = has(/active|outdoor|sport|gym|fitness|run|hike|athlet|dive|swim|surf/);
+  const travels = has(/travel|flight|flies|jet|frequent flyer|abroad|nomad/);
+  const techy = has(/software|\bit\b|developer|engineer|\btech\b|startup|creator|blog|camera|digital/);
+  const bold = has(/bold|statement|stand out|attract|impress|charism/) || lc(profile.boldness) === "high";
+  const heritage = has(/old money|classic|heritage|understated|timeless|elegan|refin/);
+  const creative = has(/creative|artist|design|architect|music|film|fashion/);
+
+  // 1) Dress / most-formal slot — round classic by default; a skeleton for the
+  //    bold/creative, a rectangular dress watch for a heritage statement.
+  const dressType = bold || creative ? "Dress skeleton (open-worked dial)" : "Classic dress watch";
+  const dressShape = heritage && !bold ? "Rectangular" : "Round";
+  const dressContext = formalPro ? "Boardroom" : creative ? "Evenings out" : "Dressed up";
+
+  // 2) Everyday slot — matching-metal bracelet workhorse; type flexes to the
+  //    person: smart/minimal for tech, field for active, pilot/GMT for travellers.
+  const everydayType = travels
+    ? "Pilot / GMT watch"
+    : active
+      ? "Field watch"
+      : techy
+        ? "Minimalist everyday (or smartwatch)"
+        : "Everyday automatic";
+
+  // 3) Off-duty slot — sportiest; diver for active/water, pilot for travellers,
+  //    chronograph for sporty, field otherwise.
+  const weekendType = active
+    ? "Dive watch"
+    : travels
+      ? "Pilot / aviator"
+      : has(/race|drive|motor|speed|sport/)
+        ? "Sports chronograph"
+        : "Field watch";
+  const weekendStrap = active || weekendType === "Dive watch" ? rubberStrap : casualStrap;
+
+  const variants: WatchVariant[] = [
+    {
+      context: dressContext,
+      type: dressType,
+      shape: dressShape,
+      caseMetal: primaryMetal.name,
+      caseHex: primaryMetal.hex,
+      dial: lightDial.name,
+      dialHex: lightDial.hex,
+      strap: dressLeather.name,
+      strapHex: dressLeather.hex,
+      why:
+        `A ${dressType.toLowerCase()} with a light dial on a slim ${dressLeather.name.toLowerCase()} ` +
+        `strap is the dressiest read — clean under a suit cuff` +
+        (dressShape === "Rectangular"
+          ? "; a rectangular case adds vintage polish while staying discreet."
+          : "."),
+    },
+    {
+      context: "Everyday",
+      type: everydayType,
+      shape: "Round",
+      caseMetal: primaryMetal.name,
+      caseHex: primaryMetal.hex,
+      dial: darkDial.name,
+      dialHex: darkDial.hex,
+      strap: bracelet.name,
+      strapHex: bracelet.hex,
+      why:
+        `A ${everydayType.toLowerCase()} with a ${darkDial.name.toLowerCase()} dial on a matching metal ` +
+        `bracelet is the daily workhorse — versatile with tailoring and knitwear alike.`,
+    },
+    {
+      context: "Weekend",
+      type: weekendType,
+      shape: "Round",
+      caseMetal: secondaryMetal.name,
+      caseHex: secondaryMetal.hex,
+      dial: midDial.name,
+      dialHex: midDial.hex,
+      strap: weekendStrap.name,
+      strapHex: weekendStrap.hex,
+      why:
+        `A ${weekendType.toLowerCase()} with a ${midDial.name.toLowerCase()} dial on ${weekendStrap.name.toLowerCase()} ` +
+        `relaxes the watch for off-duty looks while staying on your palette.`,
+    },
+  ];
+
+  const lifestyleBits: string[] = [];
+  if (formalPro) lifestyleBits.push("time in suits and meetings");
+  if (active) lifestyleBits.push("an active, outdoors streak");
+  if (travels) lifestyleBits.push("frequent travel");
+  if (techy) lifestyleBits.push("a tech-forward day-to-day");
+  const lifestyleLine = lifestyleBits.length
+    ? ` Your picks lean into ${lifestyleBits.slice(0, 2).join(" and ")}.`
+    : "";
+
+  return {
+    intro:
+      `Your watch is the one piece of jewellery you wear every day — worth getting right. ` +
+      `Case metal follows your undertone (${metalLine}); the dial is pulled from your own palette; ` +
+      `and the watch *type* is chosen for how you actually spend your time.${lifestyleLine}`,
+    variants,
+    cuffNote:
+      "Sizing: keep the case moderate so it slips under a shirt cuff — you want about a centimetre of cuff over it. " +
+      "A light dial against a darker cuff reads sharp and intentional; a dial close to your cuff colour reads quieter and dressier.",
+    shapeNote:
+      "Shape: a round case is the most versatile and flattering — make it your default. " +
+      "A rectangular (or soft-square) case is a sharp dress alternative for a vintage, more formal statement; " +
+      "keep true squares small and dressy.",
+    avoidNote:
+      `${metalsFor(undertone).avoidNote} Also skip oversized, high-contrast or logo-heavy dials — they fight tailoring and date quickly.`,
   };
 }
 
@@ -1928,6 +2151,12 @@ function contextsForGoals(profile: StyleProfile): string[] {
     const cs = LIFESTYLE_CONTEXTS[l.trim().toLowerCase()];
     if (cs) add(...cs);
   }
+  // Occupation bias — some professions have a strong dress-code signal that
+  // should lean the capsule toward formal contexts. Law/Legal in particular
+  // lives in suits (court, clients, negotiations), so front-load formal
+  // contexts before goals so they survive the six-context slice.
+  if (/law|legal|attorney|lawyer|solicitor|barrister/.test((profile.occupation ?? "").toLowerCase()))
+    add("Boardroom", "Client meeting", "Dinner");
   if (/work|profession|office|career|business|promot|lead|manage|interview/.test(hay))
     add("Boardroom", "Client meeting");
   if (/confiden|date|dating|social|attract|impress|romance/.test(hay))
@@ -2177,7 +2406,20 @@ function priceTiersFrom(shopping: ShoppingItem[]): PriceTier[] {
  * (non-English reports) and otherwise computes them live in English.
  */
 export function extrasForReport(report: StyleReport): StyleExtras {
-  return report.extras ?? buildExtras(report);
+  if (!report.extras) return buildExtras(report);
+  // Older stored snapshots may lack `watchGuide` entirely (pre-watch section) or
+  // carry an early version without the `type`/`shape`/`shapeNote` fields. Backfill
+  // in both cases so premium/lookbook renders never read undefined. The backfill
+  // is computed in English; new reports translate it in `trExtras`.
+  const wg = report.extras.watchGuide;
+  const stale = !wg || !wg.shapeNote || !wg.variants?.[0]?.type;
+  if (stale) {
+    return {
+      ...report.extras,
+      watchGuide: watchGuideFor(report.profile, report.colors.best),
+    };
+  }
+  return report.extras;
 }
 
 export function buildExtras(report: StyleReport): StyleExtras {
@@ -2199,5 +2441,6 @@ export function buildExtras(report: StyleReport): StyleExtras {
     styling: STYLING_MECHANICS,
     care: CARE_GUIDE,
     fragrance: fragranceFor(profile),
+    watchGuide: watchGuideFor(profile, report.colors.best),
   };
 }

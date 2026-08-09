@@ -55,6 +55,7 @@ import { getReport as getMockReport, saveReport } from "@/lib/store";
 import {
   generateReportContent,
   generateCoverImage,
+  generateWatchBoardImage,
   generateLookImage,
   generateHairImage,
   generateFacialHairImage,
@@ -70,6 +71,7 @@ import {
   facialHairFor,
   premiumEyewearPicks,
   buildExtras,
+  watchGuideFor,
   FORMAL_CONTEXTS,
   type StyleExtras,
 } from "@/lib/style-extras";
@@ -112,6 +114,7 @@ export function reportGenerationState(
     status?: string | null;
     tier?: string | null;
     capsule_images?: (string | null)[] | null;
+    watch_image?: string | null;
     hair?: { recommend: HairRec[]; avoid: HairRec[] } | null;
     facial_hair?: FacialHairRec[] | null;
     eyewear?: EyewearRec[] | null;
@@ -170,6 +173,10 @@ export function reportGenerationState(
   if (capsulePending) {
     return { status, pending: true, phase: "capsule" };
   }
+  // Note: missing `watch_image` is intentionally NOT a user-facing pending
+  // phase — legacy premium/lookbook reports never had one, and the watch
+  // board is generated best-effort alongside other images. The finish-reports
+  // cron still backfills recent gaps via a separate check.
   return { status, pending: false, phase: null };
 }
 
@@ -624,6 +631,49 @@ async function generateCoverImageJob(input: ImageJobInput) {
   }
 }
 
+/**
+ * One editorial flat-lay of the recommended watch variants (case × dial ×
+ * strap, no brands) for the premium/lookbook watch section. Generated once,
+ * idempotent — a single image so it barely adds to report cost.
+ */
+async function generateWatchImageJob(input: ImageJobInput) {
+  if (input.tier !== "lookbook" && input.tier !== "premium") return;
+
+  const admin = createAdminSupabase();
+  const { reportId, userId, profile, content } = input;
+
+  // Idempotent: skip if already generated (resume only fills gaps).
+  const { data: existing } = await admin
+    .from("reports")
+    .select("watch_image")
+    .eq("id", reportId)
+    .single();
+  if (existing?.watch_image) return;
+
+  const guide = watchGuideFor(profile, content.colors?.best ?? []);
+  const img = await generateWatchBoardImage({
+    palette: (content.colors?.best ?? []).map((c) => c.name).filter(Boolean),
+    variants: guide.variants.map((v) => ({
+      context: v.context,
+      type: v.type,
+      shape: v.shape,
+      caseMetal: v.caseMetal,
+      dial: v.dial,
+      strap: v.strap,
+    })),
+  });
+  if (!img) return;
+
+  const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
+  const path = `${userId}/${reportId}/watch.${ext}`;
+  const { error: upErr } = await admin.storage
+    .from("assets")
+    .upload(path, img.bytes, { contentType: img.mediaType, upsert: true });
+  if (!upErr) {
+    await admin.from("reports").update({ watch_image: path }).eq("id", reportId);
+  }
+}
+
 /** Look + capsule photos — slow; runs after the HTTP response via `after()`. */
 /** Owner email from the profiles mirror, or null when unknown. */
 async function emailForUser(
@@ -710,6 +760,7 @@ async function generateReportImages(input: ImageJobInput) {
   await generateHairImages(input);
   await generatePremiumGroomingImages(input);
   await generateCoverImageJob(input);
+  await generateWatchImageJob(input);
 
   const admin = createAdminSupabase();
   const { reportId, userId, tier, profile, photos, shopping } = input;
@@ -996,7 +1047,7 @@ export async function finishIncompleteReports(opts?: {
   const { data: rows } = await admin
     .from("reports")
     .select(
-      "id, user_id, status, tier, capsule_images, hair, facial_hair, eyewear, accessories, headwear",
+      "id, user_id, status, tier, capsule_images, watch_image, hair, facial_hair, eyewear, accessories, headwear",
     )
     .eq("status", "ready")
     .gte("created_at", since)
@@ -1029,7 +1080,11 @@ export async function finishIncompleteReports(opts?: {
       looksByReport.get(r.id as string) ?? [],
       { hasReferencePhoto: usersWithPhoto.has(r.user_id as string) },
     );
-    return state.pending && state.status !== "failed";
+    if (state.pending && state.status !== "failed") return true;
+    // Best-effort watch flat-lay for recent premium/lookbook reports that
+    // finished before the watch section shipped (or whose watch job missed).
+    const needsWatch = r.tier === "lookbook" || r.tier === "premium";
+    return needsWatch && !(typeof r.watch_image === "string" && r.watch_image);
   });
 
   const resumed: string[] = [];
@@ -1433,6 +1488,7 @@ type ReportRow = {
   headwear: HeadwearRec[] | null;
   capsule_images: (string | null)[] | null;
   cover_image: string | null;
+  watch_image: string | null;
   language?: string | null;
   extras?: StyleExtras | null;
 };
@@ -1670,6 +1726,9 @@ async function fetchReportView(
   const coverImage = row.cover_image
     ? signedAssetProxyUrl(row.cover_image)
     : undefined;
+  const watchImage = row.watch_image
+    ? signedAssetProxyUrl(row.watch_image)
+    : undefined;
   const signedHair = attachHairImages(rawHair);
   const signedFacialHair = rawFacialHair
     ? attachGroomingImages(rawFacialHair)
@@ -1792,6 +1851,7 @@ async function fetchReportView(
     lookImages,
     capsuleImages,
     coverImage,
+    watchImage,
     lookItems,
     outfitTryons,
     language: normalizeLanguage(row.language),

@@ -24,6 +24,27 @@ type AdminUserSummary = {
   activityByReason: Record<string, number>;
 };
 
+type AdminUserReportIntake = {
+  age?: number;
+  genderPresentation?: string;
+  city?: string;
+  country?: string;
+  language?: string;
+  currency?: string;
+  heightCm?: number;
+  weightKg?: number;
+  bodyType?: string;
+  hairColor?: string;
+  eyeColor?: string;
+  occupation?: string;
+  lifestyle?: string[];
+  goals?: string[];
+  boldness?: string;
+  budgetMin?: number;
+  budgetMax?: number;
+  notes?: string;
+};
+
 type AdminUserDetail = AdminUserSummary & {
   reports: {
     id: string;
@@ -31,6 +52,7 @@ type AdminUserDetail = AdminUserSummary & {
     headline: string | null;
     tier: Tier;
     status: "processing" | "ready" | "failed";
+    intake: AdminUserReportIntake | null;
   }[];
   purchases: { createdAt: string; credits: number; refExt: string | null }[];
   promos: { code: string; name: string; credits: number; redeemedAt: string }[];
@@ -45,6 +67,49 @@ type AdminUserDetail = AdminUserSummary & {
   tryonsReady: number;
   tryonsFailed: number;
 };
+
+/** Compact multi-line summary of the questionnaire used to generate a report. */
+function formatReportIntake(intake: AdminUserReportIntake): string[] {
+  const lines: string[] = [];
+  const place = [intake.city, intake.country].filter(Boolean).join(", ");
+  const who = [
+    intake.age != null ? `${intake.age}` : null,
+    intake.genderPresentation,
+    place || null,
+    intake.language ? `lang ${intake.language}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  if (who) lines.push(who);
+
+  const body = [
+    intake.heightCm != null ? `${intake.heightCm} cm` : null,
+    intake.weightKg != null ? `${intake.weightKg} kg` : null,
+    intake.bodyType,
+    intake.hairColor ? `hair ${intake.hairColor}` : null,
+    intake.eyeColor ? `eyes ${intake.eyeColor}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  if (body) lines.push(body);
+
+  const prefs = [
+    intake.occupation,
+    intake.boldness,
+    intake.budgetMin != null && intake.budgetMax != null
+      ? `budget ${intake.budgetMin}–${intake.budgetMax} ${intake.currency ?? "EUR"}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  if (prefs) lines.push(prefs);
+
+  if (intake.goals?.length) lines.push(`Goals: ${intake.goals.join(", ")}`);
+  if (intake.lifestyle?.length)
+    lines.push(`Lifestyle: ${intake.lifestyle.join(", ")}`);
+  if (intake.notes) lines.push(`Notes: ${intake.notes}`);
+  return lines;
+}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", {
@@ -194,31 +259,47 @@ function UserDetailPanel({
             <p className="mt-2 text-sm text-stone">No reports yet.</p>
           ) : (
             <ul className="mt-3 divide-y hairline rounded-xl border hairline bg-paper">
-              {user.reports.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
+              {user.reports.map((r) => {
+                const intakeLines = r.intake ? formatReportIntake(r.intake) : [];
+                return (
+                  <li
+                    key={r.id}
+                    className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <Link
+                        href={`/report/${r.id}`}
+                        className="block truncate font-medium text-ink hover:text-brass"
+                      >
+                        {r.headline || "Style report"}
+                      </Link>
+                      <p className="text-xs text-stone">
+                        {formatDate(r.createdAt)} · {tierLabel(r.tier)} ·{" "}
+                        {reportStatusLabel(r.status)}
+                      </p>
+                      {intakeLines.length ? (
+                        <div className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-stone-soft">
+                          {intakeLines.map((line) => (
+                            <p key={line} className="break-words">
+                              {line}
+                            </p>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-[11px] text-stone-soft">
+                          No intake snapshot stored
+                        </p>
+                      )}
+                    </div>
                     <Link
                       href={`/report/${r.id}`}
-                      className="block truncate font-medium text-ink hover:text-brass"
+                      className="shrink-0 text-xs text-brass hover:text-ink"
                     >
-                      {r.headline || "Style report"}
+                      Open →
                     </Link>
-                    <p className="text-xs text-stone">
-                      {formatDate(r.createdAt)} · {tierLabel(r.tier)} ·{" "}
-                      {reportStatusLabel(r.status)}
-                    </p>
-                  </div>
-                  <Link
-                    href={`/report/${r.id}`}
-                    className="shrink-0 text-xs text-brass hover:text-ink"
-                  >
-                    Open →
-                  </Link>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

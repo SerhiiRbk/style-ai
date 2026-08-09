@@ -222,6 +222,7 @@ export async function analyzeProfile(
     currency: intake.currency,
     goals: intake.goals,
     lifestyle: intake.lifestyle ?? [],
+    occupation: intake.occupation,
     boldness: intake.boldness,
     budgetEur: intake.budgetEur,
   };
@@ -857,6 +858,50 @@ export async function generateCoverImage(opts: {
     }
 
     return await renderImage(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One editorial flat-lay showing the report's recommended watch variants (case
+ * × dial × strap) — no brands, no text. Generated once per premium/lookbook
+ * report so the watch section has a visual, without a per-watch image cost.
+ */
+export async function generateWatchBoardImage(opts: {
+  palette?: string[];
+  variants: {
+    context: string;
+    type: string;
+    shape?: string;
+    caseMetal: string;
+    dial: string;
+    strap: string;
+  }[];
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI || !opts.variants.length) return null;
+  try {
+    const palette = (opts.palette ?? []).filter(Boolean);
+    const lines = opts.variants.map(
+      (v, i) =>
+        `${i + 1}. ${v.type} (${v.context}), ${v.shape ?? "round"} case: ` +
+        `${v.caseMetal} case, ${v.dial} dial, ${v.strap} strap.`,
+    );
+    const prompt =
+      `A clean, top-down editorial flat-lay product photograph of ${opts.variants.length} ` +
+      `distinct men's wristwatches arranged in a neat row on a soft warm-neutral surface ` +
+      `(smooth plaster / fine linen), gentle daylight, soft shadows, high-end catalogue ` +
+      `quality, sharp focus. Each watch is a DIFFERENT type / style, described below — make ` +
+      `their design language clearly distinct (a dress watch, a field/pilot/dive/sport or ` +
+      `smartwatch, etc. as specified):\n${lines.join("\n")}\n` +
+      `Case shapes: prefer round cases unless a variant is explicitly rectangular or square. ` +
+      `Render generic, unbranded watches — NO brand names, NO logos, NO numerals or text ` +
+      `of any kind on the dials, cases, straps or background. ` +
+      (palette.length ? `Overall colour harmony: ${palette.join(", ")}. ` : "") +
+      `The watches must clearly differ in type, case metal, dial colour and strap as described. ` +
+      NO_TEXT_RULE;
+
+    return await renderImage([{ type: "text", text: prompt }]);
   } catch {
     return null;
   }

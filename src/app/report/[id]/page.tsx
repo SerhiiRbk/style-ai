@@ -69,6 +69,7 @@ import {
   PriorityMoves,
   ColorDNAGuide,
   MetalChips,
+  WatchGuide,
   Pairings,
   EyewearGuide,
   GroomingGuide,
@@ -567,6 +568,15 @@ export default async function ReportPage({
             <Pairings pairings={extras.pairings} lang={lang} />
             <MetalChips metals={extras.metals} lang={lang} />
           </div>
+          {report.tier === "lookbook" || report.tier === "premium" ? (
+            <div className="mt-12 border-t hairline pt-12">
+              <WatchGuide
+                guide={extras.watchGuide}
+                image={report.watchImage}
+                lang={lang}
+              />
+            </div>
+          ) : null}
         </section>
 
         {/* Hair */}

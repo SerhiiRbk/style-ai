@@ -13,7 +13,7 @@ const BUCKET = "assets";
  * Bump when the PDF layout/template code changes so every previously cached PDF
  * is invalidated (its fingerprint no longer matches) and rebuilt on next access.
  */
-const PDF_TEMPLATE_VERSION = "5";
+const PDF_TEMPLATE_VERSION = "7";
 
 /** Signed proxy/absolute URLs carry a rotating ?exp&sig — drop it so the fingerprint is stable. */
 function stripSig(s: string): string {

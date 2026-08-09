@@ -5,6 +5,7 @@ export const OCCUPATIONS = [
   "Business / Founder",
   "Freelance",
   "Finance",
+  "Law / Legal",
   "Creative",
   "Other",
 ] as const;
