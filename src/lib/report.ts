@@ -16,7 +16,13 @@ import type { ReportLanguage } from "./languages";
 
 export type Tier = "free" | "basic" | "lookbook" | "premium";
 
-export type ColorRec = { name: string; hex: string; why: string };
+export type ColorRec = {
+  name: string;
+  hex: string;
+  why: string;
+  /** "versatile" flags the office-ready neutral anchors (own group in the report). */
+  role?: "versatile";
+};
 /** Max personalized avoid-hair images generated (all tiers). */
 export const HAIR_AVOID_GEN_LIMIT = 2;
 

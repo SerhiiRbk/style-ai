@@ -93,7 +93,9 @@ function trackEvent(name: string, props?: Record<string, unknown>) {
 // Keep the palette, the uploaded photo preview and the matched products on the
 // device so a reload shows exactly what the visitor saw. Best-effort: quota /
 // private-mode failures degrade silently. Cleared by "Clear" / "Try another".
-const COLOURS_SESSION_KEY = "valetti_colours_session";
+// v2: palettes grew from 8 → 10 swatches; drop pre-change cached sessions so a
+// restored result never shows the old, shorter palette.
+const COLOURS_SESSION_KEY = "valetti_colours_session_v2";
 const COLOURS_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 type ColoursSession = {
@@ -756,7 +758,7 @@ export function ColoursExperience() {
               </div>
             </div>
 
-            <div className="mt-7 grid grid-cols-4 gap-3.5 sm:grid-cols-8 sm:gap-4">
+            <div className="mt-7 grid grid-cols-4 gap-3.5 sm:grid-cols-5 sm:gap-4">
               {result.palette.map((s, i) => (
                 <div key={`${s.hex}-${i}`} className="flex flex-col items-center gap-2">
                   <FabricSwatch hex={s.hex} name={s.name} uid={`cx${i}`} />

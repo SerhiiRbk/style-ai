@@ -382,6 +382,8 @@ export const colorRecSchema = z.object({
   name: z.string(),
   hex: z.string(),
   why: z.string(),
+  /** "versatile" flags the office-ready neutral anchors (own group in the report). */
+  role: z.enum(["versatile"]).optional(),
 });
 export const hairRecSchema = z.object({ name: z.string(), why: z.string() });
 export const lookContentSchema = z.object({

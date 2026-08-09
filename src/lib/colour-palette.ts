@@ -23,9 +23,12 @@ export type ColourAnalysisResult = {
 };
 
 /**
- * Menswear-plausible 8-swatch palette per 12-subseason colour analysis.
- * Single source of truth for the free `/colours` page (and, later, the report).
- * Each palette leads with a light/cream and a deep anchor, then characteristic hues.
+ * Menswear-plausible 10-swatch palette per 12-subseason colour analysis.
+ * Single source of truth for the free `/colours` page AND the report, so the two
+ * never diverge. Each palette leads with a light/cream and a deep anchor, then
+ * characteristic hues, and closes with 2 versatile "business" neutrals — a deep
+ * suit anchor + a mid neutral, kept in the subseason's own temperature so office
+ * staples (navy / charcoal / brown / grey) stay on-colour instead of drifting.
  */
 export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
   "deep-winter": [
@@ -37,6 +40,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#8A0F3C", name: "Ruby" },
     { hex: "#2C2F36", name: "Charcoal" },
     { hex: "#B9C4CE", name: "Icy grey" },
+    { hex: "#565E6B", name: "Steel grey" },
+    { hex: "#9AA1A9", name: "Stone grey" },
   ],
   "cool-winter": [
     { hex: "#12233F", name: "Ink navy" },
@@ -47,6 +52,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#2E6FA6", name: "Cool blue" },
     { hex: "#4A2352", name: "Plum" },
     { hex: "#C7CDD4", name: "Silver" },
+    { hex: "#2B2F36", name: "Charcoal" },
+    { hex: "#7A828C", name: "Steel grey" },
   ],
   "bright-winter": [
     { hex: "#111318", name: "Black" },
@@ -57,6 +64,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#C31230", name: "True red" },
     { hex: "#243043", name: "Navy" },
     { hex: "#C3CBD3", name: "Icy grey" },
+    { hex: "#2A2E36", name: "Charcoal" },
+    { hex: "#6B7480", name: "Steel grey" },
   ],
   "bright-spring": [
     { hex: "#F6EEDD", name: "Ivory" },
@@ -67,6 +76,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#243B63", name: "Warm navy" },
     { hex: "#DE4A34", name: "Warm red" },
     { hex: "#C08A4E", name: "Camel" },
+    { hex: "#5A3D28", name: "Chocolate" },
+    { hex: "#B29A7B", name: "Warm taupe" },
   ],
   "warm-spring": [
     { hex: "#F3E7CE", name: "Cream" },
@@ -77,6 +88,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#2E8C86", name: "Warm teal" },
     { hex: "#C56A3C", name: "Terracotta" },
     { hex: "#5E7B3A", name: "Warm green" },
+    { hex: "#4E3620", name: "Bronze brown" },
+    { hex: "#2E3A4E", name: "Warm navy" },
   ],
   "light-spring": [
     { hex: "#F7EFDD", name: "Ivory" },
@@ -87,6 +100,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#EF9A82", name: "Soft coral" },
     { hex: "#A9C58C", name: "Light green" },
     { hex: "#C3AE8E", name: "Warm taupe" },
+    { hex: "#6E5240", name: "Cocoa" },
+    { hex: "#3A4761", name: "Soft navy" },
   ],
   "light-summer": [
     { hex: "#F3F2F0", name: "Soft white" },
@@ -97,6 +112,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#9AA7B4", name: "Grey-blue" },
     { hex: "#8E9CC0", name: "Periwinkle" },
     { hex: "#5E7591", name: "Soft denim" },
+    { hex: "#33425C", name: "Slate navy" },
+    { hex: "#727E8C", name: "Storm grey" },
   ],
   "cool-summer": [
     { hex: "#2B3A4E", name: "Navy grey" },
@@ -107,6 +124,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#B5798C", name: "Cool rose" },
     { hex: "#54606E", name: "Slate" },
     { hex: "#6A5A72", name: "Plum grey" },
+    { hex: "#3A4048", name: "Charcoal grey" },
+    { hex: "#CBD0D4", name: "Pearl grey" },
   ],
   "soft-summer": [
     { hex: "#DAD3C6", name: "Greige" },
@@ -117,6 +136,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#A99C8C", name: "Mushroom" },
     { hex: "#7A6577", name: "Soft plum" },
     { hex: "#647A93", name: "Slate blue" },
+    { hex: "#464C55", name: "Soft charcoal" },
+    { hex: "#AEB3B6", name: "Dove grey" },
   ],
   "soft-autumn": [
     { hex: "#E4D8C2", name: "Oatmeal" },
@@ -127,6 +148,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#C3945B", name: "Camel" },
     { hex: "#736B3E", name: "Olive" },
     { hex: "#A85C46", name: "Soft brick" },
+    { hex: "#4A3728", name: "Coffee" },
+    { hex: "#8C8375", name: "Warm grey" },
   ],
   "warm-autumn": [
     { hex: "#EFE3C6", name: "Cream" },
@@ -137,6 +160,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#2F5A3C", name: "Forest" },
     { hex: "#B85F3A", name: "Terracotta" },
     { hex: "#2C6E68", name: "Deep teal" },
+    { hex: "#2C3542", name: "Warm navy" },
+    { hex: "#8C7350", name: "Bronze taupe" },
   ],
   "deep-autumn": [
     { hex: "#3B2A1E", name: "Espresso" },
@@ -147,6 +172,8 @@ export const SUBSEASON_PALETTES: Record<SubseasonId, PaletteSwatch[]> = {
     { hex: "#C9A24B", name: "Mustard" },
     { hex: "#5A3D2B", name: "Chocolate" },
     { hex: "#EFE6D3", name: "Cream" },
+    { hex: "#33302B", name: "Warm charcoal" },
+    { hex: "#8A7A64", name: "Taupe" },
   ],
 };
 
@@ -247,7 +274,16 @@ export function seasonForSubseason(subseason: SubseasonId): Season {
 /* --------------------- deterministic report palette ---------------------- */
 
 /** A named swatch plus a one-line rationale — the report's colour card shape. */
-export type ColorRec = { name: string; hex: string; why: string };
+export type ColorRec = {
+  name: string;
+  hex: string;
+  why: string;
+  /** "versatile" marks the office-ready neutral anchors shown as their own group. */
+  role?: "versatile";
+};
+
+/** How many trailing swatches in each subseason palette are versatile neutrals. */
+export const VERSATILE_NEUTRAL_COUNT = 2;
 
 /** Minimal hex → HSL for classifying a swatch's role (neutral / accent / depth). */
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
@@ -292,10 +328,19 @@ const UNDERTONE_ADJ: Record<Undertone, string> = {
  */
 function whyForBestSwatch(
   swatch: PaletteSwatch,
-  opts: { undertone: Undertone; contrast: Contrast; label: string },
+  opts: {
+    undertone: Undertone;
+    contrast: Contrast;
+    label: string;
+    role?: "versatile";
+  },
 ): string {
   const { s, l } = hexToHsl(swatch.hex);
   const u = UNDERTONE_ADJ[opts.undertone];
+
+  if (opts.role === "versatile") {
+    return `A versatile, office-ready ${u} neutral tuned to your ${opts.label} colouring — a dependable base for suits and formal looks that adds depth while staying on your palette.`;
+  }
   const isAccent = s >= 0.32;
   const isNeutral = s < 0.2;
   const deep = l < 0.3;
@@ -418,11 +463,19 @@ export function bestColorsForSubseason(
   opts: { undertone: Undertone; contrast: Contrast },
 ): ColorRec[] {
   const label = SUBSEASON_LABELS[subseason];
-  return SUBSEASON_PALETTES[subseason].map((sw) => ({
-    name: sw.name,
-    hex: sw.hex,
-    why: whyForBestSwatch(sw, { ...opts, label }),
-  }));
+  const swatches = SUBSEASON_PALETTES[subseason];
+  // The palette closes with VERSATILE_NEUTRAL_COUNT office-ready anchors; tag
+  // them so the report can present them as their own explained group.
+  const firstVersatile = swatches.length - VERSATILE_NEUTRAL_COUNT;
+  return swatches.map((sw, i) => {
+    const role = i >= firstVersatile ? ("versatile" as const) : undefined;
+    return {
+      name: sw.name,
+      hex: sw.hex,
+      why: whyForBestSwatch(sw, { ...opts, label, role }),
+      ...(role ? { role } : {}),
+    };
+  });
 }
 
 /** Deterministic "avoid" colours for a subseason's base season. */

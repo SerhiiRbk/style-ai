@@ -521,10 +521,31 @@ export default async function ReportPage({
                   {tr("Colours that work for you")}
                 </h3>
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  {report.colors.best.map((c, i) => (
-                    <ColorCard key={c.name} c={c} uid={`rb${i}`} />
-                  ))}
+                  {report.colors.best
+                    .filter((c) => c.role !== "versatile")
+                    .map((c, i) => (
+                      <ColorCard key={c.name} c={c} uid={`rb${i}`} />
+                    ))}
                 </div>
+                {report.colors.best.some((c) => c.role === "versatile") ? (
+                  <div className="mt-8">
+                    <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                      {tr("Office-ready neutrals")}
+                    </h3>
+                    <p className="mt-2 max-w-prose text-sm text-stone">
+                      {tr(
+                        "Versatile dark and neutral tones for suits and formal outfits, chosen in your temperature — they add depth while staying on your palette.",
+                      )}
+                    </p>
+                    <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                      {report.colors.best
+                        .filter((c) => c.role === "versatile")
+                        .map((c, i) => (
+                          <ColorCard key={c.name} c={c} uid={`rbn${i}`} />
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <div className="report-keep-together mt-10">
                 <h3 className="text-sm uppercase tracking-wider text-stone-soft">

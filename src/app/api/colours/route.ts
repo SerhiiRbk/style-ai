@@ -14,7 +14,8 @@ export const maxDuration = 60;
 const MAX_DATA_URL_CHARS = 6_000_000;
 
 /** Bump when the analysis prompt/logic changes so cached results are recomputed. */
-const COLOURS_CACHE_VERSION = "1";
+// v2: palettes grew from 8 → 10 swatches — invalidate pre-change cached results.
+const COLOURS_CACHE_VERSION = "2";
 
 /** Anonymous, deduplicated cache namespace in the `assets` bucket. */
 function cachePath(hash: string): string {
