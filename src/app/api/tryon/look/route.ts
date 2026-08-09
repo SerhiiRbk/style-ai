@@ -260,6 +260,7 @@ export async function POST(request: Request) {
     // generated look image (which would copy the original outfit).
     referenceImageUrl: photo.fullUrl,
     faceReferenceImageUrl: photo.faceUrl,
+    profileReferenceImageUrl: photo.profileUrl,
     // Capsule combo photo defines the exact outfit to replicate on the user.
     outfitReferenceImageUrl:
       kind === "capsule" ? outfitReferenceUrl : undefined,

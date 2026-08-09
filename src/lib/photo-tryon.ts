@@ -11,7 +11,7 @@ export type FullPhotoResult =
     };
 
 export type ReportReferencePhotos =
-  | { ok: true; fullUrl: string; faceUrl?: string }
+  | { ok: true; fullUrl: string; faceUrl?: string; profileUrl?: string }
   | {
       ok: false;
       error: string;
@@ -79,10 +79,14 @@ export async function getReportReferencePhotos(
   const facePath = byRole.get("face");
   const faceUrl = facePath ? await sign(facePath) : null;
 
+  const profilePath = byRole.get("profile");
+  const profileUrl = profilePath ? await sign(profilePath) : null;
+
   return {
     ok: true,
     fullUrl,
     ...(faceUrl ? { faceUrl } : {}),
+    ...(profileUrl ? { profileUrl } : {}),
   };
 }
 

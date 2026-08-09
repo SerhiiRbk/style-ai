@@ -595,6 +595,7 @@ async function generateCoverImageJob(input: ImageJobInput) {
     photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
   if (!referenceImageUrl) return;
   const faceReferenceImageUrl = photos.find((p) => p.role === "face")?.url;
+  const profileReferenceImageUrl = photos.find((p) => p.role === "profile")?.url;
 
   // Idempotent: skip if the cover already exists (resume passes only fill gaps).
   const { data: existing } = await admin
@@ -609,6 +610,7 @@ async function generateCoverImageJob(input: ImageJobInput) {
     palette: (content.colors?.best ?? []).map((c) => c.name).filter(Boolean),
     referenceImageUrl,
     faceReferenceImageUrl,
+    profileReferenceImageUrl,
   });
   if (!img) return;
 
@@ -717,6 +719,8 @@ async function generateReportImages(input: ImageJobInput) {
   // Anchor identity with the dedicated face portrait too (same as virtual
   // try-on), so the report look and a later "try this on me" match the person.
   const faceReferenceImageUrl = photos.find((p) => p.role === "face")?.url;
+  // Optional extra face-geometry anchor from the (optional) profile shot.
+  const profileReferenceImageUrl = photos.find((p) => p.role === "profile")?.url;
 
   // Look photos — DB-driven and idempotent: read the look rows ordered by their
   // stable content index (`idx`), skip rows that already have an image, and
@@ -744,6 +748,7 @@ async function generateReportImages(input: ImageJobInput) {
       },
       referenceImageUrl,
       faceReferenceImageUrl,
+      profileReferenceImageUrl,
     });
     if (!img) return;
     const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
@@ -810,6 +815,8 @@ async function generateReportImages(input: ImageJobInput) {
             ...(footwearRule ? { footwearRule } : {}),
           },
           referenceImageUrl,
+          faceReferenceImageUrl,
+          profileReferenceImageUrl,
         });
         if (!img) return null;
         const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";

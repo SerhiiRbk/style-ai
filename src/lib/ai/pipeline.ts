@@ -76,6 +76,32 @@ const NO_TEXT_RULE =
 const HEADSHOT_FRAMING =
   "Vertical 4:5 portrait framing, shoulders-up, subject centered in frame. ";
 
+/**
+ * Explicit skin-tone lock for identity renders. The image model biases toward
+ * warm, tanned, bronzed skin under editorial studio light and darkens genuinely
+ * fair complexions; naming the tone/undertone alone is not enough, so we add a
+ * hard "do not tan/darken/warm" rule using the analysed skin tone + undertone.
+ */
+function skinTonePreservationRule(profile: StyleProfile): string {
+  const tone = profile.physical.skinTone?.trim();
+  const undertone = profile.physical.undertone?.trim();
+  const named =
+    tone && undertone
+      ? `${tone} skin with a ${undertone} undertone`
+      : tone
+        ? `${tone} skin`
+        : undertone
+          ? `skin with a ${undertone} undertone`
+          : "";
+  return (
+    `Keep the EXACT skin tone and undertone from the reference photo` +
+    (named ? ` — the person has ${named}` : "") +
+    `. Do NOT tan, darken, bronze, warm or add colour to the skin; do not deepen ` +
+    `the complexion. Render fair, light skin as genuinely fair, and preserve the ` +
+    `original undertone (do not shift a cool complexion to warm/olive). `
+  );
+}
+
 const visionSchema = z.object({
   skinTone: z.string().describe("e.g. 'warm medium', 'cool fair'"),
   undertone: z.enum(["warm", "cool", "neutral"]),
@@ -499,6 +525,8 @@ export async function generateLookImage(opts: {
   referenceImageUrl?: string;
   /** Portrait anchor for identity when a separate full-length photo is also provided. */
   faceReferenceImageUrl?: string;
+  /** Optional side/three-quarter portrait — extra face-geometry anchor only. */
+  profileReferenceImageUrl?: string;
   /** Pre-rendered outfit photo (e.g. capsule combo) — clothing reference only. */
   outfitReferenceImageUrl?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
@@ -509,14 +537,17 @@ export async function generateLookImage(opts: {
       look,
       referenceImageUrl,
       faceReferenceImageUrl,
+      profileReferenceImageUrl,
       outfitReferenceImageUrl,
     } = opts;
     const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
     const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
     const hasOutfitRef = Boolean(outfitReferenceImageUrl);
     const hasFace = Boolean(faceReferenceImageUrl);
+    const hasProfile = Boolean(profileReferenceImageUrl);
     const hasFull = Boolean(referenceImageUrl);
-    const personImageCount = (hasFace ? 1 : 0) + (hasFull ? 1 : 0);
+    const faceImageCount = (hasFace ? 1 : 0) + (hasProfile ? 1 : 0);
+    const personImageCount = faceImageCount + (hasFull ? 1 : 0);
     const ordinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"];
     const ordinal = (n: number) => ordinals[n - 1] ?? `${n}TH`;
 
@@ -538,34 +569,54 @@ export async function generateLookImage(opts: {
     // footwear directive with a hard negative keeps formal looks in dress shoes.
     const footwearBlock = look.footwearRule ? `${look.footwearRule} ` : "";
 
-    // Describe the role of each input image so identity (person photo) and the
-    // garments (catalogue product photos) are not confused.
+    // Describe the role of each input image so identity (person photos) and the
+    // garments (catalogue product photos) are not confused. Images are attached
+    // in this exact order below: face portrait, profile portrait, full-length,
+    // outfit, catalogue — so we assign ordinals with a running counter.
     let imageRoles = "";
-    if (personImageCount > 0) {
-      if (hasFace && hasFull) {
-        imageRoles +=
-          `The ${ordinal(1)} image is a close-up portrait — match this person's face, hair and identity exactly. ` +
-          `The ${ordinal(2)} image is a full-length photo of the same person — use for body proportions and pose only. `;
-      } else {
-        imageRoles +=
-          `The ${ordinal(1)} image shows the person — preserve their face, hair and identity exactly. `;
-      }
+    let imgIdx = 0;
+    if (hasFace) {
+      imgIdx += 1;
+      imageRoles +=
+        `The ${ordinal(imgIdx)} image is a close-up front portrait — match this person's ` +
+        `face, hair and identity exactly. `;
+    }
+    if (hasProfile) {
+      imgIdx += 1;
+      imageRoles +=
+        `The ${ordinal(imgIdx)} image is a side / three-quarter portrait of the SAME person ` +
+        `at a different angle — use it ONLY to refine facial geometry (nose shape, jawline, ` +
+        `cheekbones, eye spacing). Do not copy its pose, lighting, background or clothing. ` +
+        (hasFace
+          ? `Both portraits are the same person from the same period; if they disagree, the ` +
+            `front portrait wins. `
+          : `Preserve this person's face, hair and identity exactly. `);
+    }
+    if (hasFull) {
+      imgIdx += 1;
+      imageRoles +=
+        faceImageCount > 0
+          ? `The ${ordinal(imgIdx)} image is a full-length photo of the same person — use for ` +
+            `body proportions and pose only. `
+          : `The ${ordinal(imgIdx)} image shows the person — preserve their face, hair and ` +
+            `identity exactly. `;
     }
     if (hasOutfitRef) {
-      const outfitIdx = personImageCount + 1;
+      imgIdx += 1;
       imageRoles +=
-        `The ${ordinal(outfitIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
+        `The ${ordinal(imgIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
         `colours and proportions; do not copy the model's face or body. `;
     }
     if (catalogImageUrls.length) {
-      const catalogStart = personImageCount + (hasOutfitRef ? 1 : 0) + 1;
+      const catalogStart = imgIdx + 1;
+      imgIdx += catalogImageUrls.length;
       if (catalogImageUrls.length === 1) {
         imageRoles +=
           `The ${ordinal(catalogStart)} image is the actual catalogue garment to dress them in — ` +
           `reproduce that exact garment on the person. `;
       } else {
         imageRoles +=
-          `Images ${ordinal(catalogStart)} through ${ordinal(catalogStart + catalogImageUrls.length - 1)} are catalogue garment references — ` +
+          `Images ${ordinal(catalogStart)} through ${ordinal(imgIdx)} are catalogue garment references — ` +
           `reproduce those exact garments on the person. `;
       }
       // When garment product photos share the prompt with the person's photos,
@@ -576,7 +627,7 @@ export async function generateLookImage(opts: {
       if (personImageCount > 0) {
         imageRoles +=
           `CRITICAL identity rule: the person's face, bone structure, skin tone and hair ` +
-          `come ONLY from ${hasFace ? "the close-up portrait" : "the person photo"} — ` +
+          `come ONLY from ${faceImageCount > 0 ? "the portrait photo(s)" : "the person photo"} — ` +
           `reproduce them at maximum fidelity. The catalogue images are clothing swatches ` +
           `only: copy the garments, and take NOTHING facial, body or pose-related from them. `;
       }
@@ -599,11 +650,13 @@ export async function generateLookImage(opts: {
       ]
         .filter(Boolean)
         .join(", ");
+      const skinRule = skinTonePreservationRule(profile);
       faceAnchor =
         (traits ? `The person has ${traits}. ` : "") +
         `Keep the SAME facial proportions as the reference photo — the same forehead ` +
         `height, nose size and shape, jawline, cheekbones, eye spacing and lip shape; ` +
         `do not idealise, slim or restyle the face. ` +
+        skinRule +
         `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
         `Do NOT change the hair colour. ` +
         `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
@@ -633,6 +686,13 @@ export async function generateLookImage(opts: {
     )[] = [{ type: "text", text: prompt }];
     if (faceReferenceImageUrl) {
       content.push({ type: "image", image: new URL(faceReferenceImageUrl) });
+    }
+    if (profileReferenceImageUrl) {
+      try {
+        content.push({ type: "image", image: new URL(profileReferenceImageUrl) });
+      } catch {
+        // Skip a malformed profile URL rather than failing the whole render.
+      }
     }
     if (referenceImageUrl) {
       content.push({ type: "image", image: new URL(referenceImageUrl) });
@@ -673,30 +733,57 @@ export async function generateCoverImage(opts: {
   referenceImageUrl?: string;
   /** Close-up portrait anchor for identity when a full-length photo is also provided. */
   faceReferenceImageUrl?: string;
+  /** Optional side/three-quarter portrait — extra face-geometry anchor only. */
+  profileReferenceImageUrl?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
-    const { profile, referenceImageUrl, faceReferenceImageUrl } = opts;
+    const {
+      profile,
+      referenceImageUrl,
+      faceReferenceImageUrl,
+      profileReferenceImageUrl,
+    } = opts;
     const palette = (opts.palette ?? []).filter(Boolean);
 
     const hasFace = Boolean(faceReferenceImageUrl);
+    const hasProfile = Boolean(profileReferenceImageUrl);
     const hasFull = Boolean(referenceImageUrl);
-    const hasPerson = hasFace || hasFull;
+    const hasPerson = hasFace || hasProfile || hasFull;
 
     // Explain the role of each input image so the model takes the face from the
-    // close-up portrait (many pixels, reliable likeness) and body/pose from the
+    // close-up portrait(s) (many pixels, reliable likeness) and body/pose from the
     // full-length shot — the face is tiny on a full-length frame and drifts if
-    // used alone.
+    // used alone. Images are attached below in this exact order: front portrait,
+    // profile portrait, full-length.
     let imageRoles = "";
-    if (hasFace && hasFull) {
-      imageRoles =
-        `The FIRST image is a close-up portrait — match this person's face, hair and ` +
-        `identity exactly. The SECOND image is a full-length photo of the same person — ` +
-        `use only for body proportions. `;
-    } else if (hasPerson) {
-      imageRoles =
-        `The provided image is a photo of the person — preserve their face, hair, skin ` +
-        `tone and identity exactly; this is that same person. `;
+    let imgIdx = 0;
+    if (hasFace) {
+      imgIdx += 1;
+      imageRoles +=
+        `The ${imgIdx === 1 ? "FIRST" : "SECOND"} image is a close-up front portrait — ` +
+        `match this person's face, hair and identity exactly. `;
+    }
+    if (hasProfile) {
+      imgIdx += 1;
+      const ord = imgIdx === 1 ? "FIRST" : imgIdx === 2 ? "SECOND" : "THIRD";
+      imageRoles +=
+        `The ${ord} image is a side / three-quarter portrait of the SAME person — use it ` +
+        `ONLY to refine facial geometry (nose, jawline, cheekbones); do not copy its pose, ` +
+        `lighting, background or clothing. ` +
+        (hasFace
+          ? `Both portraits are the same person; if they disagree, the front portrait wins. `
+          : `Preserve this person's face, hair and identity exactly. `);
+    }
+    if (hasFull) {
+      imgIdx += 1;
+      const ord = imgIdx === 1 ? "FIRST" : imgIdx === 2 ? "SECOND" : "THIRD";
+      imageRoles +=
+        hasFace || hasProfile
+          ? `The ${ord} image is a full-length photo of the same person — use only for body ` +
+            `proportions. `
+          : `The ${ord} image is a photo of the person — preserve their face, hair, skin tone ` +
+            `and identity exactly; this is that same person. `;
     }
 
     // Text anchor for the face. The cover regenerates the whole scene, so a
@@ -722,6 +809,7 @@ export async function generateCoverImage(opts: {
         `Keep the SAME facial proportions as the reference photo — the same forehead ` +
         `height, nose size and shape, jawline, cheekbones, eye spacing and lip shape; ` +
         `do not idealise, slim or restyle the face. ` +
+        skinTonePreservationRule(profile) +
         `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
         `Do NOT change the hair colour. ` +
         `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
@@ -756,6 +844,13 @@ export async function generateCoverImage(opts: {
     )[] = [{ type: "text", text: prompt }];
     if (faceReferenceImageUrl) {
       content.push({ type: "image", image: new URL(faceReferenceImageUrl) });
+    }
+    if (profileReferenceImageUrl) {
+      try {
+        content.push({ type: "image", image: new URL(profileReferenceImageUrl) });
+      } catch {
+        // Skip a malformed profile URL rather than failing the whole render.
+      }
     }
     if (referenceImageUrl) {
       content.push({ type: "image", image: new URL(referenceImageUrl) });
