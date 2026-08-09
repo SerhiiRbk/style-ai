@@ -14,7 +14,8 @@ export const maxDuration = 60;
 const MAX_DATA_URL_CHARS = 6_000_000;
 
 /** Bump when the analysis prompt/logic changes so cached results are recomputed. */
-const COLOURS_CACHE_VERSION = "1";
+// v2: palettes grew from 8 → 10 swatches — invalidate pre-change cached results.
+const COLOURS_CACHE_VERSION = "2";
 
 /** Anonymous, deduplicated cache namespace in the `assets` bucket. */
 function cachePath(hash: string): string {
@@ -158,9 +159,24 @@ export async function POST(request: Request) {
     }
   }
 
-  // 6) Spend the vision call. The image is analysed in-request and never persisted.
+  // 6) Spend the vision call. The image is analysed in-request and never
+  // persisted. The same call also reports photo usability (a face gate folded
+  // into the analysis — no second call, no client-side model), so an unusable
+  // photo is rejected here instead of returning a garbage palette.
   try {
-    const result = await analyzeColoursOnly(image);
+    const analysis = await analyzeColoursOnly(image);
+    if (!analysis.ok) {
+      await logEvent({
+        name: "photo_gate_reject",
+        anonId,
+        props: { purpose: "colours" },
+      });
+      return NextResponse.json(
+        { unusable: true, error: analysis.reason },
+        { status: 422 },
+      );
+    }
+    const result = analysis.result;
     // Cache the result (not the photo) so a repeat upload is free.
     if (admin) {
       try {

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Bright chrome / cool silver</title>
+  <desc id="desc">Cool bright chrome material swatch without a prohibition line.</desc>
+  <defs>
+    <radialGradient id="chrome" cx="30%" cy="21%" r="85%">
+      <stop stop-color="#ffffff"/>
+      <stop offset=".17" stop-color="#d7f2ff"/>
+      <stop offset=".35" stop-color="#718996"/>
+      <stop offset=".50" stop-color="#f7fdff"/>
+      <stop offset=".69" stop-color="#829ba7"/>
+      <stop offset=".84" stop-color="#f5fdff"/>
+      <stop offset="1" stop-color="#516975"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-50%" width="160%" height="200%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+  </defs>
+  <ellipse cx="128" cy="225" rx="86" ry="12" fill="#16232a" opacity=".32" filter="url(#shadow)"/>
+  <circle cx="128" cy="122" r="100" fill="url(#chrome)"/>
+  <circle cx="128" cy="122" r="99" fill="none" stroke="#eafaff" stroke-opacity=".70"/>
+  <circle cx="128" cy="122" r="96.5" fill="none" stroke="#425660" stroke-opacity=".42"/>
+</svg>

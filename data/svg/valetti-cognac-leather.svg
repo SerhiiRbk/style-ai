@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Коньячная кожа</title>
+  <desc id="desc">Круглый образец коньячной кожи с естественным зерном, мягким бликом и объёмной тенью.</desc>
+  <defs>
+    <radialGradient id="leather" cx="34%" cy="25%" r="82%">
+      <stop offset="0" stop-color="#d98a43"/><stop offset=".28" stop-color="#b96528"/>
+      <stop offset=".62" stop-color="#8f431b"/><stop offset=".84" stop-color="#6c3017"/><stop offset="1" stop-color="#4f2113"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#2b120a" flood-opacity=".44"/></filter>
+    <filter id="grain" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency=".075" numOctaves="4" seed="9" result="pores"/>
+      <feDiffuseLighting in="pores" surfaceScale="2.4" diffuseConstant=".7" lighting-color="#e2a169" result="lit"><feDistantLight azimuth="225" elevation="50"/></feDiffuseLighting>
+      <feBlend in="SourceGraphic" in2="lit" mode="multiply"/>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+    <clipPath id="disc"><circle cx="128" cy="122" r="100"/></clipPath>
+  </defs>
+  <circle cx="128" cy="122" r="100" fill="url(#leather)" filter="url(#shadow)"/>
+  <g clip-path="url(#disc)">
+    <circle cx="128" cy="122" r="100" fill="url(#leather)" filter="url(#grain)"/>
+    <ellipse cx="94" cy="72" rx="69" ry="37" fill="#ffd3a0" opacity=".14" transform="rotate(-22 94 72)"/>
+    <path d="M45 160C84 146 149 171 212 136" fill="none" stroke="#3b160c" stroke-opacity=".17" stroke-width="2"/>
+  </g>
+  <circle cx="128" cy="122" r="99" fill="none" stroke="#e4a36c" stroke-opacity=".38"/>
+  <circle cx="128" cy="122" r="96.5" fill="none" stroke="#35130b" stroke-opacity=".36"/>
+</svg>

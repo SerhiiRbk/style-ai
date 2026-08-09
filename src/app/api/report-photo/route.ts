@@ -36,6 +36,40 @@ const GROOMING: Record<
   headwear: { column: "headwear", prefix: "headwear" },
 };
 
+type Admin = ReturnType<typeof createAdminSupabase>;
+
+/**
+ * Persist a freshly-rendered imagePath into a single element of a report's JSON
+ * column WITHOUT rewriting the whole array. Generation takes 30–90s, so a plain
+ * read-modify-write of the array races with a concurrent regen of a different
+ * index and loses updates. We update only the targeted JSON path atomically at
+ * the DB layer (set_report_json). If that RPC isn't deployed yet we fall back to
+ * re-reading the freshest column just before writing, which shrinks the race
+ * window from the whole generation to a few milliseconds.
+ */
+async function setReportJsonElement(
+  admin: Admin,
+  reportId: string,
+  column: Kind,
+  path: string[],
+  item: unknown,
+  fallback: () => Promise<void>,
+): Promise<void> {
+  const { error } = await admin.rpc("set_report_json", {
+    p_report_id: reportId,
+    p_column: column,
+    p_path: path,
+    p_item: item,
+  });
+  if (error) {
+    console.warn(
+      "[report-photo] set_report_json RPC unavailable, using re-read fallback",
+      error.message,
+    );
+    await fallback();
+  }
+}
+
 /**
  * Re-generate a single report photo (a hairstyle, facial-hair, eyewear or
  * accessory preview) on the owner's reference photo for 1 credit. The new image
@@ -149,10 +183,29 @@ export async function POST(request: Request) {
     if (upErr) {
       return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }
-    list[index] = isSide
+    const updatedItem = isSide
       ? { ...item, imagePathSide: newPath }
       : { ...item, imagePath: newPath };
-    await admin.from("reports").update({ hair }).eq("id", reportId);
+    await setReportJsonElement(
+      admin,
+      reportId,
+      "hair",
+      [group, String(index)],
+      updatedItem,
+      async () => {
+        const { data: fresh } = await admin
+          .from("reports")
+          .select("hair")
+          .eq("id", reportId)
+          .single();
+        const h =
+          (fresh?.hair as { recommend: HairRec[]; avoid: HairRec[] } | null) ??
+          hair;
+        const l = (h[group] ?? list) as HairRec[];
+        l[index] = { ...(l[index] ?? item), ...updatedItem };
+        await admin.from("reports").update({ hair: h }).eq("id", reportId);
+      },
+    );
   } else {
     const cfg = GROOMING[kind];
     if (!cfg) {
@@ -223,8 +276,30 @@ export async function POST(request: Request) {
     if (upErr) {
       return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }
-    arr[index] = { ...item, imagePath: newPath };
-    await admin.from("reports").update({ [cfg.column]: arr }).eq("id", reportId);
+    const updatedItem = { ...item, imagePath: newPath };
+    await setReportJsonElement(
+      admin,
+      reportId,
+      cfg.column,
+      [String(index)],
+      updatedItem,
+      async () => {
+        const { data: fresh } = await admin
+          .from("reports")
+          .select(cfg.column)
+          .eq("id", reportId)
+          .single();
+        const a =
+          ((fresh as Record<string, unknown> | null)?.[cfg.column] as
+            | PreviewItem[]
+            | null) ?? arr;
+        a[index] = { ...(a[index] ?? item), ...updatedItem };
+        await admin
+          .from("reports")
+          .update({ [cfg.column]: a })
+          .eq("id", reportId);
+      },
+    );
   }
 
   let balance: number | null = null;

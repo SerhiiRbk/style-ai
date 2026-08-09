@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Silver</title><desc id="desc">Polished cool silver swatch with fine metallic texture.</desc>
+  <defs>
+    <radialGradient id="silver" cx="32%" cy="23%" r="82%"><stop offset="0" stop-color="#ffffff"/><stop offset=".18" stop-color="#dfe6ea"/><stop offset=".42" stop-color="#929da4"/><stop offset=".64" stop-color="#eef2f3"/><stop offset=".84" stop-color="#7d878e"/><stop offset="1" stop-color="#cbd2d5"/></radialGradient>
+    <linearGradient id="glint" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff" stop-opacity=".9"/><stop offset=".24" stop-color="#fff" stop-opacity="0"/><stop offset=".58" stop-color="#fff" stop-opacity=".34"/><stop offset=".75" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#182027" flood-opacity=".35"/></filter>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".62 .03" numOctaves="2" seed="17" result="n"/><feColorMatrix in="n" type="saturate" values="0"/><feBlend in="SourceGraphic" mode="soft-light"/></filter>
+    <clipPath id="disc"><circle cx="128" cy="122" r="100"/></clipPath>
+  </defs>
+  <circle cx="128" cy="122" r="100" fill="url(#silver)" filter="url(#shadow)"/>
+  <g clip-path="url(#disc)" filter="url(#grain)"><circle cx="128" cy="122" r="100" fill="url(#silver)"/><ellipse cx="92" cy="68" rx="78" ry="40" fill="url(#glint)" transform="rotate(-22 92 68)"/></g>
+  <circle cx="128" cy="122" r="99" fill="none" stroke="#fff" stroke-opacity=".7"/><circle cx="128" cy="122" r="96.5" fill="none" stroke="#59646b" stroke-opacity=".38"/>
+</svg>

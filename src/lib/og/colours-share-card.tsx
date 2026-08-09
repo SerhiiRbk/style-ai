@@ -84,8 +84,8 @@ function pinkedPath(w: number, h: number, t: number): string {
 }
 
 export const SWATCH_ASPECT_RATIO = 2 / 3;
-export const SWATCH_ROTATIONS = [2, 4, 3, 5, 3, 5, 2, 4] as const;
-export const SWATCH_OFFSETS_Y = [0, 8, 2, 9, 0, 7, 2, 8] as const;
+export const SWATCH_ROTATIONS = [2, 4, 3, 5, 3, 5, 2, 4, 3, 5] as const;
+export const SWATCH_OFFSETS_Y = [0, 8, 2, 9, 0, 7, 2, 8, 3, 8] as const;
 
 export function fabricSwatchDataUri(hex: string, w: number, h: number): string {
   const t = Math.max(4, Math.round(Math.min(w, h) * 0.028));
@@ -388,10 +388,11 @@ function Card({ subseasonLabel, palette, undertone, contrast }: ColoursCardData)
   const meta = [undertone, contrast ? `${contrast} contrast` : null]
     .filter(Boolean)
     .join("  ·  ");
-  const tileW = 108;
+  const tileW = 92;
   const tileH = Math.round(tileW / SWATCH_ASPECT_RATIO);
   const gap = 11;
-  const paletteRows = [palette.slice(0, 4), palette.slice(4, 8)];
+  const perRow = 5;
+  const paletteRows = [palette.slice(0, perRow), palette.slice(perRow, perRow * 2)];
   return (
     <div
       style={{
@@ -529,7 +530,7 @@ function Card({ subseasonLabel, palette, undertone, contrast }: ColoursCardData)
               }}
             >
               {row.map((sw, i) => {
-                const index = rowIndex * 4 + i;
+                const index = rowIndex * perRow + i;
                 return (
                   <div
                     key={`${sw.hex}-${index}`}
@@ -601,7 +602,8 @@ export function verticalLayoutFor(
   const s = width / 1080;
   const pad = Math.round((isFeed ? 64 : 84) * s);
   const contentW = width - 2 * pad;
-  const tileW = Math.round(contentW * (isFeed ? 0.18 : 0.217));
+  // 5 swatches per row (palette is 10) — narrower tiles than the old 4-up grid.
+  const tileW = Math.round(contentW * (isFeed ? 0.15 : 0.176));
 
   return {
     isFeed,
@@ -831,10 +833,10 @@ function VerticalCard({
           <div style={{ display: "flex", flex: 1, height: 1, backgroundColor: "rgba(194,160,106,0.28)" }} />
         </div>
 
-        {/* Swatch grid (4 × 2) */}
+        {/* Swatch grid (5 × 2) */}
         <div style={{ display: "flex", flexDirection: "column", gap }}>
-          {row(palette.slice(0, 4), "r1", 0)}
-          {row(palette.slice(4, 8), "r2", 4)}
+          {row(palette.slice(0, 5), "r1", 0)}
+          {row(palette.slice(5, 10), "r2", 5)}
         </div>
       </div>
 

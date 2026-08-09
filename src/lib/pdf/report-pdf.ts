@@ -20,6 +20,10 @@ import { capsuleMatrixImageAt } from "@/lib/demo-report";
 import { extrasForReport, investmentLevel, itemsForLook } from "@/lib/style-extras";
 import { humanizeProductTitle } from "@/lib/product-title";
 import { makeT } from "@/lib/i18n/report";
+import {
+  buildColoursSwatchSvg,
+  COLOURS_SWATCH_ASPECT_RATIO,
+} from "@/components/FabricSwatch";
 
 // A4 in points.
 const PAGE_W = 595.28;
@@ -197,6 +201,37 @@ async function embedImage(
     } catch {
       return null;
     }
+  }
+}
+
+/**
+ * Rasterise the atelier fabric-card SVG (same language as `/colours` and the
+ * web report) to a PNG for pdf-lib. Falls back to null when sharp is missing
+ * so the caller can draw a flat swatch instead of failing the whole PDF.
+ */
+async function embedFabricSwatch(
+  doc: PDFDocument,
+  hex: string,
+  uid: string,
+): Promise<PDFImage | null> {
+  let sharp: typeof import("sharp").default;
+  try {
+    ({ default: sharp } = await import("sharp"));
+  } catch {
+    return null;
+  }
+  const safeUid = uid.replace(/[^a-zA-Z0-9]/g, "") || "swatch";
+  // Explicit pixel size so librsvg doesn't render a tiny default canvas —
+  // matches the cloth viewBox (132×214) at 2× for crisp print.
+  const svg = buildColoursSwatchSvg(hex, safeUid).replace(
+    'viewBox="24 18 132 214"',
+    'width="264" height="428" viewBox="24 18 132 214"',
+  );
+  try {
+    const png = await sharp(Buffer.from(svg)).png().toBuffer();
+    return await doc.embedPng(png);
+  } catch {
+    return null;
   }
 }
 
@@ -486,25 +521,41 @@ class Doc {
     this.y = yy - 2;
   }
 
-  swatch(hex: string, label: string) {
-    const size = 10;
+  /**
+   * Colour row: fabric-textured swatch (when `img` is provided — same atelier
+   * cloth card as `/colours`) or a flat filled square fallback (metals, or when
+   * sharp is unavailable).
+   */
+  swatch(hex: string, label: string, img?: PDFImage | null) {
+    const w = img ? 16 : 10;
+    const h = img ? Math.round(w / COLOURS_SWATCH_ASPECT_RATIO) : 10;
+    const textX = MARGIN + w + 10;
     const lh = 11 + 5;
-    const lines = this.wrapLines(label, this.reg, 10, CONTENT_W - 22);
-    this.ensure(Math.max(size, lines.length * lh));
+    const lines = this.wrapLines(label, this.reg, 10, CONTENT_W - (w + 12));
+    this.ensure(Math.max(h, lines.length * lh) + 2);
     const top = this.y;
-    this.page.drawRectangle({
-      x: MARGIN,
-      y: top - size - 1,
-      width: size,
-      height: size,
-      color: hexToRgb(hex),
-      borderColor: LINE,
-      borderWidth: 0.5,
-    });
+    if (img) {
+      this.page.drawImage(img, {
+        x: MARGIN,
+        y: top - h,
+        width: w,
+        height: h,
+      });
+    } else {
+      this.page.drawRectangle({
+        x: MARGIN,
+        y: top - h - 1,
+        width: w,
+        height: h,
+        color: hexToRgb(hex),
+        borderColor: LINE,
+        borderWidth: 0.5,
+      });
+    }
     let yy = top;
     for (const ln of lines) {
       this.page.drawText(ln, {
-        x: MARGIN + 20,
+        x: textX,
         y: yy - 10 + 1,
         size: 10,
         font: this.reg,
@@ -512,8 +563,8 @@ class Doc {
       });
       yy -= lh;
     }
-    this.y = Math.min(top - size - 1, yy);
-    this.gap(3);
+    this.y = Math.min(top - h - 1, yy);
+    this.gap(img ? 5 : 3);
   }
 
   /** Full-width banner image, pre-cropped to CONTENT_W x h. */
@@ -903,11 +954,37 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
 
   /* ------------------------------- colours ------------------------------- */
   chapter("Your colours");
+  const coreBest = report.colors.best.filter((c) => c.role !== "versatile");
+  const officeNeutrals = report.colors.best.filter((c) => c.role === "versatile");
   d.subhead(tt("Colours that work for you"), { keepWith: 16 });
-  for (const c of report.colors.best) d.swatch(c.hex, `${c.name} — ${c.why}`);
+  for (let i = 0; i < coreBest.length; i++) {
+    const c = coreBest[i]!;
+    const img = await embedFabricSwatch(d.doc, c.hex, `pdfb${i}`);
+    d.swatch(c.hex, `${c.name} — ${c.why}`, img);
+  }
+  if (officeNeutrals.length) {
+    d.gap(6);
+    d.subhead(tt("Office-ready neutrals"), { keepWith: 20 });
+    d.text(
+      tt(
+        "Versatile dark and neutral tones for suits and formal outfits, chosen in your temperature — they add depth while staying on your palette.",
+      ),
+      { size: 9.5, color: STONE, lineGap: 3.5 },
+    );
+    d.gap(4);
+    for (let i = 0; i < officeNeutrals.length; i++) {
+      const c = officeNeutrals[i]!;
+      const img = await embedFabricSwatch(d.doc, c.hex, `pdfn${i}`);
+      d.swatch(c.hex, `${c.name} — ${c.why}`, img);
+    }
+  }
   d.gap(6);
   d.subhead(tt("Colours to avoid"), { keepWith: 16 });
-  for (const c of report.colors.avoid) d.swatch(c.hex, `${c.name} — ${c.why}`);
+  for (let i = 0; i < report.colors.avoid.length; i++) {
+    const c = report.colors.avoid[i]!;
+    const img = await embedFabricSwatch(d.doc, c.hex, `pdfa${i}`);
+    d.swatch(c.hex, `${c.name} — ${c.why}`, img);
+  }
   d.gap(6);
   d.subhead(tt("How to combine them"), { keepWith: 15 });
   if (extras.pairings.hero)

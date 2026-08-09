@@ -3,6 +3,7 @@ import test from "node:test";
 import { COLOURS_SOCIAL_FORMATS } from "./ColoursExperience";
 import {
   buildColoursSwatchSvg,
+  buildFabricStripeSvg,
   COLOURS_SWATCH_ASPECT_RATIO,
 } from "./FabricSwatch";
 
@@ -32,6 +33,14 @@ test("swatch ids are namespaced per instance to avoid cross-referencing", () => 
   assert.match(a, /url\(#clothTexture-one\)/);
   assert.match(b, /url\(#clothTexture-two\)/);
   assert.ok(!a.includes("-two"));
+});
+
+test("moodboard palette stripes reuse fabric weave without pinked mount", () => {
+  const svg = buildFabricStripeSvg("#879b98", "mb0");
+  assert.ok(svg.includes("#879b98"));
+  assert.match(svg, /id="stripeWeave-mb0"/);
+  assert.match(svg, /feTurbulence/);
+  assert.doesNotMatch(svg, /teethH|teethV|mount/);
 });
 
 test("social downloads include a 4:5 Facebook and Instagram feed image", () => {

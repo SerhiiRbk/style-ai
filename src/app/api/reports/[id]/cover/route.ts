@@ -101,6 +101,8 @@ export async function POST(
     profile,
     palette,
     referenceImageUrl: refs.fullUrl,
+    faceReferenceImageUrl: refs.faceUrl,
+    profileReferenceImageUrl: refs.profileUrl,
   });
   if (!img) {
     return NextResponse.json({ error: "Generation failed" }, { status: 502 });

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Жёлтое золото</title>
+  <desc id="desc">Круглый образец полированного жёлтого золота с тонкой металлической фактурой и мягкой тенью.</desc>
+  <defs>
+    <radialGradient id="gold" cx="34%" cy="25%" r="76%">
+      <stop offset="0" stop-color="#fff6b4"/><stop offset=".16" stop-color="#f8d45a"/>
+      <stop offset=".42" stop-color="#c88a16"/><stop offset=".67" stop-color="#f2c84a"/>
+      <stop offset=".86" stop-color="#a86b0d"/><stop offset="1" stop-color="#e7b634"/>
+    </radialGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".78"/><stop offset=".22" stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".58" stop-color="#fff" stop-opacity=".25"/><stop offset=".72" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#3a2605" flood-opacity=".34"/>
+    </filter>
+    <filter id="metal" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency=".7 .025" numOctaves="2" seed="14" result="grain"/>
+      <feColorMatrix in="grain" type="saturate" values="0" result="mono"/>
+      <feBlend in="SourceGraphic" in2="mono" mode="soft-light"/>
+    </filter>
+    <clipPath id="disc"><circle cx="128" cy="122" r="100"/></clipPath>
+  </defs>
+  <circle cx="128" cy="122" r="100" fill="url(#gold)" filter="url(#shadow)"/>
+  <g clip-path="url(#disc)" filter="url(#metal)">
+    <circle cx="128" cy="122" r="100" fill="url(#gold)"/>
+    <ellipse cx="96" cy="77" rx="80" ry="45" fill="url(#shine)" transform="rotate(-20 96 77)"/>
+    <path d="M23 145C76 117 178 116 234 74" fill="none" stroke="#fff2a1" stroke-opacity=".17" stroke-width="11"/>
+  </g>
+  <circle cx="128" cy="122" r="99" fill="none" stroke="#fff3a0" stroke-opacity=".55"/>
+  <circle cx="128" cy="122" r="96.5" fill="none" stroke="#7d4d06" stroke-opacity=".35"/>
+</svg>

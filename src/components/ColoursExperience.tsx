@@ -93,7 +93,9 @@ function trackEvent(name: string, props?: Record<string, unknown>) {
 // Keep the palette, the uploaded photo preview and the matched products on the
 // device so a reload shows exactly what the visitor saw. Best-effort: quota /
 // private-mode failures degrade silently. Cleared by "Clear" / "Try another".
-const COLOURS_SESSION_KEY = "valetti_colours_session";
+// v2: palettes grew from 8 → 10 swatches; drop pre-change cached sessions so a
+// restored result never shows the old, shorter palette.
+const COLOURS_SESSION_KEY = "valetti_colours_session_v2";
 const COLOURS_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 type ColoursSession = {
@@ -444,6 +446,16 @@ export function ColoursExperience() {
         body: JSON.stringify({ image: dataUrl, anonId: getAnonId() }),
       });
       const data = await res.json().catch(() => ({}));
+      // Unusable photo (422) — the analysis folded in a face check. Show the
+      // reject copy in the error phase; not a transient failure.
+      if (data.unusable) {
+        setError(
+          data.error ??
+            "We couldn't read your colours from that photo. Try a clear, front-facing selfie.",
+        );
+        setPhase("error");
+        return;
+      }
       if (!res.ok) throw new Error(data.error ?? "Analysis failed");
       // Daily cap reached (A0): capture the visitor instead of losing them.
       if (data.capped) {
@@ -623,6 +635,16 @@ export function ColoursExperience() {
             </span>
           </button>
           {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+          <div className="mx-auto mt-6 max-w-md rounded-xl border hairline bg-cream/40 px-4 py-4 text-left sm:px-5">
+            <p className="text-xs uppercase tracking-wide text-stone-soft">
+              For a more accurate reading
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-stone">
+              How well we can read your palette and season depends on the photo.
+              Use soft natural daylight, let your face fill at least half the
+              frame, and skip sunglasses or hats that cover the upper face.
+            </p>
+          </div>
           <p className="mt-6 text-xs text-stone-soft">
             We analyse your photo to read your colours and don&apos;t keep it.
           </p>
@@ -736,7 +758,7 @@ export function ColoursExperience() {
               </div>
             </div>
 
-            <div className="mt-7 grid grid-cols-4 gap-3.5 sm:grid-cols-8 sm:gap-4">
+            <div className="mt-7 grid grid-cols-4 gap-3.5 sm:grid-cols-5 sm:gap-4">
               {result.palette.map((s, i) => (
                 <div key={`${s.hex}-${i}`} className="flex flex-col items-center gap-2">
                   <FabricSwatch hex={s.hex} name={s.name} uid={`cx${i}`} />

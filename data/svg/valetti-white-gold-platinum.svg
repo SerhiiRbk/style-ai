@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">White gold / platinum</title><desc id="desc">Luminous white gold and platinum swatch with a soft champagne undertone.</desc>
+  <defs>
+    <radialGradient id="platinum" cx="31%" cy="22%" r="84%"><stop stop-color="#fffdf3"/><stop offset=".18" stop-color="#e9e5d9"/><stop offset=".43" stop-color="#aaa9a3"/><stop offset=".63" stop-color="#f5f1e5"/><stop offset=".84" stop-color="#8d8f8d"/><stop offset="1" stop-color="#d9d4c8"/></radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#292720" flood-opacity=".34"/></filter>
+    <filter id="polish"><feTurbulence type="fractalNoise" baseFrequency=".48 .018" numOctaves="2" seed="31" result="n"/><feColorMatrix in="n" type="saturate" values="0"/><feBlend in="SourceGraphic" mode="soft-light"/></filter>
+    <clipPath id="disc"><circle cx="128" cy="122" r="100"/></clipPath>
+  </defs>
+  <circle cx="128" cy="122" r="100" fill="url(#platinum)" filter="url(#shadow)"/><g clip-path="url(#disc)" filter="url(#polish)"><circle cx="128" cy="122" r="100" fill="url(#platinum)"/><path d="M20 150C75 112 172 116 237 69" fill="none" stroke="#fff" stroke-opacity=".3" stroke-width="13"/><ellipse cx="86" cy="61" rx="65" ry="31" fill="#fff" opacity=".28" transform="rotate(-18 86 61)"/></g>
+  <circle cx="128" cy="122" r="99" fill="none" stroke="#fffbed" stroke-opacity=".75"/><circle cx="128" cy="122" r="96.5" fill="none" stroke="#696965" stroke-opacity=".35"/>
+</svg>

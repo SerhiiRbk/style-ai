@@ -17,6 +17,7 @@ import {
   lookContentSchema,
   inferBodyTypeFromMeasurements,
   classifySubseason,
+  refineSeasonForClarity,
   HAIR_COLOR_LABELS,
   EYE_COLOR_LABELS,
   type EyeColorId,
@@ -25,6 +26,7 @@ import {
   type ReportContent,
 } from "@/lib/style-profile";
 import { languageInstruction, type ReportLanguage } from "@/lib/languages";
+import { reportPalette } from "@/lib/colour-palette";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -74,6 +76,32 @@ const NO_TEXT_RULE =
 const HEADSHOT_FRAMING =
   "Vertical 4:5 portrait framing, shoulders-up, subject centered in frame. ";
 
+/**
+ * Explicit skin-tone lock for identity renders. The image model biases toward
+ * warm, tanned, bronzed skin under editorial studio light and darkens genuinely
+ * fair complexions; naming the tone/undertone alone is not enough, so we add a
+ * hard "do not tan/darken/warm" rule using the analysed skin tone + undertone.
+ */
+function skinTonePreservationRule(profile: StyleProfile): string {
+  const tone = profile.physical.skinTone?.trim();
+  const undertone = profile.physical.undertone?.trim();
+  const named =
+    tone && undertone
+      ? `${tone} skin with a ${undertone} undertone`
+      : tone
+        ? `${tone} skin`
+        : undertone
+          ? `skin with a ${undertone} undertone`
+          : "";
+  return (
+    `Keep the EXACT skin tone and undertone from the reference photo` +
+    (named ? ` — the person has ${named}` : "") +
+    `. Do NOT tan, darken, bronze, warm or add colour to the skin; do not deepen ` +
+    `the complexion. Render fair, light skin as genuinely fair, and preserve the ` +
+    `original undertone (do not shift a cool complexion to warm/olive). `
+  );
+}
+
 const visionSchema = z.object({
   skinTone: z.string().describe("e.g. 'warm medium', 'cool fair'"),
   undertone: z.enum(["warm", "cool", "neutral"]),
@@ -85,6 +113,14 @@ const visionSchema = z.object({
     .describe("natural hair colour, e.g. 'dark brown', 'blonde', 'gray'"),
   eyeColor: z.string().describe("eye colour, e.g. 'brown', 'blue', 'green'"),
   colorSeason: z.enum(["winter", "spring", "summer", "autumn"]),
+  clarity: z
+    .enum(["muted", "clear"])
+    .describe(
+      "overall colouring quality by CHROMA/SATURATION, not light/dark contrast: " +
+        "'muted' = soft, greyed, dusty, low-saturation; 'clear' = bright, vivid, " +
+        "high-saturation. Fair skin with dark hair is high value-contrast but is " +
+        "often still 'muted' — judge saturation, not lightness.",
+    ),
 });
 
 /** Step 1 — Vision analysis → physical attributes + colour season. */
@@ -97,6 +133,11 @@ export async function analyzeProfile(
   const { output } = await generateText({
     model: env.modelVision,
     output: Output.object({ schema: visionSchema }),
+    // Colour analysis must be repeatable: the same photos should always yield the
+    // same season. A near-zero temperature (plus a fixed seed) removes the run-to-
+    // run drift that previously flipped borderline cases between summer and winter.
+    temperature: 0,
+    seed: 1,
     messages: [
       {
         role: "user",
@@ -107,6 +148,10 @@ export async function analyzeProfile(
               `Analyse these photos of a person for a professional, respectful style consultation. ` +
               `Determine skin tone, undertone, facial contrast, face shape, body type, natural hair colour ` +
               `and eye colour, and assign a seasonal colour analysis. Be objective and tactful — never judgmental. ` +
+              `Also judge overall colouring CLARITY by chroma/saturation ('muted' vs 'clear'): ` +
+              `muted = soft, greyed, dusty; clear = bright, vivid. Do NOT confuse high light/dark ` +
+              `(value) contrast — e.g. fair skin with dark hair — for 'clear'; such colouring is ` +
+              `frequently muted, which points to Summer rather than Winter. ` +
               `Context: age ${intake.age}, height ${intake.heightCm}cm, ${intake.genderPresentation}.` +
               (intake.hairColor
                 ? ` Self-reported hair: ${HAIR_COLOR_LABELS[intake.hairColor]}.`
@@ -128,6 +173,14 @@ export async function analyzeProfile(
   const eyeColor = intake.eyeColor
     ? EYE_COLOR_LABELS[intake.eyeColor as EyeColorId]
     : output.eyeColor;
+
+  // Correct the base season using the chroma signal: a muted cool/neutral person
+  // read as "winter" from value-contrast alone is really a Summer.
+  const colorSeason = refineSeasonForClarity({
+    season: output.colorSeason,
+    undertone: output.undertone,
+    clarity: output.clarity,
+  });
 
   return {
     version: "1.0",
@@ -157,11 +210,12 @@ export async function analyzeProfile(
       hairColor,
       eyeColor,
     },
-    colorSeason: output.colorSeason,
+    colorSeason,
     colorSubseason: classifySubseason({
-      season: output.colorSeason,
+      season: colorSeason,
       undertone: output.undertone,
       contrast: output.contrast,
+      clarity: output.clarity,
       hairColor,
       eyeColor,
     }),
@@ -212,6 +266,82 @@ function measurementsSummary(m?: {
   return parts.length ? ` (${parts.join(", ")})` : "";
 }
 
+/**
+ * Deterministic best/avoid palette for a profile — same colouring always yields
+ * the same palette, so two reports from one photo can't show different colours.
+ * The reasoning model still writes the rest of the report; only the palette is
+ * pinned. Uses the stored subseason, or classifies one from the profile signals.
+ */
+function deterministicColors(profile: StyleProfile): ReportContent["colors"] {
+  const undertone = profile.physical.undertone;
+  const contrast = profile.physical.contrast;
+  const subseason =
+    profile.colorSubseason ??
+    classifySubseason({
+      season: profile.colorSeason,
+      undertone,
+      contrast,
+      hairColor: profile.physical.hairColor,
+      eyeColor: profile.physical.eyeColor,
+    });
+  return reportPalette({ subseason, undertone, contrast });
+}
+
+/**
+ * Snap a model-produced look palette onto the report's deterministic BEST
+ * colours (nearest RGB), so the generated look image renders in the exact
+ * colours Carlo recommends — not the model's own, possibly off-season, picks.
+ * Without this the swatch section (pinned) and the look images (free-form) drift
+ * apart: a light-summer report can show warm-tan / charcoal outfits.
+ */
+function snapPaletteToBest(
+  palette: string[],
+  best: ReportContent["colors"]["best"],
+): string[] {
+  const swatches = best
+    .map((c) => c.hex)
+    .filter((h): h is string => typeof h === "string")
+    .map((h) => (h.startsWith("#") ? h : `#${h}`))
+    .filter((h) => /^#[0-9a-fA-F]{6}$/.test(h));
+  if (!swatches.length) return palette;
+  const toRgb = (hex: string): [number, number, number] => {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const swRgb = swatches.map((h) => [h, toRgb(h)] as const);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of palette) {
+    if (typeof raw !== "string") continue;
+    const hex = raw.startsWith("#") ? raw : `#${raw}`;
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) continue;
+    const t = toRgb(hex);
+    let pick = swRgb[0]![0];
+    let bestD = Infinity;
+    for (const [sw, rgb] of swRgb) {
+      const d =
+        (rgb[0] - t[0]) ** 2 + (rgb[1] - t[1]) ** 2 + (rgb[2] - t[2]) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        pick = sw;
+      }
+    }
+    if (!seen.has(pick)) {
+      seen.add(pick);
+      out.push(pick);
+    }
+  }
+  // Top up to at least 3 swatches so the palette line / chips stay meaningful.
+  for (const sw of swatches) {
+    if (out.length >= 3) break;
+    if (!seen.has(sw)) {
+      seen.add(sw);
+      out.push(sw);
+    }
+  }
+  return out.length ? out : swatches.slice(0, 4);
+}
+
 /** Step 3 — Explainable report content grounded in the retrieved rules. */
 export async function recommend(
   intake: Intake,
@@ -222,10 +352,20 @@ export async function recommend(
   tier: Tier = "basic",
   language: ReportLanguage = "en",
 ): Promise<ReportContent> {
-  if (!hasAI) return mockReportContent(intake);
+  if (!hasAI) {
+    return { ...mockReportContent(intake), colors: deterministicColors(profile) };
+  }
 
   const hairRecommend = hairRecommendGenLimit(tier);
   const hairAvoid = HAIR_AVOID_GEN_LIMIT;
+
+  // Pin the palette up front so the looks — and the images generated from them —
+  // are built from the exact colours the report recommends, not the model's own.
+  const colors = deterministicColors(profile);
+  const bestPaletteText = colors.best
+    .map((c) => `${c.name} ${c.hex}`)
+    .join(", ");
+  const avoidPaletteText = colors.avoid.map((c) => c.name).join(", ");
 
   const looksLine =
     lookCount <= 1
@@ -234,7 +374,7 @@ export async function recommend(
       : `- Provide exactly ${lookCount} looks for different contexts (work, smart-casual, weekend), each with a ` +
         `3–4 colour hex palette and a one-line description of the outfit.\n` +
         `- Each look description MUST list every garment with its colour, comma-separated ` +
-        `(e.g. "Rust crewneck knit, olive chinos, brown leather loafers"). Use concrete catalogue words ` +
+        `(e.g. "Powder-blue crewneck knit, grey-blue chinos, soft-denim loafers"). Use concrete catalogue words ` +
         `(blazer, overshirt, crewneck, chinos, trousers, loafers, sneakers) — not vague phrases like ` +
         `"textured layers" or "warm accents".\n`;
 
@@ -257,12 +397,13 @@ export async function recommend(
       `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
       `${grounding}\n` +
       `Produce an explainable style report. Requirements:\n` +
-      `- For every colour (best AND avoid) include a hex code and a concrete "why" tied to the profile.\n` +
-      (profile.colorSubseason
-        ? `- Calibrate the palette to the client's ${profile.colorSubseason.replace("-", " ")} colouring ` +
-          `(hair: ${profile.physical.hairColor ?? "n/a"}, eyes: ${profile.physical.eyeColor ?? "n/a"}) — ` +
-          `respect its depth, temperature and chroma.\n`
-        : "") +
+      `- The colour palette (best AND avoid) is supplied and fixed — you may return ` +
+      `placeholder colours in "colors" (they are replaced), but the LOOKS must obey it.\n` +
+      `- CRITICAL — colours: every look's "palette" hex codes AND every garment colour ` +
+      `named in its "description" MUST be drawn ONLY from the client's BEST colours: ` +
+      `${bestPaletteText}. Do not introduce colours outside this set — in particular no ` +
+      `black, no charcoal, and no warm tan/camel/brown/olive/rust unless it literally appears ` +
+      `above. Never use the AVOID colours (${avoidPaletteText}).\n` +
       `- For hair: exactly ${hairRecommend} recommended hairstyles and exactly ${hairAvoid} styles to avoid, ` +
       `each with a concrete reason tied to face shape (${profile.physical.faceShape}).\n` +
       `- Tailor the silhouette "fit" line and all 3 rules specifically to the "${profile.physical.bodyType}" body type: ` +
@@ -274,6 +415,17 @@ export async function recommend(
       languageInstruction(language),
   });
 
+  // Pin the palette to the deterministic, subseason-curated set so identical
+  // colouring always produces identical colours (the model's own palette,
+  // which drifts run-to-run, is discarded).
+  output.colors = colors;
+  // Snap each look's palette onto the best colours so the generated look IMAGE
+  // (which is prompted with look.palette) can't drift off-season even if the
+  // model ignored the colour instruction above.
+  output.looks = (output.looks ?? []).map((l) => ({
+    ...l,
+    palette: snapPaletteToBest(l.palette ?? [], colors.best),
+  }));
   return output;
 }
 
@@ -313,6 +465,10 @@ export async function generateExtraLook(opts: {
     ? `User request for this specific look: "${note.trim()}". Honour it within the occasion and the profile.\n`
     : "";
 
+  const colors = deterministicColors(profile);
+  const bestPaletteText = colors.best.map((c) => `${c.name} ${c.hex}`).join(", ");
+  const avoidPaletteText = colors.avoid.map((c) => c.name).join(", ");
+
   const { output } = await generateText({
     model: env.modelReasoning,
     output: Output.object({ schema: lookContentSchema }),
@@ -334,13 +490,18 @@ export async function generateExtraLook(opts: {
       `- context: "${context}".\n` +
       `- title: a short evocative name (2–4 words).\n` +
       `- description: ONE line naming each garment with its colour, comma-separated ` +
-        `(e.g. "Camel crewneck knit, taupe chinos, brown loafers") — concrete catalogue words only.\n` +
-      `- palette: 3–4 hex codes aligned with the client's best colours.\n` +
+        `— concrete catalogue words only.\n` +
+      `- CRITICAL — colours: the "palette" hex codes AND every garment colour in the ` +
+        `"description" MUST be drawn ONLY from the client's BEST colours: ${bestPaletteText}. ` +
+        `No black/charcoal and no warm tan/camel/brown/olive/rust unless it appears above. ` +
+        `Never use the AVOID colours (${avoidPaletteText}).\n` +
       `Keep the tone refined and practical.` +
       languageInstruction(intake.language),
   });
 
-  return { ...output, context };
+  // Guarantee the returned palette is on-report even if the model drifted; the
+  // look image is prompted from this palette.
+  return { ...output, palette: snapPaletteToBest(output.palette ?? [], colors.best), context };
 }
 
 /**
@@ -364,6 +525,8 @@ export async function generateLookImage(opts: {
   referenceImageUrl?: string;
   /** Portrait anchor for identity when a separate full-length photo is also provided. */
   faceReferenceImageUrl?: string;
+  /** Optional side/three-quarter portrait — extra face-geometry anchor only. */
+  profileReferenceImageUrl?: string;
   /** Pre-rendered outfit photo (e.g. capsule combo) — clothing reference only. */
   outfitReferenceImageUrl?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
@@ -374,14 +537,17 @@ export async function generateLookImage(opts: {
       look,
       referenceImageUrl,
       faceReferenceImageUrl,
+      profileReferenceImageUrl,
       outfitReferenceImageUrl,
     } = opts;
     const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
     const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
     const hasOutfitRef = Boolean(outfitReferenceImageUrl);
     const hasFace = Boolean(faceReferenceImageUrl);
+    const hasProfile = Boolean(profileReferenceImageUrl);
     const hasFull = Boolean(referenceImageUrl);
-    const personImageCount = (hasFace ? 1 : 0) + (hasFull ? 1 : 0);
+    const faceImageCount = (hasFace ? 1 : 0) + (hasProfile ? 1 : 0);
+    const personImageCount = faceImageCount + (hasFull ? 1 : 0);
     const ordinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"];
     const ordinal = (n: number) => ordinals[n - 1] ?? `${n}TH`;
 
@@ -403,34 +569,54 @@ export async function generateLookImage(opts: {
     // footwear directive with a hard negative keeps formal looks in dress shoes.
     const footwearBlock = look.footwearRule ? `${look.footwearRule} ` : "";
 
-    // Describe the role of each input image so identity (person photo) and the
-    // garments (catalogue product photos) are not confused.
+    // Describe the role of each input image so identity (person photos) and the
+    // garments (catalogue product photos) are not confused. Images are attached
+    // in this exact order below: face portrait, profile portrait, full-length,
+    // outfit, catalogue — so we assign ordinals with a running counter.
     let imageRoles = "";
-    if (personImageCount > 0) {
-      if (hasFace && hasFull) {
-        imageRoles +=
-          `The ${ordinal(1)} image is a close-up portrait — match this person's face, hair and identity exactly. ` +
-          `The ${ordinal(2)} image is a full-length photo of the same person — use for body proportions and pose only. `;
-      } else {
-        imageRoles +=
-          `The ${ordinal(1)} image shows the person — preserve their face, hair and identity exactly. `;
-      }
+    let imgIdx = 0;
+    if (hasFace) {
+      imgIdx += 1;
+      imageRoles +=
+        `The ${ordinal(imgIdx)} image is a close-up front portrait — match this person's ` +
+        `face, hair and identity exactly. `;
+    }
+    if (hasProfile) {
+      imgIdx += 1;
+      imageRoles +=
+        `The ${ordinal(imgIdx)} image is a side / three-quarter portrait of the SAME person ` +
+        `at a different angle — use it ONLY to refine facial geometry (nose shape, jawline, ` +
+        `cheekbones, eye spacing). Do not copy its pose, lighting, background or clothing. ` +
+        (hasFace
+          ? `Both portraits are the same person from the same period; if they disagree, the ` +
+            `front portrait wins. `
+          : `Preserve this person's face, hair and identity exactly. `);
+    }
+    if (hasFull) {
+      imgIdx += 1;
+      imageRoles +=
+        faceImageCount > 0
+          ? `The ${ordinal(imgIdx)} image is a full-length photo of the same person — use for ` +
+            `body proportions and pose only. `
+          : `The ${ordinal(imgIdx)} image shows the person — preserve their face, hair and ` +
+            `identity exactly. `;
     }
     if (hasOutfitRef) {
-      const outfitIdx = personImageCount + 1;
+      imgIdx += 1;
       imageRoles +=
-        `The ${ordinal(outfitIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
+        `The ${ordinal(imgIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
         `colours and proportions; do not copy the model's face or body. `;
     }
     if (catalogImageUrls.length) {
-      const catalogStart = personImageCount + (hasOutfitRef ? 1 : 0) + 1;
+      const catalogStart = imgIdx + 1;
+      imgIdx += catalogImageUrls.length;
       if (catalogImageUrls.length === 1) {
         imageRoles +=
           `The ${ordinal(catalogStart)} image is the actual catalogue garment to dress them in — ` +
           `reproduce that exact garment on the person. `;
       } else {
         imageRoles +=
-          `Images ${ordinal(catalogStart)} through ${ordinal(catalogStart + catalogImageUrls.length - 1)} are catalogue garment references — ` +
+          `Images ${ordinal(catalogStart)} through ${ordinal(imgIdx)} are catalogue garment references — ` +
           `reproduce those exact garments on the person. `;
       }
       // When garment product photos share the prompt with the person's photos,
@@ -441,10 +627,40 @@ export async function generateLookImage(opts: {
       if (personImageCount > 0) {
         imageRoles +=
           `CRITICAL identity rule: the person's face, bone structure, skin tone and hair ` +
-          `come ONLY from ${hasFace ? "the close-up portrait" : "the person photo"} — ` +
+          `come ONLY from ${faceImageCount > 0 ? "the portrait photo(s)" : "the person photo"} — ` +
           `reproduce them at maximum fidelity. The catalogue images are clothing swatches ` +
           `only: copy the garments, and take NOTHING facial, body or pose-related from them. `;
       }
+    }
+
+    // Text anchor for the face. The model regenerates the whole scene, so a
+    // reference photo alone can drift; these explicit traits + "do not alter"
+    // rules keep the rendered face true to the real person.
+    let faceAnchor = "";
+    if (personImageCount > 0) {
+      const traits = [
+        profile.physical.faceShape
+          ? `${profile.physical.faceShape} face shape`
+          : null,
+        profile.physical.hairColor ? `${profile.physical.hairColor} hair` : null,
+        profile.physical.eyeColor ? `${profile.physical.eyeColor} eyes` : null,
+        profile.physical.skinTone
+          ? `${profile.physical.skinTone} skin tone`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      const skinRule = skinTonePreservationRule(profile);
+      faceAnchor =
+        (traits ? `The person has ${traits}. ` : "") +
+        `Keep the SAME facial proportions as the reference photo — the same forehead ` +
+        `height, nose size and shape, jawline, cheekbones, eye spacing and lip shape; ` +
+        `do not idealise, slim or restyle the face. ` +
+        skinRule +
+        `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
+        `Do NOT change the hair colour. ` +
+        `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
+        `what the reference photo shows. `;
     }
     if (!personImageCount && !catalogImageUrls.length) {
       imageRoles = `Do not show identifiable facial features. `;
@@ -461,6 +677,7 @@ export async function generateLookImage(opts: {
       `Colour palette: ${look.palette.join(", ")}. ` +
       subject +
       imageRoles +
+      faceAnchor +
       NO_TEXT_RULE;
 
     const content: (
@@ -469,6 +686,13 @@ export async function generateLookImage(opts: {
     )[] = [{ type: "text", text: prompt }];
     if (faceReferenceImageUrl) {
       content.push({ type: "image", image: new URL(faceReferenceImageUrl) });
+    }
+    if (profileReferenceImageUrl) {
+      try {
+        content.push({ type: "image", image: new URL(profileReferenceImageUrl) });
+      } catch {
+        // Skip a malformed profile URL rather than failing the whole render.
+      }
     }
     if (referenceImageUrl) {
       content.push({ type: "image", image: new URL(referenceImageUrl) });
@@ -507,11 +731,90 @@ export async function generateCoverImage(opts: {
   palette?: string[];
   archetype?: string;
   referenceImageUrl?: string;
+  /** Close-up portrait anchor for identity when a full-length photo is also provided. */
+  faceReferenceImageUrl?: string;
+  /** Optional side/three-quarter portrait — extra face-geometry anchor only. */
+  profileReferenceImageUrl?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
-    const { profile, referenceImageUrl } = opts;
+    const {
+      profile,
+      referenceImageUrl,
+      faceReferenceImageUrl,
+      profileReferenceImageUrl,
+    } = opts;
     const palette = (opts.palette ?? []).filter(Boolean);
+
+    const hasFace = Boolean(faceReferenceImageUrl);
+    const hasProfile = Boolean(profileReferenceImageUrl);
+    const hasFull = Boolean(referenceImageUrl);
+    const hasPerson = hasFace || hasProfile || hasFull;
+
+    // Explain the role of each input image so the model takes the face from the
+    // close-up portrait(s) (many pixels, reliable likeness) and body/pose from the
+    // full-length shot — the face is tiny on a full-length frame and drifts if
+    // used alone. Images are attached below in this exact order: front portrait,
+    // profile portrait, full-length.
+    let imageRoles = "";
+    let imgIdx = 0;
+    if (hasFace) {
+      imgIdx += 1;
+      imageRoles +=
+        `The ${imgIdx === 1 ? "FIRST" : "SECOND"} image is a close-up front portrait — ` +
+        `match this person's face, hair and identity exactly. `;
+    }
+    if (hasProfile) {
+      imgIdx += 1;
+      const ord = imgIdx === 1 ? "FIRST" : imgIdx === 2 ? "SECOND" : "THIRD";
+      imageRoles +=
+        `The ${ord} image is a side / three-quarter portrait of the SAME person — use it ` +
+        `ONLY to refine facial geometry (nose, jawline, cheekbones); do not copy its pose, ` +
+        `lighting, background or clothing. ` +
+        (hasFace
+          ? `Both portraits are the same person; if they disagree, the front portrait wins. `
+          : `Preserve this person's face, hair and identity exactly. `);
+    }
+    if (hasFull) {
+      imgIdx += 1;
+      const ord = imgIdx === 1 ? "FIRST" : imgIdx === 2 ? "SECOND" : "THIRD";
+      imageRoles +=
+        hasFace || hasProfile
+          ? `The ${ord} image is a full-length photo of the same person — use only for body ` +
+            `proportions. `
+          : `The ${ord} image is a photo of the person — preserve their face, hair, skin tone ` +
+            `and identity exactly; this is that same person. `;
+    }
+
+    // Text anchor for the face. The cover regenerates the whole scene, so a
+    // reference photo alone can drift; these explicit traits + "do not alter"
+    // rules keep the rendered face true to the real person (mirrors the look
+    // renderer, which produces noticeably better likeness).
+    let faceAnchor = "";
+    if (hasPerson) {
+      const traits = [
+        profile.physical.faceShape
+          ? `${profile.physical.faceShape} face shape`
+          : null,
+        profile.physical.hairColor ? `${profile.physical.hairColor} hair` : null,
+        profile.physical.eyeColor ? `${profile.physical.eyeColor} eyes` : null,
+        profile.physical.skinTone
+          ? `${profile.physical.skinTone} skin tone`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      faceAnchor =
+        (traits ? `The person has ${traits}. ` : "") +
+        `Keep the SAME facial proportions as the reference photo — the same forehead ` +
+        `height, nose size and shape, jawline, cheekbones, eye spacing and lip shape; ` +
+        `do not idealise, slim or restyle the face. ` +
+        skinTonePreservationRule(profile) +
+        `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
+        `Do NOT change the hair colour. ` +
+        `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
+        `what the reference photo shows. Render the face at maximum fidelity to the portrait. `;
+    }
 
     const prompt =
       `Cover photograph for a luxury men's style magazine — a single full-length ` +
@@ -530,18 +833,28 @@ export async function generateCoverImage(opts: {
       `Bright and evenly lit so dark text overlays read cleanly on the empty areas. ` +
       `Vertical cover framing (taller than wide), head-to-shoes fully visible, sharp focus, ` +
       `high-end retouching, editorial magazine-cover quality. ` +
-      (referenceImageUrl
-        ? `Preserve the face, hair, skin tone and identity of the person in the provided ` +
-          `photo exactly — this is a portrait of that same person.`
-        : `Do not show identifiable facial features.`) +
+      imageRoles +
+      faceAnchor +
+      (hasPerson ? "" : `Do not show identifiable facial features. `) +
       NO_TEXT_RULE;
 
-    const content = referenceImageUrl
-      ? [
-          { type: "text" as const, text: prompt },
-          { type: "image" as const, image: new URL(referenceImageUrl) },
-        ]
-      : [{ type: "text" as const, text: prompt }];
+    const content: (
+      | { type: "text"; text: string }
+      | { type: "image"; image: URL }
+    )[] = [{ type: "text", text: prompt }];
+    if (faceReferenceImageUrl) {
+      content.push({ type: "image", image: new URL(faceReferenceImageUrl) });
+    }
+    if (profileReferenceImageUrl) {
+      try {
+        content.push({ type: "image", image: new URL(profileReferenceImageUrl) });
+      } catch {
+        // Skip a malformed profile URL rather than failing the whole render.
+      }
+    }
+    if (referenceImageUrl) {
+      content.push({ type: "image", image: new URL(referenceImageUrl) });
+    }
 
     return await renderImage(content);
   } catch {

@@ -62,6 +62,61 @@ export function buildColoursSwatchSvg(hex: string, uid: string): string {
 }
 
 /**
+ * Full-bleed fabric fill for moodboard palette stripes — same weave / sheen /
+ * fibre language as {@link buildColoursSwatchSvg}, without pinked edges or
+ * drop shadow so bands can stack edge-to-edge.
+ */
+export function buildFabricStripeSvg(hex: string, uid: string): string {
+  const c = hex.replace(/"/g, "");
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" preserveAspectRatio="none" role="img" style="width:100%;height:100%;display:block">
+  <defs>
+    <linearGradient id="stripeLight-${uid}" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fff" stop-opacity=".22"/>
+      <stop offset=".26" stop-color="#fff" stop-opacity=".04"/>
+      <stop offset=".7" stop-color="#000" stop-opacity=".03"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".22"/>
+    </linearGradient>
+    <pattern id="stripeWeave-${uid}" width="5.2" height="5.2" patternUnits="userSpaceOnUse">
+      <path d="M0 .75H5.2 M0 3.35H5.2" stroke="#fff" stroke-opacity=".105" stroke-width=".52"/>
+      <path d="M.85 0V5.2 M3.45 0V5.2" stroke="#050806" stroke-opacity=".14" stroke-width=".58"/>
+      <path d="M0 1.7H5.2 M1.8 0V5.2" stroke="#fff" stroke-opacity=".035" stroke-width=".32"/>
+    </pattern>
+    <filter id="stripeTexture-${uid}" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency=".16 .72" numOctaves="3" seed="17" result="fibres"/>
+      <feColorMatrix in="fibres" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 .23 0" result="softFibres"/>
+      <feBlend in="SourceGraphic" in2="softFibres" mode="soft-light"/>
+    </filter>
+  </defs>
+  <g filter="url(#stripeTexture-${uid})">
+    <rect width="200" height="60" fill="${c}"/>
+    <rect width="200" height="60" fill="url(#stripeWeave-${uid})"/>
+    <rect width="200" height="60" fill="url(#stripeLight-${uid})"/>
+    <g fill="none" stroke-linecap="round">
+      <path d="M18 2v56 M52 1v58 M96 2v56 M142 0v60 M178 1v58" stroke="#fff" stroke-opacity=".055" stroke-width=".7"/>
+      <path d="M0 14h200 M0 32h200 M0 48h200" stroke="#0b0c0a" stroke-opacity=".07" stroke-width=".65"/>
+      <path d="M8 20c40-2 90 3 184-1 M4 42c50 2 110-4 188 0" stroke="#fff" stroke-opacity=".075" stroke-width=".55"/>
+    </g>
+  </g>
+  <path d="M0 0.5H200" fill="none" stroke="#fff" stroke-opacity=".14" stroke-width="1"/>
+  <path d="M0 59.5H200" fill="none" stroke="#000" stroke-opacity=".18" stroke-width="1"/>
+</svg>`;
+}
+
+/** Horizontal/vertical fabric band used in the report moodboard palette. */
+export function FabricStripe({ hex, uid }: { hex: string; uid: string }) {
+  const safeUid = uid.replace(/[^a-zA-Z0-9]/g, "") || "stripe";
+  return (
+    <span
+      className="relative block h-full w-full overflow-hidden"
+      style={{ backgroundColor: hex }}
+      dangerouslySetInnerHTML={{
+        __html: buildFabricStripeSvg(hex, safeUid),
+      }}
+    />
+  );
+}
+
+/**
  * Aspect ratio of a swatch card, matching the atelier fabric-card reference
  * (its cropped cloth-plus-pinking viewBox of 132×214).
  */

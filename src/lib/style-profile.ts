@@ -165,20 +165,48 @@ function isBrightHair(hairColor?: string | null): boolean {
 }
 
 /**
- * Map the 4-season base + temperature/contrast (and optional hair/eye colour)
- * onto one of the 12 subseasons. Deterministic — a richer classification than a
- * plain "warm/deep" prefix, grounded in the strongest available signals.
+ * Correct the base season using the chroma/clarity signal. A cool person with
+ * fair skin and dark hair has high *value* (light/dark) contrast, which pushes
+ * vision models to call "winter" — but if the colouring is muted (low chroma /
+ * saturation) they are really a Summer. Reclassifying muted cool "winters" as
+ * summer keeps them out of the harsh, high-chroma winter palette (black, ruby,
+ * emerald) that visibly overwhelms a soft, greyed complexion.
+ */
+export function refineSeasonForClarity(opts: {
+  season: z.infer<typeof ColorSeason>;
+  undertone: "warm" | "cool" | "neutral";
+  clarity?: "muted" | "clear";
+}): z.infer<typeof ColorSeason> {
+  const { season, undertone, clarity } = opts;
+  if (
+    clarity === "muted" &&
+    season === "winter" &&
+    (undertone === "cool" || undertone === "neutral")
+  ) {
+    return "summer";
+  }
+  return season;
+}
+
+/**
+ * Map the 4-season base + temperature/contrast/clarity (and optional hair/eye
+ * colour) onto one of the 12 subseasons. Deterministic — a richer classification
+ * than a plain "warm/deep" prefix, grounded in the strongest available signals.
  */
 export function classifySubseason(opts: {
   season: z.infer<typeof ColorSeason>;
   undertone: "warm" | "cool" | "neutral";
   contrast: "low" | "medium" | "high";
+  /** Chroma signal: muted = soft/greyed, clear = bright/saturated. */
+  clarity?: "muted" | "clear";
   hairColor?: string | null;
   eyeColor?: string | null;
 }): SubseasonId {
-  const { season, undertone, contrast, hairColor, eyeColor } = opts;
+  const { season, undertone, contrast, clarity, hairColor, eyeColor } = opts;
   const depth = depthFromColouring(contrast, hairColor, eyeColor);
   const brightHair = isBrightHair(hairColor);
+  const muted = clarity === "muted";
+  const clear = clarity === "clear";
 
   switch (season) {
     case "winter":
@@ -187,15 +215,19 @@ export function classifySubseason(opts: {
       return "bright-winter";
     case "spring":
       if (depth === "light") return "light-spring";
-      if (contrast === "high" || brightHair) return "bright-spring";
+      if ((contrast === "high" || brightHair || clear) && !muted)
+        return "bright-spring";
       return "warm-spring";
     case "summer":
       if (depth === "light") return "light-summer";
-      if (depth === "deep" || contrast === "high") return "cool-summer";
+      // Muted colouring is the hallmark of soft-summer; only push to the cooler,
+      // slightly clearer cool-summer when the signal isn't muted.
+      if (muted) return "soft-summer";
+      if (depth === "deep" || contrast === "high" || clear) return "cool-summer";
       return "soft-summer";
     case "autumn":
-      if (depth === "deep") return "deep-autumn";
-      if (depth === "light" || contrast === "low") return "soft-autumn";
+      if (depth === "deep" && !muted) return "deep-autumn";
+      if (depth === "light" || contrast === "low" || muted) return "soft-autumn";
       return "warm-autumn";
   }
 }
@@ -350,6 +382,8 @@ export const colorRecSchema = z.object({
   name: z.string(),
   hex: z.string(),
   why: z.string(),
+  /** "versatile" flags the office-ready neutral anchors (own group in the report). */
+  role: z.enum(["versatile"]).optional(),
 });
 export const hairRecSchema = z.object({ name: z.string(), why: z.string() });
 export const lookContentSchema = z.object({

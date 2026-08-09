@@ -39,6 +39,7 @@ import {
 } from "@/components/UnlockAddonButton";
 import { RegenPhotoButton } from "@/components/RegenPhotoButton";
 import { RegenPhotoHint } from "@/components/RegenPhotoHint";
+import { FabricSwatch } from "@/components/FabricSwatch";
 import { BRAND } from "@/lib/brand";
 import { DEMO_CAPSULE_IMAGES, isDemoReportId } from "@/lib/demo-report";
 import { DemoReportJsonLd } from "@/components/DemoReportJsonLd";
@@ -520,18 +521,39 @@ export default async function ReportPage({
                   {tr("Colours that work for you")}
                 </h3>
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  {report.colors.best.map((c) => (
-                    <ColorCard key={c.name} c={c} />
-                  ))}
+                  {report.colors.best
+                    .filter((c) => c.role !== "versatile")
+                    .map((c, i) => (
+                      <ColorCard key={c.name} c={c} uid={`rb${i}`} />
+                    ))}
                 </div>
+                {report.colors.best.some((c) => c.role === "versatile") ? (
+                  <div className="mt-8">
+                    <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+                      {tr("Office-ready neutrals")}
+                    </h3>
+                    <p className="mt-2 max-w-prose text-sm text-stone">
+                      {tr(
+                        "Versatile dark and neutral tones for suits and formal outfits, chosen in your temperature — they add depth while staying on your palette.",
+                      )}
+                    </p>
+                    <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                      {report.colors.best
+                        .filter((c) => c.role === "versatile")
+                        .map((c, i) => (
+                          <ColorCard key={c.name} c={c} uid={`rbn${i}`} />
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <div className="report-keep-together mt-10">
                 <h3 className="text-sm uppercase tracking-wider text-stone-soft">
                   {tr("Colours to avoid")}
                 </h3>
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  {report.colors.avoid.map((c) => (
-                    <ColorCard key={c.name} c={c} muted />
+                  {report.colors.avoid.map((c, i) => (
+                    <ColorCard key={c.name} c={c} uid={`ra${i}`} muted />
                   ))}
                 </div>
               </div>
@@ -1513,7 +1535,15 @@ function SectionHead({
   );
 }
 
-function ColorCard({ c, muted = false }: { c: ColorRec; muted?: boolean }) {
+function ColorCard({
+  c,
+  uid,
+  muted = false,
+}: {
+  c: ColorRec;
+  uid: string;
+  muted?: boolean;
+}) {
   return (
     <div
       className={`rounded-2xl border hairline p-4 ${
@@ -1521,10 +1551,9 @@ function ColorCard({ c, muted = false }: { c: ColorRec; muted?: boolean }) {
       }`}
     >
       <div className="flex items-center gap-3">
-        <span
-          className="h-11 w-11 shrink-0 rounded-xl ring-1 ring-ink/10"
-          style={{ background: c.hex }}
-        />
+        <span className={`shrink-0 ${muted ? "opacity-70" : ""}`}>
+          <FabricSwatch hex={c.hex} name={c.name} uid={uid} size="md" />
+        </span>
         <div>
           <div className="font-display text-lg leading-tight">{c.name}</div>
           <div className="mt-0.5 text-[11px] uppercase tracking-wider text-stone-soft">

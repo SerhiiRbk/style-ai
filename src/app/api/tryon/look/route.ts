@@ -40,6 +40,19 @@ function parseKind(raw: unknown): LookTryOnKind {
   return raw === "capsule" ? "capsule" : "look";
 }
 
+/**
+ * Append a cache-busting version so a re-render (which overwrites the SAME
+ * storage path) is not masked by the immutable CDN/browser cache on the
+ * day-stable signed URL. The version is the render's timestamp; extra params
+ * don't affect the signature (path + expiry only), so this is safe.
+ */
+function withVersion(url: string, version: number | string): string {
+  const v =
+    typeof version === "string" ? Date.parse(version) || Date.now() : version;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${v}`;
+}
+
 /** Return the latest saved full-look try-on for this report + look key, if any. */
 export async function GET(request: Request) {
   if (!hasSupabase) {
@@ -66,19 +79,14 @@ export async function GET(request: Request) {
   const lookKey = formatLookKey({ kind, lookIndex, title });
 
   const admin = createAdminSupabase();
-  for (const ext of ["png", "jpg"] as const) {
-    const path = tryonStoragePath(user.id, reportId, lookKey, ext);
-    const { data: blob, error } = await admin.storage.from("assets").download(path);
-    if (!error && blob) {
-      const url = signedAssetProxyUrl(path);
-      return NextResponse.json({ url, lookKey });
-    }
-  }
 
+  // Prefer the latest DB row — its created_at is the cache-busting version, so
+  // a page reload shows the most recent render rather than a stale immutable
+  // copy of the (fixed, overwritten) storage path.
   const like = `%/tryon/look-${reportId}-${lookKey}.%`;
   const { data: row } = await admin
     .from("tryons")
-    .select("image_path")
+    .select("image_path, created_at")
     .eq("user_id", user.id)
     .like("image_path", like)
     .order("created_at", { ascending: false })
@@ -86,8 +94,20 @@ export async function GET(request: Request) {
     .maybeSingle();
 
   if (row?.image_path) {
-    const url = signedAssetProxyUrl(row.image_path);
+    const url = withVersion(
+      signedAssetProxyUrl(row.image_path as string),
+      (row.created_at as string) ?? Date.now(),
+    );
     return NextResponse.json({ url, lookKey });
+  }
+
+  // Legacy fallback: a stored file exists without a matching tryons row.
+  for (const ext of ["png", "jpg"] as const) {
+    const path = tryonStoragePath(user.id, reportId, lookKey, ext);
+    const { data: blob, error } = await admin.storage.from("assets").download(path);
+    if (!error && blob) {
+      return NextResponse.json({ url: signedAssetProxyUrl(path), lookKey });
+    }
   }
 
   return NextResponse.json({ url: null, lookKey });
@@ -240,6 +260,7 @@ export async function POST(request: Request) {
     // generated look image (which would copy the original outfit).
     referenceImageUrl: photo.fullUrl,
     faceReferenceImageUrl: photo.faceUrl,
+    profileReferenceImageUrl: photo.profileUrl,
     // Capsule combo photo defines the exact outfit to replicate on the user.
     outfitReferenceImageUrl:
       kind === "capsule" ? outfitReferenceUrl : undefined,
@@ -277,14 +298,21 @@ export async function POST(request: Request) {
     imageUrl: it.image ?? null,
   }));
 
-  await admin.from("tryons").insert({
-    user_id: user.id,
-    report_id: reportId,
-    image_path: path,
-    status: "ready",
-    kind,
-    garments: garmentsMeta,
-  });
+  const { data: insertedTryon } = await admin
+    .from("tryons")
+    .insert({
+      user_id: user.id,
+      report_id: reportId,
+      image_path: path,
+      status: "ready",
+      kind,
+      garments: garmentsMeta,
+    })
+    .select("created_at")
+    .single();
+  const version = insertedTryon?.created_at
+    ? Date.parse(insertedTryon.created_at as string) || Date.now()
+    : Date.now();
 
   // Charge after the render succeeds so failed renders are never billed.
   let balance: number | null = null;
@@ -312,7 +340,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const url = signedAssetProxyUrl(path);
+  const url = withVersion(signedAssetProxyUrl(path), version);
 
   return NextResponse.json({ url, lookKey, balance }, { status: 201 });
 }

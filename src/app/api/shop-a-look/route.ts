@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { hasSupabase, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { analyzeInspirationPhoto } from "@/lib/ai/inspiration";
+import { logEvent } from "@/lib/events";
 import {
   matchInspirationItems,
   LOOK_MATCH_VERSION,
@@ -95,6 +96,12 @@ export async function POST(request: Request) {
     }
   }
 
+  // No separate pre-flight gate here: `analyzeInspirationPhoto` is itself the
+  // usability check — its schema carries an `ok` flag and returns "no clothing"
+  // (below), so a Flash-Lite pre-gate would only duplicate that, add a call +
+  // latency to every request, and — on this auth-gated, low-junk endpoint —
+  // likely cost more than the Sonnet calls it saves. See the growth-plan
+  // discussion; reinstate a pre-gate only if this opens to anonymous traffic.
   const analysis = await analyzeInspirationPhoto(image);
   if (!analysis.ok) {
     // Distinguish a vision/provider error (retryable) from a photo that
@@ -111,6 +118,13 @@ export async function POST(request: Request) {
         { status: 502 },
       );
     }
+    // The main call is the gate: no clothing detected. Log it for the same
+    // junk-rate signal the pre-gate would have given.
+    await logEvent({
+      name: "photo_gate_reject",
+      userId: user.id,
+      props: { purpose: "shop_a_look" },
+    });
     return NextResponse.json({
       ok: false,
       lookTitle: "",

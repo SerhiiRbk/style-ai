@@ -5,6 +5,8 @@
  * This lets the project build and run locally without any credentials.
  */
 
+import { resolvePhotoGateFlags } from "@/lib/photo-gate-flags";
+
 function envFlag(raw: string | undefined): boolean {
   return raw === "true" || raw === "1" || raw === "yes";
 }
@@ -22,6 +24,17 @@ export const env = {
 
   aiGatewayKey: process.env.AI_GATEWAY_API_KEY,
   modelVision: process.env.AI_MODEL_VISION ?? "anthropic/claude-sonnet-4.5",
+  // Colour analysis (/colours) — its own slot so the highest-volume vision call
+  // can be tuned/cheapened independently of the report vision model. Defaults to
+  // the report vision model; compare candidates with scripts/eval-colours-model.ts.
+  modelVisionColours:
+    process.env.AI_MODEL_VISION_COLOURS ??
+    process.env.AI_MODEL_VISION ??
+    "anthropic/claude-sonnet-4.5",
+  // Cheap vision model for pre-flight photo gates (plan 2026-08-05). MUST NOT be
+  // the Sonnet vision model — gates run before the expensive call to cut cost.
+  modelVisionGate:
+    process.env.AI_MODEL_VISION_GATE ?? "google/gemini-2.5-flash-lite",
   modelReasoning:
     process.env.AI_MODEL_REASONING ?? "anthropic/claude-sonnet-4.5",
   modelImage:
@@ -105,7 +118,7 @@ export const env = {
   // From-address on the Resend-verified sending domain. Reply-To routes human
   // replies to the monitored inbox.
   emailFrom: process.env.EMAIL_FROM ?? "Valetti <carlo@system.valetti.fit>",
-  emailReplyTo: process.env.EMAIL_REPLY_TO ?? "contact@valetti.fit",
+  emailReplyTo: process.env.EMAIL_REPLY_TO ?? "contact@system.valetti.fit",
   // Secret for signing unsubscribe links (HMAC). Reminder mail is suppressed if
   // absent, so a missing secret can't leak an unauthenticated unsubscribe.
   emailUnsubscribeSecret: process.env.EMAIL_UNSUBSCRIBE_SECRET,
@@ -122,6 +135,13 @@ export const env = {
   /** Report card previews: true = original bytes via /api/assets; false = Next/Image resize (default). */
   reportPreviewFullQuality: envFlag(
     process.env.NEXT_PUBLIC_REPORT_PREVIEW_FULL_QUALITY,
+  ),
+
+  // Photo-gate kill-switches (plan 2026-08-05). Default-on; resolved once at
+  // boot. Server routes read env.photoGate; the client colours gate resolves
+  // NEXT_PUBLIC_* on its own since process.env is inlined there.
+  photoGate: resolvePhotoGateFlags(
+    process.env as Record<string, string | undefined>,
   ),
 } as const;
 
