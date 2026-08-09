@@ -53,13 +53,88 @@ export type AdminUserSummary = {
   activityByReason: Record<string, number>;
 };
 
+/** Slim snapshot of the questionnaire used to generate a report (admin UI). */
+export type AdminUserReportIntake = {
+  age?: number;
+  genderPresentation?: string;
+  city?: string;
+  country?: string;
+  language?: string;
+  currency?: string;
+  heightCm?: number;
+  weightKg?: number;
+  bodyType?: string;
+  hairColor?: string;
+  eyeColor?: string;
+  occupation?: string;
+  lifestyle?: string[];
+  goals?: string[];
+  boldness?: string;
+  budgetMin?: number;
+  budgetMax?: number;
+  notes?: string;
+};
+
 export type AdminUserReport = {
   id: string;
   createdAt: string;
   headline: string | null;
   tier: Tier;
   status: "processing" | "ready" | "failed";
+  /** Generation questionnaire at submit time; null when missing (legacy). */
+  intake: AdminUserReportIntake | null;
 };
+
+function asNumber(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+function asString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
+function asStringArray(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.filter(
+    (x): x is string => typeof x === "string" && x.trim().length > 0,
+  );
+  return out.length ? out : undefined;
+}
+
+/** Pick the generation parameters we surface in the admin user detail panel. */
+function slimIntake(raw: unknown): AdminUserReportIntake | null {
+  if (!raw || typeof raw !== "object") return null;
+  const i = raw as Record<string, unknown>;
+  const budget =
+    i.budgetEur && typeof i.budgetEur === "object"
+      ? (i.budgetEur as Record<string, unknown>)
+      : null;
+  const slim: AdminUserReportIntake = {
+    age: asNumber(i.age),
+    genderPresentation: asString(i.genderPresentation),
+    city: asString(i.city),
+    country: asString(i.country),
+    language: asString(i.language),
+    currency: asString(i.currency),
+    heightCm: asNumber(i.heightCm),
+    weightKg: asNumber(i.weightKg),
+    bodyType: asString(i.bodyType),
+    hairColor: asString(i.hairColor),
+    eyeColor: asString(i.eyeColor),
+    occupation: asString(i.occupation),
+    lifestyle: asStringArray(i.lifestyle),
+    goals: asStringArray(i.goals),
+    boldness: asString(i.boldness),
+    budgetMin: budget ? asNumber(budget.min) : undefined,
+    budgetMax: budget ? asNumber(budget.max) : undefined,
+    notes: asString(i.notes),
+  };
+  return Object.values(slim).some((v) =>
+    Array.isArray(v) ? v.length > 0 : v !== undefined,
+  )
+    ? slim
+    : null;
+}
 
 export type AdminUserPurchase = {
   createdAt: string;
@@ -310,6 +385,21 @@ export async function getAdminUserDetail(
       refExt: r.ref_ext,
     }));
 
+  const reportIds = (reportRows ?? []).map((r) => r.id as string);
+  const intakeByReport = new Map<string, AdminUserReportIntake | null>();
+  if (reportIds.length) {
+    const { data: intakeRows } = await admin
+      .from("report_intake")
+      .select("report_id, intake")
+      .in("report_id", reportIds);
+    for (const row of intakeRows ?? []) {
+      intakeByReport.set(
+        row.report_id as string,
+        slimIntake(row.intake),
+      );
+    }
+  }
+
   const reports: AdminUserReport[] = (reportRows ?? []).map((row) => ({
     id: row.id as string,
     createdAt: row.created_at as string,
@@ -319,6 +409,7 @@ export async function getAdminUserDetail(
       row.status === "processing" || row.status === "failed"
         ? row.status
         : "ready",
+    intake: intakeByReport.get(row.id as string) ?? null,
   }));
 
   const promos: AdminUserPromo[] = [];

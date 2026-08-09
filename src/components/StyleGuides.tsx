@@ -36,6 +36,7 @@ import type {
   Pairings as PairingsT,
   PriceTier,
   PriorityMove,
+  WatchGuide as WatchGuideT,
 } from "@/lib/style-extras";
 
 /**
@@ -718,6 +719,95 @@ export function MetalChips({
         </p>
       </div>
     </div>
+  );
+}
+
+/* --------------------------------- watch ---------------------------------- */
+
+function WatchSwatch({ hex, label }: { hex: string; label: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className="h-4 w-4 shrink-0 rounded-full ring-1 ring-ink/10"
+        style={{ background: hex }}
+        aria-hidden
+      />
+      <span className="text-[11px] text-stone">{label}</span>
+    </div>
+  );
+}
+
+export function WatchGuide({
+  guide,
+  image,
+  lang,
+}: {
+  guide: WatchGuideT;
+  image?: string | null;
+  lang?: ReportLanguage;
+}) {
+  const tt = makeT(lang);
+  return (
+    <section className="report-keep-together">
+      <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+        {tt("Watches")}
+      </h3>
+      <p className="mt-3 max-w-prose text-sm leading-relaxed text-stone">
+        {guide.intro}
+      </p>
+
+      <div className="mt-6 grid gap-8 lg:grid-cols-2">
+        {image ? (
+          <div className="overflow-hidden rounded-2xl border hairline bg-cream/40">
+            <ReportZoomImage
+              src={image}
+              alt={tt("Recommended watch styles")}
+              wrapperClassName="relative block aspect-[4/3] w-full"
+              sizes="(max-width: 1024px) 100vw, 50vw"
+            />
+          </div>
+        ) : null}
+
+        <div className="space-y-4">
+          {guide.variants.map((v) => (
+            <div
+              key={v.context}
+              className="rounded-xl border hairline bg-paper px-4 py-3"
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <div className="font-display text-base leading-tight">
+                  {v.type}
+                </div>
+                <span className="shrink-0 text-[11px] uppercase tracking-wider text-stone-soft">
+                  {v.context}
+                </span>
+              </div>
+              {v.shape ? (
+                <div className="mt-0.5 text-[11px] text-stone-soft">
+                  {tt("Shape")}: {v.shape}
+                </div>
+              ) : null}
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+                <WatchSwatch hex={v.caseHex} label={`${tt("Case")}: ${v.caseMetal}`} />
+                <WatchSwatch hex={v.dialHex} label={`${tt("Dial")}: ${v.dial}`} />
+                <WatchSwatch hex={v.strapHex} label={`${tt("Strap")}: ${v.strap}`} />
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-stone">{v.why}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <p className="mt-5 max-w-prose text-xs leading-relaxed text-stone-soft">
+        {guide.shapeNote}
+      </p>
+      <p className="mt-2 max-w-prose text-xs leading-relaxed text-stone-soft">
+        {guide.cuffNote}
+      </p>
+      <p className="mt-2 max-w-prose text-xs leading-relaxed text-stone-soft">
+        {guide.avoidNote}
+      </p>
+    </section>
   );
 }
 

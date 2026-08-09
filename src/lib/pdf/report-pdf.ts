@@ -998,6 +998,35 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   for (const mt of extras.metals.recommend) d.swatch(mt.hex, `${mt.name} — ${mt.why}`);
   d.text(extras.metals.avoidNote, { size: 9, color: STONE });
   d.gap(6);
+
+  if (report.tier === "lookbook" || report.tier === "premium") {
+    const watch = extras.watchGuide;
+    d.subhead(tt("Watches"), { keepWith: 20 });
+    d.text(watch.intro, { size: 9.5, color: STONE, lineGap: 3.5 });
+    d.gap(4);
+    const watchImg = report.watchImage
+      ? await embedImage(d.doc, report.watchImage, { w: 4, h: 3, px: 700 })
+      : null;
+    if (watchImg) d.banner(watchImg, Math.round((CONTENT_W * 3) / 4));
+    for (const v of watch.variants) {
+      d.text(`${v.type} — ${v.context}`, { size: 11, font: d.bold, lineGap: 2 });
+      if (v.shape) d.text(`${tt("Shape")}: ${v.shape}`, { size: 8.5, color: STONE });
+      d.swatch(v.caseHex, `${tt("Case")}: ${v.caseMetal}`);
+      d.swatch(v.dialHex, `${tt("Dial")}: ${v.dial}`);
+      d.swatch(v.strapHex, `${tt("Strap")}: ${v.strap}`);
+      d.text(v.why, { size: 9, color: STONE, lineGap: 3 });
+      d.gap(5);
+    }
+    if (watch.shapeNote) {
+      d.text(watch.shapeNote, { size: 9, color: STONE, lineGap: 3.5 });
+      d.gap(2);
+    }
+    d.text(watch.cuffNote, { size: 9, color: STONE, lineGap: 3.5 });
+    d.gap(2);
+    d.text(watch.avoidNote, { size: 9, color: STONE, lineGap: 3.5 });
+    d.gap(6);
+  }
+
   d.subhead(`${tt("Your colour DNA")} — ${extras.colorDNA.subseason}`, { keepWith: 14 });
   d.text(`${tt("Neutrals:")} ${extras.colorDNA.neutrals.map((c) => c.name).join(", ")}`, {
     color: STONE,

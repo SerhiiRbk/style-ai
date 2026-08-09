@@ -109,6 +109,23 @@ function trExtras(e: StyleExtras, tr: TranslateFn): StyleExtras {
     styling: e.styling.map((s) => tr(s)),
     care: e.care.map((s) => tr(s)),
     fragrance: tr(e.fragrance),
+    watchGuide: {
+      ...e.watchGuide,
+      intro: tr(e.watchGuide.intro),
+      variants: e.watchGuide.variants.map((v) => ({
+        ...v,
+        context: tr(v.context),
+        type: tr(v.type),
+        shape: tr(v.shape),
+        caseMetal: tr(v.caseMetal),
+        dial: tr(v.dial),
+        strap: tr(v.strap),
+        why: tr(v.why),
+      })),
+      cuffNote: tr(e.watchGuide.cuffNote),
+      shapeNote: tr(e.watchGuide.shapeNote),
+      avoidNote: tr(e.watchGuide.avoidNote),
+    },
   };
 }
 

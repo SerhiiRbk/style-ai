@@ -253,6 +253,8 @@ export type StyleReport = {
   capsuleImages?: (string | null | undefined)[];
   /** Bespoke editorial cover photo (signed URL) for the PDF cover. */
   coverImage?: string | null;
+  /** Premium/lookbook — generated flat-lay of recommended watch variants (signed URL). */
+  watchImage?: string | null;
   /** Per-look matched products keyed by look index (Shop the Look). Optional for backward compatibility. */
   lookItems?: Record<number, ShoppingItem[]>;
   /** Owner-only — saved catalogue / outfit try-on renders for this report. */
@@ -322,6 +324,7 @@ export function mockStyleProfile(intake: Intake): StyleProfile {
     currency: intake.currency,
     goals: intake.goals,
     lifestyle: intake.lifestyle ?? [],
+    occupation: intake.occupation,
     boldness: intake.boldness,
     budgetEur: intake.budgetEur,
   };
@@ -675,6 +678,7 @@ export function assembleReport(opts: {
   lookImages?: (string | null | undefined)[];
   capsuleImages?: (string | null | undefined)[];
   coverImage?: string | null;
+  watchImage?: string | null;
   lookItems?: Record<number, ShoppingItem[]>;
   outfitTryons?: SavedOutfitTryOn[];
   generation?: ReportGenerationState;
@@ -721,6 +725,7 @@ export function assembleReport(opts: {
     dontList: opts.content.dontList,
     capsuleImages: opts.capsuleImages,
     coverImage: opts.coverImage,
+    watchImage: opts.watchImage,
     lookItems: opts.lookItems,
     outfitTryons: opts.outfitTryons,
     generation: opts.generation,

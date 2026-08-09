@@ -440,6 +440,8 @@ export const styleProfileSchema = z.object({
   goals: z.array(z.string()),
   /** Optional lifestyle tags carried from intake — empty means no styling effect. */
   lifestyle: z.array(z.string()).default([]),
+  /** Occupation carried from intake — biases capsule contexts (optional; older reports may lack it). */
+  occupation: z.string().optional(),
   boldness: Boldness,
   budgetEur: z.object({ min: z.number(), max: z.number() }),
 });
