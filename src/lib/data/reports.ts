@@ -78,6 +78,7 @@ import {
   type StyleExtras,
 } from "@/lib/style-extras";
 import { translateReportParts } from "@/lib/ai/translate-report";
+import { getStoredReportPhotoPaths } from "@/lib/photo-tryon";
 import { normalizeLanguage } from "@/lib/languages";
 import {
   enrichLookItems,
@@ -237,36 +238,48 @@ async function latestPhotoUrlsForUser(
   /** When set, only consider photos uploaded around this report's creation
    * (with a small slack), not the user's latest upload for another report. */
   reportCreatedAt?: string,
+  /** When set, prefer the exact photoPaths persisted on report_intake at submit. */
+  reportId?: string,
 ): Promise<PhotoInput[]> {
-  const fetchRows = async (useCutoff: boolean) => {
-    let query = admin
-      .from("photos")
-      .select("role, storage_path")
-      .eq("user_id", userId);
-    if (useCutoff && reportCreatedAt) {
-      const cutoff = new Date(
-        new Date(reportCreatedAt).getTime() + 120_000,
-      ).toISOString();
-      query = query.lte("created_at", cutoff);
-    }
-    const { data } = await query
-      .order("created_at", { ascending: false })
-      .limit(20);
-    return data ?? [];
-  };
+  const byRole = new Map<string, string>();
 
-  // Prefer the report's contemporaneous photos, but fall back to the user's
-  // latest upload when the report has none (older reports, replaced photos) so
-  // resumed image generation still runs instead of silently doing nothing.
-  let photoRows = await fetchRows(true);
-  if (reportCreatedAt && photoRows.length === 0) {
-    photoRows = await fetchRows(false);
+  if (reportId) {
+    const stored = await getStoredReportPhotoPaths(admin, reportId);
+    for (const p of stored ?? []) {
+      if (p.role && p.path && !byRole.has(p.role)) byRole.set(p.role, p.path);
+    }
   }
 
-  const byRole = new Map<string, string>();
-  for (const row of photoRows ?? []) {
-    const role = row.role as string;
-    if (!byRole.has(role)) byRole.set(role, row.storage_path as string);
+  if (!byRole.size) {
+    const fetchRows = async (useCutoff: boolean) => {
+      let query = admin
+        .from("photos")
+        .select("role, storage_path")
+        .eq("user_id", userId);
+      if (useCutoff && reportCreatedAt) {
+        const cutoff = new Date(
+          new Date(reportCreatedAt).getTime() + 120_000,
+        ).toISOString();
+        query = query.lte("created_at", cutoff);
+      }
+      const { data } = await query
+        .order("created_at", { ascending: false })
+        .limit(20);
+      return data ?? [];
+    };
+
+    // Prefer the report's contemporaneous photos, but fall back to the user's
+    // latest upload when the report has none (older reports, replaced photos) so
+    // resumed image generation still runs instead of silently doing nothing.
+    let photoRows = await fetchRows(true);
+    if (reportCreatedAt && photoRows.length === 0) {
+      photoRows = await fetchRows(false);
+    }
+
+    for (const row of photoRows ?? []) {
+      const role = row.role as string;
+      if (!byRole.has(role)) byRole.set(role, row.storage_path as string);
+    }
   }
 
   const photos: PhotoInput[] = [];
@@ -450,8 +463,11 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
   const admin = createAdminSupabase();
   const { reportId, userId, profile, photos } = input;
 
+  // Head/upper-body previews: prefer the face portrait selected for this report.
   const referenceImageUrl =
-    photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
+    photos.find((p) => p.role === "face")?.url ??
+    photos.find((p) => p.role === "full")?.url ??
+    photos[0]?.url;
   if (!referenceImageUrl) return;
 
   const { data: row } = await admin
@@ -707,6 +723,7 @@ async function generateShoeImageJob(input: ImageJobInput) {
       style: v.style,
       color: v.color,
       colorHex: v.colorHex,
+      finish: v.finish,
     })),
   });
   if (!img) return;
@@ -1055,6 +1072,7 @@ export async function resumeReportImages(
     admin,
     userId,
     row.created_at as string,
+    reportId,
   );
 
   const content = {
@@ -1531,10 +1549,16 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
   }
   const reportId = created.id as string;
 
+  // Persist the exact photo selection with the intake so later eyewear /
+  // try-on / regen jobs don't guess from "latest upload before created_at"
+  // (which can be a different person when the library has many faces).
   const { error: intakeErr } = await admin.from("report_intake").insert({
     report_id: reportId,
     user_id: userId,
-    intake,
+    intake: {
+      ...intake,
+      ...(input.photoPaths?.length ? { photoPaths: input.photoPaths } : {}),
+    },
   });
   if (intakeErr) {
     await admin.from("reports").delete().eq("id", reportId);

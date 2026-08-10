@@ -88,6 +88,7 @@ export async function POST(
     admin,
     user.id,
     row.created_at as string,
+    reportId,
   );
   if (!refs.ok) {
     return NextResponse.json({ error: refs.error }, { status: 422 });

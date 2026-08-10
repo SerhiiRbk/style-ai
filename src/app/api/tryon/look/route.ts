@@ -239,6 +239,7 @@ export async function POST(request: Request) {
     admin,
     user.id,
     report.createdAt,
+    reportId,
   );
   if (!photo.ok) {
     return NextResponse.json(

@@ -57,6 +57,13 @@ export type ShoeVariant = {
   /** Leather / material colour name, drawn from the client's neutral anchor. */
   color: string;
   colorHex: string;
+  /**
+   * Material / finish — "smooth leather", "suede", "nubuck". Prompt-only: fed
+   * to the shoe-board image so the intended smooth-vs-suede contrast is rendered
+   * (not left to the model's guess). NOT shown in the report/PDF and NOT
+   * translated — the `why` copy already carries finish for the reader.
+   */
+  finish?: string;
   /** Contexts this pair covers, e.g. "Boardroom · client meeting". */
   wearWith: string;
   why: string;
@@ -797,6 +804,17 @@ export function shoeGuideFor(
         `your most relaxed pair. Wear it sockless with chinos or shorts in warm weather.`,
     });
   }
+
+  // Material/finish per pair, derived from the style archetype in one place
+  // (prompt-only — see ShoeVariant.finish). Guarantees the smooth penny ↔ suede
+  // tassel contrast the copy promises, instead of leaving finish to the model.
+  const finishForStyle = (style: string): string => {
+    const s = style.toLowerCase();
+    if (s.includes("suede")) return "suede";
+    if (s.includes("trekking") || s.includes("hiking")) return "nubuck";
+    return "smooth leather";
+  };
+  for (const v of variants) v.finish = finishForStyle(v.style);
 
   const anchorName = dressLeather.name.toLowerCase();
   const lastTwoDesc =

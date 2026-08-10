@@ -2,6 +2,8 @@ import type { createAdminSupabase } from "@/lib/supabase/server";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
+export type ReportPhotoPath = { role: string; path: string };
+
 export type FullPhotoResult =
   | { ok: true; signedUrl: string }
   | {
@@ -22,35 +24,99 @@ export type ReportReferencePhotos =
 const REPORT_PHOTO_CUTOFF_MS = 120_000;
 
 /**
- * Reference photos tied to a specific report — photos uploaded at submission time,
- * not the user's latest upload (which may belong to a different session/person).
+ * Photo paths the user selected when creating the report. Stored on
+ * `report_intake.intake.photoPaths` so later unlocks / try-ons / regens use the
+ * same person — not "latest upload before report created_at" (which can be a
+ * different session entirely when the library has many faces).
+ */
+export async function getStoredReportPhotoPaths(
+  admin: AdminClient,
+  reportId: string,
+): Promise<ReportPhotoPath[] | null> {
+  const { data } = await admin
+    .from("report_intake")
+    .select("intake")
+    .eq("report_id", reportId)
+    .maybeSingle();
+  const raw = (data?.intake as { photoPaths?: unknown } | null)?.photoPaths;
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const out: ReportPhotoPath[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const role = (item as { role?: unknown }).role;
+    const path = (item as { path?: unknown }).path;
+    if (typeof role === "string" && role && typeof path === "string" && path) {
+      out.push({ role, path });
+    }
+  }
+  return out.length ? out : null;
+}
+
+function byRoleMap(
+  rows: { role: string | null; storage_path: string }[] | null | undefined,
+): Map<string, string> {
+  const byRole = new Map<string, string>();
+  for (const row of rows ?? []) {
+    const role = (row.role as string) ?? "";
+    if (role && !byRole.has(role)) byRole.set(role, row.storage_path);
+  }
+  return byRole;
+}
+
+function byRoleFromStored(paths: ReportPhotoPath[]): Map<string, string> {
+  const byRole = new Map<string, string>();
+  for (const p of paths) {
+    if (!byRole.has(p.role)) byRole.set(p.role, p.path);
+  }
+  return byRole;
+}
+
+async function signPhotoPath(
+  admin: AdminClient,
+  path: string,
+): Promise<string | null> {
+  const { data } = await admin.storage.from("photos").createSignedUrl(path, 600);
+  return data?.signedUrl ?? null;
+}
+
+/**
+ * Reference photos tied to a specific report — prefer the paths persisted at
+ * submit time; fall back to photos uploaded around creation (legacy heuristic).
  */
 export async function getReportReferencePhotos(
   admin: AdminClient,
   userId: string,
   reportCreatedAt: string,
+  reportId?: string,
 ): Promise<ReportReferencePhotos> {
-  const cutoff = new Date(
-    new Date(reportCreatedAt).getTime() + REPORT_PHOTO_CUTOFF_MS,
-  ).toISOString();
+  let byRole = new Map<string, string>();
 
-  const { data: photos } = await admin
-    .from("photos")
-    .select("storage_path, role, created_at")
-    .eq("user_id", userId)
-    .lte("created_at", cutoff)
-    .order("created_at", { ascending: false })
-    .limit(40);
+  if (reportId) {
+    const stored = await getStoredReportPhotoPaths(admin, reportId);
+    if (stored?.length) byRole = byRoleFromStored(stored);
+  }
 
-  const byRole = new Map<string, string>();
-  for (const row of photos ?? []) {
-    const role = row.role as string;
-    if (!byRole.has(role)) byRole.set(role, row.storage_path as string);
+  if (!byRole.size) {
+    const cutoff = new Date(
+      new Date(reportCreatedAt).getTime() + REPORT_PHOTO_CUTOFF_MS,
+    ).toISOString();
+
+    const { data: photos } = await admin
+      .from("photos")
+      .select("storage_path, role, created_at")
+      .eq("user_id", userId)
+      .lte("created_at", cutoff)
+      .order("created_at", { ascending: false })
+      .limit(40);
+
+    byRole = byRoleMap(
+      photos as { role: string | null; storage_path: string }[] | null,
+    );
   }
 
   const fullPath = byRole.get("full");
   if (!fullPath) {
-    const hasAny = Boolean(photos?.length);
+    const hasAny = byRole.size > 0;
     return {
       ok: false,
       code: "needs_full_photo",
@@ -60,14 +126,7 @@ export async function getReportReferencePhotos(
     };
   }
 
-  const sign = async (path: string) => {
-    const { data } = await admin.storage
-      .from("photos")
-      .createSignedUrl(path, 600);
-    return data?.signedUrl ?? null;
-  };
-
-  const fullUrl = await sign(fullPath);
+  const fullUrl = await signPhotoPath(admin, fullPath);
   if (!fullUrl) {
     return {
       ok: false,
@@ -77,10 +136,10 @@ export async function getReportReferencePhotos(
   }
 
   const facePath = byRole.get("face");
-  const faceUrl = facePath ? await sign(facePath) : null;
+  const faceUrl = facePath ? await signPhotoPath(admin, facePath) : null;
 
   const profilePath = byRole.get("profile");
-  const profileUrl = profilePath ? await sign(profilePath) : null;
+  const profileUrl = profilePath ? await signPhotoPath(admin, profilePath) : null;
 
   return {
     ok: true,
@@ -96,32 +155,28 @@ export type GroomingPhotoResult =
 
 /**
  * A single reference photo for HEAD / UPPER-BODY previews (hair, facial hair,
- * eyewear, accessories, headwear). Unlike virtual try-on these don't need a
- * full-length shot, so prefer a face portrait, then a full-length, then any
- * photo. Prefers photos uploaded around the report's creation, but falls back to
- * the user's latest upload when the report has no contemporaneous photos (e.g.
- * old reports whose original photos were later replaced) so generation still
- * works instead of failing silently.
+ * eyewear, accessories, headwear). Prefers the report's stored selection, then
+ * contemporaneous uploads, then the user's latest photo.
  */
 export async function getReportGroomingPhotoUrl(
   admin: AdminClient,
   userId: string,
   reportCreatedAt?: string,
+  reportId?: string,
 ): Promise<GroomingPhotoResult> {
-  const pickPath = (
-    rows: { role: string | null; storage_path: string }[] | null | undefined,
-  ): string | null => {
-    const byRole = new Map<string, string>();
-    for (const row of rows ?? []) {
-      const role = (row.role as string) ?? "";
-      if (!byRole.has(role)) byRole.set(role, row.storage_path);
-    }
-    return byRole.get("face") ?? byRole.get("full") ?? rows?.[0]?.storage_path ?? null;
-  };
+  const pickFromMap = (byRole: Map<string, string>, fallback?: string | null) =>
+    byRole.get("face") ?? byRole.get("full") ?? fallback ?? null;
 
   let path: string | null = null;
 
-  if (reportCreatedAt) {
+  if (reportId) {
+    const stored = await getStoredReportPhotoPaths(admin, reportId);
+    if (stored?.length) {
+      path = pickFromMap(byRoleFromStored(stored));
+    }
+  }
+
+  if (!path && reportCreatedAt) {
     const cutoff = new Date(
       new Date(reportCreatedAt).getTime() + REPORT_PHOTO_CUTOFF_MS,
     ).toISOString();
@@ -132,7 +187,10 @@ export async function getReportGroomingPhotoUrl(
       .lte("created_at", cutoff)
       .order("created_at", { ascending: false })
       .limit(40);
-    path = pickPath(scoped as { role: string | null; storage_path: string }[]);
+    const rows = scoped as
+      | { role: string | null; storage_path: string }[]
+      | null;
+    path = pickFromMap(byRoleMap(rows), rows?.[0]?.storage_path);
   }
 
   // Fallback: no photos around the report's creation — use the latest upload.
@@ -143,7 +201,10 @@ export async function getReportGroomingPhotoUrl(
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(40);
-    path = pickPath(latest as { role: string | null; storage_path: string }[]);
+    const rows = latest as
+      | { role: string | null; storage_path: string }[]
+      | null;
+    path = pickFromMap(byRoleMap(rows), rows?.[0]?.storage_path);
   }
 
   if (!path) {
@@ -154,24 +215,25 @@ export async function getReportGroomingPhotoUrl(
     };
   }
 
-  const { data } = await admin.storage.from("photos").createSignedUrl(path, 600);
-  if (!data?.signedUrl) {
+  const signedUrl = await signPhotoPath(admin, path);
+  if (!signedUrl) {
     return { ok: false, code: "no_photos", error: "Could not read your photo." };
   }
-  return { ok: true, url: data.signedUrl };
+  return { ok: true, url: signedUrl };
 }
 
 /** Pick the latest full-length photo — never fall back to a portrait. */
 export async function getFullLengthPhotoUrl(
   admin: AdminClient,
   userId: string,
-  opts?: { reportCreatedAt?: string },
+  opts?: { reportCreatedAt?: string; reportId?: string },
 ): Promise<FullPhotoResult> {
   if (opts?.reportCreatedAt) {
     const refs = await getReportReferencePhotos(
       admin,
       userId,
       opts.reportCreatedAt,
+      opts.reportId,
     );
     if (!refs.ok) return refs;
     return { ok: true, signedUrl: refs.fullUrl };
@@ -228,11 +290,9 @@ export async function getDefaultTryOnPhoto(
 
   if (!row || (row.role as string) !== "full") return null;
 
-  const { data } = await admin.storage
-    .from("photos")
-    .createSignedUrl(row.storage_path as string, 600);
-  if (!data?.signedUrl) return null;
-  return { ok: true, signedUrl: data.signedUrl };
+  const signedUrl = await signPhotoPath(admin, row.storage_path as string);
+  if (!signedUrl) return null;
+  return { ok: true, signedUrl };
 }
 
 /**

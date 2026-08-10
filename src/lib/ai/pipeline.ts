@@ -919,13 +919,16 @@ export async function generateShoeBoardImage(opts: {
     style: string;
     color: string;
     colorHex?: string;
+    finish?: string;
   }[];
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI || !opts.variants.length) return null;
   try {
     const lines = opts.variants.map((v, i) => {
       const hex = v.colorHex?.trim() ? ` (${v.colorHex.trim()})` : "";
-      return `${i + 1}. ${v.style} (${v.role}) — leather/material colour MUST be ${v.color}${hex}.`;
+      // Explicit finish so the smooth-vs-suede contrast is rendered, not guessed.
+      const finish = v.finish?.trim() ? ` in ${v.finish.trim()}` : "";
+      return `${i + 1}. ${v.style} (${v.role})${finish} — leather/material colour MUST be ${v.color}${hex}.`;
     });
     // Only forbid black when none of the recommended variants are black —
     // deep winters (etc.) may legitimately recommend black dress shoes.
