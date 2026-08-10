@@ -71,6 +71,7 @@ import {
   MetalChips,
   WatchGuide,
   ShoeGuide,
+  BeltGuide,
   Pairings,
   EyewearGuide,
   GroomingGuide,
@@ -1067,7 +1068,7 @@ export default async function ReportPage({
           ) : null}
         </section>
 
-        {/* The finishing kit — watches, footwear (+ leather, ties, trousers later) */}
+        {/* The finishing kit — footwear, belts, watches (+ leather, ties, trousers later) */}
         {hasFinishingKit ? (
           <section
             id="finishing"
@@ -1077,20 +1078,25 @@ export default async function ReportPage({
               n="05"
               title={tr("The finishing kit")}
               sub={tr(
-                "The pieces that hold every look together — watch, shoes, and the details that finish the picture.",
+                "The pieces that hold every look together — shoes, belts, watch, and the details that finish the picture.",
               )}
             />
             <div className="mt-12">
-              <WatchGuide
-                guide={extras.watchGuide}
-                image={report.watchImage}
-                lang={lang}
-              />
-            </div>
-            <div className="mt-12 border-t hairline pt-12">
               <ShoeGuide
                 guide={extras.shoeGuide}
                 image={report.shoeImage}
+                lang={lang}
+              />
+            </div>
+            {extras.beltGuide ? (
+              <div className="mt-12 border-t hairline pt-12">
+                <BeltGuide guide={extras.beltGuide} lang={lang} />
+              </div>
+            ) : null}
+            <div className="mt-12 border-t hairline pt-12">
+              <WatchGuide
+                guide={extras.watchGuide}
+                image={report.watchImage}
                 lang={lang}
               />
             </div>

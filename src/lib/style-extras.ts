@@ -69,6 +69,35 @@ export type ShoeGuide = {
   leatherRule: string;
   avoidNote: string;
 };
+
+/** One recommended belt for a context (strap + buckle + width). */
+export type BeltVariant = {
+  /** Context, e.g. "Jeans / casual", "Smart casual", "Business", "Evening / party". */
+  context: string;
+  /** Strap leather / material colour name. */
+  strap: string;
+  strapHex: string;
+  /** Buckle style + metal finish, e.g. "Brushed silver single-prong". */
+  buckle: string;
+  /** Width guidance, e.g. "3.5–4 cm (wider, casual)". */
+  width: string;
+  /** Trouser types this belt pairs with. */
+  wearWith: string;
+  why: string;
+};
+
+/** A belt-to-trouser matching rule. */
+export type BeltRule = { trouser: string; belt: string };
+
+export type BeltGuide = {
+  intro: string;
+  variants: BeltVariant[];
+  /** Belt leather ↔ shoes, buckle metal ↔ watch. */
+  matchRule: string;
+  /** How to pick a belt for each trouser type. */
+  trouserRules: BeltRule[];
+  avoidNote: string;
+};
 export type FrameRec = { shape: FrameShapeId; name: string; why: string };
 export type FitSpec = { part: string; spec: string; why: string };
 export type ColorCombo = { name: string; hexes: string[]; why: string };
@@ -141,6 +170,8 @@ export type StyleExtras = {
   watchGuide: WatchGuide;
   /** Premium/lookbook footwear system (3–4 shoe roles tuned to lifestyle + palette). */
   shoeGuide: ShoeGuide;
+  /** Premium/lookbook belt system (casual → evening) tuned to undertone + palette. */
+  beltGuide: BeltGuide;
 };
 
 /* ---------------------------------- utils --------------------------------- */
@@ -517,29 +548,74 @@ export function shoeGuideFor(
 
   const variants: ShoeVariant[] = [];
 
-  // 1) Dress — Oxfords for the suit-heavy, Derbies (a touch more versatile) else.
+  // 1) Dress — Derbies are the default (more versatile + comfortable, perfectly
+  //    office-appropriate). Oxfords, the strictest closed-lacing shoe, are
+  //    reserved for the most formal professions (law / courtroom). Broguing
+  //    (decorative perforation) is added conservatively to signal personality:
+  //    more broguing = less formal, so it's tuned to the client's goals.
+  const veryFormal = has(/law|legal|attorney|lawyer|solicitor|barrister/);
+  const dressWord = veryFormal ? "oxford" : "derby";
+  const dating = has(
+    /date|dating|romance|romantic|relationship|confidence|charism|attract|impress/,
+  );
+  const expressive =
+    has(/bold|statement|stand out|creative|fashion|expressive|personality/) ||
+    /high|bold/.test(lc(profile.boldness ?? ""));
+  const heritage = has(
+    /old money|classic|heritage|understated|timeless|elegan|refin|tailor/,
+  );
+  // Formality-safe broguing: never on the law/courtroom oxford; a semi-brogue for
+  // dating / expressive clients (character without shouting); a subtle
+  // quarter-brogue for heritage tastes; otherwise plain.
+  const brogue: "plain" | "semi" | "quarter" = veryFormal
+    ? "plain"
+    : dating || expressive
+      ? "semi"
+      : heritage
+        ? "quarter"
+        : "plain";
+  const brogueLabel =
+    brogue === "semi"
+      ? "Semi-brogue derbies"
+      : brogue === "quarter"
+        ? "Quarter-brogue derbies"
+        : "Derbies";
+  const brogueNote =
+    brogue === "semi"
+      ? "A semi-brogue — a perforated, medallion toe cap — adds character and a little charisma without reading loud, so it still works under tailoring and shines on dinners and dates. "
+      : brogue === "quarter"
+        ? "A quarter-brogue — subtle perforation along the seams only — is a tasteful heritage nod that stays refined. "
+        : veryFormal
+          ? "Kept plain (no broguing) for maximum formality — the right call for court and the boardroom. "
+          : "Kept plain for maximum versatility. ";
   variants.push({
     role: "Dress",
-    style: formalPro ? "Oxfords (cap-toe)" : "Derbies",
+    style: veryFormal ? "Oxfords (plain cap-toe)" : brogueLabel,
     color: dressLeather.name,
     colorHex: dressLeather.hex,
     wearWith: formalPro ? "Boardroom · client meetings · formal" : "Weddings · evenings out · tailoring",
     why:
-      `Your dressiest shoe — a sleek ${dressLeather.name.toLowerCase()} ` +
-      `${formalPro ? "oxford" : "derby"} anchors every suit and dark trouser. ` +
-      `Closed, clean lines; leather sole or a discreet rubber one for grip.`,
+      `Your dressiest shoe — a sleek ${dressLeather.name.toLowerCase()} ${dressWord} anchors every ` +
+      `suit and dark trouser. ` +
+      (veryFormal
+        ? "The closed lacing of an oxford is the strictest, most formal choice — right for court and the boardroom. "
+        : "A derby's open lacing is a touch more versatile and comfortable — the ideal all-round office dress shoe. ") +
+      brogueNote +
+      `Leather sole or a discreet rubber one for grip.`,
   });
 
-  // 2) Smart casual — loafers (or Chelsea boots for the more rugged/cool set).
+  // 2) Smart casual — PENNY loafers (or Chelsea boots for the rugged/cool set).
+  const smartStyle = cool && active ? "Chelsea boots" : "Penny loafers";
+  const smartWord = cool && active ? "chelsea boot" : "penny loafer";
   variants.push({
     role: "Smart casual",
-    style: cool && active ? "Chelsea boots" : "Loafers",
+    style: smartStyle,
     color: smartLeather.name,
     colorHex: smartLeather.hex,
     wearWith: "Client lunch · smart casual · dinner",
     why:
-      `A ${smartLeather.name.toLowerCase()} ${cool && active ? "chelsea boot" : "loafer"} bridges tailoring and denim — ` +
-      `wear with chinos, unstructured blazers and dark jeans. The workhorse of the system.`,
+      `A ${smartLeather.name.toLowerCase()} ${smartWord} bridges tailoring and denim — ` +
+      `wear with chinos, unstructured blazers and dark jeans. The smooth-leather workhorse of the system.`,
   });
 
   // 3) Everyday — minimal leather trainers in the palette's lightest neutral.
@@ -555,10 +631,10 @@ export function shoeGuideFor(
       `jeans-and-a-tee; keep them genuinely clean.`,
   });
 
-  // 4) Fourth pair — ALWAYS present so the system is a complete four. Preference:
-  //    active clients get a weatherproof boot; otherwise a versatile brown accent
-  //    (the most useful non-black leather) when the palette allows it; failing
-  //    that (brown in AVOID) a palette-safe suede.
+  // Lifestyle swaps: an active client who ALSO travels often shouldn't get three
+  // loafer-ish pairs. In that case slot 4 (normally the tassel loafer) becomes a
+  // weatherproof trekking boot and slot 5 (normally the moccasin) becomes a
+  // travel sneaker. Active-only → boot at slot 5; travel-only → sneaker at slot 5.
   const brownWearable = !avoidBrown;
   // Cool clients who CAN wear brown get a cooler, greyed brown so it still sits
   // with a cool palette instead of a warm cognac.
@@ -568,61 +644,146 @@ export function shoeGuideFor(
       ? { name: "Cool taupe brown", hex: "#6E5A47" }
       : darkBrown;
 
-  let fourth: ShoeVariant;
-  if (active) {
-    // Weatherproof boot: brown when allowed, else a dark palette leather.
-    const bootColor = brownWearable
-      ? darkBrown
-      : blackIsOk
-        ? { name: "Dark charcoal", hex: "#2A2E34" }
-        : { name: dressLeather.name, hex: dressLeather.hex };
-    fourth = {
-      role: "Seasonal",
-      style: "Rugged boots",
-      color: bootColor.name,
-      colorHex: bootColor.hex,
-      wearWith: "Outdoors · cold / wet weather",
+  const pickDistinct = (
+    cands: { name: string; hex: string }[],
+    used: Set<string>,
+  ) =>
+    cands.find((c) => !used.has(c.hex.toLowerCase())) ?? cands[cands.length - 1];
+
+  const pushTrekkingBoots = () => {
+    const used = new Set(variants.map((v) => v.colorHex.toLowerCase()));
+    const c = pickDistinct(
+      brownWearable
+        ? [
+            { name: "Chocolate brown", hex: "#4B3621" },
+            { name: "Dark brown", hex: "#5A4632" },
+            { name: "Charcoal", hex: "#2A2E34" },
+          ]
+        : [
+            { name: "Charcoal", hex: "#2A2E34" },
+            { name: "Slate grey", hex: "#4A4E57" },
+          ],
+      used,
+    );
+    variants.push({
+      role: "Outdoor",
+      style: "Trekking boots",
+      color: c.name,
+      colorHex: c.hex,
+      wearWith: "Outdoors · cold / wet · trails",
       why:
-        "A weatherproof leather boot for cold, wet or outdoor days — grippy sole, " +
-        "still refined enough with denim and knitwear.",
-    };
-  } else if (brownWearable) {
-    fourth = {
-      role: "Versatile brown",
-      style: warm ? "Suede chukka boots" : "Suede loafers",
-      color: versatileBrown.name,
-      colorHex: versatileBrown.hex,
-      wearWith: "Smart casual · weekend · autumn",
+        `A weatherproof ${c.name.toLowerCase()} leather / nubuck boot with a grippy lugged sole ` +
+        "for trails, cold and wet days — rugged but still tidy with denim and knitwear. " +
+        "Chosen because your lifestyle is active and outdoors.",
+    });
+  };
+
+  const pushTravelSneakers = () => {
+    const used = new Set(variants.map((v) => v.colorHex.toLowerCase()));
+    const c = pickDistinct(
+      [
+        { name: "Navy", hex: "#2E3A4A" },
+        { name: "Charcoal", hex: "#3A3E44" },
+        { name: "Slate grey", hex: "#4A4E57" },
+        ...(brownWearable ? [{ name: "Dark brown", hex: "#5A4632" }] : []),
+      ],
+      used,
+    );
+    variants.push({
+      role: "Travel",
+      style: "Travel sneakers",
+      color: c.name,
+      colorHex: c.hex,
+      wearWith: "Travel · long days · off-duty",
       why:
-        `Brown is the most versatile non-black leather — a ${versatileBrown.name.toLowerCase()} ` +
-        `pair adds warmth and range beyond your dark anchor. Wears with chinos, denim and knitwear.` +
-        (cool
-          ? " Chosen in a cooler, greyed brown so it still sits with your palette."
-          : ""),
-    };
+        `A cushioned, low-profile ${c.name.toLowerCase()} travel sneaker — comfortable for long ` +
+        "days and dark enough to hide wear on the move, without the bulk of a running shoe. " +
+        "Chosen because you travel often.",
+    });
+  };
+
+  // 4) Versatile — a suede TASSEL loafer (deliberately different from the smooth
+  //    penny above), UNLESS the client is both active and a frequent traveller,
+  //    in which case this slot becomes the weatherproof trekking boot.
+  if (active && travels) {
+    pushTrekkingBoots();
   } else {
-    // Brown sits in AVOID — offer a palette-safe suede instead of forcing brown.
-    fourth = {
-      role: travels ? "Seasonal" : "Weekend",
-      style: travels ? "Dark suede trainers" : "Suede loafers",
-      color: suedeTaupe.name,
-      colorHex: suedeTaupe.hex,
-      wearWith: travels
-        ? "Travel · off-duty · shoulder seasons"
-        : "Weekend · smart casual",
-      why: travels
-        ? "A darker suede trainer hides travel wear and reads a notch dressier than white leather when you're on the move."
-        : `A ${suedeTaupe.name.toLowerCase()} suede pair adds soft texture for weekends without leaving your palette.`,
-    };
+    const tasselColor = brownWearable ? versatileBrown : suedeTaupe;
+    variants.push({
+      role: "Versatile",
+      style: "Suede tassel loafers",
+      color: tasselColor.name,
+      colorHex: tasselColor.hex,
+      wearWith: "Smart casual · office · dinner",
+      why:
+        `A ${tasselColor.name.toLowerCase()} suede tassel loafer adds character and texture beyond the ` +
+        `smooth penny above — dressy enough for the office, relaxed enough for dinner.` +
+        (cool && brownWearable
+          ? " Chosen in a cooler, greyed brown so it stays with your palette."
+          : ""),
+    });
   }
-  variants.push(fourth);
+
+  // 5) Casual — driving moccasins by default. Active clients get trekking boots,
+  //    frequent travellers get travel sneakers; a client who is BOTH already got
+  //    the boot at slot 4, so here they get the sneaker.
+  if (active && travels) {
+    pushTravelSneakers();
+  } else if (active) {
+    pushTrekkingBoots();
+  } else if (travels) {
+    pushTravelSneakers();
+  } else {
+    // Classic driving-moc tone (tan / cognac / navy / brown) chosen by undertone,
+    // not pulled from the wardrobe palette, and kept distinct from the other four
+    // pairs. Browns are skipped when brown sits in AVOID.
+    const usedHex = new Set(variants.map((v) => v.colorHex.toLowerCase()));
+    const BROWN_MOCS = [
+      { name: "Tan", hex: "#B08D57" },
+      { name: "Cognac", hex: "#8A5A2B" },
+      { name: "Chocolate brown", hex: "#4B3621" },
+    ];
+    const NEUTRAL_MOCS = [
+      { name: "Navy", hex: "#2E3A4A" },
+      { name: "Slate grey", hex: "#4A4E57" },
+      { name: "Taupe", hex: "#8A7B66" },
+    ];
+    const mocCandidates = (
+      avoidBrown
+        ? NEUTRAL_MOCS
+        : warm
+          ? [...BROWN_MOCS, ...NEUTRAL_MOCS]
+          : cool
+            ? [NEUTRAL_MOCS[0], ...BROWN_MOCS.slice(0, 2), NEUTRAL_MOCS[1]]
+            : [BROWN_MOCS[0], NEUTRAL_MOCS[0], BROWN_MOCS[1], ...NEUTRAL_MOCS.slice(1)]
+    ).filter((c) => !usedHex.has(c.hex.toLowerCase()));
+    const mocColor = mocCandidates[0] ?? { name: "Taupe", hex: "#8A7B66" };
+    variants.push({
+      role: "Casual",
+      style: "Driving moccasins",
+      color: mocColor.name,
+      colorHex: mocColor.hex,
+      wearWith: "Weekend · summer · driving",
+      why:
+        `A soft, unlined ${mocColor.name.toLowerCase()} driving moccasin with a pebbled rubber sole — ` +
+        `your most relaxed pair. Wear it sockless with chinos or shorts in warm weather.`,
+    });
+  }
 
   const anchorName = dressLeather.name.toLowerCase();
+  const lastTwoDesc =
+    active && travels
+      ? "a weatherproof trekking boot and a cushioned travel sneaker"
+      : active
+        ? "a characterful suede tassel loafer and a weatherproof trekking boot"
+        : travels
+          ? "a characterful suede tassel loafer and a cushioned travel sneaker"
+          : "a characterful suede tassel loafer and a relaxed driving moccasin";
   return {
     intro:
       "You don't need many shoes — you need the right few that cover every context. " +
-      "This is a small, versatile system of four: one dress pair, one smart-casual pair, " +
-      "one clean everyday pair, plus a versatile fourth. " +
+      "This is a compact system of five with a deliberately different silhouette each: a dress " +
+      `${dressWord}, a smart penny loafer, a clean everyday trainer, ${lastTwoDesc}. ` +
       "Colours follow a single leather anchor so everything coordinates.",
     variants,
     leatherRule:
@@ -643,6 +804,151 @@ export function shoeGuideFor(
         "and mixing black with brown leather in the same outfit."
       : "Avoid pure black leather (harsh against your palette), chunky or logo-heavy trainers with " +
         "tailoring, square-toe dress shoes, and mixing mismatched leather tones in the same outfit.",
+  };
+}
+
+/* --------------------------------- belts ---------------------------------- */
+
+/**
+ * Deterministic belt system (casual → evening). Belt leather mirrors the
+ * footwear anchors so belt-and-shoes always coordinate, and the buckle metal
+ * follows the undertone's recommended jewellery metal. Includes explicit
+ * belt-to-trouser rules so the client knows what to reach for with each trouser.
+ */
+export function beltGuideFor(
+  profile: StyleProfile,
+  best: ColorRec[],
+  avoid: ColorRec[] = [],
+): BeltGuide {
+  const undertone = lc(profile.physical.undertone);
+  const warm = undertone === "warm";
+  const cool = undertone === "cool";
+
+  const metals = metalsFor(undertone).recommend;
+  const buckleMetal = (metals[0]?.name ?? (warm ? "Warm gold" : "Silver")).replace(
+    /\s*\(.*\)$/,
+    "",
+  );
+
+  // Leather anchors mirror the footwear system so the belt matches the shoes.
+  const blackFromBest = best.find((c) => /^black$/i.test((c.name || "").trim()));
+  const avoidBrown = (avoid ?? []).some((c) =>
+    /brown|cognac|tan|camel|chestnut|espresso|chocolate|mocha/i.test(c.name || ""),
+  );
+  const darkBrown = { name: "Dark brown", hex: "#4A3526" };
+  const cognac = { name: "Cognac", hex: "#8A5A33" };
+  const burgundy = { name: "Burgundy", hex: "#5A2A2E" };
+  const charcoal = { name: "Charcoal", hex: "#3A3F47" };
+  const black = { name: "Black", hex: blackFromBest?.hex ?? "#1A1A1A" };
+
+  // Formal belt = the dress-shoe leather: black if in palette, else warm → dark
+  // brown, cool → burgundy (dark brown otherwise).
+  const formalLeather = blackFromBest
+    ? black
+    : warm
+      ? darkBrown
+      : cool
+        ? burgundy
+        : darkBrown;
+  // Casual belt = warm/neutral brown; if the palette rejects warm brown, a cool
+  // charcoal reads cleaner than forcing tan.
+  const casualLeather = avoidBrown ? (cool ? charcoal : darkBrown) : darkBrown;
+  // Smart-casual belt — a touch richer than the everyday brown.
+  const smartLeather = avoidBrown
+    ? cool
+      ? charcoal
+      : darkBrown
+    : warm
+      ? cognac
+      : burgundy;
+
+  const variants: BeltVariant[] = [
+    {
+      context: "Jeans / casual",
+      strap: casualLeather.name,
+      strapHex: casualLeather.hex,
+      buckle: `${buckleMetal} brushed / antiqued single-prong (matte)`,
+      width: "3.5–4 cm (wider, relaxed)",
+      wearWith: "Denim · casual chinos · cords",
+      why:
+        `A slightly wider, matte ${casualLeather.name.toLowerCase()} belt with a low-shine buckle ` +
+        `balances the heavier weight of denim. Casual leather (pull-up, textured or suede) reads ` +
+        `right here — save your polished belt for tailoring.`,
+    },
+    {
+      context: "Smart casual",
+      strap: smartLeather.name,
+      strapHex: smartLeather.hex,
+      buckle: `${buckleMetal} neat single-prong (lightly polished)`,
+      width: "3.5 cm",
+      wearWith: "Chinos · off-duty wool trousers · smart denim",
+      why:
+        `A refined ${smartLeather.name.toLowerCase()} belt bridges tailoring and casual — pair it ` +
+        `with your loafers and match the tone. Suede or a fine grain keeps it from looking too formal.`,
+    },
+    {
+      context: "Business / formal",
+      strap: formalLeather.name,
+      strapHex: formalLeather.hex,
+      buckle: `${buckleMetal} slim polished rectangular / single-prong`,
+      width: "3–3.5 cm (slim)",
+      wearWith: "Suits · wool dress trousers",
+      why:
+        `A thin, smooth ${formalLeather.name.toLowerCase()} belt in a high-shine finish, colour-matched ` +
+        `to your dress shoes, with a discreet metal buckle. The slimmer the trouser and the dressier ` +
+        `the occasion, the slimmer the belt.`,
+    },
+    {
+      context: "Evening / party",
+      strap: formalLeather.name,
+      strapHex: formalLeather.hex,
+      buckle: `${buckleMetal} minimal, low-profile (or covered) buckle`,
+      width: "≤3 cm (slimmest)",
+      wearWith: "Dark tailoring · going out",
+      why:
+        `For evening, go slimmest and most discreet — a sleek ${formalLeather.name.toLowerCase()} strap ` +
+        `with a barely-there buckle disappears under a jacket. On black tie, skip the belt entirely and ` +
+        `let side-adjusters or braces hold the trousers.`,
+    },
+  ];
+
+  const trouserRules: BeltRule[] = [
+    {
+      trouser: "Jeans / denim",
+      belt: "Wider (3.5–4 cm), matte or textured casual leather; a little tonal contrast is fine.",
+    },
+    {
+      trouser: "Chinos / cotton trousers",
+      belt: "Mid-width (3.5 cm) leather or suede in brown/burgundy — matched to your shoes.",
+    },
+    {
+      trouser: "Wool dress trousers / suits",
+      belt: "Slim (3–3.5 cm) polished leather, colour-matched EXACTLY to your shoes; buckle metal matches your watch.",
+    },
+    {
+      trouser: "Linen / summer trousers",
+      belt: "A woven-fabric or light-suede belt — softer and lower-shine than smooth leather.",
+    },
+    {
+      trouser: "Pleated / eveningwear",
+      belt: "Slimmest smooth leather with a discreet buckle — or no belt at all (braces / side-adjusters) for black tie.",
+    },
+  ];
+
+  return {
+    intro:
+      "Two or three belts cover everything — the trick is matching them to the shoe and the trouser. " +
+      "Casual weight for denim, refined leather for tailoring, and the same rule always applies: " +
+      "belt leather follows your shoes, buckle metal follows your watch.",
+    variants,
+    matchRule:
+      `Two rules do the work: match your belt leather to your shoes (same tone and finish), and match ` +
+      `the buckle metal to your watch and other jewellery — for you that's ${buckleMetal.toLowerCase()}. ` +
+      `Keep to one leather tone per outfit.`,
+    trouserRules,
+    avoidNote:
+      "Avoid black belts with brown shoes (and vice-versa), oversized or logo/branded buckles with " +
+      "tailoring, chunky casual belts under a suit, and any belt wider than ~3.5 cm with dress trousers.",
   };
 }
 
@@ -2694,18 +3000,31 @@ export function extrasForReport(report: StyleReport): StyleExtras {
     !wg.variants?.[0]?.type ||
     // Pre-"instead of black" snapshots still push pure black leather straps.
     wg.variants.some((v) => /\bblack\b/i.test(v.strap));
+  const isLawClient = /law|legal|attorney|lawyer|solicitor|barrister/i.test(
+    `${report.profile.occupation ?? ""} ${(report.profile.goals ?? []).join(" ")} ` +
+      `${(report.profile.lifestyle ?? []).join(" ")}`,
+  );
   const shoeStale =
     !report.extras.shoeGuide?.variants?.length ||
-    // Pre-four-pair snapshots only carried 3 roles — backfill to the full system.
-    report.extras.shoeGuide.variants.length < 4 ||
+    // Older snapshots carried fewer than the current five roles — backfill.
+    report.extras.shoeGuide.variants.length < 5 ||
     // Pre-"instead of black" snapshots still push pure black dress shoes.
     report.extras.shoeGuide.variants.some((v) => /\bblack\b/i.test(v.color)) ||
     // Pre-"classic formal only" snapshots put coloured (navy/slate) leather on
     // the DRESS oxford — that's now moved to the loafer, so recompute.
     /navy|slate|blue|indigo|teal/i.test(
       report.extras.shoeGuide.variants[0]?.color ?? "",
-    );
-  if (watchStale || shoeStale) {
+    ) ||
+    // Pre-"derby-default" snapshots put oxfords on non-law clients — derbies are
+    // now the default office dress shoe, so recompute for anyone but lawyers.
+    (/oxford/i.test(report.extras.shoeGuide.variants[0]?.style ?? "") &&
+      !isLawClient);
+  // Belt system was added after some snapshots were stored — backfill when the
+  // guide (or its trouser rules) is missing.
+  const beltStale =
+    !report.extras.beltGuide?.variants?.length ||
+    !report.extras.beltGuide.trouserRules?.length;
+  if (watchStale || shoeStale || beltStale) {
     return {
       ...report.extras,
       watchGuide: watchStale
@@ -2714,6 +3033,9 @@ export function extrasForReport(report: StyleReport): StyleExtras {
       shoeGuide: shoeStale
         ? shoeGuideFor(report.profile, report.colors.best, report.colors.avoid)
         : report.extras.shoeGuide,
+      beltGuide: beltStale
+        ? beltGuideFor(report.profile, report.colors.best, report.colors.avoid)
+        : report.extras.beltGuide,
     };
   }
   return report.extras;
@@ -2740,5 +3062,6 @@ export function buildExtras(report: StyleReport): StyleExtras {
     fragrance: fragranceFor(profile),
     watchGuide: watchGuideFor(profile, report.colors.best),
     shoeGuide: shoeGuideFor(profile, report.colors.best, report.colors.avoid),
+    beltGuide: beltGuideFor(profile, report.colors.best, report.colors.avoid),
   };
 }

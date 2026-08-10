@@ -38,6 +38,7 @@ import type {
   PriorityMove,
   WatchGuide as WatchGuideT,
   ShoeGuide as ShoeGuideT,
+  BeltGuide as BeltGuideT,
 } from "@/lib/style-extras";
 
 /**
@@ -839,7 +840,10 @@ export function ShoeGuide({
             <ReportZoomImage
               src={image}
               alt={tt("Recommended footwear")}
-              wrapperClassName="relative block aspect-[4/3] w-full"
+              // Tall 5×2 board — keep natural aspect (4:3 cover-crop hid lower pairs).
+              wrapperClassName="relative block w-full"
+              className="h-auto w-full object-contain"
+              fill={false}
               sizes="(max-width: 1024px) 100vw, 50vw"
             />
           </div>
@@ -880,6 +884,84 @@ export function ShoeGuide({
 
       <p className="mt-5 max-w-prose text-xs leading-relaxed text-stone-soft">
         {guide.leatherRule}
+      </p>
+      <p className="mt-2 max-w-prose text-xs leading-relaxed text-stone-soft">
+        {guide.avoidNote}
+      </p>
+    </section>
+  );
+}
+
+/* --------------------------------- belts ---------------------------------- */
+
+export function BeltGuide({
+  guide,
+  lang,
+}: {
+  guide: BeltGuideT;
+  lang?: ReportLanguage;
+}) {
+  const tt = makeT(lang);
+  return (
+    <section className="report-keep-together">
+      <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+        {tt("Belts")}
+      </h3>
+      <p className="mt-3 max-w-prose text-sm leading-relaxed text-stone">
+        {guide.intro}
+      </p>
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        {guide.variants.map((v) => (
+          <div
+            key={v.context}
+            className="rounded-xl border hairline bg-paper px-4 py-3"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <div className="font-display text-base leading-tight">
+                {v.context}
+              </div>
+              <span className="shrink-0 text-[11px] uppercase tracking-wider text-stone-soft">
+                {v.width}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="h-4 w-4 shrink-0 rounded-full ring-1 ring-ink/10"
+                  style={{ background: v.strapHex }}
+                  aria-hidden
+                />
+                <span className="text-[11px] text-stone">
+                  {tt("Strap")}: {v.strap}
+                </span>
+              </div>
+              <span className="text-[11px] text-stone-soft">
+                {tt("Buckle")}: {v.buckle}
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] text-stone-soft">{v.wearWith}</div>
+            <p className="mt-2 text-sm leading-relaxed text-stone">{v.why}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 rounded-xl border hairline bg-cream/40 px-4 py-3">
+        <div className="text-[11px] uppercase tracking-wider text-stone-soft">
+          {tt("Belt by trouser type")}
+        </div>
+        <dl className="mt-2 space-y-1.5">
+          {guide.trouserRules.map((r) => (
+            <div key={r.trouser} className="text-sm leading-relaxed">
+              <dt className="inline font-medium text-ink">{r.trouser}: </dt>
+              <dd className="inline text-stone">{r.belt}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <p className="mt-5 max-w-prose text-xs leading-relaxed text-stone-soft">
+        {guide.matchRule}
       </p>
       <p className="mt-2 max-w-prose text-xs leading-relaxed text-stone-soft">
         {guide.avoidNote}
