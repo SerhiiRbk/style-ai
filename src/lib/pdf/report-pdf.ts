@@ -1271,8 +1271,84 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   }
   d.gallery(lookItems, { cols: 2, ratio: LOOK_RATIO });
 
+  /* -------------------------- capsule & buying plan ---------------------- */
+  // Lookbook & Premium only — the wardrobe system is not part of a Basic report.
+  if (includeCapsule) {
+    chapter("Capsule & buying plan");
+    d.text(
+      tt(
+        "{pieces} core pieces unlock roughly {outfits} outfits with what you already own. Buy them in three phases:",
+      )
+        .replace("{pieces}", String(extras.capsule.pieces))
+        .replace("{outfits}", String(extras.capsule.outfits)),
+      { color: STONE, lineGap: 5 },
+    );
+    d.gap(5);
+    const phase = async (label: string, items: typeof extras.capsule.now) => {
+      if (!items.length) return;
+      const cards: GalleryItem[] = [];
+      for (const i of items) {
+        cards.push({
+          img: await product(i.image),
+          title: humanizeProductTitle(i.title),
+          meta: formatMoneyPdf(i.priceEur, cur),
+        });
+      }
+      d.gallerySection(label, cards, { cols: 3, ratio: 1.15 });
+      d.gap(3);
+    };
+    await phase(tt("Buy now"), extras.capsule.now);
+    await phase(tt("Next"), extras.capsule.next);
+    await phase(tt("Later"), extras.capsule.later);
+    d.gap(2);
+    const matrixItems: GalleryItem[] = [];
+    for (let i = 0; i < extras.matrix.length; i++) {
+      const c = extras.matrix[i]!;
+      matrixItems.push({
+        img: await matrixOutfit(capsuleMatrixImageAt(report, i)),
+        title: c.context,
+        sub: c.pieces.map(humanizeProductTitle).join("  +  "),
+        label: c.context,
+      });
+    }
+    if (matrixItems.length) {
+      d.text(
+        tt(
+          "The same handful of pieces, recombined into a full week of outfits — so nothing in your wardrobe sits unused.",
+        ),
+        { color: STONE, lineGap: 5 },
+      );
+      d.gap(4);
+      const matrixWithPhotos = matrixItems.filter((it) => it.img);
+      if (matrixWithPhotos.length) {
+        d.gallerySection(tt("Outfit matrix — mix & match"), matrixWithPhotos, {
+          cols: 2,
+          ratio: LOOK_RATIO,
+        });
+      } else {
+        d.subhead(tt("Outfit matrix — mix & match"));
+        for (const c of extras.matrix) {
+          d.text(`${c.context}`, { font: d.bold, size: 9.5 });
+          d.text(c.pieces.map(humanizeProductTitle).join("  +  "), { color: STONE });
+          d.gap(3);
+        }
+      }
+    }
+    d.gap(4);
+    d.subhead(tt("Good / Better / Best — where to spend"), { keepWith: 28 });
+    for (const t of extras.priceTiers) {
+      d.text(`${t.category}`, { size: 9.5, font: d.bold });
+      d.text(
+        `${formatMoneyPdf(t.good, cur)} / ${formatMoneyPdf(t.better, cur)} / ${formatMoneyPdf(t.best, cur)} — ${t.note}`,
+        { color: STONE },
+      );
+      d.gap(3);
+    }
+  }
+
   /* ------------------------- the finishing kit --------------------------- */
   // Premium/lookbook — footwear, belts, watches (+ leather, ties, trousers later).
+  // Sits right after the capsule so the wardrobe system reads first.
   if (report.tier === "lookbook" || report.tier === "premium") {
     chapter("The finishing kit");
     d.text(
@@ -1363,81 +1439,6 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       : null;
     if (watchImg) d.banner(watchImg, Math.round((CONTENT_W * 3) / 4));
     d.gap(6);
-  }
-
-  /* -------------------------- capsule & buying plan ---------------------- */
-  // Lookbook & Premium only — the wardrobe system is not part of a Basic report.
-  if (includeCapsule) {
-    chapter("Capsule & buying plan");
-    d.text(
-      tt(
-        "{pieces} core pieces unlock roughly {outfits} outfits with what you already own. Buy them in three phases:",
-      )
-        .replace("{pieces}", String(extras.capsule.pieces))
-        .replace("{outfits}", String(extras.capsule.outfits)),
-      { color: STONE, lineGap: 5 },
-    );
-    d.gap(5);
-    const phase = async (label: string, items: typeof extras.capsule.now) => {
-      if (!items.length) return;
-      const cards: GalleryItem[] = [];
-      for (const i of items) {
-        cards.push({
-          img: await product(i.image),
-          title: humanizeProductTitle(i.title),
-          meta: formatMoneyPdf(i.priceEur, cur),
-        });
-      }
-      d.gallerySection(label, cards, { cols: 3, ratio: 1.15 });
-      d.gap(3);
-    };
-    await phase(tt("Buy now"), extras.capsule.now);
-    await phase(tt("Next"), extras.capsule.next);
-    await phase(tt("Later"), extras.capsule.later);
-    d.gap(2);
-    const matrixItems: GalleryItem[] = [];
-    for (let i = 0; i < extras.matrix.length; i++) {
-      const c = extras.matrix[i]!;
-      matrixItems.push({
-        img: await matrixOutfit(capsuleMatrixImageAt(report, i)),
-        title: c.context,
-        sub: c.pieces.map(humanizeProductTitle).join("  +  "),
-        label: c.context,
-      });
-    }
-    if (matrixItems.length) {
-      d.text(
-        tt(
-          "The same handful of pieces, recombined into a full week of outfits — so nothing in your wardrobe sits unused.",
-        ),
-        { color: STONE, lineGap: 5 },
-      );
-      d.gap(4);
-      const matrixWithPhotos = matrixItems.filter((it) => it.img);
-      if (matrixWithPhotos.length) {
-        d.gallerySection(tt("Outfit matrix — mix & match"), matrixWithPhotos, {
-          cols: 2,
-          ratio: LOOK_RATIO,
-        });
-      } else {
-        d.subhead(tt("Outfit matrix — mix & match"));
-        for (const c of extras.matrix) {
-          d.text(`${c.context}`, { font: d.bold, size: 9.5 });
-          d.text(c.pieces.map(humanizeProductTitle).join("  +  "), { color: STONE });
-          d.gap(3);
-        }
-      }
-    }
-    d.gap(4);
-    d.subhead(tt("Good / Better / Best — where to spend"), { keepWith: 28 });
-    for (const t of extras.priceTiers) {
-      d.text(`${t.category}`, { size: 9.5, font: d.bold });
-      d.text(
-        `${formatMoneyPdf(t.good, cur)} / ${formatMoneyPdf(t.better, cur)} / ${formatMoneyPdf(t.best, cur)} — ${t.note}`,
-        { color: STONE },
-      );
-      d.gap(3);
-    }
   }
 
   /* ----------------------------- shopping list --------------------------- */

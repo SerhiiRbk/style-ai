@@ -213,8 +213,8 @@ export default async function ReportPage({
   );
 
   const extras = extrasForReport(report);
-  // Premium/lookbook get watches, footwear (+ leather/ties later) between looks
-  // and capsule — shifts section numbering for everything after looks.
+  // Premium/lookbook get the finishing kit (footwear, belts, watches) right after
+  // the capsule — shifts section numbering for everything from shopping onward.
   const hasFinishingKit =
     report.tier === "lookbook" || report.tier === "premium";
   const sectionNo = (base: number) =>
@@ -1068,45 +1068,10 @@ export default async function ReportPage({
           ) : null}
         </section>
 
-        {/* The finishing kit — footwear, belts, watches (+ leather, ties, trousers later) */}
-        {hasFinishingKit ? (
-          <section
-            id="finishing"
-            className="border-t hairline container-luxe scroll-mt-24 py-20"
-          >
-            <SectionHead
-              n="05"
-              title={tr("The finishing kit")}
-              sub={tr(
-                "The pieces that hold every look together — shoes, belts, watch, and the details that finish the picture.",
-              )}
-            />
-            <div className="mt-12">
-              <ShoeGuide
-                guide={extras.shoeGuide}
-                image={report.shoeImage}
-                lang={lang}
-              />
-            </div>
-            {extras.beltGuide ? (
-              <div className="mt-12 border-t hairline pt-12">
-                <BeltGuide guide={extras.beltGuide} lang={lang} />
-              </div>
-            ) : null}
-            <div className="mt-12 border-t hairline pt-12">
-              <WatchGuide
-                guide={extras.watchGuide}
-                image={report.watchImage}
-                lang={lang}
-              />
-            </div>
-          </section>
-        ) : null}
-
         {/* Capsule & buying plan */}
         <section id="capsule" className="border-t hairline container-luxe scroll-mt-24 py-20">
           <SectionHead
-            n={sectionNo(5)}
+            n="05"
             title={tr("Capsule & buying plan")}
             sub={tr(
               "A small, deliberate set of pieces that multiply into many outfits — bought in the order that pays off fastest.",
@@ -1138,6 +1103,41 @@ export default async function ReportPage({
             </div>
           )}
         </section>
+
+        {/* The finishing kit — footwear, belts, watches (+ leather, ties, trousers later) */}
+        {hasFinishingKit ? (
+          <section
+            id="finishing"
+            className="border-t hairline container-luxe scroll-mt-24 py-20"
+          >
+            <SectionHead
+              n="06"
+              title={tr("The finishing kit")}
+              sub={tr(
+                "The pieces that hold every look together — shoes, belts, watch, and the details that finish the picture.",
+              )}
+            />
+            <div className="mt-12">
+              <ShoeGuide
+                guide={extras.shoeGuide}
+                image={report.shoeImage}
+                lang={lang}
+              />
+            </div>
+            {extras.beltGuide ? (
+              <div className="mt-12 border-t hairline pt-12">
+                <BeltGuide guide={extras.beltGuide} lang={lang} />
+              </div>
+            ) : null}
+            <div className="mt-12 border-t hairline pt-12">
+              <WatchGuide
+                guide={extras.watchGuide}
+                image={report.watchImage}
+                lang={lang}
+              />
+            </div>
+          </section>
+        ) : null}
 
         {/* Shopping list */}
         <section id="shopping" className="scroll-mt-24 border-y hairline bg-ink text-paper">
