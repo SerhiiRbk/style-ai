@@ -960,9 +960,14 @@ export async function generateShoeBoardImage(opts: {
       `colour. Each pair is a DIFFERENT style AND colour, described below:\n` +
       `${lines.join("\n")}\n` +
       colourFidelity +
-      `Formal-shoe rule: any oxfords or derbies must be a classic formal leather ` +
+      `Formal-shoe rule: any oxfords or derbies MUST be a classic formal leather ` +
       `(black, dark brown or burgundy) exactly as named above — NEVER navy, blue, slate ` +
-      `or any coloured leather on an oxford/derby; coloured leather only ever appears on loafers. ` +
+      `or any coloured leather on an oxford/derby. Every OTHER pair must be rendered in ` +
+      `exactly the leather/material colour named for it above — those named colours are all ` +
+      `realistic footwear leathers, so reproduce them faithfully (a named navy loafer stays navy, ` +
+      `a named cognac moccasin stays cognac). Regardless of the names, never render ANY shoe in a ` +
+      `novelty or non-leather colour — no pink, coral, peach, lilac, lavender, mint, lime, yellow, ` +
+      `turquoise, cyan or neon / fluorescent tones anywhere in the sheet. ` +
       `Render generic, unbranded shoes — NO brand names, NO logos, NO text of any kind on ` +
       `the shoes, soles or background. Classic, refined menswear silhouettes. ` +
       `The pairs must clearly differ in style and colour exactly as described. ` +

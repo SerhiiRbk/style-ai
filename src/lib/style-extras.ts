@@ -500,10 +500,32 @@ export function shoeGuideFor(
   // colour (navy, green, teal, plum, burgundy, olive, tobacco...) rather than a
   // fixed navy, so smart-casual shoes carry real, client-specific colour. Pick
   // the most saturated mid-dark BEST swatch that isn't the dress anchor.
+  //
+  // Shoe-colour guardrail (the loafer is the ONLY pair sourced from the wardrobe
+  // palette, so it's the one place a non-shoe hue can leak in):
+  //  • NOVELTY hues (pink/coral/turquoise/yellow/lime/lavender…) are never a
+  //    believable leather — rejected for EVERYONE, including statement clients
+  //    ("considered, not a fashion victim").
+  //  • LOUD-but-real hues (bright/true red, cobalt, golden) are allowed only for
+  //    the bold tier (statement / experimental); conservative & moderate clients
+  //    fall back to a safe characterful colour instead.
+  // Mocs/boots/sneakers are NOT opened up: their colours are functional (dark to
+  // hide travel wear, light neutral trainer) — the penny loafer is the natural
+  // statement-colour carrier.
+  const boldTier = /statement|experimental/.test(lc(profile.boldness ?? ""));
+  const NOVELTY_HUE =
+    /fuchsia|magenta|\bpink\b|coral|salmon|peach|apricot|lilac|lavender|\bmint\b|pistachio|\blime\b|apple green|chartreuse|canary|lemon|\byellow\b|turquoise|aqua|\bcyan\b|neon|electric|fluoro/i;
+  const LOUD_REAL_HUE = /true red|warm red|bright red|scarlet|cobalt/i;
+  const shoeHueOk = (name: string) => {
+    if (NOVELTY_HUE.test(name)) return false;
+    if (!boldTier && LOUD_REAL_HUE.test(name)) return false;
+    return true;
+  };
   const richLoafer = best
     .filter((c) => {
       if (!/^#?[0-9a-f]{6}$/i.test((c.hex || "").trim())) return false;
       if (c.hex.toLowerCase() === dressLeather.hex.toLowerCase()) return false;
+      if (!shoeHueOk(c.name || "")) return false;
       const { s, l } = hexToHsl(c.hex);
       return l >= 0.22 && l <= 0.6 && s >= 0.18;
     })
@@ -550,10 +572,16 @@ export function shoeGuideFor(
 
   // 1) Dress — Derbies are the default (more versatile + comfortable, perfectly
   //    office-appropriate). Oxfords, the strictest closed-lacing shoe, are
-  //    reserved for the most formal professions (law / courtroom). Broguing
-  //    (decorative perforation) is added conservatively to signal personality:
-  //    more broguing = less formal, so it's tuned to the client's goals.
-  const veryFormal = has(/law|legal|attorney|lawyer|solicitor|barrister/);
+  //    reserved for the most formal, conservative professions — law/courtroom
+  //    plus front-office finance, M&A, private equity and management consulting,
+  //    where a plain cap-toe oxford is the expected dress code. Deliberately NOT
+  //    all of `formalPro` (which includes founders / general office / "business"
+  //    where a derby is entirely appropriate), so the derby + broguing nuance
+  //    below still applies to everyone else. Broguing (decorative perforation)
+  //    signals personality: more broguing = less formal, tuned to the client's goals.
+  const veryFormal = has(
+    /law|legal|attorney|lawyer|solicitor|barrister|finance|financial|\bbank(?:ing|er)?\b|invest(?:ment|or|ing)?|m&a|merger|acquisition|private equity|consult/,
+  );
   const dressWord = veryFormal ? "oxford" : "derby";
   const dating = has(
     /date|dating|romance|romantic|relationship|confidence|charism|attract|impress/,
