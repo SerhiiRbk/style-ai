@@ -498,3 +498,142 @@ export function reportPalette(opts: {
     avoid: avoidColorsForSubseason(opts.subseason),
   };
 }
+
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * The single best swatch to wear directly next to the face — the DEEPEST tone in
+ * the palette (lowest luminance). Depth near the face lifts face-to-garment
+ * contrast so the complexion reads clearly; a mid-light tone under the chin
+ * flattens it. On any palette this lands on a deep neutral (navy / charcoal /
+ * deep anchor), which is the safe default for every colouring.
+ */
+export function nearFaceDeepSwatch(best: ColorRec[]): ColorRec | null {
+  const usable = best.filter((c) => HEX6.test(c.hex ?? ""));
+  if (!usable.length) return null;
+  return usable.reduce((deepest, c) =>
+    hexToHsl(c.hex).l < hexToHsl(deepest.hex).l ? c : deepest,
+  );
+}
+
+/**
+ * A bolder near-face option — the most CHARACTERFUL (highest-chroma) tone that
+ * still carries real depth, and distinct from the safe deep neutral above. On a
+ * muted palette this is the richest colour available (e.g. a soft teal); on a
+ * deep/clear palette it's a statement hue (burgundy, emerald). Returns null when
+ * the palette holds no swatch saturated enough to read as a deliberate colour —
+ * so a purely muted client is never pushed into something loud.
+ */
+export function boldAccentSwatch(best: ColorRec[]): ColorRec | null {
+  const safe = nearFaceDeepSwatch(best);
+  const safeL = safe ? hexToHsl(safe.hex).l : 0;
+  const cands = best
+    .filter((c) => HEX6.test(c.hex ?? ""))
+    .map((c) => ({ c, hsl: hexToHsl(c.hex) }))
+    .filter(({ hsl }) => hsl.s >= 0.16 && hsl.l >= 0.18 && hsl.l <= 0.62)
+    .filter(
+      ({ c }) => !safe || c.hex.toLowerCase() !== safe.hex.toLowerCase(),
+    );
+  if (!cands.length) return null;
+  // Most saturated first; ties broken by greater depth (lower lightness).
+  cands.sort((a, b) => b.hsl.s - a.hsl.s || a.hsl.l - b.hsl.l);
+  // A muted palette's "most saturated" can be another dark neutral almost
+  // identical in depth to the safe pick (e.g. navy vs charcoal) — that reads the
+  // same, not "bolder". Prefer the top candidate that's clearly distinct in depth
+  // so the accent actually looks like a colour; fall back to the raw top pick.
+  const distinct = cands.find(({ hsl }) => Math.abs(hsl.l - safeL) >= 0.06);
+  return (distinct ?? cands[0]!).c;
+}
+
+/**
+ * Whether to surface the bolder near-face accent, from the client's boldness plus
+ * their goals / lifestyle. Experimental/statement dressers always qualify; so do
+ * clients whose goals point at dating, social, cultural or evening occasions.
+ */
+export function wantsBoldAccent(opts: {
+  boldness?: string;
+  goals?: string[];
+  lifestyle?: string[];
+}): boolean {
+  const b = (opts.boldness ?? "").toLowerCase();
+  if (b === "experimental" || b === "statement") return true;
+  const hay = [...(opts.goals ?? []), ...(opts.lifestyle ?? [])]
+    .join(" ")
+    .toLowerCase();
+  return /date|dating|social|stand ?out|statement|express|creativ|cultur|event|dinner|party|night|attract|impress|confidence|charism|bold/.test(
+    hay,
+  );
+}
+
+/**
+ * Append near-face guidance to a palette's `why` copy: mark the deep tone to wear
+ * closest to the face (safe default for everyone), and — for bold-leaning clients
+ * — the richer accent option. Purely additive; the season rationale is untouched.
+ */
+export function annotateNearFaceGuidance(
+  colors: { best: ColorRec[]; avoid: ColorRec[] },
+  opts: { boldness?: string; goals?: string[]; lifestyle?: string[] },
+): { best: ColorRec[]; avoid: ColorRec[] } {
+  const near = nearFaceDeepSwatch(colors.best);
+  const bold = wantsBoldAccent(opts) ? boldAccentSwatch(colors.best) : null;
+  const eq = (a?: string, b?: string) =>
+    Boolean(a && b && a.toLowerCase() === b.toLowerCase());
+  const best = colors.best.map((c) => {
+    if (near && eq(c.hex, near.hex)) {
+      return {
+        ...c,
+        why:
+          `${c.why} Wear this closest to your face — a jumper, shirt or jacket collar in ` +
+          `this depth gives the most flattering face-to-garment contrast.`,
+      };
+    }
+    if (bold && eq(c.hex, bold.hex)) {
+      return {
+        ...c,
+        why:
+          `${c.why} Your bolder near-face option — richer than the neutrals but still on ` +
+          `your palette, ideal for a date, an evening out or when you want to stand out.`,
+      };
+    }
+    return c;
+  });
+  return { best, avoid: colors.avoid };
+}
+
+/** HSL (h 0-360, s/l 0-1) → #rrggbb. Inverse of `hexToHsl`. */
+function hslToHex(h: number, s: number, l: number): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0,
+    g = 0,
+    b = 0;
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const to = (v: number) =>
+    Math.round((v + m) * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+/**
+ * A deeper, ON-HUE version of a look's primary colour to wear next to the face.
+ * Keeps the hue (plum stays plum, teal stays teal) but drops the lightness into
+ * the "deep" band — and lifts a washed-out muted tone's chroma just enough to
+ * read as a deliberate colour — so face-to-garment contrast improves without
+ * changing the look's character. Tones already deep enough are returned as-is,
+ * so a look built on a genuine deep anchor (navy, charcoal) is never altered.
+ */
+export function deepenNearFaceHex(hex: string): string {
+  const v = (hex ?? "").trim();
+  if (!/^#?[0-9a-fA-F]{6}$/.test(v)) return hex;
+  const { h, s, l } = hexToHsl(v);
+  if (l <= 0.34) return v.startsWith("#") ? v : `#${v}`;
+  // Drop into the deep band; nudge chroma up for muted tones (never loud).
+  return hslToHex(h, Math.min(0.55, Math.max(s, 0.22)), 0.28);
+}

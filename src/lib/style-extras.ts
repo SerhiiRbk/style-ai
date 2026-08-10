@@ -2813,7 +2813,9 @@ type OutfitSlot = {
  */
 const CAPSULE_RECIPES: Record<string, OutfitSlot> = {
   Boardroom: { layer: "formal", top: "shirt", bottom: "dress", shoe: "dress" },
-  "Client meeting": { layer: "none", top: "knit", bottom: "dress", shoe: "dress" },
+  // A client meeting is a business context — a tailored jacket over a shirt (or a
+  // fine knit), never a lone casual shirt. `wearingJacket` then drives shirt/knit.
+  "Client meeting": { layer: "formal", top: "shirt", bottom: "dress", shoe: "dress" },
   Dinner: { layer: "formal", top: "knit", bottom: "dress", shoe: "dress" },
   "Date night": { layer: "none", top: "shirt", bottom: "dress", shoe: "dress" },
   "Smart casual": { layer: "none", top: "knit", bottom: "chino", shoe: "dress" },
@@ -2859,6 +2861,14 @@ export function capsuleMatrix(
   const tees = shirtsAll.filter((t) => /\b(t-?shirt|tee)\b/i.test(t));
   const dressShirts = shirtsAll.filter((t) => !/\b(t-?shirt|tee)\b/i.test(t));
   const polos = anyTop.filter((t) => /polo/i.test(t));
+  // Novelty/patterned knits (argyle, fair isle, cable, prints) read casual and
+  // dated under tailoring — keep a plain-knit pool for formal / jacket looks.
+  const plainKnits = knits.filter(
+    (t) =>
+      !/\b(argyle|fair[- ]?isle|jacquard|intarsia|cable|patterned|printed|striped?|checked?|floral|colou?r[- ]?block)\b/i.test(
+        t,
+      ),
+  );
 
   const formalLayers = layers.filter((l) => !CASUAL_OUTERWEAR_RE.test(l));
   const casualLayers = layers.filter((l) => CASUAL_OUTERWEAR_RE.test(l));
@@ -2940,18 +2950,51 @@ export function capsuleMatrix(
     const slot = CAPSULE_RECIPES[context] ?? DEFAULT_CAPSULE_SLOT;
     const pieces: string[] = [];
 
+    // Track whether the look actually wears a TAILORED jacket — a formal context,
+    // or a casual one that fell back to a blazer worn open (no casual outerwear in
+    // the wardrobe). This drives the top choice below.
+    let wearingJacket = false;
     if (slot.layer === "formal") {
       const l = rot("formalLayer", formalLayers);
-      if (l) pieces.push(l);
+      if (l) {
+        pieces.push(l);
+        wearingJacket = true;
+      }
     } else if (slot.layer === "casual") {
       // Fall back to a formal layer (worn open) so a casual look isn't left
       // thin — better an unstructured blazer than no layer at all.
-      const l =
-        rot("casualLayer", casualLayers) ?? rot("casualLayerAlt", formalLayers);
+      let l = rot("casualLayer", casualLayers);
+      if (!l) {
+        l = rot("casualLayerAlt", formalLayers);
+        if (l) wearingJacket = true; // the fallback is a tailored blazer
+      }
       if (l) pieces.push(l);
     }
 
-    const top = topFor(slot.top);
+    // Under a tailored jacket a SHIRT is the classic default and a fine knit the
+    // variation. Alternate ONLY the loosely-specified jacket looks (recipe top of
+    // knit / tee / any) so a blazer is never uniformly a jumper (the "grey jumper
+    // under every blazer" complaint) nor uniformly a shirt. An explicit `shirt`
+    // recipe (Boardroom, Client meeting, Evening event) is a deliberate business
+    // choice and stays a shirt; a `polo` keeps its smart-casual recipe.
+    let topKind = slot.top;
+    const alternatesUnderJacket =
+      slot.top !== "shirt" && slot.top !== "polo";
+    if (wearingJacket && dressShirts.length && alternatesUnderJacket) {
+      if (!knits.length) topKind = "shirt";
+      else {
+        const n = counts.get("jacketTop") ?? 0;
+        counts.set("jacketTop", n + 1);
+        topKind = n % 2 === 0 ? "shirt" : "knit"; // shirt-first, then alternate
+      }
+    }
+
+    // For formal / jacket looks prefer a PLAIN knit (argyle & co. read casual).
+    const preferPlainKnit =
+      topKind === "knit" &&
+      (wearingJacket || FORMAL_CONTEXTS.has(context)) &&
+      plainKnits.length > 0;
+    const top = preferPlainKnit ? rot("plainKnit", plainKnits) : topFor(topKind);
     const topIndex = top ? pieces.push(top) - 1 : -1;
 
     let bottom: string | undefined;
@@ -2981,11 +3024,23 @@ export function capsuleMatrix(
     const accentCount = () =>
       pieces.filter((p, idx) => idx !== shoeIndex && !isNeutralPiece(p)).length;
     if (topIndex >= 0 && accentCount() > 1 && !isNeutralPiece(pieces[topIndex])) {
-      const [, pool] = poolForTop(slot.top);
+      const [, pool] = poolForTop(topKind);
       const neutralAlt = pool.find(
         (t) => isNeutralPiece(t) && !pieces.includes(t),
       );
       if (neutralAlt) pieces[topIndex] = neutralAlt;
+    }
+
+    // The opposite failure — an ALL-neutral look (no accent at all) — reads flat
+    // and monochrome (e.g. beige knit over beige trousers, washing out the face).
+    // If the top's pool offers a palette accent (deeper / more saturated), swap it
+    // in so the look gains one point of depth right at the face.
+    if (topIndex >= 0 && accentCount() === 0) {
+      const [, pool] = poolForTop(topKind);
+      const accentAlt = pool.find(
+        (t) => !isNeutralPiece(t) && !pieces.includes(t),
+      );
+      if (accentAlt) pieces[topIndex] = accentAlt;
     }
 
     const key = pieces.join("|").toLowerCase();

@@ -69,6 +69,15 @@ type MatchRow = {
 const HEX_RE = /^#?[0-9a-f]{6}$/i;
 
 /**
+ * Non-button-down tops that live inside the catalogue's "Shirts" category (tees,
+ * tanks, polos, sweatshirts). They out-rank real shirts on the vector query for a
+ * muted palette, which left blazer looks with a tee/jumper instead of a shirt —
+ * so the buying plan's shirt slot filters these out when real shirts exist.
+ */
+const NON_BUTTON_SHIRT_RE =
+  /\b(t-?shirts?|tees?|tank|vest\s*tops?|camisole|polo|henley|sweat(?:er|shirt)?|hoodie|jersey)\b/i;
+
+/**
  * Swatch colour for a shopping item — the display uses this as a CSS colour, so
  * it must be a hex. Prefer the normalised `color_hex`, fall back to a hex that
  * happens to sit in the raw `color` field, else a neutral placeholder.
@@ -315,11 +324,19 @@ export async function matchShopping(
         isFootwear && !isTrendForward(profile.boldness)
           ? " Leather dress shoes: derbies, oxfords, loafers, monk straps or chelsea boots — not sandals, clogs, slides or flip-flops."
           : "";
+      // Steer the "Shirts" pool toward proper button-down shirts — the category
+      // is dominated by tees/polos, which otherwise win the vector match and end
+      // up under blazers in the capsule.
+      const shirtBias =
+        category === "Shirts"
+          ? " Button-down collared shirts: oxford, poplin, linen or flannel shirts — not t-shirts, tees, tank tops, polos or sweatshirts."
+          : "";
       const query =
         `${category} in ${palette}; ${profile.colorSeason} palette; ` +
         `${profile.goals.join(", ")}; ${profile.physical.bodyType} build; ` +
         styleIntentPhrase(profile.boldness) +
-        footwearBias;
+        footwearBias +
+        shirtBias;
       const { embedding } = await embed({ model: env.embedModel, value: query });
       const data = await rpcMatchProducts(sb, {
         query_embedding: embedding,
@@ -371,6 +388,16 @@ export async function matchShopping(
       if (category === "Footwear" && !isTrendForward(profile.boldness)) {
         const dress = ranked.filter((r) => !CASUAL_FOOTWEAR_RE.test(r.title));
         if (dress.length) ranked = dress;
+      }
+
+      // "Shirts" holds tees/polos too; hard-drop them so the buying plan (and the
+      // capsule looks built from it) get a real button-down shirt to wear under a
+      // blazer. Falls back to the full pool only if no true shirt was matched.
+      if (category === "Shirts") {
+        const buttonShirts = ranked.filter(
+          (r) => !NON_BUTTON_SHIRT_RE.test(r.title),
+        );
+        if (buttonShirts.length) ranked = buttonShirts;
       }
 
       // A report should never surface two pairs of sandals: cap open/casual

@@ -26,7 +26,10 @@ import {
   type ReportContent,
 } from "@/lib/style-profile";
 import { languageInstruction, type ReportLanguage } from "@/lib/languages";
-import { reportPalette } from "@/lib/colour-palette";
+import {
+  reportPalette,
+  annotateNearFaceGuidance,
+} from "@/lib/colour-palette";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -285,7 +288,17 @@ function deterministicColors(profile: StyleProfile): ReportContent["colors"] {
       hairColor: profile.physical.hairColor,
       eyeColor: profile.physical.eyeColor,
     });
-  return reportPalette({ subseason, undertone, contrast });
+  // Add near-face depth guidance (safe deep tone for everyone; a bolder accent
+  // for bold-leaning clients) so the palette copy tells the client what to wear
+  // closest to the face — the axis that drives face-to-garment contrast.
+  return annotateNearFaceGuidance(
+    reportPalette({ subseason, undertone, contrast }),
+    {
+      boldness: profile.boldness,
+      goals: profile.goals,
+      lifestyle: profile.lifestyle,
+    },
+  );
 }
 
 /**
@@ -530,6 +543,8 @@ export async function generateLookImage(opts: {
   profileReferenceImageUrl?: string;
   /** Pre-rendered outfit photo (e.g. capsule combo) — clothing reference only. */
   outfitReferenceImageUrl?: string;
+  /** Deep palette hex to place on the garment nearest the face (contrast/definition). */
+  nearFaceHex?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
@@ -540,6 +555,7 @@ export async function generateLookImage(opts: {
       faceReferenceImageUrl,
       profileReferenceImageUrl,
       outfitReferenceImageUrl,
+      nearFaceHex,
     } = opts;
     const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
     const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
@@ -569,6 +585,21 @@ export async function generateLookImage(opts: {
     // The image model tends to default to sandals for warm palettes; an explicit
     // footwear directive with a hard negative keeps formal looks in dress shoes.
     const footwearBlock = look.footwearRule ? `${look.footwearRule} ` : "";
+
+    // Correct menswear layering order. The near-face colour directive (below) can
+    // otherwise nudge the model into nonsensical stacking — e.g. an open button-up
+    // shirt WORN OVER a jumper. Just as important: forbid ADDING a layer that was
+    // not listed (the model likes to slip a stray knit under a blazer), which is
+    // exactly the "grey jumper under every blazer" artefact.
+    const layeringRule =
+      `Render ONLY the garments listed above — do not add any layer that is not ` +
+      `listed (no extra jumper, knit, waistcoat or shirt). When BOTH a knit and a ` +
+      `shirt are listed, the knit is worn OVER the shirt (only the shirt's collar ` +
+      `and cuffs peek out), never a button-up shirt on top of a knit; a blazer, ` +
+      `overshirt or coat is always the outermost layer. Trousers described as ` +
+      `"suit", "tailored", "dress" trousers or chinos are smooth woven wool or ` +
+      `cotton cloth — NEVER blue or washed denim / jeans, even if the item name ` +
+      `contains the word "washed". `;
 
     // Describe the role of each input image so identity (person photos) and the
     // garments (catalogue product photos) are not confused. Images are attached
@@ -671,11 +702,30 @@ export async function generateLookImage(opts: {
         `Do not show identifiable facial features. `;
     }
 
+    // Near-face contrast: a mid-value tone that matches the skin's lightness
+    // right under the chin flattens the face. A specific deep hex (nearFaceHex)
+    // is forced on the anchor / statement looks; every other look still gets the
+    // general principle so tops vary but never sit at skin-level lightness.
+    const nearFacePrinciple =
+      personImageCount > 0
+        ? `Keep clear contrast between the face and the garment nearest it: avoid a ` +
+          `pale or mid-value top that matches the skin's own lightness directly under ` +
+          `the chin — use either a deeper or a distinctly crisper palette tone there. `
+        : "";
+    const nearFaceBlock = nearFaceHex
+      ? `Near-face colour: the garment closest to the face (the top layer — knit, ` +
+        `shirt, jacket or its collar) MUST be ${nearFaceHex} — a deliberate tone from ` +
+        `the palette. If the outfit text names a lighter or mid-value top, deepen it to ` +
+        `this tone; other garments keep their described colours. `
+      : nearFacePrinciple;
+
     const prompt =
       `Editorial, full-length fashion photograph for a premium style report. ` +
       outfitBlock +
+      layeringRule +
       footwearBlock +
       `Colour palette: ${look.palette.join(", ")}. ` +
+      nearFaceBlock +
       subject +
       imageRoles +
       faceAnchor +
@@ -736,6 +786,8 @@ export async function generateCoverImage(opts: {
   faceReferenceImageUrl?: string;
   /** Optional side/three-quarter portrait — extra face-geometry anchor only. */
   profileReferenceImageUrl?: string;
+  /** Deep palette hex to place on the garment nearest the face (contrast/definition). */
+  nearFaceHex?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
@@ -744,6 +796,7 @@ export async function generateCoverImage(opts: {
       referenceImageUrl,
       faceReferenceImageUrl,
       profileReferenceImageUrl,
+      nearFaceHex,
     } = opts;
     const palette = (opts.palette ?? []).filter(Boolean);
 
@@ -823,6 +876,11 @@ export async function generateCoverImage(opts: {
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.bodyType} build, dressed in refined, well-tailored clothing` +
       (palette.length ? ` in a ${palette.join(", ")} colour palette. ` : ". ") +
+      (nearFaceHex
+        ? `Put a DEEP tone from the palette on the garment closest to the face ` +
+          `(the top layer or its collar), around ${nearFaceHex}, so the face reads ` +
+          `with strong contrast — avoid a pale or mid-value tone under the chin. `
+        : "") +
       (opts.archetype ? `Overall mood: ${opts.archetype}. ` : "") +
       `Composition: the subject stands full-length slightly to the RIGHT of centre, ` +
       `weight relaxed, one hand in a trouser pocket, calm confident expression. ` +

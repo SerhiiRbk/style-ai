@@ -15,7 +15,9 @@ const MAX_DATA_URL_CHARS = 6_000_000;
 
 /** Bump when the analysis prompt/logic changes so cached results are recomputed. */
 // v2: palettes grew from 8 → 10 swatches — invalidate pre-change cached results.
-const COLOURS_CACHE_VERSION = "2";
+// v3: added `clarity` (chroma) to the vision call + refineSeasonForClarity, so
+//     `/colours` matches the report pipeline (muted cool → soft, not cool/winter).
+const COLOURS_CACHE_VERSION = "3";
 
 /** Anonymous, deduplicated cache namespace in the `assets` bucket. */
 function cachePath(hash: string): string {

@@ -77,6 +77,12 @@ import {
   FORMAL_CONTEXTS,
   type StyleExtras,
 } from "@/lib/style-extras";
+import {
+  nearFaceDeepSwatch,
+  boldAccentSwatch,
+  wantsBoldAccent,
+  deepenNearFaceHex,
+} from "@/lib/colour-palette";
 import { translateReportParts } from "@/lib/ai/translate-report";
 import { getStoredReportPhotoPaths } from "@/lib/photo-tryon";
 import { normalizeLanguage } from "@/lib/languages";
@@ -630,12 +636,16 @@ async function generateCoverImageJob(input: ImageJobInput) {
     .single();
   if (existing?.cover_image) return;
 
+  // Cover keeps the SAFE deep near-face tone (never the bold accent) — it's the
+  // hero shot, so the deepest palette neutral gives clean face-to-garment contrast.
+  const coverNearFace = nearFaceDeepSwatch(content.colors?.best ?? [])?.hex;
   const img = await generateCoverImage({
     profile,
     palette: (content.colors?.best ?? []).map((c) => c.name).filter(Boolean),
     referenceImageUrl,
     faceReferenceImageUrl,
     profileReferenceImageUrl,
+    ...(coverNearFace ? { nearFaceHex: coverNearFace } : {}),
   });
   if (!img) return;
 
@@ -899,6 +909,19 @@ async function generateReportImages(input: ImageJobInput) {
         : "")
     : "";
 
+  // Near-face colour: put the palette's DEEPEST tone on the top layer so the face
+  // reads with contrast (a mid-light tone under the chin flattens it). Everyone
+  // gets this safe deep neutral; bold-leaning clients also get ONE statement look
+  // built on the richest palette accent (still on-palette — never a loud off-tone).
+  const nearFaceDeep = nearFaceDeepSwatch(content.colors?.best ?? []);
+  const boldAccent = wantsBoldAccent({
+    boldness: profile.boldness,
+    goals: profile.goals,
+    lifestyle: profile.lifestyle,
+  })
+    ? boldAccentSwatch(content.colors?.best ?? [])
+    : null;
+
   // Look photos — DB-driven and idempotent: read the look rows ordered by their
   // stable content index (`idx`), skip rows that already have an image, and
   // generate the rest in parallel. Each row is an independent update, so writes
@@ -911,11 +934,68 @@ async function generateReportImages(input: ImageJobInput) {
     .order("idx", { ascending: true })
     .order("created_at", { ascending: true });
 
+  // Near-face depth for EVERY look, kept varied: each look's own primary palette
+  // tone is deepened ON-HUE (plum→deep plum, teal→deep teal) so the garment at the
+  // face always carries real depth without turning every look into the same dark
+  // neutral. ONE evening/social look still becomes the bold statement for
+  // qualifying clients; a look with no palette falls back to the safe deep neutral.
+  const rowsByIdx = (lookRows ?? []).map((row, index) => ({
+    idx: (row.idx as number | null) ?? index,
+    text: `${(row.context as string | null) ?? ""} ${(row.title as string | null) ?? ""}`.toLowerCase(),
+  }));
+  const anchorLookIdx = rowsByIdx.length
+    ? Math.min(...rowsByIdx.map((r) => r.idx))
+    : -1;
+  const boldLookIdx = (() => {
+    if (!boldAccent || !rowsByIdx.length) return -1;
+    const candidates = rowsByIdx.filter((r) => r.idx !== anchorLookIdx);
+    const pool = candidates.length ? candidates : rowsByIdx;
+    const match = pool.find((r) =>
+      /evening|dinner|date|night|party|event|social|cocktail|weekend/.test(
+        r.text,
+      ),
+    );
+    return (match ?? pool[pool.length - 1]!).idx;
+  })();
+
   const lookTasks = (lookRows ?? [])
     .map((row, index) => ({ row, index: (row.idx as number | null) ?? index }))
     .filter(({ row }) => !row.image_path);
 
+  // Pick the palette hex of the garment that actually sits at the FACE — the
+  // outermost upper-body layer, not simply palette[0]. The palette array is
+  // aligned to the garment order in the description, so in a knit-over-shirt look
+  // (shirt listed first, jumper worn over it) the jumper — the layer that frames
+  // the face — is chosen instead of the hidden shirt. Falls back to palette[0].
+  const nearFacePaletteHex = (
+    description: string,
+    palette: string[],
+  ): string | undefined => {
+    if (!palette.length) return undefined;
+    const phrases = description.split(",").map((s) => s.trim().toLowerCase());
+    const OUTER =
+      /\b(blazer|jackets?|coats?|overcoats?|topcoats?|peacoats?|pea coats?|trench|parkas?|gilets?|bombers?|overshirts?|shackets?|cardigans?)\b/;
+    const KNIT =
+      /\b(jumpers?|sweaters?|knitwear|knit|crewnecks?|crew necks?|roll ?necks?|turtlenecks?|hoodies?|sweatshirts?|pullovers?)\b/;
+    const TOP = /\b(shirts?|t-?shirts?|tees?|polos?|henleys?|tops?)\b/;
+    const findIdx = (re: RegExp) => phrases.findIndex((p) => re.test(p));
+    let i = findIdx(OUTER);
+    if (i < 0) i = findIdx(KNIT);
+    if (i < 0) i = findIdx(TOP);
+    if (i < 0) i = 0;
+    const hex = palette[i] ?? palette[0];
+    return hex ? deepenNearFaceHex(hex) : undefined;
+  };
+
   await mapPool(lookTasks, IMAGE_CONCURRENCY, async ({ row, index }) => {
+    const rowPalette = (row.palette as string[] | null) ?? [];
+    const ownDeep =
+      nearFacePaletteHex(
+        (row.description as string | null) ?? "",
+        rowPalette,
+      ) ?? nearFaceDeep?.hex;
+    const nearFaceHex =
+      index === boldLookIdx && boldAccent ? boldAccent.hex : ownDeep;
     const img = await generateLookImage({
       profile,
       look: {
@@ -933,6 +1013,7 @@ async function generateReportImages(input: ImageJobInput) {
       referenceImageUrl,
       faceReferenceImageUrl,
       profileReferenceImageUrl,
+      ...(nearFaceHex ? { nearFaceHex } : {}),
     });
     if (!img) return;
     const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
