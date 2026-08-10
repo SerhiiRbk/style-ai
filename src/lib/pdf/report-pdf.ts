@@ -190,6 +190,49 @@ async function embedImage(
       // fall through to raw embed below
     }
   }
+  return embedImageBytes(doc, bytes);
+}
+
+/** Embed without cover-crop — keeps the source aspect (e.g. tall shoe boards). */
+async function embedImageNatural(
+  doc: PDFDocument,
+  src: string | undefined,
+  opts?: { maxPx?: number },
+): Promise<PDFImage | null> {
+  if (!src) return null;
+  const bytes = await loadBytes(src);
+  if (!bytes) return null;
+  const maxPx = opts?.maxPx ?? 1400;
+  let sharp: typeof import("sharp").default | null = null;
+  try {
+    ({ default: sharp } = await import("sharp"));
+  } catch {
+    sharp = null;
+  }
+  if (sharp) {
+    try {
+      const jpeg = await sharp(bytes, { failOn: "none" })
+        .rotate()
+        .resize({
+          width: maxPx,
+          height: maxPx,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+      return await doc.embedJpg(jpeg);
+    } catch {
+      // fall through to raw embed
+    }
+  }
+  return embedImageBytes(doc, bytes);
+}
+
+async function embedImageBytes(
+  doc: PDFDocument,
+  bytes: Uint8Array,
+): Promise<PDFImage | null> {
   try {
     if (bytes[0] === 0x89 && bytes[1] === 0x50) {
       return await doc.embedPng(bytes);
@@ -574,6 +617,26 @@ class Doc {
       x: MARGIN,
       y: this.y - h,
       width: CONTENT_W,
+      height: h,
+    });
+    this.y -= h + 12;
+  }
+
+  /**
+   * Draw an image at its natural aspect, scaled to fit the content width and
+   * a single page height (no cover-crop). Tall boards (e.g. 5×2 shoes) shrink
+   * to stay fully visible rather than losing rows.
+   */
+  bannerNatural(img: PDFImage) {
+    const maxH = PAGE_H - MARGIN * 2 - 48;
+    const scale = Math.min(CONTENT_W / img.width, maxH / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    this.ensure(h + 8);
+    this.page.drawImage(img, {
+      x: MARGIN + (CONTENT_W - w) / 2,
+      y: this.y - h,
+      width: w,
       height: h,
     });
     this.y -= h + 12;
@@ -999,34 +1062,6 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   d.text(extras.metals.avoidNote, { size: 9, color: STONE });
   d.gap(6);
 
-  if (report.tier === "lookbook" || report.tier === "premium") {
-    const watch = extras.watchGuide;
-    d.subhead(tt("Watches"), { keepWith: 20 });
-    d.text(watch.intro, { size: 9.5, color: STONE, lineGap: 3.5 });
-    d.gap(4);
-    const watchImg = report.watchImage
-      ? await embedImage(d.doc, report.watchImage, { w: 4, h: 3, px: 700 })
-      : null;
-    if (watchImg) d.banner(watchImg, Math.round((CONTENT_W * 3) / 4));
-    for (const v of watch.variants) {
-      d.text(`${v.type} — ${v.context}`, { size: 11, font: d.bold, lineGap: 2 });
-      if (v.shape) d.text(`${tt("Shape")}: ${v.shape}`, { size: 8.5, color: STONE });
-      d.swatch(v.caseHex, `${tt("Case")}: ${v.caseMetal}`);
-      d.swatch(v.dialHex, `${tt("Dial")}: ${v.dial}`);
-      d.swatch(v.strapHex, `${tt("Strap")}: ${v.strap}`);
-      d.text(v.why, { size: 9, color: STONE, lineGap: 3 });
-      d.gap(5);
-    }
-    if (watch.shapeNote) {
-      d.text(watch.shapeNote, { size: 9, color: STONE, lineGap: 3.5 });
-      d.gap(2);
-    }
-    d.text(watch.cuffNote, { size: 9, color: STONE, lineGap: 3.5 });
-    d.gap(2);
-    d.text(watch.avoidNote, { size: 9, color: STONE, lineGap: 3.5 });
-    d.gap(6);
-  }
-
   d.subhead(`${tt("Your colour DNA")} — ${extras.colorDNA.subseason}`, { keepWith: 14 });
   d.text(`${tt("Neutrals:")} ${extras.colorDNA.neutrals.map((c) => c.name).join(", ")}`, {
     color: STONE,
@@ -1309,6 +1344,101 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
       );
       d.gap(3);
     }
+  }
+
+  /* ------------------------- the finishing kit --------------------------- */
+  // Premium/lookbook — footwear, belts, watches (+ leather, ties, trousers later).
+  // Sits right after the capsule so the wardrobe system reads first.
+  if (report.tier === "lookbook" || report.tier === "premium") {
+    chapter("The finishing kit");
+    d.text(
+      tt(
+        "The pieces that hold every look together — shoes, belts, watch, and the details that finish the picture.",
+      ),
+      { size: 9.5, color: STONE, lineGap: 3.5 },
+    );
+    d.gap(6);
+
+    const shoes = extras.shoeGuide;
+    if (shoes?.variants?.length) {
+      d.subhead(tt("Footwear system"), { keepWith: 20 });
+      d.text(shoes.intro, { size: 9.5, color: STONE, lineGap: 3.5 });
+      d.gap(4);
+      for (const v of shoes.variants) {
+        d.text(`${v.style} — ${v.role}`, { size: 11, font: d.bold, lineGap: 2 });
+        d.swatch(v.colorHex, `${tt("Colour")}: ${v.color}`);
+        d.text(v.wearWith, { size: 8.5, color: STONE });
+        d.text(v.why, { size: 9, color: STONE, lineGap: 3 });
+        d.gap(5);
+      }
+      d.text(shoes.leatherRule, { size: 9, color: STONE, lineGap: 3.5 });
+      d.gap(2);
+      d.text(shoes.avoidNote, { size: 9, color: STONE, lineGap: 3.5 });
+
+      // Dedicated page for the tall 5×2 shoe board — after the copy, before Belts.
+      const shoeImg = report.shoeImage
+        ? await embedImageNatural(d.doc, report.shoeImage, { maxPx: 1400 })
+        : null;
+      if (shoeImg) {
+        d.newPage();
+        d.bannerNatural(shoeImg);
+      }
+    }
+
+    const belts = extras.beltGuide;
+    if (belts?.variants?.length) {
+      d.newPage();
+      d.subhead(tt("Belts"), { keepWith: 20 });
+      d.text(belts.intro, { size: 9.5, color: STONE, lineGap: 3.5 });
+      d.gap(4);
+      for (const v of belts.variants) {
+        d.text(`${v.context} — ${v.width}`, { size: 11, font: d.bold, lineGap: 2 });
+        d.swatch(v.strapHex, `${tt("Strap")}: ${v.strap}`);
+        d.text(`${tt("Buckle")}: ${v.buckle}`, { size: 8.5, color: STONE });
+        d.text(v.wearWith, { size: 8.5, color: STONE });
+        d.text(v.why, { size: 9, color: STONE, lineGap: 3 });
+        d.gap(5);
+      }
+      if (belts.trouserRules?.length) {
+        d.subhead(tt("Belt by trouser type"), { keepWith: 16 });
+        for (const r of belts.trouserRules) {
+          d.text(`${r.trouser}: ${r.belt}`, { size: 9, color: STONE, lineGap: 3 });
+        }
+        d.gap(3);
+      }
+      d.text(belts.matchRule, { size: 9, color: STONE, lineGap: 3.5 });
+      d.gap(2);
+      d.text(belts.avoidNote, { size: 9, color: STONE, lineGap: 3.5 });
+      d.gap(6);
+    }
+
+    const watch = extras.watchGuide;
+    d.subhead(tt("Watches"), { keepWith: 20 });
+    d.text(watch.intro, { size: 9.5, color: STONE, lineGap: 3.5 });
+    d.gap(4);
+    for (const v of watch.variants) {
+      d.text(`${v.type} — ${v.context}`, { size: 11, font: d.bold, lineGap: 2 });
+      if (v.shape) d.text(`${tt("Shape")}: ${v.shape}`, { size: 8.5, color: STONE });
+      d.swatch(v.caseHex, `${tt("Case")}: ${v.caseMetal}`);
+      d.swatch(v.dialHex, `${tt("Dial")}: ${v.dial}`);
+      d.swatch(v.strapHex, `${tt("Strap")}: ${v.strap}`);
+      d.text(v.why, { size: 9, color: STONE, lineGap: 3 });
+      d.gap(5);
+    }
+    if (watch.shapeNote) {
+      d.text(watch.shapeNote, { size: 9, color: STONE, lineGap: 3.5 });
+      d.gap(2);
+    }
+    d.text(watch.cuffNote, { size: 9, color: STONE, lineGap: 3.5 });
+    d.gap(2);
+    d.text(watch.avoidNote, { size: 9, color: STONE, lineGap: 3.5 });
+    d.gap(4);
+    // Image last — after the full watch copy.
+    const watchImg = report.watchImage
+      ? await embedImage(d.doc, report.watchImage, { w: 4, h: 3, px: 700 })
+      : null;
+    if (watchImg) d.banner(watchImg, Math.round((CONTENT_W * 3) / 4));
+    d.gap(6);
   }
 
   /* ----------------------------- shopping list --------------------------- */

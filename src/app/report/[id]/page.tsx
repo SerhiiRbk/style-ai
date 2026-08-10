@@ -70,6 +70,8 @@ import {
   ColorDNAGuide,
   MetalChips,
   WatchGuide,
+  ShoeGuide,
+  BeltGuide,
   Pairings,
   EyewearGuide,
   GroomingGuide,
@@ -211,6 +213,12 @@ export default async function ReportPage({
   );
 
   const extras = extrasForReport(report);
+  // Premium/lookbook get the finishing kit (footwear, belts, watches) right after
+  // the capsule — shifts section numbering for everything from shopping onward.
+  const hasFinishingKit =
+    report.tier === "lookbook" || report.tier === "premium";
+  const sectionNo = (base: number) =>
+    String(hasFinishingKit ? base + 1 : base).padStart(2, "0");
 
   // The demo report uses the deterministic mock catalogue, so the outfit-matrix
   // combinations are stable and we can attach pre-rendered lookbook photos.
@@ -420,7 +428,7 @@ export default async function ReportPage({
         </div>
       </header>
 
-      <ReportSectionNav lang={lang} />
+      <ReportSectionNav lang={lang} includeFinishing={hasFinishingKit} />
 
       <main className="flex-1">
         {/* Profile snapshot */}
@@ -568,15 +576,6 @@ export default async function ReportPage({
             <Pairings pairings={extras.pairings} lang={lang} />
             <MetalChips metals={extras.metals} lang={lang} />
           </div>
-          {report.tier === "lookbook" || report.tier === "premium" ? (
-            <div className="mt-12 border-t hairline pt-12">
-              <WatchGuide
-                guide={extras.watchGuide}
-                image={report.watchImage}
-                lang={lang}
-              />
-            </div>
-          ) : null}
         </section>
 
         {/* Hair */}
@@ -1105,12 +1104,47 @@ export default async function ReportPage({
           )}
         </section>
 
+        {/* The finishing kit — footwear, belts, watches (+ leather, ties, trousers later) */}
+        {hasFinishingKit ? (
+          <section
+            id="finishing"
+            className="border-t hairline container-luxe scroll-mt-24 py-20"
+          >
+            <SectionHead
+              n="06"
+              title={tr("The finishing kit")}
+              sub={tr(
+                "The pieces that hold every look together — shoes, belts, watch, and the details that finish the picture.",
+              )}
+            />
+            <div className="mt-12">
+              <ShoeGuide
+                guide={extras.shoeGuide}
+                image={report.shoeImage}
+                lang={lang}
+              />
+            </div>
+            {extras.beltGuide ? (
+              <div className="mt-12 border-t hairline pt-12">
+                <BeltGuide guide={extras.beltGuide} lang={lang} />
+              </div>
+            ) : null}
+            <div className="mt-12 border-t hairline pt-12">
+              <WatchGuide
+                guide={extras.watchGuide}
+                image={report.watchImage}
+                lang={lang}
+              />
+            </div>
+          </section>
+        ) : null}
+
         {/* Shopping list */}
         <section id="shopping" className="scroll-mt-24 border-y hairline bg-ink text-paper">
           <div className="container-luxe py-20">
             <div className="flex items-end justify-between">
               <div>
-                <p className="eyebrow !text-brass-soft">06</p>
+                <p className="eyebrow !text-brass-soft">{sectionNo(6)}</p>
                 <h2 className="mt-3 font-display text-3xl sm:text-4xl">
                   {tr("Your shopping list")}
                 </h2>
@@ -1233,7 +1267,7 @@ export default async function ReportPage({
         <section id="details" className="scroll-mt-24 border-b hairline bg-cream/40">
           <div className="container-luxe py-20">
             <SectionHead
-              n="07"
+              n={sectionNo(7)}
               title={tr("Patterns & finishing details")}
               sub={tr(
                 "The textures, fabrics, accessories and shoes that complete the wardrobe.",
@@ -1251,7 +1285,7 @@ export default async function ReportPage({
         {/* How to wear, care & scent */}
         <section id="care" className="container-luxe scroll-mt-24 py-20">
           <SectionHead
-            n="08"
+            n={sectionNo(8)}
             title={tr("How to wear it, and make it last")}
             sub={tr(
               "The small mechanics and habits that separate well-dressed from expensively-dressed.",
@@ -1269,7 +1303,7 @@ export default async function ReportPage({
 
         {/* Do / Don't */}
         <section id="dos-donts" className="border-t hairline container-luxe scroll-mt-24 py-20">
-          <SectionHead n="09" title={tr("Do & don't")} />
+          <SectionHead n={sectionNo(9)} title={tr("Do & don't")} />
           <div className="mt-10 grid gap-8 md:grid-cols-2">
             <ListCard title={tr("Do")} items={report.doList} good />
             <ListCard title={tr("Avoid")} items={report.dontList} />

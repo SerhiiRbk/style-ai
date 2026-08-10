@@ -9,7 +9,10 @@
  */
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { classifySubseason } from "@/lib/style-profile";
+import {
+  classifySubseason,
+  refineSeasonForClarity,
+} from "@/lib/style-profile";
 import {
   carloNoteFor,
   paletteForSubseason,
@@ -34,6 +37,14 @@ export const colourVisionSchema = z.object({
   undertone: z.enum(["warm", "cool", "neutral"]),
   contrast: z.enum(["low", "medium", "high"]),
   colorSeason: z.enum(["winter", "spring", "summer", "autumn"]),
+  clarity: z
+    .enum(["muted", "clear"])
+    .describe(
+      "overall colouring quality by CHROMA/SATURATION, not light/dark contrast: " +
+        "'muted' = soft, greyed, dusty, low-saturation; 'clear' = bright, vivid, " +
+        "high-saturation. Fair skin with dark hair is high value-contrast but is " +
+        "often still 'muted' — judge saturation, not lightness.",
+    ),
   hairColor: z
     .string()
     .describe("natural hair colour, e.g. 'dark brown', 'blonde', 'gray'"),
@@ -47,6 +58,10 @@ export const COLOUR_VISION_PROMPT =
   "obscured, dark, or heavily filtered to read colouring from, with a short usableReason. " +
   "If usable, determine skin tone, undertone, facial contrast, natural hair colour and eye " +
   "colour, and assign a seasonal colour analysis (winter, spring, summer or autumn). " +
+  "Also judge overall colouring CLARITY by chroma/saturation ('muted' vs 'clear'): " +
+  "muted = soft, greyed, dusty; clear = bright, vivid. Do NOT confuse high light/dark " +
+  "(value) contrast — e.g. fair skin with dark hair — for 'clear'; such colouring is " +
+  "frequently muted, which points to Summer rather than Winter. " +
   "Be objective and tactful — never judgmental.";
 
 /** Discriminated result so callers can reject an unusable photo cleanly. */
@@ -81,10 +96,20 @@ export async function analyzeColoursWith(
     };
   }
 
-  const subseason = classifySubseason({
+  // Correct the base season using the chroma signal (same as the report
+  // pipeline): a muted cool/neutral person read as "winter" from value-contrast
+  // alone is really a Summer. Keeps `/colours` and the report in lockstep.
+  const season = refineSeasonForClarity({
     season: output.colorSeason,
     undertone: output.undertone,
+    clarity: output.clarity,
+  });
+
+  const subseason = classifySubseason({
+    season,
+    undertone: output.undertone,
     contrast: output.contrast,
+    clarity: output.clarity,
     hairColor: output.hairColor,
     eyeColor: output.eyeColor,
   });
@@ -93,7 +118,7 @@ export async function analyzeColoursWith(
   return {
     ok: true,
     result: {
-      season: output.colorSeason,
+      season,
       subseason,
       subseasonLabel: label,
       undertone: output.undertone,
@@ -101,7 +126,7 @@ export async function analyzeColoursWith(
       skinTone: output.skinTone,
       palette: paletteForSubseason(subseason),
       carloNote: carloNoteFor({
-        season: output.colorSeason,
+        season,
         subseasonLabel: label,
         undertone: output.undertone,
         contrast: output.contrast,

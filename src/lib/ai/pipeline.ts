@@ -26,7 +26,10 @@ import {
   type ReportContent,
 } from "@/lib/style-profile";
 import { languageInstruction, type ReportLanguage } from "@/lib/languages";
-import { reportPalette } from "@/lib/colour-palette";
+import {
+  reportPalette,
+  annotateNearFaceGuidance,
+} from "@/lib/colour-palette";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -285,7 +288,17 @@ function deterministicColors(profile: StyleProfile): ReportContent["colors"] {
       hairColor: profile.physical.hairColor,
       eyeColor: profile.physical.eyeColor,
     });
-  return reportPalette({ subseason, undertone, contrast });
+  // Add near-face depth guidance (safe deep tone for everyone; a bolder accent
+  // for bold-leaning clients) so the palette copy tells the client what to wear
+  // closest to the face — the axis that drives face-to-garment contrast.
+  return annotateNearFaceGuidance(
+    reportPalette({ subseason, undertone, contrast }),
+    {
+      boldness: profile.boldness,
+      goals: profile.goals,
+      lifestyle: profile.lifestyle,
+    },
+  );
 }
 
 /**
@@ -530,6 +543,8 @@ export async function generateLookImage(opts: {
   profileReferenceImageUrl?: string;
   /** Pre-rendered outfit photo (e.g. capsule combo) — clothing reference only. */
   outfitReferenceImageUrl?: string;
+  /** Deep palette hex to place on the garment nearest the face (contrast/definition). */
+  nearFaceHex?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
@@ -540,6 +555,7 @@ export async function generateLookImage(opts: {
       faceReferenceImageUrl,
       profileReferenceImageUrl,
       outfitReferenceImageUrl,
+      nearFaceHex,
     } = opts;
     const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
     const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
@@ -569,6 +585,21 @@ export async function generateLookImage(opts: {
     // The image model tends to default to sandals for warm palettes; an explicit
     // footwear directive with a hard negative keeps formal looks in dress shoes.
     const footwearBlock = look.footwearRule ? `${look.footwearRule} ` : "";
+
+    // Correct menswear layering order. The near-face colour directive (below) can
+    // otherwise nudge the model into nonsensical stacking — e.g. an open button-up
+    // shirt WORN OVER a jumper. Just as important: forbid ADDING a layer that was
+    // not listed (the model likes to slip a stray knit under a blazer), which is
+    // exactly the "grey jumper under every blazer" artefact.
+    const layeringRule =
+      `Render ONLY the garments listed above — do not add any layer that is not ` +
+      `listed (no extra jumper, knit, waistcoat or shirt). When BOTH a knit and a ` +
+      `shirt are listed, the knit is worn OVER the shirt (only the shirt's collar ` +
+      `and cuffs peek out), never a button-up shirt on top of a knit; a blazer, ` +
+      `overshirt or coat is always the outermost layer. Trousers described as ` +
+      `"suit", "tailored", "dress" trousers or chinos are smooth woven wool or ` +
+      `cotton cloth — NEVER blue or washed denim / jeans, even if the item name ` +
+      `contains the word "washed". `;
 
     // Describe the role of each input image so identity (person photos) and the
     // garments (catalogue product photos) are not confused. Images are attached
@@ -671,11 +702,30 @@ export async function generateLookImage(opts: {
         `Do not show identifiable facial features. `;
     }
 
+    // Near-face contrast: a mid-value tone that matches the skin's lightness
+    // right under the chin flattens the face. A specific deep hex (nearFaceHex)
+    // is forced on the anchor / statement looks; every other look still gets the
+    // general principle so tops vary but never sit at skin-level lightness.
+    const nearFacePrinciple =
+      personImageCount > 0
+        ? `Keep clear contrast between the face and the garment nearest it: avoid a ` +
+          `pale or mid-value top that matches the skin's own lightness directly under ` +
+          `the chin — use either a deeper or a distinctly crisper palette tone there. `
+        : "";
+    const nearFaceBlock = nearFaceHex
+      ? `Near-face colour: the garment closest to the face (the top layer — knit, ` +
+        `shirt, jacket or its collar) MUST be ${nearFaceHex} — a deliberate tone from ` +
+        `the palette. If the outfit text names a lighter or mid-value top, deepen it to ` +
+        `this tone; other garments keep their described colours. `
+      : nearFacePrinciple;
+
     const prompt =
       `Editorial, full-length fashion photograph for a premium style report. ` +
       outfitBlock +
+      layeringRule +
       footwearBlock +
       `Colour palette: ${look.palette.join(", ")}. ` +
+      nearFaceBlock +
       subject +
       imageRoles +
       faceAnchor +
@@ -736,6 +786,8 @@ export async function generateCoverImage(opts: {
   faceReferenceImageUrl?: string;
   /** Optional side/three-quarter portrait — extra face-geometry anchor only. */
   profileReferenceImageUrl?: string;
+  /** Deep palette hex to place on the garment nearest the face (contrast/definition). */
+  nearFaceHex?: string;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
@@ -744,6 +796,7 @@ export async function generateCoverImage(opts: {
       referenceImageUrl,
       faceReferenceImageUrl,
       profileReferenceImageUrl,
+      nearFaceHex,
     } = opts;
     const palette = (opts.palette ?? []).filter(Boolean);
 
@@ -823,6 +876,11 @@ export async function generateCoverImage(opts: {
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.bodyType} build, dressed in refined, well-tailored clothing` +
       (palette.length ? ` in a ${palette.join(", ")} colour palette. ` : ". ") +
+      (nearFaceHex
+        ? `Put a DEEP tone from the palette on the garment closest to the face ` +
+          `(the top layer or its collar), around ${nearFaceHex}, so the face reads ` +
+          `with strong contrast — avoid a pale or mid-value tone under the chin. `
+        : "") +
       (opts.archetype ? `Overall mood: ${opts.archetype}. ` : "") +
       `Composition: the subject stands full-length slightly to the RIGHT of centre, ` +
       `weight relaxed, one hand in a trouser pocket, calm confident expression. ` +
@@ -899,6 +957,81 @@ export async function generateWatchBoardImage(opts: {
       `of any kind on the dials, cases, straps or background. ` +
       (palette.length ? `Overall colour harmony: ${palette.join(", ")}. ` : "") +
       `The watches must clearly differ in type, case metal, dial colour and strap as described. ` +
+      NO_TEXT_RULE;
+
+    return await renderImage([{ type: "text", text: prompt }]);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One editorial flat-lay of the report's footwear system (3–4 shoe roles) —
+ * no brands, no text. Generated once per premium/lookbook report so the
+ * footwear section has a visual, without a per-shoe image cost.
+ */
+export async function generateShoeBoardImage(opts: {
+  palette?: string[];
+  variants: {
+    role: string;
+    style: string;
+    color: string;
+    colorHex?: string;
+    finish?: string;
+  }[];
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI || !opts.variants.length) return null;
+  try {
+    const lines = opts.variants.map((v, i) => {
+      const hex = v.colorHex?.trim() ? ` (${v.colorHex.trim()})` : "";
+      // Explicit finish so the smooth-vs-suede contrast is rendered, not guessed.
+      const finish = v.finish?.trim() ? ` in ${v.finish.trim()}` : "";
+      return `${i + 1}. ${v.style} (${v.role})${finish} — leather/material colour MUST be ${v.color}${hex}.`;
+    });
+    // Only forbid black when none of the recommended variants are black —
+    // deep winters (etc.) may legitimately recommend black dress shoes.
+    const recommendsBlack = opts.variants.some((v) =>
+      /\bblack\b/i.test(v.color),
+    );
+    const colourFidelity =
+      `Each pair's colour is FIXED by the list above — render exactly that leather/material ` +
+      `colour (use the hex when given). Do NOT invent shoe colours and do NOT tint the shoes ` +
+      `with any surrounding or wardrobe palette. ` +
+      (recommendsBlack
+        ? ""
+        : `None of these shoes are black — do NOT default dress oxfords/derbies to pure black ` +
+          `or near-black. `);
+
+    // NOTE: intentionally do NOT pass the client's wardrobe palette here — it is
+    // the colour of their CLOTHES, and feeding it into a shoes-only flat-lay makes
+    // the model tint the shoes with those tones. Shoe colours are set per pair.
+    const prompt =
+      `A clean, editorial product-photography sheet of ${opts.variants.length} pairs of men's ` +
+      `shoes on a plain, neutral off-white / greige surface (smooth plaster or fine linen), ` +
+      `gentle daylight, soft shadows, high-end catalogue quality, sharp focus. Tall / portrait ` +
+      `composition. Lay it out as a grid of EXACTLY ${opts.variants.length} rows and EXACTLY 2 ` +
+      `columns (${opts.variants.length}×2) — total ${opts.variants.length * 2} shoe photographs, ` +
+      `one pair per row:\n` +
+      `  • LEFT column = view (a): the pair standing upright on its soles, toes pointing toward ` +
+      `the bottom of the frame (front three-quarter view);\n` +
+      `  • RIGHT column = view (b): a clean side profile of the SAME pair.\n` +
+      `Each pair appears on exactly ONE row and nowhere else. Do NOT duplicate, repeat or add ` +
+      `extra columns/copies of any pair — only two images per pair (front + side). Use these exact ` +
+      `same two angles for every row and keep the two views of a pair identical in style and ` +
+      `colour. Each pair is a DIFFERENT style AND colour, described below:\n` +
+      `${lines.join("\n")}\n` +
+      colourFidelity +
+      `Formal-shoe rule: any oxfords or derbies MUST be a classic formal leather ` +
+      `(black, dark brown or burgundy) exactly as named above — NEVER navy, blue, slate ` +
+      `or any coloured leather on an oxford/derby. Every OTHER pair must be rendered in ` +
+      `exactly the leather/material colour named for it above — those named colours are all ` +
+      `realistic footwear leathers, so reproduce them faithfully (a named navy loafer stays navy, ` +
+      `a named cognac moccasin stays cognac). Regardless of the names, never render ANY shoe in a ` +
+      `novelty or non-leather colour — no pink, coral, peach, lilac, lavender, mint, lime, yellow, ` +
+      `turquoise, cyan or neon / fluorescent tones anywhere in the sheet. ` +
+      `Render generic, unbranded shoes — NO brand names, NO logos, NO text of any kind on ` +
+      `the shoes, soles or background. Classic, refined menswear silhouettes. ` +
+      `The pairs must clearly differ in style and colour exactly as described. ` +
       NO_TEXT_RULE;
 
     return await renderImage([{ type: "text", text: prompt }]);

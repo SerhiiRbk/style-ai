@@ -136,6 +136,7 @@ export async function POST(request: Request) {
     admin,
     user.id,
     row.created_at as string,
+    reportId,
   );
   if (!ref.ok) {
     return NextResponse.json({ error: ref.error }, { status: 422 });

@@ -1,5 +1,6 @@
 import {
   classifySubseason,
+  refineSeasonForClarity,
   SUBSEASON_LABELS,
   HAIR_COLOR_LABELS,
   EYE_COLOR_LABELS,
@@ -25,6 +26,8 @@ import {
 
 export type QuizUndertone = "warm" | "cool" | "neutral";
 export type QuizSun = "burn" | "gradual" | "deep";
+/** Chroma self-report. "unsure" → no signal (skip the clarity refinement). */
+export type QuizClarity = "muted" | "clear" | "unsure";
 
 export type QuizAnswers = {
   undertone: QuizUndertone;
@@ -32,6 +35,7 @@ export type QuizAnswers = {
   eye: EyeColorId;
   sun: QuizSun;
   contrast: Contrast;
+  clarity: QuizClarity;
 };
 
 export type QuizOption = { value: string; label: string };
@@ -87,6 +91,18 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
       { value: "low", label: "Soft / blended" },
       { value: "medium", label: "Medium" },
       { value: "high", label: "Sharp / high contrast" },
+    ],
+  },
+  {
+    // Chroma, NOT light/dark. This is a different axis from contrast above:
+    // someone can be high-contrast (dark hair, fair skin) yet still muted.
+    id: "clarity",
+    prompt: "Are your colours soft and muted, or bright and clear?",
+    help: "Not light-vs-dark — the intensity. Do your skin, hair and eyes look dusty and soft, or vivid and saturated?",
+    options: [
+      { value: "muted", label: "Soft / dusty / muted" },
+      { value: "clear", label: "Bright / vivid / clear" },
+      { value: "unsure", label: "Not sure" },
     ],
   },
 ];
@@ -153,11 +169,21 @@ function seasonFromQuiz(a: QuizAnswers): Season {
 export function quizToResult(a: QuizAnswers): ColourAnalysisResult {
   const undertone: Undertone = a.undertone;
   const contrast: Contrast = a.contrast;
-  const season = seasonFromQuiz(a);
+  // "unsure" → no chroma signal, so the refinement is skipped (old behaviour).
+  const clarity = a.clarity === "unsure" ? undefined : a.clarity;
+  // Same chroma correction as the photo path (refineSeasonForClarity): a muted
+  // cool/neutral person read as "winter" from value-contrast alone is really a
+  // Summer. Keeps the quiz and /colours photo entry in lockstep.
+  const season = refineSeasonForClarity({
+    season: seasonFromQuiz(a),
+    undertone,
+    clarity,
+  });
   const subseason = classifySubseason({
     season,
     undertone,
     contrast,
+    clarity,
     hairColor: a.hair,
     eyeColor: a.eye,
   });

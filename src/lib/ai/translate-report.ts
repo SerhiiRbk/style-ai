@@ -126,6 +126,39 @@ function trExtras(e: StyleExtras, tr: TranslateFn): StyleExtras {
       shapeNote: tr(e.watchGuide.shapeNote),
       avoidNote: tr(e.watchGuide.avoidNote),
     },
+    shoeGuide: {
+      ...e.shoeGuide,
+      intro: tr(e.shoeGuide.intro),
+      variants: e.shoeGuide.variants.map((v) => ({
+        ...v,
+        role: tr(v.role),
+        style: tr(v.style),
+        color: tr(v.color),
+        wearWith: tr(v.wearWith),
+        why: tr(v.why),
+      })),
+      leatherRule: tr(e.shoeGuide.leatherRule),
+      avoidNote: tr(e.shoeGuide.avoidNote),
+    },
+    beltGuide: {
+      ...e.beltGuide,
+      intro: tr(e.beltGuide.intro),
+      variants: e.beltGuide.variants.map((v) => ({
+        ...v,
+        context: tr(v.context),
+        strap: tr(v.strap),
+        buckle: tr(v.buckle),
+        width: tr(v.width),
+        wearWith: tr(v.wearWith),
+        why: tr(v.why),
+      })),
+      matchRule: tr(e.beltGuide.matchRule),
+      trouserRules: e.beltGuide.trouserRules.map((r) => ({
+        trouser: tr(r.trouser),
+        belt: tr(r.belt),
+      })),
+      avoidNote: tr(e.beltGuide.avoidNote),
+    },
   };
 }
 
