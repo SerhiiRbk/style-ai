@@ -17,6 +17,7 @@ export type CreditReason =
   | "premium_addon"
   | "look_extra"
   | "look_regen"
+  | "look_set"
   | "cover_regen"
   | "language_change"
   | "admin_grant";

@@ -53,6 +53,20 @@ async function sumLedger(admin: AdminClient, userId: string): Promise<number> {
   return (data ?? []).reduce((s, r) => s + (Number(r.delta) || 0), 0);
 }
 
+/** Sum purchased credits for a user (positive deltas with reason="purchase"). */
+export async function creditsPurchased(
+  admin: AdminClient,
+  userId: string,
+): Promise<number> {
+  const { data, error } = await admin
+    .from("credits_ledger")
+    .select("delta")
+    .eq("user_id", userId)
+    .eq("reason", "purchase");
+  if (error || !data) return 0;
+  return data.reduce((s, r) => s + Math.max(0, Number(r.delta) || 0), 0);
+}
+
 /** Current credit balance for a user (admin client). */
 export async function creditBalance(
   admin: AdminClient,
