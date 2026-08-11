@@ -21,11 +21,12 @@ import {
   setName,
 } from "@/lib/look-sets";
 import {
-  resolveProfileForLookSet,
+  resolveExistingProfile,
   createLookSet,
   saveSetLook,
 } from "@/lib/data/look-sets";
 import {
+  analyzeProfile,
   generateExtraLook,
   generateLookImage,
   carloNoteForSet,
@@ -34,7 +35,7 @@ import {
 import { matchLookItems, type LookItems } from "@/lib/data/catalog";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { Boldness, BodyType } from "@/lib/style-profile";
-import type { ReportContent } from "@/lib/style-profile";
+import type { ReportContent, StyleProfile } from "@/lib/style-profile";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 
 /** Up to 9 sequential text+image generations per set; generous budget mirrors
@@ -87,10 +88,16 @@ type RenderedLook = {
 /**
  * Batch "Create a Look" endpoint. Charges real credits and enforces the A0
  * cost fuse + biometric-photo consent/gate before generating anything.
- * Ordered flow (see task-7-brief.md): auth → validate → consent → photo
- * gate → cost fuse → pricing/balance → intake → resolve profile → name →
- * createLookSet → generate+bill per look → Carlo note → shop-the-look →
- * events → response.
+ *
+ * Standalone-first reuse rule: a photo (+ consent + the photo gate) is only
+ * required when the user has NO existing StyleProfile to reuse (no Style
+ * Report, no prior look set) — see `resolveExistingProfile`. A returning
+ * user picks up their existing profile with no new upload.
+ *
+ * Ordered flow: auth → validate body → resolve existing profile / decide if
+ * a photo is required → cost fuse → pricing/balance → profile (reuse, or
+ * consent + photo gate + fresh vision analysis) → createLookSet → generate
+ * + bill per look → Carlo note → shop-the-look → events → response.
  */
 export async function POST(request: Request) {
   if (!hasSupabase || !hasSupabaseAdmin) {
@@ -163,111 +170,42 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  const intake = buildLookIntake(intakeParsed.data);
 
-  // Create-a-Look always renders from a submitted face photo (both for a
-  // fresh vision analysis AND as the image-generation identity reference —
-  // resolveProfileForLookSet may reuse an OLDER StyleProfile, but the render
-  // itself always needs THIS request's photo). A full-length photo sharpens
-  // pose/proportions but is optional (generateLookImage degrades to a
-  // face-only reference when absent).
-  if (!isDataUrl(body.faceImage)) {
-    return NextResponse.json(
-      { error: "A face photo is required", code: "invalid" },
-      { status: 400 },
-    );
-  }
-  const faceImage: string = body.faceImage;
-  const fullImage: string | undefined = isDataUrl(body.fullImage)
+  // Format-validated only — NOT yet a requiredness decision. Whether a photo
+  // is actually required (and, if so, consent + the photo gate) depends on
+  // whether the user already has a reusable profile (see step 3 below). A
+  // returning user's submitted image, if any, is deliberately ignored: it is
+  // only read (and only after consent + gate) inside the `needsPhoto` branch.
+  const rawFaceImage: string | undefined = isDataUrl(body.faceImage)
+    ? body.faceImage
+    : undefined;
+  const rawFullImage: string | undefined = isDataUrl(body.fullImage)
     ? body.fullImage
     : undefined;
 
   const anonId: string | null =
     typeof body.anonId === "string" && body.anonId ? body.anonId : null;
 
-  // 3) consent — mirrors /api/reports' biometric consent gate exactly. Since
-  // a face photo is mandatory above, consent is unconditionally required here
-  // (unlike /api/reports, where it's conditional on photoPaths.length).
-  const biometricConsent = body.biometricConsent === true;
-  const consentVersion =
-    typeof body.consentVersion === "string" ? body.consentVersion : "";
-  if (!biometricConsent || consentVersion !== LEGAL.consentVersion) {
-    return NextResponse.json(
-      {
-        error:
-          "Explicit consent for photo processing is required. Please accept on the photo step.",
-        code: "consent_required",
-      },
-      { status: 422 },
-    );
-  }
-
-  // 4) photo gate — VERIFIED union contract (never throws): explicit rejects
-  // fail closed (422); provider/timeout/no-AI failures fail open but must be
-  // logged so a silently-dead gate stays visible.
-  const faceGate = await assertPhotoUsable({
-    imageDataUrl: faceImage,
-    purpose: "report_face",
-  });
-  if (!faceGate.ok) {
-    await logEvent({
-      name: "photo_gate_reject",
-      userId: user.id,
-      anonId,
-      props: { purpose: "report_face" },
-    });
-    return NextResponse.json(
-      { code: "photo_gate", message: faceGate.rejectReason },
-      { status: 422 },
-    );
-  }
-  if (
-    "skipped" in faceGate &&
-    (faceGate.reason === "provider_error" || faceGate.reason === "no_ai")
-  ) {
-    await logEvent({
-      name: "photo_gate_failopen",
-      userId: user.id,
-      anonId,
-      props: { purpose: "report_face", reason: faceGate.reason },
-    });
-  }
-  if (fullImage) {
-    const fullGate = await assertPhotoUsable({
-      imageDataUrl: fullImage,
-      purpose: "report_full",
-    });
-    if (!fullGate.ok) {
-      await logEvent({
-        name: "photo_gate_reject",
-        userId: user.id,
-        anonId,
-        props: { purpose: "report_full" },
-      });
-      return NextResponse.json(
-        { code: "photo_gate", message: fullGate.rejectReason },
-        { status: 422 },
-      );
-    }
-    if (
-      "skipped" in fullGate &&
-      (fullGate.reason === "provider_error" || fullGate.reason === "no_ai")
-    ) {
-      await logEvent({
-        name: "photo_gate_failopen",
-        userId: user.id,
-        anonId,
-        props: { purpose: "report_full", reason: fullGate.reason },
-      });
-    }
-  }
-
   const admin = createAdminSupabase();
 
-  // 5) cost fuse (A0) — `purchased` computed once, reused by pricing (step 6)
+  // 3) does this user need to submit a photo at all? Standalone-first reuse:
+  // a Style Report profile or a prior look-set snapshot means no new upload
+  // is required. Only new users (or users with neither) must supply one.
+  const existing = await resolveExistingProfile(admin, user.id);
+  const needsPhoto = !existing;
+  if (needsPhoto && !rawFaceImage) {
+    return NextResponse.json(
+      { error: "A face photo is required", code: "photo_required" },
+      { status: 400 },
+    );
+  }
+
+  // 4) cost fuse (A0) — `purchased` computed once, reused by pricing (step 5)
   // below. Global cap fails CLOSED (protects business spend); per-user cap
   // fails OPEN (never blocks a real user on limiter flake). Same bucket/day
   // key convention as /api/colours (dayStamp + ">24h" window so a day's
-  // bucket never expires mid-day).
+  // bucket never expires mid-day). Runs BEFORE any fresh vision analysis.
   const day = dayStamp();
   const purchased = await creditsPurchased(admin, user.id);
 
@@ -312,7 +250,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // 6) pricing (reuses `purchased`) — cap tier above used `purchased > 0`;
+  // 5) pricing (reuses `purchased`) — cap tier above used `purchased > 0`;
   // the loyalty discount below uses `purchased >= LOYALTY_PURCHASE_THRESHOLD`
   // (20) via isLoyalty — two different thresholds, kept intentionally separate.
   const loyalty = isLoyalty(purchased);
@@ -332,31 +270,116 @@ export async function POST(request: Request) {
     );
   }
 
-  // 7) intake — pure, cheap.
-  const intake = buildLookIntake(intakeParsed.data);
+  // 6) profile: reuse (no photo, no consent, no gate) when `existing` is set,
+  // else consent + photo gate + a fresh vision analysis over THIS request's
+  // photo(s).
+  let profile: StyleProfile;
+  let source: "report" | "prior_set" | "fresh";
+  let faceImage: string | undefined;
+  let fullImage: string | undefined;
 
-  // 8) profile — cheapest/most personalised source first (report > prior set
-  // > fresh vision analysis). The photo(s) from THIS request are also reused
-  // below as the image-generation identity reference regardless of which
-  // profile source wins.
-  const photos: PhotoInput[] = [{ role: "face", url: faceImage }];
-  if (fullImage) photos.push({ role: "full", url: fullImage });
-  const { profile, source } = await resolveProfileForLookSet(
-    admin,
-    user.id,
-    photos,
-    intake,
-  );
-  if (source === "fresh") {
+  if (needsPhoto) {
+    faceImage = rawFaceImage; // guaranteed present — checked in step 3
+    fullImage = rawFullImage;
+
+    // consent — mirrors /api/reports' biometric consent gate exactly, gated
+    // on photo presence exactly like reports.ts:50 (here: always true in
+    // this branch, since a photo is required to reach it).
+    const biometricConsent = body.biometricConsent === true;
+    const consentVersion =
+      typeof body.consentVersion === "string" ? body.consentVersion : "";
+    if (!biometricConsent || consentVersion !== LEGAL.consentVersion) {
+      return NextResponse.json(
+        {
+          error:
+            "Explicit consent for photo processing is required. Please accept on the photo step.",
+          code: "consent_required",
+        },
+        { status: 422 },
+      );
+    }
+
+    // photo gate — VERIFIED union contract (never throws): explicit rejects
+    // fail closed (422); provider/timeout/no-AI failures fail open but must
+    // be logged so a silently-dead gate stays visible.
+    const faceGate = await assertPhotoUsable({
+      imageDataUrl: faceImage!,
+      purpose: "report_face",
+    });
+    if (!faceGate.ok) {
+      await logEvent({
+        name: "photo_gate_reject",
+        userId: user.id,
+        anonId,
+        props: { purpose: "report_face" },
+      });
+      return NextResponse.json(
+        { code: "photo_gate", message: faceGate.rejectReason },
+        { status: 422 },
+      );
+    }
+    if (
+      "skipped" in faceGate &&
+      (faceGate.reason === "provider_error" || faceGate.reason === "no_ai")
+    ) {
+      await logEvent({
+        name: "photo_gate_failopen",
+        userId: user.id,
+        anonId,
+        props: { purpose: "report_face", reason: faceGate.reason },
+      });
+    }
+    if (fullImage) {
+      const fullGate = await assertPhotoUsable({
+        imageDataUrl: fullImage,
+        purpose: "report_full",
+      });
+      if (!fullGate.ok) {
+        await logEvent({
+          name: "photo_gate_reject",
+          userId: user.id,
+          anonId,
+          props: { purpose: "report_full" },
+        });
+        return NextResponse.json(
+          { code: "photo_gate", message: fullGate.rejectReason },
+          { status: 422 },
+        );
+      }
+      if (
+        "skipped" in fullGate &&
+        (fullGate.reason === "provider_error" || fullGate.reason === "no_ai")
+      ) {
+        await logEvent({
+          name: "photo_gate_failopen",
+          userId: user.id,
+          anonId,
+          props: { purpose: "report_full", reason: fullGate.reason },
+        });
+      }
+    }
+
+    const photos: PhotoInput[] = [{ role: "face", url: faceImage! }];
+    if (fullImage) photos.push({ role: "full", url: fullImage });
+    profile = await analyzeProfile(intake, photos);
+    source = "fresh";
     await logEvent({
       name: "create_look_analysis",
       userId: user.id,
       anonId,
       props: { occasion: ctx.id },
     });
+  } else {
+    // REUSE: report/prior_set — no photo, no consent, no gate. `faceImage`/
+    // `fullImage` stay undefined, so generateLookImage's referenceImageUrl/
+    // faceReferenceImageUrl below are omitted and the render falls back to
+    // its no-identity-reference path (generateLookImage still works from the
+    // profile's physical attributes alone; it just can't anchor a real face).
+    profile = existing!.profile;
+    source = existing!.source;
   }
 
-  // 9) name — collision time (HH:MM) only if a same-occasion set already
+  // 7) name — collision time (HH:MM) only if a same-occasion set already
   // exists today for this user.
   const now = new Date();
   const dayStart = `${day}T00:00:00.000Z`;
@@ -374,7 +397,7 @@ export async function POST(request: Request) {
     : undefined;
   const name = setName(ctx.label, now.toISOString(), collisionTime);
 
-  // 10) createLookSet — writes `profile` into the owner-only
+  // 8) createLookSet — writes `profile` into the owner-only
   // `look_set_profiles` side table itself; `profile` is NEVER written onto
   // the publicly-readable `look_sets` row directly here.
   const shareSlug = randomBytes(9).toString("base64url");
@@ -391,7 +414,7 @@ export async function POST(request: Request) {
     shareSlug,
   });
 
-  // 11) per-look charge vector — deterministic, sums to `price` exactly.
+  // 9) per-look charge vector — deterministic, sums to `price` exactly.
   // Example: price=20, looks=9 -> base=2, rem=2 -> [3,3,2,2,2,2,2,2,2] (Σ=20).
   const base = Math.floor(price / looksCount);
   const rem = price - base * looksCount; // 0..looksCount-1 extra 1-credit looks
@@ -451,7 +474,7 @@ export async function POST(request: Request) {
             });
           } catch (billErr) {
             // Should not happen under normal (non-concurrent) use — balance
-            // was pre-checked >= price in step 6. Treat as a failed look
+            // was pre-checked >= price in step 5. Treat as a failed look
             // rather than an unbilled free one: it's excluded from the
             // response, though its already-stored `looks` row/image remain
             // (accepted residual — mirrors the "best-effort" tone of the
@@ -493,7 +516,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // 12) Carlo note.
+  // 10) Carlo note.
   let carloNote: string | null = null;
   try {
     carloNote = await carloNoteForSet({
@@ -506,7 +529,7 @@ export async function POST(request: Request) {
     console.error("[look-set] carlo note failed", setId, err);
   }
 
-  // 13) Shop-the-Look — same matchLookItems call as /api/look-extra, batched
+  // 11) Shop-the-Look — same matchLookItems call as /api/look-extra, batched
   // once across all rendered looks (one embedMany fan-out) rather than once
   // per look. Best-effort: a match failure is logged, never fatal to the set.
   // NOTE: unlike a report, a look_set has no `look_items`-equivalent column
@@ -528,7 +551,7 @@ export async function POST(request: Request) {
     console.error("[look-set] shop-the-look match failed", setId, err);
   }
 
-  // 14) event.
+  // 12) event.
   await logEvent({
     name: "look_set_created",
     userId: user.id,
@@ -542,7 +565,7 @@ export async function POST(request: Request) {
     },
   });
 
-  // 15) response.
+  // 13) response.
   const balance = await creditBalance(admin, user.id);
   return NextResponse.json({
     setId,

@@ -8,23 +8,23 @@ import type { LookBriefSeason } from "@/lib/ai/look-brief";
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 /**
- * Resolve the StyleProfile to use for a new "Create a Look" set, cheapest and
- * most-personalised source first:
+ * Look for a StyleProfile the caller can reuse WITHOUT a new photo, cheapest
+ * and most-personalised source first:
  *   1. The latest Style Report profile, when the caller actually has a
  *      personalised one (getLatestReportProfile's `personalised` flag —
  *      not its neutral fallback).
- *   2. The most recent snapshot from a prior look set, when a report isn't
- *      available (still avoids re-running vision analysis).
- *   3. A fresh vision analysis over the supplied intake + photos.
- * `source` tells the caller which path was taken, for the
- * `create_look_analysis` event and to confirm a snapshot write is needed.
+ *   2. The most recent snapshot from a prior look set.
+ * Returns `null` when neither exists, so the caller knows a fresh photo +
+ * vision analysis is required. Never touches photos/intake — this is the
+ * "does the user need to upload anything" check, used by the route to decide
+ * whether to require a photo/consent/photo-gate at all (standalone-first
+ * reuse rule: returning users pick an existing profile, only new users
+ * upload).
  */
-export async function resolveProfileForLookSet(
+export async function resolveExistingProfile(
   admin: AdminClient,
   userId: string,
-  photos: PhotoInput[],
-  intake: Intake,
-): Promise<{ profile: StyleProfile; source: "report" | "prior_set" | "fresh" }> {
+): Promise<{ profile: StyleProfile; source: "report" | "prior_set" } | null> {
   const rep = await getLatestReportProfile(userId);
   if (rep.personalised) {
     return { profile: rep.profile, source: "report" };
@@ -41,6 +41,25 @@ export async function resolveProfileForLookSet(
   if (parsed.success) {
     return { profile: parsed.data, source: "prior_set" };
   }
+
+  return null;
+}
+
+/**
+ * Resolve the StyleProfile to use for a new "Create a Look" set: reuse an
+ * existing one (report/prior_set — see {@link resolveExistingProfile}) when
+ * available, else fall back to a fresh vision analysis over the supplied
+ * intake + photos. `source` tells the caller which path was taken, for the
+ * `create_look_analysis` event and to confirm a snapshot write is needed.
+ */
+export async function resolveProfileForLookSet(
+  admin: AdminClient,
+  userId: string,
+  photos: PhotoInput[],
+  intake: Intake,
+): Promise<{ profile: StyleProfile; source: "report" | "prior_set" | "fresh" }> {
+  const existing = await resolveExistingProfile(admin, userId);
+  if (existing) return existing;
 
   const profile = await analyzeProfile(intake, photos);
   return { profile, source: "fresh" };
