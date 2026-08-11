@@ -104,7 +104,13 @@ export async function createLookSet(
   const { error: profileErr } = await admin
     .from("look_set_profiles")
     .insert({ set_id: id, user_id: userId, profile });
-  if (profileErr) throw new Error(profileErr.message);
+  if (profileErr) {
+    // Compensate: don't leave an orphaned look_sets row with no profile and
+    // no looks. Mirrors reports/report_intake's compensating delete on the
+    // child insert's failure (src/lib/data/reports.ts:1661-1664).
+    await admin.from("look_sets").delete().eq("id", id);
+    throw new Error(profileErr.message);
+  }
 
   return { id };
 }
