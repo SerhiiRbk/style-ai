@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   bundleFor, priceForBundle, isLoyalty, setName, buildLookIntake,
 } from "./look-sets";
+import { intakeSchema } from "@/lib/style-profile";
 
 test("bundles are 3/6/9 only", () => {
   assert.deepEqual(bundleFor(3), { looks: 3, credits: 12 });
@@ -37,4 +38,8 @@ test("mini-intake maps to a valid Intake with male + sensible defaults", () => {
   assert.ok(intake.goals.length >= 1); // required by downstream; defaulted
   assert.ok(intake.occupation.length >= 1);
   assert.ok(intake.heightCm >= 120);
+  assert.ok(
+    intakeSchema.safeParse(intake).success,
+    "buildLookIntake must produce a schema-valid Intake",
+  );
 });

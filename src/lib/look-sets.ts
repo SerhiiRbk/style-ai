@@ -34,12 +34,14 @@ export type LookSex = "male";
 export function buildLookIntake(a: { age: number; bodyType?: string; sex?: LookSex }): Intake {
   return {
     age: a.age,
-    genderPresentation: "male",
+    genderPresentation: a.sex ?? "male",
     language: DEFAULT_LANGUAGE,  // required by the Intake type (schema .default())
+    country: "Global",           // required by schema; neutral for global looks
     heightCm: 178,               // neutral default; not user-facing for looks
     bodyType: a.bodyType as Intake["bodyType"],
     occupation: "Not specified", // satisfies the min(1) requirement, neutral
     goals: ["Look considered"],  // one neutral goal; strictness carries intent
     boldness: "moderate",        // overridden per-request in the endpoint
+    budgetEur: { min: 0, max: 1000 }, // neutral range for context; not user-facing
   } as Intake;
 }
