@@ -24,7 +24,9 @@ import {
   type Intake,
   type StyleProfile,
   type ReportContent,
+  type Boldness,
 } from "@/lib/style-profile";
+import { composeLookBrief, type LookBriefSeason } from "@/lib/ai/look-brief";
 import { languageInstruction, type ReportLanguage } from "@/lib/languages";
 import {
   reportPalette,
@@ -464,8 +466,13 @@ export async function generateExtraLook(opts: {
   note?: string;
   rules?: string[];
   existingTitles?: string[];
+  /** Per-request strictness override — shapes the TEXT brief only (never the image prompt). */
+  boldness?: Boldness;
+  /** Per-request season override — shapes the TEXT brief only (never the image prompt). */
+  season?: LookBriefSeason;
 }): Promise<{ context: string; title: string; description: string; palette: string[] }> {
-  const { intake, profile, context, brief, note, rules, existingTitles } = opts;
+  const { intake, profile, context, brief, note, rules, existingTitles, boldness, season } =
+    opts;
 
   if (!hasAI) {
     const mock = mockReportContent(intake);
@@ -474,6 +481,10 @@ export async function generateExtraLook(opts: {
       mock.looks.find((l) => !used.has(l.title.toLowerCase())) ?? mock.looks[0]!;
     return { ...pick, context };
   }
+
+  // Weave season + strictness into the brief text only — the look IMAGE prompt
+  // (generateLookImage) is untouched by design; see look-brief.ts.
+  const effectiveBrief = composeLookBrief(brief, { boldness, season });
 
   const grounding = rules?.length
     ? `Ground the look in these established style rules:\n- ${rules.join("\n- ")}\n`
@@ -502,7 +513,7 @@ export async function generateExtraLook(opts: {
       `Boldness: ${intake.boldness}. Budget: €${intake.budgetEur.min}–${intake.budgetEur.max}. ` +
       `City climate: ${profile.demographics.climate}.\n` +
       `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
-      `Occasion: ${context}. Styling brief: ${brief}\n` +
+      `Occasion: ${context}. Styling brief: ${effectiveBrief}\n` +
       noteLine +
       avoid +
       grounding +
@@ -522,6 +533,48 @@ export async function generateExtraLook(opts: {
   // Guarantee the returned palette is on-report even if the model drifted; the
   // look image is prompted from this palette.
   return { ...output, palette: snapPaletteToBest(output.palette ?? [], colors.best), context };
+}
+
+const carloNoteSchema = z.object({ note: z.string() });
+
+/**
+ * One short Carlo-voice closing note summarising a just-generated "look set"
+ * (several outfit directions for one occasion, Create-a-Look). Returns the
+ * text stored on `look_sets.carlo_note`. Best-effort in spirit — callers
+ * should treat a thrown error as non-fatal to the set — but this function
+ * itself does not swallow errors; falls back to a deterministic sentence
+ * when AI is unavailable rather than calling the model.
+ */
+export async function carloNoteForSet(opts: {
+  profile: StyleProfile;
+  occasionLabel: string;
+  looks: { title: string }[];
+}): Promise<string> {
+  const { profile, occasionLabel, looks } = opts;
+  const titles = looks.map((l) => l.title.trim()).filter(Boolean);
+
+  if (!hasAI) {
+    return titles.length
+      ? `A set of ${titles.length} looks for ${occasionLabel}, each built from your palette ` +
+          `and profile — pick whichever fits the moment, they all hold together as a set.`
+      : `A set of looks for ${occasionLabel}, each built from your palette and profile.`;
+  }
+
+  const { output } = await generateText({
+    model: env.modelReasoning,
+    output: Output.object({ schema: carloNoteSchema }),
+    prompt:
+      `You are Carlo Valetti, a calm, precise personal stylist, writing a short closing note ` +
+      `for a client who just received a set of looks for "${occasionLabel}".\n\n` +
+      `Style Profile (JSON):\n${JSON.stringify(profile)}\n\n` +
+      `The set contains these looks:\n- ${titles.join("\n- ")}\n\n` +
+      `Write ONE short note in your voice, 2–3 sentences, calm and encouraging, no hype words. ` +
+      `Tie it to the client's colouring/profile and the occasion, and note how the looks work ` +
+      `together as a set (e.g. shared palette, versatility across the occasion). Do not list ` +
+      `the look titles verbatim — refer to the set as a whole. Write in English.`,
+  });
+
+  return output.note.trim();
 }
 
 /**
