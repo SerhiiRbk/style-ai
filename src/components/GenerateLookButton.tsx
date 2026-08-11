@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCredits } from "./CreditsContext";
-import { LOOK_CONTEXTS } from "@/lib/look-contexts";
+import { EXTRA_LOOK_CONTEXTS } from "@/lib/look-contexts";
 import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 import { WORKING } from "@/components/luxe/messages";
 
@@ -25,7 +25,7 @@ export function GenerateLookButton({
   const router = useRouter();
   const { balance, setBalance } = useCredits();
   const [open, setOpen] = useState(false);
-  const [contextId, setContextId] = useState(LOOK_CONTEXTS[0]!.id);
+  const [contextId, setContextId] = useState(EXTRA_LOOK_CONTEXTS[0]!.id);
   const [note, setNote] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [msg, setMsg] = useState<string | null>(null);
@@ -85,7 +85,7 @@ export function GenerateLookButton({
       <p className="mt-1 text-sm text-stone">Pick the occasion for this outfit.</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {LOOK_CONTEXTS.map((c) => (
+        {EXTRA_LOOK_CONTEXTS.map((c) => (
           <button
             key={c.id}
             onClick={() => setContextId(c.id)}

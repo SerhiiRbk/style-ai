@@ -42,7 +42,8 @@ export const LOOK_CONTEXTS: LookContext[] = [
     label: "Dinner / date",
     context: "Dinner / date",
     brief:
-      "Evening-ready and confident — a step up from daywear with a refined edge.",
+      "A date or evening out — relaxed and approachable, confident without being formal. " +
+      "A step up from daywear with a refined edge.",
   },
   {
     id: "formal",
@@ -112,3 +113,18 @@ export function lookContextById(id: string | undefined | null): LookContext | un
   if (!id) return undefined;
   return LOOK_CONTEXTS.find((c) => c.id === id);
 }
+
+/** Occasions offered by the shipped single "extra look" add-on. Explicit so
+ * that appending new Create-a-Look occasions to LOOK_CONTEXTS never silently
+ * expands that live picker. */
+export const EXTRA_LOOK_CONTEXT_IDS = [
+  "work",
+  "smart_casual",
+  "weekend",
+  "dinner",
+  "formal",
+  "travel",
+] as const;
+export const EXTRA_LOOK_CONTEXTS: LookContext[] = LOOK_CONTEXTS.filter((c) =>
+  (EXTRA_LOOK_CONTEXT_IDS as readonly string[]).includes(c.id),
+);
