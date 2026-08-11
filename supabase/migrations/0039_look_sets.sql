@@ -117,3 +117,11 @@ grant select (
   share_slug,
   created_at
 ) on table public.look_sets to anon;
+
+-- Set-looks have no parent report (0001_init.sql:77 made report_id NOT NULL
+-- back when every look belonged to a report). Relax it and require exactly
+-- one parent instead: a look must belong to a report OR a set.
+alter table public.looks alter column report_id drop not null;
+alter table public.looks drop constraint if exists looks_report_or_set;
+alter table public.looks add constraint looks_report_or_set
+  check (report_id is not null or set_id is not null);

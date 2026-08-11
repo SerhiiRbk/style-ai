@@ -1,0 +1,139 @@
+import "server-only";
+import { createAdminSupabase } from "@/lib/supabase/server";
+import { getLatestReportProfile } from "@/lib/data/match-profile";
+import { analyzeProfile, type PhotoInput } from "@/lib/ai/pipeline";
+import { styleProfileSchema, type StyleProfile, type Intake, type Boldness } from "@/lib/style-profile";
+import type { LookBriefSeason } from "@/lib/ai/look-brief";
+
+type AdminClient = ReturnType<typeof createAdminSupabase>;
+
+/**
+ * Resolve the StyleProfile to use for a new "Create a Look" set, cheapest and
+ * most-personalised source first:
+ *   1. The latest Style Report profile, when the caller actually has a
+ *      personalised one (getLatestReportProfile's `personalised` flag —
+ *      not its neutral fallback).
+ *   2. The most recent snapshot from a prior look set, when a report isn't
+ *      available (still avoids re-running vision analysis).
+ *   3. A fresh vision analysis over the supplied intake + photos.
+ * `source` tells the caller which path was taken, for the
+ * `create_look_analysis` event and to confirm a snapshot write is needed.
+ */
+export async function resolveProfileForLookSet(
+  admin: AdminClient,
+  userId: string,
+  photos: PhotoInput[],
+  intake: Intake,
+): Promise<{ profile: StyleProfile; source: "report" | "prior_set" | "fresh" }> {
+  const rep = await getLatestReportProfile(userId);
+  if (rep.personalised) {
+    return { profile: rep.profile, source: "report" };
+  }
+
+  const { data } = await admin
+    .from("look_set_profiles")
+    .select("profile")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const parsed = styleProfileSchema.safeParse(data?.profile);
+  if (parsed.success) {
+    return { profile: parsed.data, source: "prior_set" };
+  }
+
+  const profile = await analyzeProfile(intake, photos);
+  return { profile, source: "fresh" };
+}
+
+/**
+ * Create a new look set. `look_sets` itself never stores the StyleProfile —
+ * it's publicly readable once shared, and the profile is PII (see
+ * 0039_look_sets.sql header comment) — so the snapshot goes into the
+ * owner-only `look_set_profiles` side table in a second insert keyed by the
+ * new set's id. The `profile` input stays on this function's signature so
+ * callers don't need to know about the split.
+ */
+export async function createLookSet(
+  admin: AdminClient,
+  opts: {
+    userId: string;
+    reportId: string | null;
+    occasionId: string;
+    season: LookBriefSeason;
+    boldness: Boldness;
+    name: string;
+    carloNote?: string | null;
+    profile: StyleProfile;
+    isPublic: boolean;
+    shareSlug?: string | null;
+  },
+): Promise<{ id: string }> {
+  const {
+    userId,
+    reportId,
+    occasionId,
+    season,
+    boldness,
+    name,
+    carloNote,
+    profile,
+    isPublic,
+    shareSlug,
+  } = opts;
+
+  const { data, error } = await admin
+    .from("look_sets")
+    .insert({
+      user_id: userId,
+      report_id: reportId,
+      occasion_id: occasionId,
+      season,
+      boldness,
+      carlo_note: carloNote ?? null,
+      name,
+      is_public: isPublic,
+      share_slug: shareSlug ?? null,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+
+  const id = data.id as string;
+
+  const { error: profileErr } = await admin
+    .from("look_set_profiles")
+    .insert({ set_id: id, user_id: userId, profile });
+  if (profileErr) throw new Error(profileErr.message);
+
+  return { id };
+}
+
+/**
+ * Save one generated look for a standalone set. Mirrors the `looks` insert in
+ * /api/look-extra, but `report_id` is null (set-looks have no parent report —
+ * see the `looks.report_id` nullability fix folded into 0039_look_sets.sql)
+ * and `set_id` links back to the owning set instead.
+ */
+export async function saveSetLook(
+  admin: AdminClient,
+  opts: {
+    setId: string;
+    userId: string;
+    look: { context: string; title: string; description: string; palette: string[] };
+    imagePath: string;
+  },
+): Promise<void> {
+  const { setId, userId, look, imagePath } = opts;
+  const { error } = await admin.from("looks").insert({
+    report_id: null,
+    set_id: setId,
+    user_id: userId,
+    context: look.context,
+    title: look.title,
+    description: look.description,
+    palette: look.palette,
+    image_path: imagePath,
+  });
+  if (error) throw new Error(error.message);
+}
