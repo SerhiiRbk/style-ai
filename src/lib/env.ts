@@ -111,6 +111,22 @@ export const env = {
   // on top of the per-IP cap; fails OPEN. A person only needs their palette once.
   leadAnonDailyCap: intEnv(process.env.LEAD_ANON_DAILY_CAP, 5),
 
+  // A0 cost fuse for the batch "Create a Look" set endpoint (/api/look-set).
+  // Create-a-Look generates IMAGES (Gemini ≈ $0.04/look), unlike the colours/
+  // looks reranks above (~$0.015/run text) — roughly 3x the unit cost and N
+  // renders per request — so it gets its own set-count fuse.
+  // Global daily cap on sets, all users — the real spend control, fails CLOSED.
+  // ~$0.05/look x ~6 looks/set avg -> 150 sets/day ~= $45/day worst-case.
+  lookSetDailyCap: intEnv(process.env.LOOK_SET_DAILY_CAP, 150),
+  // Per-user daily cap for users with purchased credits (purchased>0) — fails
+  // OPEN (never blocks a paying user on limiter flake). A 100-credit whale
+  // does ~5 sets/day, well under this.
+  lookSetUserCapPaid: intEnv(process.env.LOOK_SET_USER_CAP_PAID, 15),
+  // Per-user daily cap for signup-bonus-only users (purchased===0) — fails
+  // OPEN; a pure bug backstop since bonus credits already bound these users
+  // below this cap.
+  lookSetUserCapFree: intEnv(process.env.LOOK_SET_USER_CAP_FREE, 3),
+
   // Salt for hashing IPs before they become rate-limit bucket keys (IP is PII).
   rateLimitSalt: process.env.RATE_LIMIT_SALT ?? "",
 
