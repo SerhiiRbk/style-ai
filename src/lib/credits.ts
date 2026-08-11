@@ -63,8 +63,8 @@ export async function creditsPurchased(
     .select("delta")
     .eq("user_id", userId)
     .eq("reason", "purchase");
-  if (error || !data) return 0;
-  return data.reduce((s, r) => s + Math.max(0, Number(r.delta) || 0), 0);
+  if (error) throw new Error(error.message);
+  return (data ?? []).reduce((s, r) => s + Math.max(0, Number(r.delta) || 0), 0);
 }
 
 /** Current credit balance for a user (admin client). */
