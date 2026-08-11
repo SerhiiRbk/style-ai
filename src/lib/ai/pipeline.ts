@@ -30,6 +30,12 @@ import {
   reportPalette,
   annotateNearFaceGuidance,
 } from "@/lib/colour-palette";
+// EXPERIMENTAL prompt versioning — see look-prompt.ts for how to remove.
+import {
+  buildLookImagePrompt,
+  resolveImagePromptVersion,
+  type LookPromptParts,
+} from "@/lib/ai/look-prompt";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -545,6 +551,8 @@ export async function generateLookImage(opts: {
   outfitReferenceImageUrl?: string;
   /** Deep palette hex to place on the garment nearest the face (contrast/definition). */
   nearFaceHex?: string;
+  /** EXPERIMENTAL — per-run prompt-version override (else `IMAGE_PROMPT_VERSION`). */
+  promptVersion?: string | number | null;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
@@ -593,13 +601,15 @@ export async function generateLookImage(opts: {
     // exactly the "grey jumper under every blazer" artefact.
     const layeringRule =
       `Render ONLY the garments listed above — do not add any layer that is not ` +
-      `listed (no extra jumper, knit, waistcoat or shirt). When BOTH a knit and a ` +
-      `shirt are listed, the knit is worn OVER the shirt (only the shirt's collar ` +
-      `and cuffs peek out), never a button-up shirt on top of a knit; a blazer, ` +
-      `overshirt or coat is always the outermost layer. Trousers described as ` +
-      `"suit", "tailored", "dress" trousers or chinos are smooth woven wool or ` +
-      `cotton cloth — NEVER blue or washed denim / jeans, even if the item name ` +
-      `contains the word "washed". `;
+      `listed (no extra jumper, knit, waistcoat or shirt). A knit may be worn on ` +
+      `its own with a bare neckline — only show a shirt under a knit if a shirt is ` +
+      `listed; never add an unlisted shirt beneath a knit. When BOTH a knit and a ` +
+      `shirt are listed, the knit is worn OVER the shirt (a long-sleeve knit over a ` +
+      `long-sleeve shirt so the collar and cuffs peek out), never a button-up shirt ` +
+      `on top of a knit; a blazer, overshirt or coat is always the outermost layer. ` +
+      `Trousers described as "suit", "tailored", "dress" trousers or chinos are ` +
+      `smooth woven wool or cotton cloth — NEVER blue or washed denim / jeans, even ` +
+      `if the item name contains the word "washed". `;
 
     // Describe the role of each input image so identity (person photos) and the
     // garments (catalogue product photos) are not confused. Images are attached
@@ -719,17 +729,56 @@ export async function generateLookImage(opts: {
         `this tone; other garments keep their described colours. `
       : nearFacePrinciple;
 
-    const prompt =
-      `Editorial, full-length fashion photograph for a premium style report. ` +
+    const preamble =
+      `Editorial, full-length fashion photograph for a premium style report. `;
+    const paletteLine = `Colour palette: ${look.palette.join(", ")}. `;
+
+    // v1 baseline — kept byte-identical so version 1 == the historical prompt.
+    const legacyPrompt =
+      preamble +
       outfitBlock +
       layeringRule +
       footwearBlock +
-      `Colour palette: ${look.palette.join(", ")}. ` +
+      paletteLine +
       nearFaceBlock +
       subject +
       imageRoles +
       faceAnchor +
       NO_TEXT_RULE;
+
+    // EXPERIMENTAL prompt versioning (see look-prompt.ts). v2+ pull the hard
+    // negatives out of the descriptive blocks into one trailing Constraints
+    // group; `layeringOrder` is the positive-only remainder of `layeringRule`.
+    const layeringOrder =
+      `A knit may be worn on its own with a bare neckline — only show a shirt ` +
+      `under a knit if a shirt is listed. When both a knit and a shirt are worn, ` +
+      `a long-sleeve knit goes OVER a long-sleeve shirt (only the shirt's collar ` +
+      `and cuffs peek out); a blazer, overshirt or coat is always the outermost ` +
+      `layer. `;
+    const constraints = [
+      `render EXACTLY the garments listed — do not add any layer that is not ` +
+        `listed (no extra jumper, knit, waistcoat or shirt)`,
+      `trousers described as "suit", "tailored" or "dress" trousers, or chinos, ` +
+        `are smooth woven wool or cotton — never blue or washed denim / jeans, ` +
+        `even if the item name contains the word "washed"`,
+      `no text, letters, words, captions, labels, headings, watermarks, logos, ` +
+        `numbers, arrows or graphic overlays anywhere in the frame`,
+    ];
+    const promptParts: LookPromptParts = {
+      legacyPrompt,
+      preamble,
+      subject,
+      outfitBlock,
+      footwearBlock,
+      paletteLine,
+      nearFaceBlock,
+      imageRoles,
+      faceAnchor,
+      layeringOrder,
+      constraints,
+    };
+    const promptVersion = resolveImagePromptVersion(opts.promptVersion);
+    const prompt = buildLookImagePrompt(promptParts, promptVersion);
 
     const content: (
       | { type: "text"; text: string }
@@ -1029,6 +1078,10 @@ export async function generateShoeBoardImage(opts: {
       `a named cognac moccasin stays cognac). Regardless of the names, never render ANY shoe in a ` +
       `novelty or non-leather colour — no pink, coral, peach, lilac, lavender, mint, lime, yellow, ` +
       `turquoise, cyan or neon / fluorescent tones anywhere in the sheet. ` +
+      `Trainer-sole rule: any trainer / sneaker with a coloured upper must have a clean ` +
+      `CONTRASTING midsole and outsole — white, cream, gum or pale grey — not a fully ` +
+      `monochrome shoe where the sole matches the upper, UNLESS the whole trainer is ` +
+      `white / off-white or black (where a tonal sole is natural). ` +
       `Render generic, unbranded shoes — NO brand names, NO logos, NO text of any kind on ` +
       `the shoes, soles or background. Classic, refined menswear silhouettes. ` +
       `The pairs must clearly differ in style and colour exactly as described. ` +
@@ -1117,6 +1170,88 @@ export async function generateCatalogTryOnImage(opts: {
     return await renderImage(content);
   } catch (e) {
     console.error("[tryon] image-pipeline render failed", e);
+    return null;
+  }
+}
+
+/**
+ * Report "try it on me" — CONSERVATIVE studio variant (recreate-in-place).
+ *
+ * The alternative to `generateLookImage` for report try-on: instead of rendering
+ * a fresh editorial scene (which re-synthesises and drifts the face), this edits
+ * the customer's OWN full-length photo. It copies the face, skin tone, hair and
+ * pose verbatim and swaps only the clothing, replacing just the background with a
+ * neutral studio backdrop under soft, even light consistent with the subject. The
+ * face is never relit/recoloured, so identity holds as well as the catalogue
+ * try-on. Selectable per-render (`style: "studio"`); the editorial path and the
+ * catalogue / Shop-a-look flows are unchanged.
+ */
+export async function generateReportTryOnImage(opts: {
+  /** The customer's own full-length photo — the base to recreate. */
+  personImageUrl: string;
+  /** Garment instruction block (catalogue prompt or an "Outfit: …" fallback). */
+  garmentsText: string;
+  /** Optional catalogue product image URLs to reproduce exact garments. */
+  garmentImageUrls?: string[];
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI) return null;
+  try {
+    const garmentImageUrls = (opts.garmentImageUrls ?? []).filter(
+      (u): u is string => Boolean(u && /^https?:\/\//i.test(u)),
+    );
+
+    const prompt =
+      `Photorealistic virtual try-on for a style report. ` +
+      `The FIRST image is the customer's own full-length photo. Recreate this ` +
+      `photograph of the SAME person, changing only their CLOTHING and the ` +
+      `BACKGROUND. ` +
+      `Preserve identity perfectly: same face and expression, same facial features ` +
+      `and proportions, same hairstyle and hair colour, same eye colour, same skin ` +
+      `tone, same body shape, same pose and hand positions. Do NOT relight, ` +
+      `recolour, slim, age or restyle the face — copy the face, hair and skin tone ` +
+      `EXACTLY as in the photo, keeping the same light on the face. ` +
+      `Replace the background with a clean, seamless neutral studio backdrop ` +
+      `(pale grey / greige) under soft, even, flattering studio light that is ` +
+      `consistent with the subject — but keep the light on the person's face ` +
+      `consistent with the original photo so their features and skin tone are ` +
+      `unchanged. Full body, head to shoes visible. ` +
+      (garmentImageUrls.length
+        ? `The remaining ${garmentImageUrls.length} image(s) show the actual ` +
+          `catalogue garment(s) — reproduce these exact products, not similar ones. `
+        : ``) +
+      opts.garmentsText +
+      `Layering — follow strictly: outerwear (jackets, blazers, coats, overshirts, ` +
+      `cardigans) is always worn OVER a base layer, never on bare skin. A knit may ` +
+      `be worn on its own; only show a shirt under a knit if a shirt is listed, and ` +
+      `then a long-sleeve knit goes OVER a long-sleeve shirt (collar and cuffs peek ` +
+      `out), never a shirt over a knit. Trousers described as "suit", "tailored" or ` +
+      `"dress" trousers or chinos are smooth woven wool or cotton — never blue or ` +
+      `washed denim, even if the item name contains "washed". ` +
+      `Reproduce each garment faithfully — exact colour, fabric texture, pattern, ` +
+      `buttons, zips, stitching, fit and proportions — with natural drape and ` +
+      `realistic shadows. The result must look like a real photograph of the SAME ` +
+      `person, same face, now wearing the new outfit against a clean studio ` +
+      `backdrop.` +
+      NO_TEXT_RULE;
+
+    const content: (
+      | { type: "text"; text: string }
+      | { type: "image"; image: URL }
+    )[] = [
+      { type: "text", text: prompt },
+      { type: "image", image: new URL(opts.personImageUrl) },
+    ];
+    for (const url of garmentImageUrls) {
+      try {
+        content.push({ type: "image", image: new URL(url) });
+      } catch {
+        // Skip malformed product URLs rather than failing the whole render.
+      }
+    }
+
+    return await renderImage(content);
+  } catch (e) {
+    console.error("[tryon] studio try-on render failed", e);
     return null;
   }
 }

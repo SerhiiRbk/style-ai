@@ -446,10 +446,18 @@ export function ShopTheLook({
   items,
   currency,
   lang,
+  selectable = false,
+  selectedIds,
+  onToggle,
 }: {
   items: ShoppingItem[];
   currency: Currency;
   lang?: ReportLanguage;
+  /** When true, each item gets an include/exclude toggle for the try-on. */
+  selectable?: boolean;
+  /** Keys (productId ?? title) of items currently included in the try-on. */
+  selectedIds?: Set<string>;
+  onToggle?: (id: string) => void;
 }) {
   const tt = makeT(lang);
   if (!items.length) return null;
@@ -467,32 +475,73 @@ export function ShopTheLook({
           )}
         </p>
       ) : null}
+      {selectable ? (
+        <p className="mt-1 max-w-md text-xs leading-relaxed text-stone-soft">
+          {tt("Toggle items to choose what’s included when you try this on.")}
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
-        {items.map((it) => (
-          <a
-            key={it.productId ?? it.title}
-            href={it.url}
-            target="_blank"
-            rel="noopener noreferrer nofollow sponsored"
-            className="group flex items-center gap-2 rounded-full border border-line bg-paper py-1 pl-1 pr-3 transition-colors hover:border-ink/30"
-          >
-            <ShoppingItemThumb item={it} />
-            <span className="text-xs text-ink">{humanizeProductTitle(it.title)}</span>
-            {it.similarPick ? (
-              <span className="rounded-full bg-cream px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-stone">
-                {tt("Similar")}
-              </span>
-            ) : null}
-            <span className="text-xs text-stone-soft">
-              {formatOfferPrice({
-                priceEur: it.priceEur,
-                displayCurrency: currency,
-                offerCurrency: it.currency,
-                priceNative: it.priceNative,
-              })}
-            </span>
-          </a>
-        ))}
+        {items.map((it) => {
+          const id = it.productId ?? it.title;
+          const on = !selectable || (selectedIds?.has(id) ?? true);
+          return (
+            <div
+              key={id}
+              className={`group flex items-center gap-2 rounded-full border bg-paper py-1 pr-3 transition-colors ${
+                selectable ? "pl-2" : "pl-1"
+              } ${
+                on
+                  ? "border-line hover:border-ink/30"
+                  : "border-line/60 opacity-50"
+              }`}
+            >
+              {selectable ? (
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  aria-label={
+                    on
+                      ? tt("Included in try-on")
+                      : tt("Excluded from try-on")
+                  }
+                  onClick={() => onToggle?.(id)}
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border text-[10px] leading-none transition-colors ${
+                    on
+                      ? "border-brass/40 bg-brass/10 text-brass"
+                      : "border-line bg-paper text-transparent"
+                  }`}
+                >
+                  ✓
+                </button>
+              ) : null}
+              <a
+                href={it.url}
+                target="_blank"
+                rel="noopener noreferrer nofollow sponsored"
+                className="flex items-center gap-2"
+              >
+                <ShoppingItemThumb item={it} />
+                <span className="text-xs text-ink">
+                  {humanizeProductTitle(it.title)}
+                </span>
+                {it.similarPick ? (
+                  <span className="rounded-full bg-cream px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-stone">
+                    {tt("Similar")}
+                  </span>
+                ) : null}
+                <span className="text-xs text-stone-soft">
+                  {formatOfferPrice({
+                    priceEur: it.priceEur,
+                    displayCurrency: currency,
+                    offerCurrency: it.currency,
+                    priceNative: it.priceNative,
+                  })}
+                </span>
+              </a>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

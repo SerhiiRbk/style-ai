@@ -65,6 +65,8 @@ import {
   generateHeadwearImage,
   type PhotoInput,
 } from "@/lib/ai/pipeline";
+// EXPERIMENTAL prompt versioning — logging only here (see look-prompt.ts).
+import { resolveImagePromptVersion } from "@/lib/ai/look-prompt";
 import {
   accessoryPicksFor,
   headwearPicksFor,
@@ -306,6 +308,8 @@ type ImageJobInput = {
   content: ReportContent;
   photos: PhotoInput[];
   shopping: ShoppingItem[];
+  /** EXPERIMENTAL — per-run image-prompt version override (else env default). */
+  promptVersion?: string | number | null;
 };
 
 /**
@@ -841,6 +845,11 @@ async function generateReportImages(input: ImageJobInput) {
 
   const admin = createAdminSupabase();
   const { reportId, userId, tier, profile, photos, shopping, content } = input;
+  const promptVersion = input.promptVersion;
+  // EXPERIMENTAL — record which prompt layout produced this report's looks.
+  console.log(
+    `[image-prompt] report=${reportId} version=${resolveImagePromptVersion(promptVersion)}`,
+  );
 
   const referenceImageUrl =
     photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
@@ -895,6 +904,10 @@ async function generateReportImages(input: ImageJobInput) {
       `palette (${bestPaletteText}) — lean into richer tones such as ${smartShoe?.color?.toLowerCase() ?? "navy"}.\n` +
       `• Relaxed / weekend looks: minimal leather trainers in a light palette neutral ` +
       `(${everydayShoe?.color?.toLowerCase() ?? "off-white"}), or a casual shoe in a palette colour.\n` +
+      `• Trainer soles: give every coloured trainer/sneaker a clean CONTRASTING midsole ` +
+      `and outsole — white, cream, gum or pale grey — with the coloured upper above it; ` +
+      `do NOT render a fully monochrome trainer where the sole matches the upper, UNLESS ` +
+      `the whole trainer is white / off-white or black (where a tonal sole is natural).\n` +
       `Use ONLY colours from that palette or the formal set above; do not invent off-palette colours` +
       (avoidBrown ? ` and avoid warm tan / cognac leather` : "") +
       `. No two looks should repeat the same shoe colour. ` +
@@ -1014,6 +1027,7 @@ async function generateReportImages(input: ImageJobInput) {
       faceReferenceImageUrl,
       profileReferenceImageUrl,
       ...(nearFaceHex ? { nearFaceHex } : {}),
+      ...(promptVersion != null ? { promptVersion } : {}),
     });
     if (!img) return;
     const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
@@ -1088,6 +1102,7 @@ async function generateReportImages(input: ImageJobInput) {
           referenceImageUrl,
           faceReferenceImageUrl,
           profileReferenceImageUrl,
+          ...(promptVersion != null ? { promptVersion } : {}),
         });
         if (!img) return null;
         const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
@@ -1130,6 +1145,7 @@ async function generateReportImages(input: ImageJobInput) {
  */
 export async function resumeReportImages(
   reportId: string,
+  opts?: { promptVersion?: string | number | null },
 ): Promise<{ ok: boolean; reason?: string }> {
   if (!hasSupabaseAdmin) return { ok: false, reason: "admin-unconfigured" };
   if (isDemoReportId(reportId)) return { ok: false, reason: "demo" };
@@ -1178,6 +1194,7 @@ export async function resumeReportImages(
     content,
     photos,
     shopping,
+    ...(opts?.promptVersion != null ? { promptVersion: opts.promptVersion } : {}),
   });
 
   return { ok: true };

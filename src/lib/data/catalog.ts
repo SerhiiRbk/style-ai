@@ -78,6 +78,15 @@ const NON_BUTTON_SHIRT_RE =
   /\b(t-?shirts?|tees?|tank|vest\s*tops?|camisole|polo|henley|sweat(?:er|shirt)?|hoodie|jersey)\b/i;
 
 /**
+ * Short-sleeve pieces mis-filed under "Knitwear" (e.g. a "Short Sleeve
+ * Sweatshirt") read as a t-shirt when layered over a long-sleeve shirt — the
+ * cuffs poke out awkwardly. A layering knit needs long sleeves, so the knit slot
+ * drops these unless nothing else matches.
+ */
+export const SHORT_SLEEVE_KNIT_RE =
+  /\b(short[- ]?sleeve|sleeveless|t-?shirts?|tees?|tank|vest\s*tops?)\b/i;
+
+/**
  * Swatch colour for a shopping item — the display uses this as a CSS colour, so
  * it must be a hex. Prefer the normalised `color_hex`, fall back to a hex that
  * happens to sit in the raw `color` field, else a neutral placeholder.
@@ -154,8 +163,10 @@ const MIN_LOOK_PICK_SCORE = 0.42;
 /** Bumped when look-matching heuristics change — triggers background refresh.
  *  v7: re-derive look_items after looks gained a stable `idx` ordering, so
  *  per-look products realign with the rendered look on legacy reports.
- *  v8: mid-grey shade scoring + tailored-blazer filter (drop knit/zip "sport blazers"). */
-export const LOOK_MATCH_VERSION = 8;
+ *  v8: mid-grey shade scoring + tailored-blazer filter (drop knit/zip "sport blazers").
+ *  v9: drop short-sleeve knits/sweatshirts from the Knitwear slot (they layer as a
+ *  tee over a long-sleeve shirt) — mirrors the matchShopping knit filter. */
+export const LOOK_MATCH_VERSION = 9;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
@@ -331,12 +342,19 @@ export async function matchShopping(
         category === "Shirts"
           ? " Button-down collared shirts: oxford, poplin, linen or flannel shirts — not t-shirts, tees, tank tops, polos or sweatshirts."
           : "";
+      // Knitwear is a layering piece (worn over a shirt or on its own), so it
+      // must be long-sleeve — steer away from short-sleeve sweatshirts/tees.
+      const knitBias =
+        category === "Knitwear"
+          ? " Long-sleeve knitwear: jumpers, sweaters, crewnecks, roll-necks or cardigans — not short-sleeve sweatshirts, t-shirts, tank tops or sleeveless knits."
+          : "";
       const query =
         `${category} in ${palette}; ${profile.colorSeason} palette; ` +
         `${profile.goals.join(", ")}; ${profile.physical.bodyType} build; ` +
         styleIntentPhrase(profile.boldness) +
         footwearBias +
-        shirtBias;
+        shirtBias +
+        knitBias;
       const { embedding } = await embed({ model: env.embedModel, value: query });
       const data = await rpcMatchProducts(sb, {
         query_embedding: embedding,
@@ -398,6 +416,16 @@ export async function matchShopping(
           (r) => !NON_BUTTON_SHIRT_RE.test(r.title),
         );
         if (buttonShirts.length) ranked = buttonShirts;
+      }
+
+      // A layering knit must be long-sleeve — hard-drop short-sleeve sweatshirts
+      // / tees that slipped into Knitwear (they render as a tee over the shirt).
+      // Falls back to the full pool only if no long-sleeve knit was matched.
+      if (category === "Knitwear") {
+        const longSleeve = ranked.filter(
+          (r) => !SHORT_SLEEVE_KNIT_RE.test(r.title),
+        );
+        if (longSleeve.length) ranked = longSleeve;
       }
 
       // A report should never surface two pairs of sandals: cap open/casual
@@ -636,6 +664,16 @@ async function matchItemsForLook(
     if (matchSlots.length >= 6) break;
     if (usedCategories.has(g.category)) continue;
     const matchKey = matchKeyFor(g);
+    // Knitwear is a layering piece — drop short-sleeve knits/sweatshirts so a
+    // short-sleeve knit never gets layered over a long-sleeve shirt (mirrors
+    // matchShopping). Falls back to the full pool if that would empty it.
+    if (g.category === "Knitwear") {
+      const pool = matchByKey.get(matchKey) ?? [];
+      const longSleeve = pool.filter((r) => !SHORT_SLEEVE_KNIT_RE.test(r.title));
+      if (longSleeve.length && longSleeve.length !== pool.length) {
+        matchByKey.set(matchKey, longSleeve);
+      }
+    }
     const rows = topRankedCandidates(
       matchByKey.get(matchKey) ?? [],
       g.color,

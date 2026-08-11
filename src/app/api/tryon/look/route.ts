@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { hasSupabase, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
-import { generateLookImage } from "@/lib/ai/pipeline";
+import {
+  generateLookImage,
+  generateReportTryOnImage,
+} from "@/lib/ai/pipeline";
 import { getReportById } from "@/lib/data/reports";
+import { SHORT_SLEEVE_KNIT_RE } from "@/lib/data/catalog";
 import { isDemoReportId } from "@/lib/demo-report";
 import {
   CREDIT_COSTS,
@@ -27,6 +31,36 @@ import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 /** Look rendering + fal polling can exceed the default Vercel function timeout. */
 export const maxDuration = 300;
+/** sharp (studio-aspect normalisation) needs the Node.js runtime. */
+export const runtime = "nodejs";
+
+/**
+ * Look images render at 9:16; the studio try-on edits the user's own photo and
+ * so inherits ITS aspect ratio, giving a differently-shaped/sized tile. Pad the
+ * studio output to a canonical 9:16 on a neutral studio-grey background — this
+ * reads as extra backdrop and never crops the person — so its tile matches the
+ * look images exactly. The editorial path already renders at 9:16.
+ */
+async function normalizeStudioAspect(
+  bytes: Uint8Array,
+  mediaType: string,
+): Promise<{ bytes: Uint8Array; mediaType: string }> {
+  try {
+    const sharp = (await import("sharp")).default;
+    const canvas = sharp(Buffer.from(bytes)).resize(900, 1600, {
+      fit: "contain",
+      background: { r: 233, g: 230, b: 225 },
+    });
+    const isJpeg = mediaType.includes("jpeg");
+    const out = isJpeg
+      ? await canvas.jpeg({ quality: 92 }).toBuffer()
+      : await canvas.png().toBuffer();
+    return { bytes: new Uint8Array(out), mediaType };
+  } catch (e) {
+    console.error("[tryon] studio aspect normalise failed", e);
+    return { bytes, mediaType };
+  }
+}
 
 function parseLookIndex(raw: unknown): number | undefined {
   if (typeof raw === "number" && Number.isInteger(raw)) return raw;
@@ -157,6 +191,15 @@ export async function POST(request: Request) {
   const lookIndex = parseLookIndex(body?.lookIndex);
   const kind = parseKind(body?.kind);
   const isRegen = body?.regen === true;
+  // "editorial" (default) = render a fresh styled scene; "studio" = edit the
+  // user's own photo in place (studio backdrop, face/pose preserved).
+  const tryOnStyle: "editorial" | "studio" =
+    body?.style === "studio" ? "studio" : "editorial";
+  // Looks only: user-selected "Shop a look" item keys (productId ?? title).
+  // Absent/empty = try on ALL of the look's items (default).
+  const productIds: string[] | null = Array.isArray(body?.productIds)
+    ? body.productIds.filter((p: unknown): p is string => typeof p === "string")
+    : null;
 
   if (!reportId || isDemoReportId(reportId) || !description) {
     return NextResponse.json(
@@ -207,10 +250,31 @@ export async function POST(request: Request) {
         ? description.split(",").map((s) => s.trim()).filter(Boolean)
         : [];
 
-  const catalogItems =
+  const allResolvedItems =
     kind === "capsule"
       ? resolveCapsuleCatalogItems(capsulePieces, shopping)
       : resolveLookCatalogItems(lookItems, lookIndex);
+
+  // Item selection (looks only): keep only the "Shop a look" items the user left
+  // enabled. Empty/absent selection falls back to ALL items (current default).
+  const resolvedItems =
+    kind === "look" && productIds && productIds.length
+      ? allResolvedItems.filter((i) =>
+          productIds.includes(i.productId ?? i.title),
+        )
+      : allResolvedItems;
+
+  // Never layer a short-sleeve knit over a long-sleeve shirt in try-on: if the
+  // picks include BOTH a shirt and a short-sleeve knit, drop the short-sleeve
+  // knit (stale look_items from before the knit filter can still carry one). A
+  // short-sleeve knit worn on its own (no shirt in the set) is left untouched.
+  const hasShirt = resolvedItems.some((i) => i.category === "Shirts");
+  const catalogItems = hasShirt
+    ? resolvedItems.filter(
+        (i) =>
+          !(i.category === "Knitwear" && SHORT_SLEEVE_KNIT_RE.test(i.title)),
+      )
+    : resolvedItems;
 
   const effectivePalette =
     palette.length > 0
@@ -248,24 +312,35 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await generateLookImage({
-    profile,
-    look: {
-      title,
-      description,
-      palette: effectivePalette,
-      catalogContext,
-      catalogImageUrls,
-    },
-    // Identity reference ONLY — the user's own photo, never the report's
-    // generated look image (which would copy the original outfit).
-    referenceImageUrl: photo.fullUrl,
-    faceReferenceImageUrl: photo.faceUrl,
-    profileReferenceImageUrl: photo.profileUrl,
-    // Capsule combo photo defines the exact outfit to replicate on the user.
-    outfitReferenceImageUrl:
-      kind === "capsule" ? outfitReferenceUrl : undefined,
-  });
+  const result =
+    tryOnStyle === "studio"
+      ? // Conservative: edit the user's OWN photo in place — swap only the
+        // clothing and background (neutral studio), copying the face/hair/pose
+        // verbatim so identity holds (no editorial re-synthesis of the face).
+        await generateReportTryOnImage({
+          personImageUrl: photo.fullUrl,
+          garmentsText:
+            catalogContext ?? `Dress the person in this outfit: ${description}. `,
+          garmentImageUrls: catalogImageUrls,
+        })
+      : await generateLookImage({
+          profile,
+          look: {
+            title,
+            description,
+            palette: effectivePalette,
+            catalogContext,
+            catalogImageUrls,
+          },
+          // Identity reference ONLY — the user's own photo, never the report's
+          // generated look image (which would copy the original outfit).
+          referenceImageUrl: photo.fullUrl,
+          faceReferenceImageUrl: photo.faceUrl,
+          profileReferenceImageUrl: photo.profileUrl,
+          // Capsule combo photo defines the exact outfit to replicate on the user.
+          outfitReferenceImageUrl:
+            kind === "capsule" ? outfitReferenceUrl : undefined,
+        });
   if (!result) {
     return NextResponse.json(
       {
@@ -276,11 +351,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const ext = result.mediaType.includes("jpeg") ? "jpg" : "png";
+  // Studio try-on inherits the user photo's shape — pad it to the looks' 9:16 so
+  // every try-on tile matches the look images. Editorial already renders 9:16.
+  const normalized =
+    tryOnStyle === "studio"
+      ? await normalizeStudioAspect(result.bytes, result.mediaType)
+      : result;
+
+  const ext = normalized.mediaType.includes("jpeg") ? "jpg" : "png";
   const path = tryonStoragePath(user.id, reportId, lookKey, ext);
   const { error: upErr } = await admin.storage
     .from("assets")
-    .upload(path, result.bytes, { contentType: result.mediaType, upsert: true });
+    .upload(path, normalized.bytes, {
+      contentType: normalized.mediaType,
+      upsert: true,
+    });
   if (upErr) {
     return NextResponse.json(
       { error: "Could not store result" },

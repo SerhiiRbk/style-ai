@@ -13,7 +13,7 @@ import { TryOnButton } from "@/components/TryOnButton";
 import { TryOnSelectionProvider } from "@/components/TryOnContext";
 import { TryOnTray } from "@/components/TryOnTray";
 import { SavedOutfitTryOns } from "@/components/SavedOutfitTryOns";
-import { LookTryOn } from "@/components/LookTryOn";
+import { LookShopAndTryOn } from "@/components/LookShopAndTryOn";
 import { ReportFeedback } from "@/components/ReportFeedback";
 import { ReportFeedbackReadOnly } from "@/components/ReportFeedbackReadOnly";
 import { CreditsProvider } from "@/components/CreditsContext";
@@ -83,7 +83,6 @@ import {
   Capsule,
   CapsuleMatrix,
   PriceTiers,
-  ShopTheLook,
   FabricsGuide,
   FinishingTouches,
   StaticFillImg,
@@ -1036,7 +1035,7 @@ export default async function ReportPage({
                   <p className="mt-2 text-sm leading-relaxed text-stone">
                     {look.description}
                   </p>
-                  <ShopTheLook
+                  <LookShopAndTryOn
                     items={
                       report.lookItems?.[i]?.length
                         ? report.lookItems[i]
@@ -1044,18 +1043,13 @@ export default async function ReportPage({
                     }
                     currency={profile.currency}
                     lang={lang}
+                    canTryOn={canTryOn}
+                    reportId={report.id}
+                    title={look.title}
+                    description={look.description}
+                    palette={look.palette}
+                    lookIndex={i}
                   />
-                  {canTryOn && (
-                    <div className="mt-4">
-                      <LookTryOn
-                        reportId={report.id}
-                        title={look.title}
-                        description={look.description}
-                        palette={look.palette}
-                        lookIndex={i}
-                      />
-                    </div>
-                  )}
                 </div>
               </article>
             ))}

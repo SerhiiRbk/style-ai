@@ -32,9 +32,16 @@ export async function GET(request: Request) {
     );
   }
 
-  const reportId = new URL(request.url).searchParams.get("reportId");
+  const url = new URL(request.url);
+  const reportId = url.searchParams.get("reportId");
+  // EXPERIMENTAL — `?promptVersion=N` A/B-overrides IMAGE_PROMPT_VERSION for a
+  // one-off resume, so a battery can be rendered without a redeploy.
+  const promptVersion = url.searchParams.get("promptVersion");
   if (reportId) {
-    const res = await resumeReportImages(reportId);
+    const res = await resumeReportImages(
+      reportId,
+      promptVersion != null ? { promptVersion } : undefined,
+    );
     if (!res.ok) {
       return NextResponse.json(
         { ok: false, error: res.reason ?? "resume-failed" },
