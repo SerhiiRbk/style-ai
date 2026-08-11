@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CreateReportButton } from "./CreateReportButton";
+import { myStyleMobileLinks } from "./MyStyleMenu";
 import { useNavSession } from "./NavSession";
 import { createClient } from "@/lib/supabase/client";
 
@@ -74,7 +75,11 @@ export function NavbarMenu({
   const visibleSecondary = secondaryLinks.filter(
     (l) => !(l.hideWhenAuthed && authed),
   );
-  const menuLinks = [...primaryLinks, ...visibleSecondary];
+  // For anonymous visitors, hoist Colours to the top of the menu; other
+  // secondary links (Demo) stay after the product row.
+  const leadLinks = visibleSecondary.filter((l) => l.href === "/colours");
+  const trailLinks = visibleSecondary.filter((l) => l.href !== "/colours");
+  const menuLinks = [...leadLinks, ...primaryLinks, ...trailLinks];
 
   const linkClass =
     "block py-3 text-base text-ink transition-colors hover:text-brass";
@@ -119,14 +124,21 @@ export function NavbarMenu({
 
           <ul className="divide-y hairline">
             {authed && (
-              <li>
-                <Link
-                  href="/reports"
-                  className={linkClass}
-                  onClick={() => setOpen(false)}
-                >
-                  Reports
-                </Link>
+              <li className="py-2">
+                <div className="eyebrow mb-1">My Style</div>
+                <ul>
+                  {myStyleMobileLinks().map((l) => (
+                    <li key={l.href}>
+                      <Link
+                        href={l.href}
+                        className={linkClass}
+                        onClick={() => setOpen(false)}
+                      >
+                        {l.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               </li>
             )}
             {menuLinks.map((l) => (
@@ -140,28 +152,6 @@ export function NavbarMenu({
                 </Link>
               </li>
             ))}
-            {authed && (
-              <li>
-                <Link
-                  href="/gallery"
-                  className={linkClass}
-                  onClick={() => setOpen(false)}
-                >
-                  Looks
-                </Link>
-              </li>
-            )}
-            {authed && (
-              <li>
-                <Link
-                  href="/account"
-                  className={linkClass}
-                  onClick={() => setOpen(false)}
-                >
-                  Account
-                </Link>
-              </li>
-            )}
             {isAdmin && (
               <li>
                 <Link
