@@ -94,8 +94,9 @@ export const env = {
   coloursDailyCap: intEnv(process.env.COLOURS_DAILY_CAP, 2500),
   // Generous per-IP hourly limit — carrier NAT puts many real users behind one IP.
   coloursIpHourlyCap: intEnv(process.env.COLOURS_IP_HOURLY_CAP, 25),
-  // Polite per-anon daily limit — a soft-gate trigger, not a spend defence.
-  coloursAnonDailyCap: intEnv(process.env.COLOURS_ANON_DAILY_CAP, 10),
+  // Strict per-anon daily limit — a soft-gate trigger pushing registration,
+  // not a spend defence (the global cap is that).
+  coloursAnonDailyCap: intEnv(process.env.COLOURS_ANON_DAILY_CAP, 5),
 
   // A0 cost fuse for the anonymous "Shop your colours" recommendations, whose
   // cost is one LLM rerank per run (~$0.015). Same shape as the colours caps.
