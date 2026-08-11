@@ -175,6 +175,7 @@ import test from "node:test";
 import {
   bundleFor, priceForBundle, isLoyalty, setName, buildLookIntake,
 } from "./look-sets";
+import { intakeSchema } from "@/lib/style-profile";
 
 test("bundles are 3/6/9 only", () => {
   assert.deepEqual(bundleFor(3), { looks: 3, credits: 12 });
@@ -209,6 +210,12 @@ test("mini-intake maps to a valid Intake with male + sensible defaults", () => {
   assert.ok(intake.goals.length >= 1); // required by downstream; defaulted
   assert.ok(intake.occupation.length >= 1);
   assert.ok(intake.heightCm >= 120);
+  // Load-bearing: the object must be a SCHEMA-VALID Intake, not just cast to it.
+  // This guards country/budgetEur (and any future required field) against drift.
+  assert.ok(
+    intakeSchema.safeParse(intake).success,
+    "buildLookIntake must produce a schema-valid Intake",
+  );
 });
 ```
 
@@ -256,18 +263,20 @@ export type LookSex = "male";
 export function buildLookIntake(a: { age: number; bodyType?: string; sex?: LookSex }): Intake {
   return {
     age: a.age,
-    genderPresentation: "male",
-    language: DEFAULT_LANGUAGE,  // required by the Intake type (schema .default())
+    genderPresentation: a.sex ?? "male",
+    country: "Global",           // required (schema .min(1)); climateFor() reads it
+    language: DEFAULT_LANGUAGE,   // required by the Intake type (schema .default())
     heightCm: 178,               // neutral default; not user-facing for looks
     bodyType: a.bodyType as Intake["bodyType"],
     occupation: "Not specified", // satisfies the min(1) requirement, neutral
     goals: ["Look considered"],  // one neutral goal; strictness carries intent
     boldness: "moderate",        // overridden per-request in the endpoint
+    budgetEur: { min: 0, max: 1000 }, // required; generateExtraLook reads .min/.max — tunable neutral
   } as Intake;
 }
 ```
 
-> Note (verified against `src/lib/style-profile.ts:303`): `intakeSchema` requires `age` (16–99), `genderPresentation` (`male|female|non-binary`), `language` (has a `.default`, so still present on the inferred type), `heightCm` (120–230), `occupation` (min 1), `goals` (min 1), `boldness` (`conservative|moderate|experimental|statement`); `bodyType` is optional (`rectangle|trapezoid|triangle|inverted-triangle|hourglass|oval`). `buildLookIntake` constructs the type directly (not `intakeSchema.parse`), so the neutral defaults are fine — they are context inputs, not user-facing report fields.
+> Note (verified against `src/lib/style-profile.ts:303-324`): `intakeSchema` requires, with NO default/optional: `age` (16–99), `genderPresentation` (`male|female|non-binary`), `country` (min 1), `heightCm` (120–230), `occupation` (min 1), `goals` (min 1), `boldness` (`conservative|moderate|experimental|statement`), `budgetEur` (`{min,max}`). Defaulted (safe to omit but included where read): `language`, `currency`, `city`, `lifestyle`. Optional: `bodyType` (`rectangle|trapezoid|triangle|inverted-triangle|hourglass|oval`), `hairColor`, `eyeColor`, `weightKg`, `measurements`, `notes`. **`country` and `budgetEur` are load-bearing:** `analyzeProfile`→`climateFor(intake.country)` crashes on `undefined`, and `generateExtraLook` reads `intake.budgetEur.min/.max` — omitting them throws at runtime even though the `as Intake` cast compiles. The intake test MUST assert `intakeSchema.safeParse(buildLookIntake(...)).success` to guard the full shape against schema drift.
 
 - [ ] **Step 4: Run to verify pass**
 
@@ -310,12 +319,12 @@ export async function creditsPurchased(
     .select("delta")
     .eq("user_id", userId)
     .eq("reason", "purchase");
-  if (error || !data) return 0;
-  return data.reduce((s, r) => s + Math.max(0, Number(r.delta) || 0), 0);
+  if (error) throw new Error(error.message);   // mirror sumLedger — never mask an infra failure as "no purchases"
+  return (data ?? []).reduce((s, r) => s + Math.max(0, Number(r.delta) || 0), 0);
 }
 ```
 
-Verified: `src/lib/credits.ts` already has `sumLedger` using `.from("credits_ledger").select("delta")`; the ledger columns are `user_id`, `delta`, `reason`, `balance_after`. `creditsPurchased` mirrors `sumLedger` with a `reason='purchase'` filter and clamps to positive deltas (ignores any refund/adjustment rows). Place it beside `sumLedger`.
+Verified: `src/lib/credits.ts` already has `sumLedger` using `.from("credits_ledger").select("delta")` and `if (error) throw new Error(error.message)`; the ledger columns are `user_id`, `delta`, `reason`, `balance_after`. `creditsPurchased` mirrors `sumLedger` exactly (same admin type, query style, and **throw-on-error**) with an added `reason='purchase'` filter and a positive-delta clamp (ignores refund/adjustment rows). Place it beside `sumLedger`. It throws on a read error rather than returning 0, so Task 7 lets it propagate (a ledger-read failure 500s the request before any charge — a safe, retryable state — which is correct, since silently mispricing the bundle would be worse).
 
 - [ ] **Step 3: Typecheck**
 
@@ -333,12 +342,16 @@ git commit -m "feat(create-a-look): look_set reason + creditsPurchased loyalty s
 ### Task 4: `look_sets` migration + `looks.set_id` + share fields + RLS
 
 **Files:**
-- Create: `supabase/migrations/00xx_look_sets.sql` (use the next number)
+- Create: `supabase/migrations/0039_look_sets.sql` (next number — latest shipped is `0038`; note a prior `0030` collision exists, so 0039 is correct)
 
 **Interfaces:**
-- Produces: table `look_sets`, column `looks.set_id`, a column-whitelisted public view `look_sets_public_v`.
+- Produces: table `look_sets`, owner-only side table `look_set_profiles` (StyleProfile PII, off the public base table), column `looks.set_id`, a column-whitelisted public view `look_sets_public_v`.
+
+> **Do NOT run `db:migrate` in this task.** `.env.local`'s `DATABASE_URL` points at a **remote cloud Supabase** (`*.supabase.co`), and `scripts/db-migrate.mjs` applies all pending migrations there — a prod-data change. This task only creates and inspects the migration FILE. Applying is a separate, human-authorized step run against the correct environment (or via the deploy pipeline). Verification here is by careful inspection against sibling migrations, not by execution.
 
 - [ ] **Step 1: Write the migration**
+
+> **PII / public-sharing convention (do not deviate).** `look_sets` has a public share surface, so the repo's `reports` sharing pattern governs it (migrations `0019`→`0020`): a public-read RLS policy + `revoke all ... from anon` + `grant select(<whitelist>) to anon` on the base table, and a `security_invoker` view projecting only the whitelist. **Crucially, the StyleProfile snapshot is PII and MUST NOT live on `look_sets`** — a public SELECT policy admits the `authenticated` role too, and that role's column grants can't be locked down without breaking owners, so any logged-in user could read it off the base table via PostgREST. Mirror `report_intake` (migration `0020`): keep `profile` in an owner-only side table `look_set_profiles`, never on `look_sets`. The residual base-table columns readable by an authenticated viewer of a public row (`user_id`, `report_id`, `boldness`, plus the public-whitelist columns) match the accepted `reports` residual — no PII among them.
 
 ```sql
 create table if not exists public.look_sets (
@@ -350,7 +363,6 @@ create table if not exists public.look_sets (
   boldness    text not null,
   carlo_note  text,
   name        text not null,
-  profile     jsonb not null,            -- StyleProfile snapshot used for this set
   is_public   boolean not null default false,
   share_slug  text unique,
   created_at  timestamptz not null default now()
@@ -361,12 +373,30 @@ alter table public.looks add column if not exists set_id uuid
   references public.look_sets (id) on delete cascade;
 create index if not exists looks_set_idx on public.looks (set_id) where set_id is not null;
 
-alter table public.look_sets enable row level security;
-drop policy if exists look_sets_owner on public.look_sets;
-create policy look_sets_owner on public.look_sets
+-- Owner-only PII side table (mirrors report_intake): the StyleProfile snapshot
+-- never touches the publicly-readable look_sets table.
+create table if not exists public.look_set_profiles (
+  set_id     uuid primary key references public.look_sets (id) on delete cascade,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  profile    jsonb not null,
+  created_at timestamptz not null default now()
+);
+alter table public.look_set_profiles enable row level security;
+drop policy if exists look_set_profiles_owner on public.look_set_profiles;
+create policy look_set_profiles_owner on public.look_set_profiles
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+-- no anon/public grant: revoke all from anon (owner reads via authenticated role).
 
--- Public share view: no user_id, no profile snapshot, only public sets.
+-- look_sets: owner policy + PUBLIC read policy + anon column-grant lockdown,
+-- mirroring reports (migration 0020). Exact statements: see the committed
+-- 0039_look_sets.sql, which reproduces the 0020 shape verbatim.
+alter table public.look_sets enable row level security;
+-- owner: full access to own rows;
+-- public: for select using (is_public = true and share_slug is not null);
+-- revoke all on public.look_sets from anon;
+-- grant select (id, occasion_id, season, carlo_note, name, share_slug, created_at) on public.look_sets to anon;
+
+-- Public share view (security_invoker): only the 7 whitelist columns, only public rows.
 drop view if exists public.look_sets_public_v;
 create view public.look_sets_public_v
   with (security_invoker = true) as
@@ -375,14 +405,17 @@ create view public.look_sets_public_v
   where is_public = true and share_slug is not null;
 ```
 
-- [ ] **Step 2: Apply + verify**
+- [ ] **Step 2: Verify by inspection (do NOT apply)**
 
-Run: `npm run db:migrate` (or the project's migration command). Verify the table and column exist in the DB.
+Do NOT run `db:migrate` (see the box above — it targets remote prod). Instead:
+- Confirm the filename number is `0039` and matches the sibling naming style.
+- Open 2–3 sibling migrations that create a table with RLS and/or a view (e.g. `0030_user_profiles.sql`, `0033_rate_limits_events.sql`, `0034_leads.sql`, and whichever migration set up `reports`/sharing) and confirm this migration **matches the repo's established conventions**: whether tables enable RLS and define owner policies (mirror exactly what `reports`/`user_profiles` do — if the repo does NOT use RLS and relies on the service-role admin client, say so and follow that convention instead of adding RLS), the `gen_random_uuid()` default, `references ... on delete` style, index naming, and whether `create view ... with (security_invoker = true)` is used elsewhere (if views are unused in this repo, note it). If the established convention differs from the SQL below, follow the CONVENTION and report the deviation as a concern.
+- Sanity-check the SQL parses (mental parse / `node -e` string check is fine); no execution against any DB.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add supabase/migrations/00xx_look_sets.sql
+git add supabase/migrations/0039_look_sets.sql
 git commit -m "feat(create-a-look): look_sets table, looks.set_id, public share view + RLS"
 ```
 
@@ -449,11 +482,11 @@ git commit -m "feat(create-a-look): per-request strictness + season in the look 
 
 - [ ] **Step 1: Implement resolution** — resolution order, reusing shipped code:
   1. `const rep = await getLatestReportProfile(userId)` — if `rep.personalised`, return `{ profile: rep.profile, source: "report" }`. (Do NOT reimplement the `reports` query — this helper already exists and validates with `styleProfileSchema`.)
-  2. else query the newest `look_sets` row for this user, `select("profile").order("created_at",{ascending:false}).limit(1).maybeSingle()`, `styleProfileSchema.safeParse(data.profile)` — on success return `{ profile, source: "prior_set" }`.
+  2. else query the newest `look_set_profiles` row for this user (join/filter to this user's sets), `select("profile").order("created_at",{ascending:false}).limit(1).maybeSingle()`, `styleProfileSchema.safeParse(data.profile)` — on success return `{ profile, source: "prior_set" }`. **Profile snapshots live in `look_set_profiles` (owner-only side table), NOT on `look_sets`** — the base table is publicly readable, so it must never hold the StyleProfile PII (see Task 4).
   3. else `const profile = await analyzeProfile(intake, photos)` and return `{ profile, source: "fresh" }`.
-  The `source` drives the `create_look_analysis` event and confirms the snapshot must be written (it always is, on the new set).
+  The `source` drives the `create_look_analysis` event and confirms the snapshot must be written (it always is, into `look_set_profiles`).
 
-- [ ] **Step 2: Implement `createLookSet` / `saveSetLook`** — straight inserts mirroring the existing `looks` insert in `/api/look-extra` (columns: `report_id, user_id, context, title, description, palette, image_path`, plus `set_id`).
+- [ ] **Step 2: Implement `createLookSet` / `saveSetLook`** — `createLookSet` inserts the `look_sets` row (WITHOUT `profile`) and, in the same logical step, inserts the `profile` into `look_set_profiles` (`{ set_id, user_id, profile }`). Its signature keeps `profile` as an input (callers are unchanged); only the storage target differs. `saveSetLook` mirrors the existing `looks` insert in `/api/look-extra` (columns: `report_id, user_id, context, title, description, palette, image_path`, plus `set_id`).
 
 - [ ] **Step 3: Typecheck** → `./node_modules/.bin/tsc --noEmit` → 0 errors.
 
@@ -500,7 +533,7 @@ git commit -m "feat(create-a-look): profile resolution (report/set/fresh) + set 
    if (await creditBalance(admin, user.id)) < price → 402 insufficient_credits. (VERIFIED: creditBalance at credits.ts:57. Note: cap tier uses `purchased > 0`; loyalty discount uses `purchased ≥ 20` — two different thresholds, kept separate.)
 7. intake: const intake = buildLookIntake({ age, bodyType }).  // pure, cheap
 8. profile: resolveProfileForLookSet(admin, user.id, {faceImage, fullImage}, intake).
-   if source === "fresh" → logEvent create_look_analysis. (Snapshot is written on the set in step 10; no separate profile store.)
+   if source === "fresh" → logEvent create_look_analysis. (The profile snapshot is written into the owner-only `look_set_profiles` side table by createLookSet in step 10 — never onto the publicly-readable `look_sets` row.)
 9. name: setName(occasionLabel, todayISO) — pass a collision time (HH:MM) only if a same-occasion set already exists today for this user (query look_sets by occasion_id + created_at::date).
 10. createLookSet({ userId, reportId: null, occasionId, season, boldness, name, carloNote: null, profile, isPublic: false, shareSlug: <generated> }) → setId.
 11. compute the per-look charge VECTOR (deterministic, sums to price exactly):
