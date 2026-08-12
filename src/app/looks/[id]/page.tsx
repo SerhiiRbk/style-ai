@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
+import { ShopTheLook } from "@/components/StyleGuides";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import {
   createServerSupabase,
@@ -93,6 +94,9 @@ export default async function LookSetPage({
                     />
                   ))}
                 </div>
+              ) : null}
+              {set.lookItems?.[i]?.length ? (
+                <ShopTheLook items={set.lookItems[i]!} currency="EUR" />
               ) : null}
             </article>
           ))}

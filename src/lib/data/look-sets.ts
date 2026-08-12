@@ -3,6 +3,7 @@ import { createAdminSupabase } from "@/lib/supabase/server";
 import { getLatestReportProfile } from "@/lib/data/match-profile";
 import { styleProfileSchema, type StyleProfile, type Boldness } from "@/lib/style-profile";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
+import type { ShoppingItem } from "@/lib/report";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
@@ -197,6 +198,7 @@ export async function loadLookSetResult(
   carloNote: string | null;
   occasionId: string;
   createdAt: string;
+  lookItems: Record<number, ShoppingItem[]> | null;
   looks: LoadedSetLook[];
 } | null> {
   const { data: set, error: setErr } = await admin
@@ -207,6 +209,22 @@ export async function loadLookSetResult(
     .maybeSingle();
   if (setErr) console.error("[look-set] loadLookSetResult set query failed", setErr.message);
   if (!set) return null;
+
+  // Best-effort separate read: on a DB where 0040 (look_sets.look_items) is not
+  // yet applied, selecting the column would error the whole set load — isolate
+  // it so the set still renders (just without "Shop the look").
+  let lookItems: Record<number, ShoppingItem[]> | null = null;
+  {
+    const { data: li, error: liErr } = await admin
+      .from("look_sets")
+      .select("look_items")
+      .eq("id", setId)
+      .maybeSingle();
+    if (!liErr) {
+      lookItems =
+        (li?.look_items as Record<number, ShoppingItem[]> | null) ?? null;
+    }
+  }
 
   const { data: rows, error: rowsErr } = await admin
     .from("looks")
@@ -231,6 +249,7 @@ export async function loadLookSetResult(
     carloNote: (set.carlo_note as string | null) ?? null,
     occasionId: (set.occasion_id as string | null) ?? "",
     createdAt: set.created_at as string,
+    lookItems,
     looks,
   };
 }

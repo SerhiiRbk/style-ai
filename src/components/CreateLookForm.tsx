@@ -10,6 +10,9 @@ import { BodyTypePicker } from "@/components/BodyTypePicker";
 import { PhotoQualityGuide } from "@/components/PhotoQualityGuide";
 import { BRAND } from "@/lib/brand";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
+import { ShopTheLook } from "@/components/StyleGuides";
+import type { ShoppingItem } from "@/lib/report";
+import type { Currency } from "@/lib/currency";
 import type { BodyTypeId } from "@/lib/style-profile";
 import { checkPhotoGateClient } from "@/lib/client/photo-gate";
 import { LEGAL } from "@/lib/legal";
@@ -40,22 +43,13 @@ function defaultSeason(): LookBriefSeason {
   return "winter";
 }
 
-type ResultItem = {
-  title?: string;
-  name?: string;
-  url?: string;
-  price?: string | number | null;
-  image?: string;
-  imageUrl?: string;
-};
-
 type ResultLook = {
   context: string;
   title: string;
   description: string;
   palette: string[];
   image: string;
-  items: ResultItem[];
+  items: ShoppingItem[];
 };
 
 type Result = {
@@ -64,6 +58,7 @@ type Result = {
   carloNote: string | null;
   looks: ResultLook[];
   balance: number;
+  currency: Currency;
 };
 
 /** A previously-uploaded reference photo the user can reuse. */
@@ -353,29 +348,7 @@ export function CreateLookForm({
                   </div>
                 ) : null}
                 {look.items?.length ? (
-                  <div className="mt-4">
-                    <p className="eyebrow">Shop the look</p>
-                    <ul className="mt-2 space-y-1.5">
-                      {look.items.slice(0, 4).map((item, k) => (
-                        <li key={k}>
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noopener noreferrer nofollow sponsored"
-                            className="text-sm text-ink underline-offset-2 hover:underline"
-                          >
-                            {item.title || item.name || "View item"}
-                            {item.price ? (
-                              <span className="text-stone-soft">
-                                {" "}
-                                · {item.price}
-                              </span>
-                            ) : null}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <ShopTheLook items={look.items} currency={result.currency} />
                 ) : null}
               </article>
             ))}

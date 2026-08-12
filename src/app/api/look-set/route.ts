@@ -637,6 +637,13 @@ export async function POST(request: Request) {
       })),
     } as unknown as ReportContent;
     matched = await matchLookItems(profile, content);
+    // Persist the matched items on the set (mirrors reports.look_items) so the
+    // set view can show "Shop the look" and the whole-look try-on can resolve
+    // items later without recomputing. Best-effort — never fatal to the set.
+    await admin
+      .from("look_sets")
+      .update({ look_items: matched })
+      .eq("id", setId);
   } catch (err) {
     console.error("[look-set] shop-the-look match failed", setId, err);
   }
@@ -670,5 +677,6 @@ export async function POST(request: Request) {
       items: matched[idx] ?? [],
     })),
     balance,
+    currency: profile.currency,
   });
 }
