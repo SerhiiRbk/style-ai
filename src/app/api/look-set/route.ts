@@ -555,32 +555,10 @@ export async function POST(request: Request) {
 
           await saveSetLook(admin, { setId, userId: user.id, look, imagePath });
 
-          // Bill ONLY after the image is stored. Idempotent per (setId, i) —
-          // a retry of the same set never double-charges this index.
-          try {
-            await spendCreditsOnce(admin, {
-              userId: user.id,
-              amount: charge[i]!,
-              reason: "look_set",
-              refId: `lookset:${setId}:${i}`,
-            });
-          } catch (billErr) {
-            // Should not happen under normal (non-concurrent) use — balance
-            // was pre-checked >= price in step 5. Treat as a failed look
-            // rather than an unbilled free one: it's excluded from the
-            // response, though its already-stored `looks` row/image remain
-            // (accepted residual — mirrors the "best-effort" tone of the
-            // shop-the-look step below; not worth a compensating delete for
-            // an already-documented non-issue).
-            console.error(
-              "[look-set] billing failed for rendered look",
-              setId,
-              i,
-              billErr,
-            );
-            return null;
-          }
-
+          // Billing is deferred to a single set-level spend after the loop —
+          // spend_credits_once requires a UUID ref_id (the set id). Charging
+          // per index with a string like `lookset:${setId}:${i}` fails the RPC
+          // (22P02) and used to wipe every successful render as "generation_failed".
           return { ...look, imagePath, charged: charge[i]! };
         } catch (err) {
           console.error("[look-set] look render failed", setId, i, err);
@@ -604,6 +582,26 @@ export async function POST(request: Request) {
     await admin.from("look_sets").delete().eq("id", setId);
     return NextResponse.json(
       { error: "Could not generate any looks. Please try again.", code: "generation_failed" },
+      { status: 502 },
+    );
+  }
+
+  // Bill once for the looks that actually rendered. `setId` is a UUID — the
+  // type spend_credits_once.p_ref_id requires — so retries of the same set
+  // (Idempotency-Key → existing set) never double-charge.
+  const billed = rendered.reduce((sum, r) => sum + r.charged, 0);
+  try {
+    await spendCreditsOnce(admin, {
+      userId: user.id,
+      amount: billed,
+      reason: "look_set",
+      refId: setId,
+    });
+  } catch (billErr) {
+    console.error("[look-set] set billing failed", setId, billErr);
+    await admin.from("look_sets").delete().eq("id", setId);
+    return NextResponse.json(
+      { error: "Could not complete billing for this set. Please try again.", code: "billing_failed" },
       { status: 502 },
     );
   }

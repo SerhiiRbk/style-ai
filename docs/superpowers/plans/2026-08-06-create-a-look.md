@@ -558,15 +558,17 @@ git commit -m "feat(create-a-look): profile resolution (report/set/fresh) + set 
 7. name: setName(occasionLabel, todayISO) — collision time (HH:MM) only if a same-occasion set already exists today for this user (query look_sets by occasion_id + created_at::date).
 8. createLookSet({ userId, reportId: null, occasionId, season, boldness, name, carloNote: null, profile, isPublic: false, shareSlug: <generated> }) → setId.
    (createLookSet writes `profile` into the owner-only look_set_profiles side table — NEVER onto the publicly-readable look_sets row.)
-9. per-look charge VECTOR (deterministic, sums to price exactly):
+9. per-look charge VECTOR (deterministic, sums to price exactly) — used to APPORTION cost, not to bill per-look:
      const base = Math.floor(price / looks);
      const rem  = price - base * looks;            // 0..looks-1
      const charge = Array.from({length: looks}, (_, i) => base + (i < rem ? 1 : 0));
    generate N looks (bounded concurrency): for each index i →
      generateExtraLook({ intake, profile, context, brief, boldness, season, existingTitles:[...accumulated] })
-     → generateLookImage → store image → saveSetLook({ setId, userId, look, imagePath }).
-   ONLY after a look's image is stored: spendCreditsOnce(admin, { userId, amount: charge[i], reason:"look_set", refId:`lookset:${setId}:${i}` }).
-   Idempotent per (setId,index): retries never double-charge; a failed render is never charged; all-render sum = price; partial → pay only for rendered.
+     → generateLookImage → store image → saveSetLook(...) → carry `charged: charge[i]` on the rendered look.
+   Then bill ONCE for the whole set, over the looks that actually rendered:
+     const billed = rendered.reduce((s, r) => s + r.charged, 0);
+     spendCreditsOnce(admin, { userId, amount: billed, reason:"look_set", refId: setId }).
+   **CRITICAL: `refId` MUST be `setId` (a UUID).** The `credits_ledger.ref_id` / `spend_credits_once` RPC column is typed **uuid** — a string like `lookset:${setId}:${i}` throws Postgres 22P02 at runtime (invalid uuid), which is caught as a "billing failed" per look → every look counted failed → 502 + set deleted, even though the images rendered fine. This is a runtime-only bug (never surfaces in tsc or against a mock). Idempotency: one spend keyed by (reason, setId); whole-request retries are already deduped by the Idempotency-Key→existing-set path (step 2b), so no double-charge. all-render → billed = price; partial → pay only for rendered.
 10. carloNoteForSet({ profile, occasionLabel, looks }) → UPDATE look_sets.carlo_note.
 11. Shop-the-Look (best-effort, non-fatal): matchLookItems per rendered look, returned INLINE in the response. Phase 1 has no set-linked matches table, so matches are NOT persisted — read-side re-fetch is a Task 9+ concern (documented). Derive palette hints from the profile, not an empty array.
 12. logEvent look_set_created { occasion, looks, loyalty, source, rendered }.
@@ -574,7 +576,7 @@ git commit -m "feat(create-a-look): profile resolution (report/set/fresh) + set 
 14. return 200 { setId, shareSlug, looks: [signed image URLs + titles + matches], balance }.
 ```
 
-> **Billing is fixed (no open decision):** the per-look charge vector in step 11 sums to the bundle `price` when all looks render, charges proportionally on partial failure, and is idempotent per `(setId, index)` via `spendCreditsOnce` (VERIFIED at `credits.ts:190`, keyed by `reason`+`refId`). Comment the vector math in the route.
+> **Billing:** the charge vector apportions the bundle `price` across the N looks; the route bills **once per set** for the sum of the rendered looks' shares via `spendCreditsOnce(reason:"look_set", refId: setId)`. `refId` must be the **UUID** `setId` — `credits_ledger.ref_id` is a uuid column and a non-uuid string throws Postgres 22P02 (this shipped as a bug: per-look `refId:` `` `lookset:${setId}:${i}` `` failed every look → 502; fixed to bill once with `refId: setId`). Idempotency comes from the request-key replay (step 2b), so retries never double-charge.
 
 - [ ] **Step 1b: Add the cost-fuse env constants** — in `src/lib/env.ts`, next to the existing A0 / rate-limit config:
 
