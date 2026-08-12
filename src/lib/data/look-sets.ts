@@ -227,6 +227,7 @@ export async function loadLookSetResult(
 ): Promise<{
   setId: string;
   shareSlug: string | null;
+  isPublic: boolean;
   carloNote: string | null;
   occasionId: string;
   createdAt: string;
@@ -235,7 +236,7 @@ export async function loadLookSetResult(
 } | null> {
   const { data: set, error: setErr } = await admin
     .from("look_sets")
-    .select("id, user_id, share_slug, carlo_note, occasion_id, created_at")
+    .select("id, user_id, share_slug, is_public, carlo_note, occasion_id, created_at")
     .eq("id", setId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -286,6 +287,75 @@ export async function loadLookSetResult(
   return {
     setId: set.id as string,
     shareSlug: (set.share_slug as string | null) ?? null,
+    isPublic: (set.is_public as boolean | null) ?? false,
+    carloNote: (set.carlo_note as string | null) ?? null,
+    occasionId: (set.occasion_id as string | null) ?? "",
+    createdAt: set.created_at as string,
+    lookItems,
+    looks,
+  };
+}
+
+/**
+ * Load a PUBLIC (shared) set for a non-owner viewer — gated on is_public, not
+ * user-scoped. Returns the same render fields as loadLookSetResult minus any
+ * owner-only data: no share_slug, and no self-heal backfill (that reads the
+ * owner-only profile side table). A viewer of an old set just sees the looks
+ * without "shop the look". Returns null when the set doesn't exist or isn't
+ * shared. Never touches look_set_profiles (PII).
+ */
+export async function loadPublicLookSet(
+  admin: AdminClient,
+  setId: string,
+): Promise<{
+  setId: string;
+  carloNote: string | null;
+  occasionId: string;
+  createdAt: string;
+  lookItems: Record<number, ShoppingItem[]> | null;
+  looks: LoadedSetLook[];
+} | null> {
+  const { data: set, error: setErr } = await admin
+    .from("look_sets")
+    .select("id, carlo_note, occasion_id, created_at")
+    .eq("id", setId)
+    .eq("is_public", true)
+    .maybeSingle();
+  if (setErr) console.error("[look-set] loadPublicLookSet set query failed", setErr.message);
+  if (!set) return null;
+
+  let lookItems: Record<number, ShoppingItem[]> | null = null;
+  {
+    const { data: li, error: liErr } = await admin
+      .from("look_sets")
+      .select("look_items")
+      .eq("id", setId)
+      .maybeSingle();
+    if (!liErr) {
+      lookItems =
+        (li?.look_items as Record<number, ShoppingItem[]> | null) ?? null;
+    }
+  }
+
+  const { data: rows, error: rowsErr } = await admin
+    .from("looks")
+    .select("context, title, description, palette, image_path")
+    .eq("set_id", setId)
+    .order("created_at", { ascending: true });
+  if (rowsErr) console.error("[look-set] loadPublicLookSet looks query failed", rowsErr.message);
+
+  const looks: LoadedSetLook[] = (rows ?? [])
+    .filter((r) => r.image_path)
+    .map((r) => ({
+      context: (r.context as string | null) ?? "",
+      title: (r.title as string | null) ?? "",
+      description: (r.description as string | null) ?? "",
+      palette: (r.palette as string[] | null) ?? [],
+      imagePath: r.image_path as string,
+    }));
+
+  return {
+    setId: set.id as string,
     carloNote: (set.carlo_note as string | null) ?? null,
     occasionId: (set.occasion_id as string | null) ?? "",
     createdAt: set.created_at as string,

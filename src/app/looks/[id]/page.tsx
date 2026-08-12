@@ -1,20 +1,22 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { LookShopAndTryOn } from "@/components/LookShopAndTryOn";
 import { CreditsProvider } from "@/components/CreditsContext";
+import { ShareSetButton } from "@/components/ShareSetButton";
+import { DeleteSetButton } from "@/components/DeleteSetButton";
 import { getCreditBalance } from "@/lib/credits";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import {
   createServerSupabase,
   createAdminSupabase,
 } from "@/lib/supabase/server";
-import { loadLookSetResult } from "@/lib/data/look-sets";
+import { loadLookSetResult, loadPublicLookSet } from "@/lib/data/look-sets";
 import { lookContextById } from "@/lib/look-contexts";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 
-export const metadata = { title: "Your look set · Valetti" };
+export const metadata = { title: "Look set · Valetti" };
 
 export default async function LookSetPage({
   params,
@@ -28,13 +30,18 @@ export default async function LookSetPage({
   const {
     data: { user },
   } = await sb.auth.getUser();
-  if (!user) redirect(`/login?next=/looks/${id}`);
 
   const admin = createAdminSupabase();
-  const set = await loadLookSetResult(admin, user.id, id);
+
+  // Owner sees the full set (try-on, share, delete); anyone else can only view
+  // it once it's shared (is_public). A logged-in non-owner falls through to the
+  // public path too.
+  const owned = user ? await loadLookSetResult(admin, user.id, id) : null;
+  const set = owned ?? (await loadPublicLookSet(admin, id));
   if (!set) notFound();
 
-  const creditBalance = await getCreditBalance();
+  const isOwner = owned !== null;
+  const creditBalance = isOwner ? await getCreditBalance() : null;
 
   const occasion = lookContextById(set.occasionId)?.label ?? "Looks";
   const date = new Date(set.createdAt).toLocaleDateString(undefined, {
@@ -43,6 +50,45 @@ export default async function LookSetPage({
     year: "numeric",
   });
 
+  const looksGrid = (
+    <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+      {set.looks.map((look, i) => (
+        <article key={i} className="flex flex-col">
+          <ReportZoomImage
+            src={signedAssetProxyUrl(look.imagePath)}
+            alt={look.title}
+            wrapperClassName="relative block aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline"
+            className="h-full w-full object-cover"
+          />
+          <h2 className="mt-3 font-display text-lg text-ink">{look.title}</h2>
+          <p className="mt-1 text-sm text-stone">{look.description}</p>
+          {look.palette?.length ? (
+            <div className="mt-3 flex gap-1.5">
+              {look.palette.map((hex, k) => (
+                <span
+                  key={k}
+                  title={hex}
+                  className="h-5 w-5 rounded-full border border-black/10"
+                  style={{ backgroundColor: hex }}
+                />
+              ))}
+            </div>
+          ) : null}
+          <LookShopAndTryOn
+            items={set.lookItems?.[i] ?? []}
+            currency="EUR"
+            canTryOn={isOwner}
+            setId={isOwner ? set.setId : undefined}
+            title={look.title}
+            description={look.description}
+            palette={look.palette}
+            lookIndex={i}
+          />
+        </article>
+      ))}
+    </div>
+  );
+
   return (
     <main className="bg-paper">
       <Navbar />
@@ -50,19 +96,35 @@ export default async function LookSetPage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="eyebrow text-brass">{occasion}</p>
-            <h1 className="mt-1 font-display text-3xl text-ink">
-              {occasion}
-            </h1>
+            <h1 className="mt-1 font-display text-3xl text-ink">{occasion}</h1>
             <p className="mt-1 text-sm text-stone-soft">
               {date} · {set.looks.length} looks
             </p>
           </div>
-          <Link
-            href="/looks"
-            className="rounded-full border border-line px-4 py-2 text-sm text-stone transition-colors hover:border-ink/30 hover:text-ink"
-          >
-            All sets
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {isOwner ? (
+              <>
+                <ShareSetButton
+                  setId={set.setId}
+                  initialIsPublic={owned!.isPublic}
+                />
+                <DeleteSetButton setId={set.setId} redirectTo="/looks" />
+                <Link
+                  href="/looks"
+                  className="rounded-full border border-line px-4 py-2 text-sm text-stone transition-colors hover:border-ink/30 hover:text-ink"
+                >
+                  All sets
+                </Link>
+              </>
+            ) : (
+              <Link
+                href="/create-look"
+                className="rounded-full bg-ink px-5 py-2.5 text-sm text-paper transition-colors hover:bg-ink-soft"
+              >
+                Create your own looks
+              </Link>
+            )}
+          </div>
         </div>
 
         {set.carloNote ? (
@@ -74,46 +136,13 @@ export default async function LookSetPage({
           </blockquote>
         ) : null}
 
-        <CreditsProvider initialBalance={creditBalance}>
-          <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {set.looks.map((look, i) => (
-              <article key={i} className="flex flex-col">
-              <ReportZoomImage
-                src={signedAssetProxyUrl(look.imagePath)}
-                alt={look.title}
-                wrapperClassName="relative block aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline"
-                className="h-full w-full object-cover"
-              />
-              <h2 className="mt-3 font-display text-lg text-ink">
-                {look.title}
-              </h2>
-              <p className="mt-1 text-sm text-stone">{look.description}</p>
-              {look.palette?.length ? (
-                <div className="mt-3 flex gap-1.5">
-                  {look.palette.map((hex, k) => (
-                    <span
-                      key={k}
-                      title={hex}
-                      className="h-5 w-5 rounded-full border border-black/10"
-                      style={{ backgroundColor: hex }}
-                    />
-                  ))}
-                </div>
-              ) : null}
-                <LookShopAndTryOn
-                  items={set.lookItems?.[i] ?? []}
-                  currency="EUR"
-                  canTryOn
-                  setId={set.setId}
-                  title={look.title}
-                  description={look.description}
-                  palette={look.palette}
-                  lookIndex={i}
-                />
-              </article>
-            ))}
-          </div>
-        </CreditsProvider>
+        {isOwner ? (
+          <CreditsProvider initialBalance={creditBalance}>
+            {looksGrid}
+          </CreditsProvider>
+        ) : (
+          looksGrid
+        )}
       </div>
     </main>
   );
