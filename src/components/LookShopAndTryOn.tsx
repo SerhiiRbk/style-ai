@@ -19,6 +19,7 @@ export function LookShopAndTryOn({
   lang,
   canTryOn,
   reportId,
+  setId,
   title,
   description,
   palette,
@@ -28,7 +29,9 @@ export function LookShopAndTryOn({
   currency: Currency;
   lang?: ReportLanguage;
   canTryOn: boolean;
-  reportId: string;
+  /** One of reportId / setId identifies the try-on's context. */
+  reportId?: string;
+  setId?: string;
   title: string;
   description: string;
   palette?: string[];
@@ -65,6 +68,7 @@ export function LookShopAndTryOn({
         <div className="mt-4">
           <LookTryOn
             reportId={reportId}
+            setId={setId}
             title={title}
             description={description}
             palette={palette}

@@ -10,7 +10,8 @@ import { BodyTypePicker } from "@/components/BodyTypePicker";
 import { PhotoQualityGuide } from "@/components/PhotoQualityGuide";
 import { BRAND } from "@/lib/brand";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
-import { ShopTheLook } from "@/components/StyleGuides";
+import { LookShopAndTryOn } from "@/components/LookShopAndTryOn";
+import { CreditsProvider } from "@/components/CreditsContext";
 import type { ShoppingItem } from "@/lib/report";
 import type { Currency } from "@/lib/currency";
 import type { BodyTypeId } from "@/lib/style-profile";
@@ -320,6 +321,7 @@ export function CreateLookForm({
             </blockquote>
           ) : null}
 
+          <CreditsProvider initialBalance={result.balance}>
           <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {result.looks.map((look, i) => (
               <article key={i} className="flex flex-col">
@@ -347,12 +349,20 @@ export function CreateLookForm({
                     ))}
                   </div>
                 ) : null}
-                {look.items?.length ? (
-                  <ShopTheLook items={look.items} currency={result.currency} />
-                ) : null}
+                <LookShopAndTryOn
+                  items={look.items}
+                  currency={result.currency}
+                  canTryOn
+                  setId={result.setId}
+                  title={look.title}
+                  description={look.description}
+                  palette={look.palette}
+                  lookIndex={i}
+                />
               </article>
             ))}
           </div>
+          </CreditsProvider>
 
           <p className="mt-10 text-sm text-stone">
             Credits remaining: {result.balance}

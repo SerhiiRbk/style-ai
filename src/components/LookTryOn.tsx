@@ -14,6 +14,7 @@ import { WORKING } from "@/components/luxe/messages";
  */
 export function LookTryOn({
   reportId,
+  setId,
   title,
   description,
   palette = [],
@@ -27,7 +28,9 @@ export function LookTryOn({
   selectedProductIds,
   requireSelection = false,
 }: {
-  reportId: string;
+  /** One of reportId / setId identifies the try-on's context. */
+  reportId?: string;
+  setId?: string;
   title: string;
   description: string;
   palette?: string[];
@@ -72,7 +75,9 @@ export function LookTryOn({
 
   useEffect(() => {
     let cancelled = false;
-    const query = new URLSearchParams({ reportId, kind });
+    const query = new URLSearchParams({ kind });
+    if (setId) query.set("setId", setId);
+    else if (reportId) query.set("reportId", reportId);
     if (typeof lookIndex === "number") {
       query.set("lookIndex", String(lookIndex));
     } else {
@@ -96,7 +101,7 @@ export function LookTryOn({
     return () => {
       cancelled = true;
     };
-  }, [reportId, kind, lookIndex, title]);
+  }, [reportId, setId, kind, lookIndex, title]);
 
   async function run() {
     if (insufficient || noneSelected) return;
@@ -109,6 +114,7 @@ export function LookTryOn({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reportId,
+          setId,
           title,
           description,
           palette,

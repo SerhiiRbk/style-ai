@@ -2,7 +2,9 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
-import { ShopTheLook } from "@/components/StyleGuides";
+import { LookShopAndTryOn } from "@/components/LookShopAndTryOn";
+import { CreditsProvider } from "@/components/CreditsContext";
+import { getCreditBalance } from "@/lib/credits";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import {
   createServerSupabase,
@@ -31,6 +33,8 @@ export default async function LookSetPage({
   const admin = createAdminSupabase();
   const set = await loadLookSetResult(admin, user.id, id);
   if (!set) notFound();
+
+  const creditBalance = await getCreditBalance();
 
   const occasion = lookContextById(set.occasionId)?.label ?? "Looks";
   const date = new Date(set.createdAt).toLocaleDateString(undefined, {
@@ -70,9 +74,10 @@ export default async function LookSetPage({
           </blockquote>
         ) : null}
 
-        <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          {set.looks.map((look, i) => (
-            <article key={i} className="flex flex-col">
+        <CreditsProvider initialBalance={creditBalance}>
+          <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            {set.looks.map((look, i) => (
+              <article key={i} className="flex flex-col">
               <ReportZoomImage
                 src={signedAssetProxyUrl(look.imagePath)}
                 alt={look.title}
@@ -95,12 +100,20 @@ export default async function LookSetPage({
                   ))}
                 </div>
               ) : null}
-              {set.lookItems?.[i]?.length ? (
-                <ShopTheLook items={set.lookItems[i]!} currency="EUR" />
-              ) : null}
-            </article>
-          ))}
-        </div>
+                <LookShopAndTryOn
+                  items={set.lookItems?.[i] ?? []}
+                  currency="EUR"
+                  canTryOn
+                  setId={set.setId}
+                  title={look.title}
+                  description={look.description}
+                  palette={look.palette}
+                  lookIndex={i}
+                />
+              </article>
+            ))}
+          </div>
+        </CreditsProvider>
       </div>
     </main>
   );

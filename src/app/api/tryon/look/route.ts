@@ -103,8 +103,12 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const reportId = searchParams.get("reportId");
-  if (!reportId || isDemoReportId(reportId)) {
-    return NextResponse.json({ error: "Invalid reportId" }, { status: 400 });
+  const setId = searchParams.get("setId");
+  // A try-on belongs to either a Style Report or a Create-a-Look set; `id`
+  // namespaces its storage path either way.
+  const id = setId ?? reportId;
+  if (!id || (reportId != null && isDemoReportId(reportId))) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
 
   const lookIndex = parseLookIndex(searchParams.get("lookIndex"));
@@ -117,7 +121,7 @@ export async function GET(request: Request) {
   // Prefer the latest DB row — its created_at is the cache-busting version, so
   // a page reload shows the most recent render rather than a stale immutable
   // copy of the (fixed, overwritten) storage path.
-  const like = `%/tryon/look-${reportId}-${lookKey}.%`;
+  const like = `%/tryon/look-${id}-${lookKey}.%`;
   const { data: row } = await admin
     .from("tryons")
     .select("image_path, created_at")
@@ -137,7 +141,7 @@ export async function GET(request: Request) {
 
   // Legacy fallback: a stored file exists without a matching tryons row.
   for (const ext of ["png", "jpg"] as const) {
-    const path = tryonStoragePath(user.id, reportId, lookKey, ext);
+    const path = tryonStoragePath(user.id, id, lookKey, ext);
     const { data: blob, error } = await admin.storage.from("assets").download(path);
     if (!error && blob) {
       return NextResponse.json({ url: signedAssetProxyUrl(path), lookKey });
@@ -201,22 +205,72 @@ export async function POST(request: Request) {
     ? body.productIds.filter((p: unknown): p is string => typeof p === "string")
     : null;
 
-  if (!reportId || isDemoReportId(reportId) || !description) {
+  const setId: string | undefined =
+    typeof body?.setId === "string" && body.setId ? body.setId : undefined;
+
+  if (!description) {
+    return NextResponse.json({ error: "Missing description" }, { status: 400 });
+  }
+  if (!setId && (!reportId || isDemoReportId(reportId))) {
     return NextResponse.json(
-      { error: "Missing reportId or description" },
+      { error: "Missing reportId or setId" },
       { status: 400 },
     );
   }
 
   const lookKey = formatLookKey({ kind, lookIndex, title });
+  const admin = createAdminSupabase();
 
-  // getReportById refreshes look_items via on-the-fly catalogue matching when
-  // they are missing/stale and enriches each item with its product image URL —
-  // so the try-on always sees the freshest "Shop a look like this" picks.
-  const report = await getReportById(reportId);
-  const profile = report?.profile as StyleProfile | undefined;
-  if (!report || !profile) {
-    return NextResponse.json({ error: "Report not found" }, { status: 404 });
+  // Resolve the try-on context from EITHER a Style Report or a Create-a-Look
+  // set. `storageId` namespaces the render's storage path + credit refId (both
+  // report id and set id are UUIDs); `reportIdForRow` is null for sets — their
+  // try-ons aren't report-scoped and surface as standalone in the gallery.
+  let profile: StyleProfile;
+  let shopping: ShoppingItem[] = [];
+  let lookItems: Record<number, ShoppingItem[]> | undefined;
+  let refCreatedAt: string;
+  let storageId: string;
+  let reportIdForRow: string | null;
+
+  if (setId) {
+    const { data: setRow } = await admin
+      .from("look_sets")
+      .select("id, created_at, look_items")
+      .eq("id", setId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const { data: profRow } = await admin
+      .from("look_set_profiles")
+      .select("profile")
+      .eq("set_id", setId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!setRow || !profRow?.profile) {
+      return NextResponse.json({ error: "Set not found" }, { status: 404 });
+    }
+    profile = profRow.profile as StyleProfile;
+    lookItems =
+      (setRow.look_items as Record<number, ShoppingItem[]> | null) ?? undefined;
+    refCreatedAt = setRow.created_at as string;
+    storageId = setId;
+    reportIdForRow = null;
+  } else {
+    // getReportById refreshes look_items via on-the-fly catalogue matching when
+    // they are missing/stale and enriches each item with its product image URL —
+    // so the try-on always sees the freshest "Shop a look like this" picks.
+    const report = await getReportById(reportId!);
+    const p = report?.profile as StyleProfile | undefined;
+    if (!report || !p) {
+      return NextResponse.json({ error: "Report not found" }, { status: 404 });
+    }
+    profile = p;
+    shopping = report.shopping as ShoppingItem[];
+    lookItems = report.lookItems as
+      | Record<number, ShoppingItem[]>
+      | undefined;
+    refCreatedAt = report.createdAt;
+    storageId = reportId!;
+    reportIdForRow = reportId!;
   }
 
   // Charge credits (try-on or re-render). Verify the balance up front so we
@@ -224,7 +278,7 @@ export async function POST(request: Request) {
   const cost = isRegen ? CREDIT_COSTS.regen : CREDIT_COSTS.tryon;
   const reason = isRegen ? "regen" : "tryon";
   if (hasSupabaseAdmin) {
-    const balance = await creditBalance(createAdminSupabase(), user.id);
+    const balance = await creditBalance(admin, user.id);
     if (balance < cost) {
       return NextResponse.json(
         {
@@ -237,11 +291,6 @@ export async function POST(request: Request) {
       );
     }
   }
-
-  const shopping = report.shopping as ShoppingItem[];
-  const lookItems = report.lookItems as
-    | Record<number, ShoppingItem[]>
-    | undefined;
 
   const capsulePieces =
     pieces.length > 0
@@ -292,18 +341,18 @@ export async function POST(request: Request) {
     // returned nothing (empty/unseeded catalogue, gender filter, or migration
     // 0005 not applied). Surfaced here to aid debugging.
     console.warn(
-      `[tryon] no catalogue items for report ${reportId} lookIndex ${lookIndex} — ` +
+      `[tryon] no catalogue items for ${storageId} lookIndex ${lookIndex} — ` +
         `try-on will fall back to the look description. Verify catalogue seed + match_products RPC.`,
     );
   }
 
-  const admin = createAdminSupabase();
-
+  // Reference photos: for a report, its stored photos; for a set, pass no
+  // reportId so it falls back to the user's own face/full photos by role.
   const photo = await getReportReferencePhotos(
     admin,
     user.id,
-    report.createdAt,
-    reportId,
+    refCreatedAt,
+    reportIdForRow ?? undefined,
   );
   if (!photo.ok) {
     return NextResponse.json(
@@ -359,7 +408,7 @@ export async function POST(request: Request) {
       : result;
 
   const ext = normalized.mediaType.includes("jpeg") ? "jpg" : "png";
-  const path = tryonStoragePath(user.id, reportId, lookKey, ext);
+  const path = tryonStoragePath(user.id, storageId, lookKey, ext);
   const { error: upErr } = await admin.storage
     .from("assets")
     .upload(path, normalized.bytes, {
@@ -388,7 +437,7 @@ export async function POST(request: Request) {
     .from("tryons")
     .insert({
       user_id: user.id,
-      report_id: reportId,
+      report_id: reportIdForRow,
       image_path: path,
       status: "ready",
       kind,
@@ -408,7 +457,7 @@ export async function POST(request: Request) {
         userId: user.id,
         amount: cost,
         reason,
-        refId: reportId,
+        refId: storageId,
       });
     } catch (e) {
       if (e instanceof InsufficientCreditsError) {
