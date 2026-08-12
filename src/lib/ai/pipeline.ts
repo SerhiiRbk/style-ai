@@ -869,7 +869,8 @@ export async function generateLookImage(opts: {
     }
 
     return await renderImage(content);
-  } catch {
+  } catch (err) {
+    console.error("[generateLookImage] render failed", err);
     return null;
   }
 }

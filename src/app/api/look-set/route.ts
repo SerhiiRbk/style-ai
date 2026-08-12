@@ -505,7 +505,10 @@ export async function POST(request: Request) {
             referenceImageUrl: refFullUrl,
             faceReferenceImageUrl: faceImage,
           });
-          if (!img) return null;
+          if (!img) {
+            console.error("[look-set] generateLookImage returned null", setId, i);
+            return null;
+          }
 
           const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
           const imagePath = `${user.id}/looksets/${setId}/${i}.${ext}`;
@@ -515,7 +518,10 @@ export async function POST(request: Request) {
               contentType: img.mediaType,
               upsert: true,
             });
-          if (upErr) return null;
+          if (upErr) {
+            console.error("[look-set] asset upload failed", setId, i, upErr);
+            return null;
+          }
 
           await saveSetLook(admin, { setId, userId: user.id, look, imagePath });
 
