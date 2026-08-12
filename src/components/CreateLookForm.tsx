@@ -1,22 +1,25 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import { LOOK_CONTEXTS } from "@/lib/look-contexts";
 import { LOOK_SET_BUNDLES, priceForBundle } from "@/lib/look-sets";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import { BodyTypePicker } from "@/components/BodyTypePicker";
 import type { BodyTypeId } from "@/lib/style-profile";
-import { checkPhotoGateClient, fileToDataUrl } from "@/lib/client/photo-gate";
+import { checkPhotoGateClient } from "@/lib/client/photo-gate";
 import { LEGAL } from "@/lib/legal";
+import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
+import { LuxeBlockingWait } from "@/components/luxe/LuxeBlockingWait";
 
 type Boldness = "conservative" | "moderate" | "experimental" | "statement";
 
-const BOLDNESS: { id: Boldness; label: string }[] = [
-  { id: "conservative", label: "Conservative" },
-  { id: "moderate", label: "Balanced" },
-  { id: "experimental", label: "Adventurous" },
-  { id: "statement", label: "Statement" },
+const BOLDNESS: { id: Boldness; label: string; desc: string }[] = [
+  { id: "conservative", label: "Conservative", desc: "Keep it safe and classic" },
+  { id: "moderate", label: "Balanced", desc: "Modern, but not flashy" },
+  { id: "experimental", label: "Adventurous", desc: "Open to trying new things" },
+  { id: "statement", label: "Statement", desc: "I want to stand out" },
 ];
 
 const SEASONS: { id: LookBriefSeason; label: string }[] = [
@@ -60,6 +63,9 @@ type Result = {
   balance: number;
 };
 
+/** A previously-uploaded reference photo the user can reuse. */
+type ReusePhoto = { path: string; url: string | null };
+
 function fireStarted(occasionId: string, looks: number) {
   void fetch("/api/events", {
     method: "POST",
@@ -72,12 +78,14 @@ function fireStarted(occasionId: string, looks: number) {
 }
 
 export function CreateLookForm({
+  userId,
   initialAge,
   initialBodyType,
   creditBalance,
   loyalty,
   hasReusableProfile,
 }: {
+  userId: string;
   initialAge: number | "";
   initialBodyType: BodyTypeId | "";
   creditBalance: number;
@@ -102,13 +110,53 @@ export function CreateLookForm({
   // so a lost-response retry can't mint/charge a second set; cleared on success.
   const pendingKeyRef = useRef<string | null>(null);
 
-  // Fresh-user path (no reusable profile): upload face (+ optional full) photo,
-  // consent, and pass the client photo-gate before generating.
-  const [faceUrl, setFaceUrl] = useState<string>("");
-  const [fullUrl, setFullUrl] = useState<string>("");
-  const [consent, setConsent] = useState(false);
-  const [photoBusy, setPhotoBusy] = useState<null | "face" | "full">(null);
+  // Photo SELECTION (all users) + upload. Fresh users must pick/upload a face
+  // (drives analysis) and consent; returning users may optionally pick which
+  // photo the looks render on (server falls back to their default otherwise).
+  const [facePhotos, setFacePhotos] = useState<ReusePhoto[]>([]);
+  const [fullPhotos, setFullPhotos] = useState<ReusePhoto[]>([]);
+  const [facePath, setFacePath] = useState<string>("");
+  const [fullPath, setFullPath] = useState<string>("");
+  const [uploadingRole, setUploadingRole] = useState<null | "face" | "full">(
+    null,
+  );
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [consent, setConsent] = useState(false);
+
+  async function loadPhotos() {
+    try {
+      const res = await fetch("/api/photos", { cache: "no-store" });
+      if (!res.ok) return;
+      const d = await res.json().catch(() => null);
+      if (!d) return;
+      setFullPhotos(
+        Array.isArray(d.photos)
+          ? d.photos.map((p: { storagePath: string; url: string | null }) => ({
+              path: p.storagePath,
+              url: p.url,
+            }))
+          : [],
+      );
+      setFacePhotos(
+        Array.isArray(d.face)
+          ? d.face.map((p: { path: string; url: string | null }) => ({
+              path: p.path,
+              url: p.url,
+            }))
+          : [],
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  useEffect(() => {
+    // Fetch-on-mount: loadPhotos setStates only after an await, not
+    // synchronously in the effect body, so the cascading-render concern
+    // the rule guards against doesn't apply here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadPhotos();
+  }, []);
 
   const price = useMemo(
     () => priceForBundle(looks, loyalty) ?? 0,
@@ -117,9 +165,9 @@ export function CreateLookForm({
   const ageNum = Number(age);
   const ageValid = Number.isInteger(ageNum) && ageNum >= 16 && ageNum <= 99;
   const canAfford = creditBalance >= price;
-  // Returning users reuse their profile (no photo). New users must upload a
-  // face photo (that passed the gate) and give consent.
-  const photosReady = hasReusableProfile || (!!faceUrl && consent);
+  // Returning users reuse their profile (photo optional). New users must select
+  // or upload a face photo (that passed the gate) and give consent.
+  const photosReady = hasReusableProfile || (!!facePath && consent);
   const canSubmit = ageValid && !submitting && canAfford && photosReady;
 
   async function onGenerate() {
@@ -141,12 +189,12 @@ export function CreateLookForm({
           boldness,
           season,
           intake: { age: ageNum, bodyType: bodyType || undefined },
+          faceRefPath: facePath || undefined,
+          fullRefPath: fullPath || undefined,
           // Fresh path only: returning users reuse their stored profile.
           ...(hasReusableProfile
             ? {}
             : {
-                faceImage: faceUrl,
-                fullImage: fullUrl || undefined,
                 biometricConsent: consent,
                 consentVersion: LEGAL.consentVersion,
               }),
@@ -178,388 +226,544 @@ export function CreateLookForm({
     }
   }
 
-  async function acceptPhoto(role: "face" | "full", file: File | undefined) {
+  /**
+   * Gate → upload to the private `photos` bucket → register the path → refresh
+   * the list and auto-select the new photo. A gate reject never reaches Storage.
+   */
+  async function uploadPhoto(role: "face" | "full", file: File | undefined) {
     if (!file) return;
     setPhotoError(null);
-    setPhotoBusy(role);
+    setUploadingRole(role);
     try {
-      const dataUrl = await fileToDataUrl(file);
       const gate = await checkPhotoGateClient({
-        imageDataUrl: dataUrl,
+        file,
         purpose: role === "face" ? "report_face" : "report_full",
       });
       if (!gate.ok) {
         setPhotoError(gate.error);
         return;
       }
-      if (role === "face") setFaceUrl(dataUrl);
-      else setFullUrl(dataUrl);
-    } catch {
-      setPhotoError("Couldn't read that image — please try another.");
+      const sb = createClient();
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${userId}/create-look/${crypto.randomUUID()}/${role}.${ext}`;
+      const { error: upErr } = await sb.storage
+        .from("photos")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const res = await fetch("/api/photos", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ role, storagePath: path }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? "Could not save photo");
+      }
+      await loadPhotos();
+      if (role === "face") setFacePath(path);
+      else setFullPath(path);
+    } catch (e) {
+      setPhotoError(e instanceof Error ? e.message : "Upload failed");
     } finally {
-      setPhotoBusy(null);
+      setUploadingRole(null);
     }
   }
 
   if (result) {
     return (
-      <main className="mx-auto max-w-5xl px-4 py-10">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-            Your looks
-          </h1>
-          <button
-            onClick={() => {
-              setResult(null);
-              setError(null);
-            }}
-            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-          >
-            Create another
-          </button>
-        </div>
+      <main className="bg-paper">
+        <div className="container-luxe max-w-5xl py-12">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="eyebrow">Your set</p>
+              <h1 className="mt-2 font-display text-3xl">Your looks</h1>
+            </div>
+            <button
+              onClick={() => {
+                setResult(null);
+                setError(null);
+              }}
+              className="shrink-0 rounded-full border hairline px-5 py-2 text-sm text-ink transition-colors hover:bg-cream/40"
+            >
+              Create another
+            </button>
+          </div>
 
-        {result.carloNote ? (
-          <blockquote className="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-5 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200">
-            <p className="text-sm leading-relaxed">{result.carloNote}</p>
-            <footer className="mt-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
-              — Carlo
-            </footer>
-          </blockquote>
-        ) : null}
-
-        <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          {result.looks.map((look, i) => (
-            <article key={i} className="flex flex-col">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={look.image}
-                alt={look.title}
-                className="aspect-[9/16] w-full rounded-xl object-cover"
-              />
-              <h2 className="mt-3 font-medium text-neutral-900 dark:text-neutral-50">
-                {look.title}
-              </h2>
-              <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
-                {look.description}
+          {result.carloNote ? (
+            <blockquote className="mt-8 rounded-2xl border hairline bg-cream/40 p-6">
+              <p className="text-sm leading-relaxed text-stone">
+                {result.carloNote}
               </p>
-              {look.palette?.length ? (
-                <div className="mt-3 flex gap-1.5">
-                  {look.palette.map((hex, k) => (
-                    <span
-                      key={k}
-                      title={hex}
-                      className="h-5 w-5 rounded-full border border-black/10 dark:border-white/15"
-                      style={{ backgroundColor: hex }}
-                    />
-                  ))}
-                </div>
-              ) : null}
-              {look.items?.length ? (
-                <div className="mt-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-                    Shop the look
-                  </p>
-                  <ul className="mt-2 space-y-1.5">
-                    {look.items.slice(0, 4).map((item, k) => (
-                      <li key={k}>
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer nofollow sponsored"
-                          className="text-sm text-neutral-700 underline-offset-2 hover:underline dark:text-neutral-200"
-                        >
-                          {item.title || item.name || "View item"}
-                          {item.price ? (
-                            <span className="text-neutral-400"> · {item.price}</span>
-                          ) : null}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </article>
-          ))}
-        </div>
+              <footer className="mt-3 text-[11px] uppercase tracking-[0.14em] text-brass">
+                — Carlo
+              </footer>
+            </blockquote>
+          ) : null}
 
-        <p className="mt-8 text-sm text-neutral-500">
-          Credits remaining: {result.balance}
-        </p>
+          <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            {result.looks.map((look, i) => (
+              <article key={i} className="flex flex-col">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={look.image}
+                  alt={look.title}
+                  className="aspect-[9/16] w-full rounded-2xl border hairline object-cover"
+                />
+                <h2 className="mt-4 font-display text-lg text-ink">
+                  {look.title}
+                </h2>
+                <p className="mt-1.5 text-sm leading-relaxed text-stone">
+                  {look.description}
+                </p>
+                {look.palette?.length ? (
+                  <div className="mt-3 flex gap-1.5">
+                    {look.palette.map((hex, k) => (
+                      <span
+                        key={k}
+                        title={hex}
+                        className="h-5 w-5 rounded-full border border-line"
+                        style={{ backgroundColor: hex }}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {look.items?.length ? (
+                  <div className="mt-4">
+                    <p className="eyebrow">Shop the look</p>
+                    <ul className="mt-2 space-y-1.5">
+                      {look.items.slice(0, 4).map((item, k) => (
+                        <li key={k}>
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer nofollow sponsored"
+                            className="text-sm text-ink underline-offset-2 hover:underline"
+                          >
+                            {item.title || item.name || "View item"}
+                            {item.price ? (
+                              <span className="text-stone-soft">
+                                {" "}
+                                · {item.price}
+                              </span>
+                            ) : null}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+
+          <p className="mt-10 text-sm text-stone">
+            Credits remaining: {result.balance}
+          </p>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10">
-      <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-        Create a Look
-      </h1>
-      <p className="mt-2 text-neutral-600 dark:text-neutral-300">
-        A set of outfit looks for one occasion, styled to your colour profile
-        and rendered on you.
-      </p>
+    <main className="bg-paper">
+      {submitting ? (
+        <LuxeBlockingWait
+          eyebrow="Creating your looks"
+          title={`Styling ${looks} looks`}
+          message="Carlo is building your set and rendering each look on you. This typically takes a minute or two."
+        />
+      ) : null}
+      <div className="container-luxe max-w-3xl py-12">
+        <p className="eyebrow">Create a Look</p>
+        <h1 className="mt-3 font-display text-3xl">A new set of looks</h1>
+        <p className="mt-2 max-w-xl text-stone">
+          A set of outfit looks for one occasion, styled to your colour profile
+          and rendered on you.
+        </p>
 
-      <div className="mt-8 space-y-8">
-        {/* Fresh-user photos + consent (returning users reuse their profile) */}
-        {!hasReusableProfile ? (
-          <section>
-            <h2 className="text-sm font-medium uppercase tracking-wide text-neutral-400">
-              Your photos
-            </h2>
-            <p className="mt-2 text-sm text-neutral-500">
-              We read your colouring from a clear, front-facing photo and render
-              the looks on you. A full-length photo is optional but gives better
-              full-body renders.
-            </p>
-            <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              <PhotoField
-                label="Face photo (required)"
-                accepted={!!faceUrl}
-                busy={photoBusy === "face"}
-                onFile={(f) => acceptPhoto("face", f)}
-              />
-              <PhotoField
-                label="Full-length (recommended)"
-                accepted={!!fullUrl}
-                busy={photoBusy === "full"}
-                onFile={(f) => acceptPhoto("full", f)}
-              />
+        <div className="mt-10 space-y-10">
+          {/* Photos — selection + upload, shown to all users */}
+          <Block
+            eyebrow="Photos"
+            title={hasReusableProfile ? "Choose your photo" : "Your photos"}
+            subtitle={
+              hasReusableProfile
+                ? "Optional — pick which photo your looks are rendered on, or add a new one. If you skip this, we'll use your default."
+                : "We read your colouring from a clear, front-facing photo and render the looks on you. A face photo is required; a full-length adds better full-body renders."
+            }
+          >
+            <div className="rounded-2xl border hairline bg-cream/40 p-5">
+              <div className="space-y-5">
+                <PhotoRolePicker
+                  label={
+                    hasReusableProfile ? "Face" : "Face — required"
+                  }
+                  photos={facePhotos}
+                  selectedPath={facePath}
+                  uploading={uploadingRole === "face"}
+                  onSelect={(p) => setFacePath((cur) => (cur === p ? "" : p))}
+                  onFile={(f) => uploadPhoto("face", f)}
+                />
+                <PhotoRolePicker
+                  label="Full length — optional"
+                  photos={fullPhotos}
+                  selectedPath={fullPath}
+                  uploading={uploadingRole === "full"}
+                  onSelect={(p) => setFullPath((cur) => (cur === p ? "" : p))}
+                  onFile={(f) => uploadPhoto("full", f)}
+                />
+              </div>
             </div>
             {photoError ? (
-              <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+              <p
+                role="alert"
+                className="mt-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-700"
+              >
                 {photoError}
               </p>
             ) : null}
-            <label className="mt-4 flex items-start gap-2 text-sm text-neutral-600 dark:text-neutral-300">
-              <input
-                type="checkbox"
-                checked={consent}
-                onChange={(e) => setConsent(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span>
-                I consent to Valetti processing my photo(s) — including facial
-                features — to analyse my colouring and generate looks on me.
-              </span>
-            </label>
-          </section>
-        ) : null}
-
-        {/* Mini-intake */}
-        <section>
-          <h2 className="text-sm font-medium uppercase tracking-wide text-neutral-400">
-            About you
-          </h2>
-          <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-sm text-neutral-600 dark:text-neutral-300">
-                Sex
-              </span>
-              <select
-                disabled
-                value="male"
-                className="mt-1 w-full cursor-not-allowed rounded-lg border border-neutral-300 bg-neutral-100 px-3 py-2 text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800"
-              >
-                <option value="male">Male</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-sm text-neutral-600 dark:text-neutral-300">
-                Age
-              </span>
-              <input
-                type="number"
-                min={16}
-                max={99}
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
-              />
-            </label>
-          </div>
-          <div className="mt-4">
-            <span className="text-sm text-neutral-600 dark:text-neutral-300">
-              Body type
-            </span>
-            <div className="mt-2">
-              <BodyTypePicker
-                gender="male"
-                value={bodyType}
-                onChange={setBodyType}
-              />
+            <div className="mt-5 rounded-xl border border-brass/25 bg-brass/5 p-4 text-sm leading-relaxed text-stone">
+              <span className="font-medium text-ink">Photo not perfect?</span>{" "}
+              A clear, front-facing photo in natural light gives the truest
+              colour read and the most convincing render.
             </div>
-          </div>
-        </section>
-
-        {/* Occasion */}
-        <section>
-          <h2 className="text-sm font-medium uppercase tracking-wide text-neutral-400">
-            Occasion
-          </h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {LOOK_CONTEXTS.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setOccasionId(c.id)}
-                className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
-                  occasionId === c.id
-                    ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
-                    : "border-neutral-300 text-neutral-700 hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-200"
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Strictness */}
-        <section>
-          <h2 className="text-sm font-medium uppercase tracking-wide text-neutral-400">
-            How bold?
-          </h2>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {BOLDNESS.map((b) => (
-              <button
-                key={b.id}
-                type="button"
-                onClick={() => setBoldness(b.id)}
-                className={`rounded-lg border px-3 py-2 text-sm transition ${
-                  boldness === b.id
-                    ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
-                    : "border-neutral-300 text-neutral-700 hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-200"
-                }`}
-              >
-                {b.label}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Season */}
-        <section>
-          <h2 className="text-sm font-medium uppercase tracking-wide text-neutral-400">
-            Season
-          </h2>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {SEASONS.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSeason(s.id)}
-                className={`rounded-lg border px-3 py-2 text-sm transition ${
-                  season === s.id
-                    ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
-                    : "border-neutral-300 text-neutral-700 hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-200"
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Count + price */}
-        <section>
-          <h2 className="text-sm font-medium uppercase tracking-wide text-neutral-400">
-            How many looks?
-          </h2>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {LOOK_SET_BUNDLES.map((b) => {
-              const p = priceForBundle(b.looks, loyalty) ?? b.credits;
-              return (
-                <button
-                  key={b.looks}
-                  type="button"
-                  onClick={() => setLooks(b.looks)}
-                  className={`rounded-lg border px-3 py-3 text-center transition ${
-                    looks === b.looks
-                      ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
-                      : "border-neutral-300 text-neutral-700 hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-200"
-                  }`}
-                >
-                  <span className="block text-lg font-semibold">{b.looks}</span>
-                  <span className="block text-xs opacity-80">{p} credits</span>
-                </button>
-              );
-            })}
-          </div>
-          {loyalty ? (
-            <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-              Loyalty pricing applied.
-            </p>
-          ) : null}
-        </section>
-
-        {error ? (
-          <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-            {error.message}
-            {error.buy ? (
-              <>
-                {" "}
-                <Link href="/account" className="font-medium underline">
-                  Buy credits
-                </Link>
-              </>
+            {!hasReusableProfile ? (
+              <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border hairline bg-cream/40 p-4">
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-ink)]"
+                />
+                <span className="text-xs leading-relaxed text-stone">
+                  I explicitly consent to Valetti processing my uploaded photos
+                  (which may reveal biometric characteristics) to analyse my
+                  colouring and generate personalised looks on me, including
+                  transfer to AI subprocessors listed in the{" "}
+                  <Link href="/privacy" className="text-brass hover:text-ink">
+                    Privacy Policy
+                  </Link>
+                  . I can withdraw consent by deleting my photos, reports, or
+                  account.
+                </span>
+              </label>
             ) : null}
-          </div>
-        ) : null}
+          </Block>
 
-        <div className="flex items-center justify-between gap-4 border-t border-neutral-200 pt-6 dark:border-neutral-800">
-          <div className="text-sm text-neutral-500">
-            {price} credits · balance {creditBalance}
-          </div>
-          <button
-            onClick={onGenerate}
-            disabled={!canSubmit}
-            className="rounded-lg bg-neutral-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+          {/* About you */}
+          <Block
+            eyebrow="About you"
+            title="A little about you"
+            subtitle="Age and frame help us calibrate fit and proportion."
           >
-            {submitting
-              ? `Generating ${looks} looks…`
-              : !ageValid
-                ? "Enter your age"
-                : !photosReady
-                  ? !faceUrl
-                    ? "Add a face photo"
-                    : "Accept the consent"
-                  : !canAfford
-                    ? "Not enough credits"
-                    : `Generate ${looks} looks`}
-          </button>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-sm text-stone">Gender</span>
+                <select
+                  disabled
+                  value="male"
+                  className="mt-2 w-full cursor-not-allowed rounded-lg border border-line bg-cream/40 px-4 py-2.5 text-sm text-stone opacity-70 outline-none"
+                >
+                  <option value="male">Male</option>
+                </select>
+                <p className="mt-2 text-xs text-stone-soft">
+                  Valetti is built for men&apos;s styling.
+                </p>
+              </label>
+              <label className="block">
+                <span className="text-sm text-stone">Age</span>
+                <input
+                  type="number"
+                  min={16}
+                  max={99}
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  placeholder="e.g. 34"
+                  className="mt-2 w-full rounded-lg border border-line bg-paper px-4 py-2.5 text-sm text-ink outline-none transition-colors focus:border-ink"
+                />
+              </label>
+            </div>
+            <div className="mt-6 text-sm text-stone">Body type — optional</div>
+            <p className="mt-1 text-xs text-stone-soft">
+              Pick the silhouette closest to you for more flattering fits.
+            </p>
+            <BodyTypePicker
+              gender="male"
+              value={bodyType}
+              onChange={setBodyType}
+            />
+          </Block>
+
+          {/* Occasion */}
+          <Block
+            eyebrow="Occasion"
+            title="Where are you headed?"
+            subtitle="Every look in the set is styled for this one occasion."
+          >
+            <div className="flex flex-wrap gap-2.5">
+              {LOOK_CONTEXTS.map((c) => {
+                const active = occasionId === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setOccasionId(c.id)}
+                    className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+                      active
+                        ? "border-ink bg-ink text-paper"
+                        : "border-line text-stone hover:border-ink/40 hover:text-ink"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Block>
+
+          {/* Strictness */}
+          <Block eyebrow="Style" title="How bold?" subtitle="">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {BOLDNESS.map((b) => {
+                const active = boldness === b.id;
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => setBoldness(b.id)}
+                    className={`rounded-xl border p-4 text-left transition-colors ${
+                      active
+                        ? "border-ink bg-cream/60"
+                        : "border-line hover:border-ink/40"
+                    }`}
+                  >
+                    <div className="text-sm text-ink">{b.label}</div>
+                    <div className="text-xs text-stone-soft">{b.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </Block>
+
+          {/* Season */}
+          <Block eyebrow="Season" title="Season" subtitle="">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {SEASONS.map((s) => {
+                const active = season === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSeason(s.id)}
+                    className={`rounded-xl border p-3 text-center text-sm transition-colors ${
+                      active
+                        ? "border-ink bg-cream/60 text-ink"
+                        : "border-line text-stone hover:border-ink/40 hover:text-ink"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Block>
+
+          {/* Count + price */}
+          <Block
+            eyebrow="Set size"
+            title="How many looks?"
+            subtitle="More looks give more range for the same occasion."
+          >
+            <div className="grid grid-cols-3 gap-3">
+              {LOOK_SET_BUNDLES.map((b) => {
+                const p = priceForBundle(b.looks, loyalty) ?? b.credits;
+                const active = looks === b.looks;
+                return (
+                  <button
+                    key={b.looks}
+                    type="button"
+                    onClick={() => setLooks(b.looks)}
+                    className={`rounded-2xl border p-4 text-center transition-colors ${
+                      active
+                        ? "border-ink bg-cream/60"
+                        : "border-line bg-paper hover:border-ink/40"
+                    }`}
+                  >
+                    <span className="block font-display text-2xl text-ink">
+                      {b.looks}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-stone-soft">
+                      looks
+                    </span>
+                    <span className="mt-2 block text-xs text-stone">
+                      {p} credits
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {loyalty ? (
+              <p className="mt-3 text-xs text-brass">Loyalty pricing applied.</p>
+            ) : null}
+          </Block>
+
+          {error ? (
+            <div className="rounded-xl border border-[#9E5C3C]/30 bg-[#9E5C3C]/5 px-5 py-3 text-sm text-[#9E5C3C]">
+              {error.message}
+              {error.buy ? (
+                <>
+                  {" "}
+                  <Link href="/account" className="font-medium underline">
+                    Buy credits
+                  </Link>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="flex items-center justify-between gap-4 border-t hairline pt-6">
+            <div className="text-sm text-stone">
+              {price} credits · balance {creditBalance}
+            </div>
+            <button
+              onClick={onGenerate}
+              disabled={!canSubmit}
+              className="inline-flex items-center gap-2 rounded-full bg-ink px-7 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-40"
+            >
+              {submitting ? (
+                <>
+                  <LuxeSpinner size="xs" tone="paper" />
+                  Generating {looks} looks…
+                </>
+              ) : !ageValid ? (
+                "Enter your age"
+              ) : !photosReady ? (
+                !facePath ? (
+                  "Add a face photo"
+                ) : (
+                  "Accept the consent"
+                )
+              ) : !canAfford ? (
+                "Not enough credits"
+              ) : (
+                `Generate ${looks} looks`
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </main>
   );
 }
 
-function PhotoField({
+/* ---------------------------------------------------------------- */
+
+function Block({
+  eyebrow,
+  title,
+  subtitle,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="animate-rise">
+      <p className="eyebrow">{eyebrow}</p>
+      <h2 className="mt-2 font-display text-2xl">{title}</h2>
+      {subtitle ? (
+        <p className="mt-1.5 max-w-xl text-sm text-stone">{subtitle}</p>
+      ) : null}
+      <div className="mt-5">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * Per-role thumbnail picker: prior photos as selectable thumbnails plus an
+ * upload tile. Mirrors StartForm's "Use a previous photo" strip.
+ */
+function PhotoRolePicker({
   label,
-  accepted,
-  busy,
+  photos,
+  selectedPath,
+  uploading,
+  onSelect,
   onFile,
 }: {
   label: string;
-  accepted: boolean;
-  busy: boolean;
+  photos: ReusePhoto[];
+  selectedPath: string;
+  uploading: boolean;
+  onSelect: (path: string) => void;
   onFile: (file: File | undefined) => void;
 }) {
   return (
-    <label
-      className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-6 text-center text-sm transition ${
-        accepted
-          ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-          : "border-neutral-300 text-neutral-600 hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-300"
-      }`}
-    >
-      <input
-        type="file"
-        accept="image/*"
-        className="sr-only"
-        onChange={(e) => onFile(e.target.files?.[0])}
-      />
-      <span>{busy ? "Checking…" : accepted ? `✓ ${label}` : label}</span>
-    </label>
+    <div>
+      <p className="text-[11px] uppercase tracking-wide text-stone-soft">
+        {label}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-3">
+        {photos.map((item) => {
+          const selected = selectedPath === item.path;
+          return (
+            <button
+              key={item.path}
+              type="button"
+              onClick={() => onSelect(item.path)}
+              aria-pressed={selected}
+              className={`relative h-24 w-[4.5rem] overflow-hidden rounded-lg border bg-cream/40 transition-colors ${
+                selected
+                  ? "border-brass ring-2 ring-brass/40"
+                  : "border-line hover:border-ink/30"
+              }`}
+            >
+              {item.url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={item.url}
+                  alt={`${label} photo`}
+                  className="h-full w-full object-contain"
+                  loading="lazy"
+                />
+              ) : null}
+              {selected ? (
+                <span className="absolute inset-x-0 bottom-0 bg-brass/90 py-0.5 text-center text-[10px] text-paper">
+                  Selected
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+
+        <label
+          className={`flex h-24 w-[4.5rem] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-center transition-colors ${
+            uploading
+              ? "border-ink/40 bg-cream/40"
+              : "border-line bg-cream/20 hover:border-ink/40"
+          }`}
+        >
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              onFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          {uploading ? (
+            <LuxeSpinner size="xs" tone="ink" />
+          ) : (
+            <span className="text-lg leading-none text-stone">＋</span>
+          )}
+          <span className="text-[10px] leading-tight text-stone-soft">
+            {uploading ? "…" : "Add"}
+          </span>
+        </label>
+      </div>
+    </div>
   );
 }

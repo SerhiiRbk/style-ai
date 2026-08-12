@@ -71,7 +71,7 @@ function byRoleFromStored(paths: ReportPhotoPath[]): Map<string, string> {
   return byRole;
 }
 
-async function signPhotoPath(
+export async function signPhotoPath(
   admin: AdminClient,
   path: string,
 ): Promise<string | null> {

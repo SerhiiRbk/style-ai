@@ -20,8 +20,10 @@ export const metadata = {
 export default async function CreateLookPage() {
   if (!hasSupabase) {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-16 text-center text-neutral-600 dark:text-neutral-300">
-        Create a Look is unavailable in demo mode.
+      <main className="bg-paper">
+        <div className="container-luxe max-w-2xl py-16 text-center text-stone">
+          Create a Look is unavailable in demo mode.
+        </div>
       </main>
     );
   }
@@ -51,6 +53,7 @@ export default async function CreateLookPage() {
 
   return (
     <CreateLookForm
+      userId={user.id}
       initialAge={initialAge}
       initialBodyType={(profile?.bodyType as BodyTypeId | undefined) ?? ""}
       creditBalance={creditBalance}

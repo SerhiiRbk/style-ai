@@ -111,7 +111,9 @@ export async function POST(request: Request) {
     typeof body?.storagePath === "string" ? body.storagePath : "";
   const makeDefault = body?.makeDefault === true;
 
-  if (role !== "full" || !storagePath) {
+  // Create-a-Look registers both a full-length (try-on model) and a face
+  // (colour analysis + face anchor) reference photo, so accept either role.
+  if ((role !== "full" && role !== "face") || !storagePath) {
     return NextResponse.json({ error: "Invalid photo payload" }, { status: 400 });
   }
 
@@ -122,7 +124,7 @@ export async function POST(request: Request) {
   const admin = createAdminSupabase();
   const { error } = await admin.from("photos").insert({
     user_id: user.id,
-    role: "full",
+    role,
     storage_path: storagePath,
     is_default_tryon: false,
   });
@@ -131,7 +133,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not save photo" }, { status: 500 });
   }
 
-  if (makeDefault) {
+  // The pinned try-on default only applies to full-length photos.
+  if (makeDefault && role === "full") {
     await admin
       .from("photos")
       .update({ is_default_tryon: false })

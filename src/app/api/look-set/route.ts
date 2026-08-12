@@ -36,7 +36,7 @@ import {
 } from "@/lib/ai/pipeline";
 import { matchLookItems, type LookItems } from "@/lib/data/catalog";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
-import { getCatalogTryOnPhoto } from "@/lib/photo-tryon";
+import { getCatalogTryOnPhoto, signPhotoPath } from "@/lib/photo-tryon";
 import { Boldness, BodyType } from "@/lib/style-profile";
 import type { ReportContent, StyleProfile } from "@/lib/style-profile";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
@@ -198,7 +198,31 @@ export async function POST(request: Request) {
   const anonId: string | null =
     typeof body.anonId === "string" && body.anonId ? body.anonId : null;
 
+  // Path-based references (current UI): the client selects/uploads photos into
+  // the private `photos` bucket and sends their storage PATHS. Ownership is
+  // enforced by the `${user.id}/` prefix — a user can only reference their own
+  // photos. These are signed to short-lived URLs below (same proven-safe scheme
+  // as /api/look-extra). The legacy `faceImage`/`fullImage` data-URL path above
+  // still works for older clients.
+  const faceRefPath: string | undefined =
+    typeof body.faceRefPath === "string" &&
+    body.faceRefPath.startsWith(`${user.id}/`)
+      ? body.faceRefPath
+      : undefined;
+  const fullRefPath: string | undefined =
+    typeof body.fullRefPath === "string" &&
+    body.fullRefPath.startsWith(`${user.id}/`)
+      ? body.fullRefPath
+      : undefined;
+
   const admin = createAdminSupabase();
+
+  const signedFace: string | undefined = faceRefPath
+    ? ((await signPhotoPath(admin, faceRefPath)) ?? undefined)
+    : undefined;
+  const signedFull: string | undefined = fullRefPath
+    ? ((await signPhotoPath(admin, fullRefPath)) ?? undefined)
+    : undefined;
 
   // 2b) Idempotency: a client sends a stable Idempotency-Key per "generate"
   // intent. A lost-response retry with the same key returns the set already
@@ -237,7 +261,7 @@ export async function POST(request: Request) {
   // is required. Only new users (or users with neither) must supply one.
   const existing = await resolveExistingProfile(admin, user.id);
   const needsPhoto = !existing;
-  if (needsPhoto && !rawFaceImage) {
+  if (needsPhoto && !signedFace && !rawFaceImage) {
     return NextResponse.json(
       { error: "A face photo is required", code: "photo_required" },
       { status: 400 },
@@ -313,21 +337,20 @@ export async function POST(request: Request) {
     );
   }
 
-  // 6) profile: reuse (no photo, no consent, no gate) when `existing` is set,
-  // else consent + photo gate + a fresh vision analysis over THIS request's
-  // photo(s).
+  // 6) profile: reuse (no fresh analysis) when `existing` is set, else consent
+  // + a fresh vision analysis over THIS request's photo(s). The reference URLs
+  // used to face/full-anchor the renders are resolved from the selected photo
+  // PATHS (signed above) for BOTH fresh and returning users — a returning user
+  // may still choose which photo the looks render on — or from legacy data-URL
+  // uploads on the fresh path.
   let profile: StyleProfile;
   let source: "report" | "prior_set" | "fresh";
-  let faceImage: string | undefined;
-  let fullImage: string | undefined;
+  let faceRefUrl: string | undefined = signedFace;
+  let fullRefUrl: string | undefined = signedFull;
 
   if (needsPhoto) {
-    faceImage = rawFaceImage; // guaranteed present — checked in step 3
-    fullImage = rawFullImage;
-
-    // consent — mirrors /api/reports' biometric consent gate exactly, gated
-    // on photo presence exactly like reports.ts:50 (here: always true in
-    // this branch, since a photo is required to reach it).
+    // consent — mirrors /api/reports' biometric consent gate exactly. A photo
+    // is required to reach this branch, so consent is always required here.
     const biometricConsent = body.biometricConsent === true;
     const consentVersion =
       typeof body.consentVersion === "string" ? body.consentVersion : "";
@@ -342,68 +365,76 @@ export async function POST(request: Request) {
       );
     }
 
-    // photo gate — VERIFIED union contract (never throws): explicit rejects
-    // fail closed (422); provider/timeout/no-AI failures fail open but must
-    // be logged so a silently-dead gate stays visible.
-    const faceGate = await assertPhotoUsable({
-      imageDataUrl: faceImage!,
-      purpose: "report_face",
-    });
-    if (!faceGate.ok) {
-      await logEvent({
-        name: "photo_gate_reject",
-        userId: user.id,
-        anonId,
-        props: { purpose: "report_face" },
+    if (!signedFace) {
+      // LEGACY data-URL path: gate the raw uploads before analysis. Path-based
+      // photos (signedFace present) were already gated client-side and when
+      // first added, so the server gate is skipped for them.
+      faceRefUrl = rawFaceImage; // guaranteed present — checked in step 3
+      fullRefUrl = rawFullImage;
+
+      // photo gate — VERIFIED union contract (never throws): explicit rejects
+      // fail closed (422); provider/timeout/no-AI failures fail open but must
+      // be logged so a silently-dead gate stays visible.
+      const faceGate = await assertPhotoUsable({
+        imageDataUrl: faceRefUrl!,
+        purpose: "report_face",
       });
-      return NextResponse.json(
-        { code: "photo_gate", message: faceGate.rejectReason },
-        { status: 422 },
-      );
-    }
-    if (
-      "skipped" in faceGate &&
-      (faceGate.reason === "provider_error" || faceGate.reason === "no_ai")
-    ) {
-      await logEvent({
-        name: "photo_gate_failopen",
-        userId: user.id,
-        anonId,
-        props: { purpose: "report_face", reason: faceGate.reason },
-      });
-    }
-    if (fullImage) {
-      const fullGate = await assertPhotoUsable({
-        imageDataUrl: fullImage,
-        purpose: "report_full",
-      });
-      if (!fullGate.ok) {
+      if (!faceGate.ok) {
         await logEvent({
           name: "photo_gate_reject",
           userId: user.id,
           anonId,
-          props: { purpose: "report_full" },
+          props: { purpose: "report_face" },
         });
         return NextResponse.json(
-          { code: "photo_gate", message: fullGate.rejectReason },
+          { code: "photo_gate", message: faceGate.rejectReason },
           { status: 422 },
         );
       }
       if (
-        "skipped" in fullGate &&
-        (fullGate.reason === "provider_error" || fullGate.reason === "no_ai")
+        "skipped" in faceGate &&
+        (faceGate.reason === "provider_error" || faceGate.reason === "no_ai")
       ) {
         await logEvent({
           name: "photo_gate_failopen",
           userId: user.id,
           anonId,
-          props: { purpose: "report_full", reason: fullGate.reason },
+          props: { purpose: "report_face", reason: faceGate.reason },
         });
+      }
+      if (fullRefUrl) {
+        const fullGate = await assertPhotoUsable({
+          imageDataUrl: fullRefUrl,
+          purpose: "report_full",
+        });
+        if (!fullGate.ok) {
+          await logEvent({
+            name: "photo_gate_reject",
+            userId: user.id,
+            anonId,
+            props: { purpose: "report_full" },
+          });
+          return NextResponse.json(
+            { code: "photo_gate", message: fullGate.rejectReason },
+            { status: 422 },
+          );
+        }
+        if (
+          "skipped" in fullGate &&
+          (fullGate.reason === "provider_error" || fullGate.reason === "no_ai")
+        ) {
+          await logEvent({
+            name: "photo_gate_failopen",
+            userId: user.id,
+            anonId,
+            props: { purpose: "report_full", reason: fullGate.reason },
+          });
+        }
       }
     }
 
-    const photos: PhotoInput[] = [{ role: "face", url: faceImage! }];
-    if (fullImage) photos.push({ role: "full", url: fullImage });
+    const photos: PhotoInput[] = [{ role: "face", url: faceRefUrl! }];
+    if (fullRefUrl) photos.push({ role: "full", url: fullRefUrl });
     profile = await analyzeProfile(intake, photos);
     source = "fresh";
     await logEvent({
@@ -413,11 +444,10 @@ export async function POST(request: Request) {
       props: { occasion: ctx.id },
     });
   } else {
-    // REUSE: report/prior_set — no photo, no consent, no gate. `faceImage`/
-    // `fullImage` stay undefined, so generateLookImage's referenceImageUrl/
-    // faceReferenceImageUrl below are omitted and the render falls back to
-    // its no-identity-reference path (generateLookImage still works from the
-    // profile's physical attributes alone; it just can't anchor a real face).
+    // REUSE: report/prior_set — no fresh analysis. `faceRefUrl`/`fullRefUrl`
+    // keep any signed selection above (optional for returning users); when both
+    // stay undefined the render falls back below (full: getCatalogTryOnPhoto;
+    // face: the no-identity-reference path).
     profile = existing!.profile;
     source = existing!.source;
   }
@@ -471,11 +501,11 @@ export async function POST(request: Request) {
 
   // Face-anchor the renders on the user's own photo, matching the report /
   // look-extra flow (which passes the user's reference photos to
-  // generateLookImage). Fresh path: the just-uploaded full-length photo.
-  // Reuse path (returning user, no upload): fall back to their stored
+  // generateLookImage). Prefer the selected/uploaded full-length photo (signed
+  // URL). Reuse path (returning user, no pick): fall back to their stored
   // full-length photo so the looks still render on THEM, not a generic model.
   // No stored photo → renders fall back to the no-identity-reference path.
-  let refFullUrl: string | undefined = fullImage;
+  let refFullUrl: string | undefined = fullRefUrl;
   if (!refFullUrl) {
     const stored = await getCatalogTryOnPhoto(admin, user.id);
     if (stored.ok) refFullUrl = stored.signedUrl;
@@ -503,7 +533,7 @@ export async function POST(request: Request) {
             profile,
             look,
             referenceImageUrl: refFullUrl,
-            faceReferenceImageUrl: faceImage,
+            faceReferenceImageUrl: faceRefUrl,
           });
           if (!img) {
             console.error("[look-set] generateLookImage returned null", setId, i);
