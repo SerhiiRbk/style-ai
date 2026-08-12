@@ -7,6 +7,7 @@ import { useNavSession } from "./NavSession";
 
 const MY_STYLE_LINKS = [
   { href: "/reports", label: "Style Reports" },
+  { href: "/create-look", label: "Create a Look" },
   { href: "/gallery", label: "Gallery" },
   ...(COLOURS_ENABLED
     ? [{ href: "/colours", label: "Colours" }]
