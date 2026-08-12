@@ -184,7 +184,7 @@ export function LooksBrowser({ sets }: { sets: LooksBrowserItem[] }) {
               key={s.id}
               className="group relative overflow-hidden rounded-2xl border hairline bg-paper transition-colors hover:border-ink/30"
             >
-              <div className="absolute right-2 top-2 z-10 rounded-full bg-paper/85 opacity-0 shadow-sm backdrop-blur transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              <div className="absolute right-2 top-2 z-10 rounded-full bg-paper/85 opacity-100 shadow-sm backdrop-blur transition-opacity focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                 <DeleteSetButton
                   setId={s.id}
                   variant="compact"
