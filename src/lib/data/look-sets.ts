@@ -195,11 +195,13 @@ export async function loadLookSetResult(
   setId: string;
   shareSlug: string | null;
   carloNote: string | null;
+  occasionId: string;
+  createdAt: string;
   looks: LoadedSetLook[];
 } | null> {
   const { data: set, error: setErr } = await admin
     .from("look_sets")
-    .select("id, user_id, share_slug, carlo_note")
+    .select("id, user_id, share_slug, carlo_note, occasion_id, created_at")
     .eq("id", setId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -227,6 +229,58 @@ export async function loadLookSetResult(
     setId: set.id as string,
     shareSlug: (set.share_slug as string | null) ?? null,
     carloNote: (set.carlo_note as string | null) ?? null,
+    occasionId: (set.occasion_id as string | null) ?? "",
+    createdAt: set.created_at as string,
     looks,
   };
+}
+
+export type LookSetSummary = {
+  id: string;
+  occasionId: string;
+  name: string;
+  createdAt: string;
+  thumbPath: string | null;
+};
+
+/**
+ * List a user's look sets (newest first) with a thumbnail (their first look's
+ * image path — signed by the caller). Owner-scoped. Powers the "Your sets"
+ * history page.
+ */
+export async function listUserLookSets(
+  admin: AdminClient,
+  userId: string,
+  limit = 60,
+): Promise<LookSetSummary[]> {
+  const { data: sets } = await admin
+    .from("look_sets")
+    .select("id, occasion_id, name, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (!sets?.length) return [];
+
+  const ids = sets.map((s) => s.id as string);
+  const { data: looks } = await admin
+    .from("looks")
+    .select("set_id, image_path, created_at")
+    .in("set_id", ids)
+    .order("created_at", { ascending: true });
+
+  const thumbBySet = new Map<string, string>();
+  for (const l of looks ?? []) {
+    const sid = l.set_id as string;
+    if (l.image_path && !thumbBySet.has(sid)) {
+      thumbBySet.set(sid, l.image_path as string);
+    }
+  }
+
+  return sets.map((s) => ({
+    id: s.id as string,
+    occasionId: (s.occasion_id as string | null) ?? "",
+    name: (s.name as string | null) ?? "",
+    createdAt: s.created_at as string,
+    thumbPath: thumbBySet.get(s.id as string) ?? null,
+  }));
 }

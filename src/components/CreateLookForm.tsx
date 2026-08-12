@@ -277,16 +277,31 @@ export function CreateLookForm({
             <div>
               <p className="eyebrow">Your set</p>
               <h1 className="mt-2 font-display text-3xl">Your looks</h1>
+              <p className="mt-1 text-sm text-stone-soft">
+                Saved to{" "}
+                <Link href="/looks" className="text-brass hover:text-ink">
+                  your sets
+                </Link>
+                .
+              </p>
             </div>
-            <button
-              onClick={() => {
-                setResult(null);
-                setError(null);
-              }}
-              className="shrink-0 rounded-full border hairline px-5 py-2 text-sm text-ink transition-colors hover:bg-cream/40"
-            >
-              Create another
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                href={`/looks/${result.setId}`}
+                className="rounded-full border hairline px-5 py-2 text-sm text-ink transition-colors hover:bg-cream/40"
+              >
+                Open set
+              </Link>
+              <button
+                onClick={() => {
+                  setResult(null);
+                  setError(null);
+                }}
+                className="rounded-full border hairline px-5 py-2 text-sm text-ink transition-colors hover:bg-cream/40"
+              >
+                Create another
+              </button>
+            </div>
           </div>
 
           {result.carloNote ? (
