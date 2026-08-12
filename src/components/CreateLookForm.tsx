@@ -9,6 +9,7 @@ import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import { BodyTypePicker } from "@/components/BodyTypePicker";
 import { PhotoQualityGuide } from "@/components/PhotoQualityGuide";
 import { BRAND } from "@/lib/brand";
+import { ReportZoomImage } from "@/components/ReportZoomImage";
 import type { BodyTypeId } from "@/lib/style-profile";
 import { checkPhotoGateClient } from "@/lib/client/photo-gate";
 import { LEGAL } from "@/lib/legal";
@@ -327,11 +328,11 @@ export function CreateLookForm({
           <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {result.looks.map((look, i) => (
               <article key={i} className="flex flex-col">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <ReportZoomImage
                   src={look.image}
                   alt={look.title}
-                  className="aspect-[9/16] w-full rounded-2xl border hairline object-cover"
+                  wrapperClassName="relative block aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline"
+                  className="h-full w-full object-cover"
                 />
                 <h2 className="mt-4 font-display text-lg text-ink">
                   {look.title}

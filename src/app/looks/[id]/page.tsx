@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
+import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import {
   createServerSupabase,
@@ -71,11 +72,11 @@ export default async function LookSetPage({
         <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {set.looks.map((look, i) => (
             <article key={i} className="flex flex-col">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <ReportZoomImage
                 src={signedAssetProxyUrl(look.imagePath)}
                 alt={look.title}
-                className="aspect-[9/16] w-full rounded-2xl border hairline object-cover"
+                wrapperClassName="relative block aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline"
+                className="h-full w-full object-cover"
               />
               <h2 className="mt-3 font-display text-lg text-ink">
                 {look.title}
