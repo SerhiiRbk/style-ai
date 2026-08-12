@@ -78,7 +78,7 @@ export default async function LooksPage() {
                   href={`/looks/${s.id}`}
                   className="group block overflow-hidden rounded-2xl border hairline bg-paper transition-colors hover:border-ink/30"
                 >
-                  <div className="aspect-[4/5] w-full bg-cream/40">
+                  <div className="aspect-[9/16] w-full bg-cream/40">
                     {s.thumbPath ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
