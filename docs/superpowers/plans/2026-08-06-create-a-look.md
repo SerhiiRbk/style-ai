@@ -373,6 +373,14 @@ alter table public.looks add column if not exists set_id uuid
   references public.look_sets (id) on delete cascade;
 create index if not exists looks_set_idx on public.looks (set_id) where set_id is not null;
 
+-- Standalone-set looks have NO report, so report_id must be nullable; and every
+-- look must belong to a report OR a set (existing rows all have report_id, so the
+-- CHECK validates cleanly). The report_id → reports FK (on delete cascade) stays.
+alter table public.looks alter column report_id drop not null;
+alter table public.looks drop constraint if exists looks_report_or_set;
+alter table public.looks add constraint looks_report_or_set
+  check (report_id is not null or set_id is not null);
+
 -- Owner-only PII side table (mirrors report_intake): the StyleProfile snapshot
 -- never touches the publicly-readable look_sets table.
 create table if not exists public.look_set_profiles (
@@ -472,11 +480,13 @@ git commit -m "feat(create-a-look): per-request strictness + season in the look 
 
 **Files:**
 - Create: `src/lib/data/look-sets.ts`
+- Modify: `supabase/migrations/0039_look_sets.sql` (fold in `looks.report_id` nullability + CHECK — see Step 2a; not applied to any DB in this task)
 
 **Interfaces:**
 - Consumes: `getLatestReportProfile(userId)` from `@/lib/data/match-profile` (VERIFIED — already reads the newest `reports.profile` jsonb via `styleProfileSchema.safeParse`, returns `{ profile, personalised }`, with `neutralMatchProfile()` fallback); `analyzeProfile` from `@/lib/ai/pipeline`; `buildLookIntake` (Task 2); `styleProfileSchema`, `type StyleProfile` from `@/lib/style-profile`; admin supabase.
 - Produces:
-  - `export async function resolveProfileForLookSet(admin, userId, photos, intake): Promise<{ profile: StyleProfile; source: "report"|"prior_set"|"fresh" }>`
+  - `export async function resolveExistingProfile(admin, userId): Promise<{ profile: StyleProfile; source: "report"|"prior_set" } | null>` — report (`getLatestReportProfile`) ?? newest `look_set_profiles` row; **no photos, no analysis**. Returns null when neither exists. This lets the endpoint decide whether a photo is even needed (standalone-first reuse).
+  - `export async function resolveProfileForLookSet(admin, userId, photos, intake): Promise<{ profile: StyleProfile; source: "report"|"prior_set"|"fresh" }>` — thin wrapper: `resolveExistingProfile` ?? `{ profile: await analyzeProfile(intake, photos), source: "fresh" }`.
   - `export async function createLookSet(admin, { userId, reportId, occasionId, season, boldness, name, carloNote, profile, isPublic, shareSlug }): Promise<{ id: string }>`
   - `export async function saveSetLook(admin, { setId, userId, look, imagePath })` — inserts into `looks` with `set_id`.
 
@@ -486,7 +496,9 @@ git commit -m "feat(create-a-look): per-request strictness + season in the look 
   3. else `const profile = await analyzeProfile(intake, photos)` and return `{ profile, source: "fresh" }`.
   The `source` drives the `create_look_analysis` event and confirms the snapshot must be written (it always is, into `look_set_profiles`).
 
-- [ ] **Step 2: Implement `createLookSet` / `saveSetLook`** — `createLookSet` inserts the `look_sets` row (WITHOUT `profile`) and, in the same logical step, inserts the `profile` into `look_set_profiles` (`{ set_id, user_id, profile }`). Its signature keeps `profile` as an input (callers are unchanged); only the storage target differs. `saveSetLook` mirrors the existing `looks` insert in `/api/look-extra` (columns: `report_id, user_id, context, title, description, palette, image_path`, plus `set_id`).
+- [ ] **Step 2: Implement `createLookSet` / `saveSetLook`** — `createLookSet` inserts the `look_sets` row (WITHOUT `profile`) and, in the same logical step, inserts the `profile` into `look_set_profiles` (`{ set_id, user_id, profile }`). Its signature keeps `profile` as an input (callers are unchanged); only the storage target differs. **Compensate on partial failure** (mirror `reports.ts:1653-1664`): if the `look_set_profiles` insert fails after the `look_sets` row was created, `delete` the `look_sets` row and throw — never leave an orphaned set with no profile. `saveSetLook` mirrors the existing `looks` insert in `/api/look-extra` but for a standalone set: `{ report_id: null, set_id, user_id, context, title, description, palette, image_path }`.
+
+- [ ] **Step 2a (folded migration fix): make `looks.report_id` nullable.** `looks.report_id` is `NOT NULL` (0001_init.sql:77), but set-looks have no report. Add to `supabase/migrations/0039_look_sets.sql` (it isn't applied yet, so amend it in place — see the SQL in Task 4): `alter table public.looks alter column report_id drop not null;` plus the `looks_report_or_set` CHECK. Do NOT run `db:migrate` (remote prod). This is folded into Task 6 because `saveSetLook` is the first code that needs it.
 
 - [ ] **Step 3: Typecheck** → `./node_modules/.bin/tsc --noEmit` → 0 errors.
 
@@ -511,44 +523,55 @@ git commit -m "feat(create-a-look): profile resolution (report/set/fresh) + set 
 
 - [ ] **Step 1: Implement the ordered flow** (concrete steps; no placeholders):
 
+> **`faceImage` is OPTIONAL — standalone-first reuse (do not force re-upload).** Resolve an EXISTING profile (`resolveExistingProfile`: report ?? prior_set, no photo/analysis) BEFORE requiring any photo. Only the **fresh** path (no existing profile) needs a photo, and then consent + the photo gate + `analyzeProfile` run. A returning user with a report/prior set generates with NO photo, NO consent prompt, NO gate. Mirror `/api/reports/route.ts:50`, which gates consent on photo presence. Corrected order below.
+
 ```
-1. auth: getUser → 401 if none.
-2. validate body: bundleFor(looks) or 400; occasion via lookContextById or 400;
-   Boldness/season parse or 400.
-3. consent: require biometricConsent === true && consentVersion === LEGAL.consentVersion → 422 if missing.
-4. photo gate (VERIFIED contract — returns a union, never throws):
-     const g = await assertPhotoUsable({ imageDataUrl: faceImage, purpose: "report_face" });
-     if (!g.ok) → 422 { code:"photo_gate", message: g.rejectReason } (+ logEvent photo_gate_reject).
-     if ("skipped" in g && (g.reason === "provider_error" || g.reason === "no_ai")) → logEvent photo_gate_failopen and PROCEED (fail-open).
-     if fullImage present, repeat with purpose: "report_full".
-5. cost fuse (A0) — compute `purchased` ONCE here (reused by pricing in step 6, so no extra query), then two caps (window in seconds, not hours):
+1. auth: getUser → 401 if none. (Require hasSupabaseAdmin/hasAI capability up front — without them the fail-closed global cap would 503 forever; see the beyond-brief guard, verified safe.)
+2. validate body: bundleFor(looks) or 400; occasion via lookContextById or 400; Boldness/season parse or 400.
+   intake = buildLookIntake({ age, bodyType }).  // pure, cheap
+3. resolve EXISTING profile (NO photo, NO analysis): const existing = await resolveExistingProfile(admin, user.id).
+   const needsPhoto = !existing.
+   if (needsPhoto && !faceImage) → 400 { code:"photo_required" } ("upload a photo, or create a report first").
+4. cost fuse (A0) — BEFORE any expensive AI (incl. a fresh analyzeProfile). Compute `purchased` ONCE (reused by pricing):
      const purchased = await creditsPurchased(admin, user.id);
      const g = await checkLimit(`lookset:global:${dayKey}`, env.lookSetDailyCap, 26*3600, { failOpen: false });
-     if (!g.allowed) → 503 { code:"capacity" } (daily capacity reached; nothing charged).
+     if (!g.allowed) → 503 { code:"capacity" } (nothing charged).
      const userCap = purchased > 0 ? env.lookSetUserCapPaid : env.lookSetUserCapFree;   // paid 15 / free 3
      const u = await checkLimit(`lookset:user:${user.id}:${dayKey}`, userCap, 26*3600, { failOpen: true });
      if (!u.allowed) → 429 { code:"rate_limited" }.
-   (VERIFIED: checkLimit at rate-limit.ts:25 → {allowed,count}; global fail-CLOSED protects business spend, per-user fail-OPEN never blocks on limiter flake.)
-6. pricing (reuse `purchased`): price = priceForBundle(looks, isLoyalty(purchased));
-   if (await creditBalance(admin, user.id)) < price → 402 insufficient_credits. (VERIFIED: creditBalance at credits.ts:57. Note: cap tier uses `purchased > 0`; loyalty discount uses `purchased ≥ 20` — two different thresholds, kept separate.)
-7. intake: const intake = buildLookIntake({ age, bodyType }).  // pure, cheap
-8. profile: resolveProfileForLookSet(admin, user.id, {faceImage, fullImage}, intake).
-   if source === "fresh" → logEvent create_look_analysis. (The profile snapshot is written into the owner-only `look_set_profiles` side table by createLookSet in step 10 — never onto the publicly-readable `look_sets` row.)
-9. name: setName(occasionLabel, todayISO) — pass a collision time (HH:MM) only if a same-occasion set already exists today for this user (query look_sets by occasion_id + created_at::date).
-10. createLookSet({ userId, reportId: null, occasionId, season, boldness, name, carloNote: null, profile, isPublic: false, shareSlug: <generated> }) → setId.
-11. compute the per-look charge VECTOR (deterministic, sums to price exactly):
-      const base = Math.floor(price / looks);
-      const rem  = price - base * looks;            // 0..looks-1
-      const charge = Array.from({length: looks}, (_, i) => base + (i < rem ? 1 : 0));
-    generate the N looks (bounded concurrency): for each index i →
-      generateExtraLook({ intake, profile, context, brief, boldness, season, existingTitles: [...accumulated] })
-      → generateLookImage → store image → saveSetLook({ setId, userId, look, imagePath }).
-    ONLY after a look's image is stored: spendCreditsOnce(admin, { userId, amount: charge[i], reason: "look_set", refId: `lookset:${setId}:${i}` }).
-    Idempotent per (setId,index): a retry of the same set never double-charges; a look that fails to render is never charged. When all N render, the charges sum to exactly `price`; on partial failure the user pays only for rendered looks. Balance was pre-checked ≥ price in step 6, so no mid-batch shortfall under normal (non-concurrent) use.
-12. carloNoteForSet({ profile, occasionLabel, looks }) → UPDATE look_sets.carlo_note.
-13. Shop-the-Look: for each rendered look, persist catalogue matches exactly as `/api/look-extra/route.ts` does (reuse that matchLookItems + insert path). Best-effort — a match failure is logged, never fatal to the set.
-14. logEvent look_set_created { occasion, looks, loyalty, source, rendered }.
-15. return 200 { setId, shareSlug, looks: [signed image URLs + titles + matches], balance }.
+   (VERIFIED: checkLimit rate-limit.ts:25 → {allowed,count}; global fail-CLOSED, per-user fail-OPEN. Use the same day-key convention as /api/colours.)
+5. pricing (reuse `purchased`): price = priceForBundle(looks, isLoyalty(purchased));
+     if (await creditBalance(admin, user.id)) < price → 402 insufficient_credits.
+     (cap tier uses purchased>0; loyalty discount uses purchased≥20 — separate thresholds.)
+6. profile (this is the ONLY place a photo matters):
+     if (needsPhoto) {                    // FRESH — a new photo is being submitted + analyzed
+       consent: biometricConsent === true && consentVersion === LEGAL.consentVersion → 422 if missing.
+       photo gate (union, never throws):
+         const g = await assertPhotoUsable({ imageDataUrl: faceImage, purpose: "report_face" });
+         if (!g.ok) → 422 { code:"photo_gate", message: g.rejectReason } (+ logEvent photo_gate_reject).
+         if ("skipped" in g && (g.reason==="provider_error"||g.reason==="no_ai")) → logEvent photo_gate_failopen and PROCEED.
+         if fullImage present, repeat with purpose:"report_full".
+       profile = await analyzeProfile(intake, photos); source = "fresh"; logEvent create_look_analysis.
+     } else {                             // REUSE — report/prior_set: NO photo, NO consent, NO gate
+       profile = existing.profile; source = existing.source;
+     }
+7. name: setName(occasionLabel, todayISO) — collision time (HH:MM) only if a same-occasion set already exists today for this user (query look_sets by occasion_id + created_at::date).
+8. createLookSet({ userId, reportId: null, occasionId, season, boldness, name, carloNote: null, profile, isPublic: false, shareSlug: <generated> }) → setId.
+   (createLookSet writes `profile` into the owner-only look_set_profiles side table — NEVER onto the publicly-readable look_sets row.)
+9. per-look charge VECTOR (deterministic, sums to price exactly):
+     const base = Math.floor(price / looks);
+     const rem  = price - base * looks;            // 0..looks-1
+     const charge = Array.from({length: looks}, (_, i) => base + (i < rem ? 1 : 0));
+   generate N looks (bounded concurrency): for each index i →
+     generateExtraLook({ intake, profile, context, brief, boldness, season, existingTitles:[...accumulated] })
+     → generateLookImage → store image → saveSetLook({ setId, userId, look, imagePath }).
+   ONLY after a look's image is stored: spendCreditsOnce(admin, { userId, amount: charge[i], reason:"look_set", refId:`lookset:${setId}:${i}` }).
+   Idempotent per (setId,index): retries never double-charge; a failed render is never charged; all-render sum = price; partial → pay only for rendered.
+10. carloNoteForSet({ profile, occasionLabel, looks }) → UPDATE look_sets.carlo_note.
+11. Shop-the-Look (best-effort, non-fatal): matchLookItems per rendered look, returned INLINE in the response. Phase 1 has no set-linked matches table, so matches are NOT persisted — read-side re-fetch is a Task 9+ concern (documented). Derive palette hints from the profile, not an empty array.
+12. logEvent look_set_created { occasion, looks, loyalty, source, rendered }.
+13. if (rendered.length === 0): delete the empty set (compensating), return 502 { code:"render_failed" } — nothing was charged (safe: a charge implies rendered.length>0).
+14. return 200 { setId, shareSlug, looks: [signed image URLs + titles + matches], balance }.
 ```
 
 > **Billing is fixed (no open decision):** the per-look charge vector in step 11 sums to the bundle `price` when all looks render, charges proportionally on partial failure, and is idempotent per `(setId, index)` via `spendCreditsOnce` (VERIFIED at `credits.ts:190`, keyed by `reason`+`refId`). Comment the vector math in the route.
