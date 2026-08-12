@@ -7,6 +7,8 @@ import { LOOK_SET_BUNDLES, priceForBundle } from "@/lib/look-sets";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import { BodyTypePicker } from "@/components/BodyTypePicker";
 import type { BodyTypeId } from "@/lib/style-profile";
+import { checkPhotoGateClient, fileToDataUrl } from "@/lib/client/photo-gate";
+import { LEGAL } from "@/lib/legal";
 
 type Boldness = "conservative" | "moderate" | "experimental" | "statement";
 
@@ -100,6 +102,14 @@ export function CreateLookForm({
   // so a lost-response retry can't mint/charge a second set; cleared on success.
   const pendingKeyRef = useRef<string | null>(null);
 
+  // Fresh-user path (no reusable profile): upload face (+ optional full) photo,
+  // consent, and pass the client photo-gate before generating.
+  const [faceUrl, setFaceUrl] = useState<string>("");
+  const [fullUrl, setFullUrl] = useState<string>("");
+  const [consent, setConsent] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState<null | "face" | "full">(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+
   const price = useMemo(
     () => priceForBundle(looks, loyalty) ?? 0,
     [looks, loyalty],
@@ -107,7 +117,10 @@ export function CreateLookForm({
   const ageNum = Number(age);
   const ageValid = Number.isInteger(ageNum) && ageNum >= 16 && ageNum <= 99;
   const canAfford = creditBalance >= price;
-  const canSubmit = ageValid && !submitting && canAfford;
+  // Returning users reuse their profile (no photo). New users must upload a
+  // face photo (that passed the gate) and give consent.
+  const photosReady = hasReusableProfile || (!!faceUrl && consent);
+  const canSubmit = ageValid && !submitting && canAfford && photosReady;
 
   async function onGenerate() {
     if (!canSubmit) return;
@@ -128,6 +141,15 @@ export function CreateLookForm({
           boldness,
           season,
           intake: { age: ageNum, bodyType: bodyType || undefined },
+          // Fresh path only: returning users reuse their stored profile.
+          ...(hasReusableProfile
+            ? {}
+            : {
+                faceImage: faceUrl,
+                fullImage: fullUrl || undefined,
+                biometricConsent: consent,
+                consentVersion: LEGAL.consentVersion,
+              }),
         }),
       });
       const data = await res.json().catch(() => null);
@@ -156,25 +178,27 @@ export function CreateLookForm({
     }
   }
 
-  if (!hasReusableProfile) {
-    return (
-      <main className="mx-auto max-w-2xl px-4 py-16">
-        <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-          Create a Look
-        </h1>
-        <p className="mt-4 text-neutral-600 dark:text-neutral-300">
-          Create a Look styles new outfits on you using your saved colour
-          profile. Generate your free style report first — then come back and
-          spin up looks for any occasion on demand.
-        </p>
-        <Link
-          href="/start"
-          className="mt-6 inline-flex items-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
-        >
-          Start your style report
-        </Link>
-      </main>
-    );
+  async function acceptPhoto(role: "face" | "full", file: File | undefined) {
+    if (!file) return;
+    setPhotoError(null);
+    setPhotoBusy(role);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const gate = await checkPhotoGateClient({
+        imageDataUrl: dataUrl,
+        purpose: role === "face" ? "report_face" : "report_full",
+      });
+      if (!gate.ok) {
+        setPhotoError(gate.error);
+        return;
+      }
+      if (role === "face") setFaceUrl(dataUrl);
+      else setFullUrl(dataUrl);
+    } catch {
+      setPhotoError("Couldn't read that image — please try another.");
+    } finally {
+      setPhotoBusy(null);
+    }
   }
 
   if (result) {
@@ -277,6 +301,51 @@ export function CreateLookForm({
       </p>
 
       <div className="mt-8 space-y-8">
+        {/* Fresh-user photos + consent (returning users reuse their profile) */}
+        {!hasReusableProfile ? (
+          <section>
+            <h2 className="text-sm font-medium uppercase tracking-wide text-neutral-400">
+              Your photos
+            </h2>
+            <p className="mt-2 text-sm text-neutral-500">
+              We read your colouring from a clear, front-facing photo and render
+              the looks on you. A full-length photo is optional but gives better
+              full-body renders.
+            </p>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <PhotoField
+                label="Face photo (required)"
+                accepted={!!faceUrl}
+                busy={photoBusy === "face"}
+                onFile={(f) => acceptPhoto("face", f)}
+              />
+              <PhotoField
+                label="Full-length (recommended)"
+                accepted={!!fullUrl}
+                busy={photoBusy === "full"}
+                onFile={(f) => acceptPhoto("full", f)}
+              />
+            </div>
+            {photoError ? (
+              <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                {photoError}
+              </p>
+            ) : null}
+            <label className="mt-4 flex items-start gap-2 text-sm text-neutral-600 dark:text-neutral-300">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                I consent to Valetti processing my photo(s) — including facial
+                features — to analyse my colouring and generate looks on me.
+              </span>
+            </label>
+          </section>
+        ) : null}
+
         {/* Mini-intake */}
         <section>
           <h2 className="text-sm font-medium uppercase tracking-wide text-neutral-400">
@@ -451,12 +520,46 @@ export function CreateLookForm({
               ? `Generating ${looks} looks…`
               : !ageValid
                 ? "Enter your age"
-                : !canAfford
-                  ? "Not enough credits"
-                  : `Generate ${looks} looks`}
+                : !photosReady
+                  ? !faceUrl
+                    ? "Add a face photo"
+                    : "Accept the consent"
+                  : !canAfford
+                    ? "Not enough credits"
+                    : `Generate ${looks} looks`}
           </button>
         </div>
       </div>
     </main>
+  );
+}
+
+function PhotoField({
+  label,
+  accepted,
+  busy,
+  onFile,
+}: {
+  label: string;
+  accepted: boolean;
+  busy: boolean;
+  onFile: (file: File | undefined) => void;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-6 text-center text-sm transition ${
+        accepted
+          ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+          : "border-neutral-300 text-neutral-600 hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-300"
+      }`}
+    >
+      <input
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={(e) => onFile(e.target.files?.[0])}
+      />
+      <span>{busy ? "Checking…" : accepted ? `✓ ${label}` : label}</span>
+    </label>
   );
 }
