@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { LOOK_CONTEXTS } from "@/lib/look-contexts";
 import { LOOK_SET_BUNDLES, priceForBundle } from "@/lib/look-sets";
@@ -96,6 +96,9 @@ export function CreateLookForm({
     null,
   );
   const [result, setResult] = useState<Result | null>(null);
+  // Stable idempotency key per "generate" intent: held across failed retries
+  // so a lost-response retry can't mint/charge a second set; cleared on success.
+  const pendingKeyRef = useRef<string | null>(null);
 
   const price = useMemo(
     () => priceForBundle(looks, loyalty) ?? 0,
@@ -111,10 +114,14 @@ export function CreateLookForm({
     setError(null);
     setSubmitting(true);
     fireStarted(occasionId, looks);
+    if (!pendingKeyRef.current) pendingKeyRef.current = crypto.randomUUID();
     try {
       const res = await fetch("/api/look-set", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "Idempotency-Key": pendingKeyRef.current,
+        },
         body: JSON.stringify({
           looks,
           occasionId,
@@ -125,6 +132,7 @@ export function CreateLookForm({
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data) {
+        pendingKeyRef.current = null; // consumed — a new intent gets a new key
         setResult(data as Result);
         return;
       }

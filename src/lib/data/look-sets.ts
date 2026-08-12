@@ -65,6 +65,10 @@ export async function createLookSet(
     profile: StyleProfile;
     isPublic: boolean;
     shareSlug?: string | null;
+    /** Idempotency key — a duplicate insert is blocked by the partial unique
+     * index (user_id, request_key) in 0039; the route pre-checks and returns
+     * the existing set on replay. */
+    requestKey?: string | null;
   },
 ): Promise<{ id: string }> {
   const {
@@ -78,6 +82,7 @@ export async function createLookSet(
     profile,
     isPublic,
     shareSlug,
+    requestKey,
   } = opts;
 
   const { data, error } = await admin
@@ -92,6 +97,7 @@ export async function createLookSet(
       name,
       is_public: isPublic,
       share_slug: shareSlug ?? null,
+      request_key: requestKey ?? null,
     })
     .select("id")
     .single();
@@ -140,4 +146,81 @@ export async function saveSetLook(
     image_path: imagePath,
   });
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Idempotency lookup: find an owner's existing set for a given request key.
+ * Used by the route to short-circuit a lost-response retry (same
+ * Idempotency-Key) before creating/charging a second set. The partial unique
+ * index (user_id, request_key) in 0039 makes this the winner on any race.
+ */
+export async function findLookSetByRequestKey(
+  admin: AdminClient,
+  userId: string,
+  requestKey: string,
+): Promise<{ id: string } | null> {
+  const { data } = await admin
+    .from("look_sets")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("request_key", requestKey)
+    .maybeSingle();
+  return data ? { id: data.id as string } : null;
+}
+
+export type LoadedSetLook = {
+  context: string;
+  title: string;
+  description: string;
+  palette: string[];
+  imagePath: string;
+};
+
+/**
+ * Load an owner's set + its stored looks (raw `image_path`s — the caller signs
+ * them). Owner-scoped; returns null if the set doesn't exist or isn't the
+ * user's. Used for idempotent replay (return the existing set's looks instead
+ * of regenerating). Does not touch `look_set_profiles` — the reused profile is
+ * not needed to render a result the client already paid for.
+ */
+export async function loadLookSetResult(
+  admin: AdminClient,
+  userId: string,
+  setId: string,
+): Promise<{
+  setId: string;
+  shareSlug: string | null;
+  carloNote: string | null;
+  looks: LoadedSetLook[];
+} | null> {
+  const { data: set } = await admin
+    .from("look_sets")
+    .select("id, user_id, share_slug, carlo_note")
+    .eq("id", setId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!set) return null;
+
+  const { data: rows } = await admin
+    .from("looks")
+    .select("context, title, description, palette, image_path")
+    .eq("set_id", setId)
+    .order("created_at", { ascending: true });
+
+  const looks: LoadedSetLook[] = (rows ?? [])
+    .filter((r) => r.image_path)
+    .map((r) => ({
+      context: (r.context as string | null) ?? "",
+      title: (r.title as string | null) ?? "",
+      description: (r.description as string | null) ?? "",
+      palette: (r.palette as string[] | null) ?? [],
+      imagePath: r.image_path as string,
+    }));
+
+  return {
+    setId: set.id as string,
+    shareSlug: (set.share_slug as string | null) ?? null,
+    carloNote: (set.carlo_note as string | null) ?? null,
+    looks,
+  };
 }

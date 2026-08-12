@@ -24,6 +24,8 @@ import {
   resolveExistingProfile,
   createLookSet,
   saveSetLook,
+  findLookSetByRequestKey,
+  loadLookSetResult,
 } from "@/lib/data/look-sets";
 import {
   analyzeProfile,
@@ -75,6 +77,14 @@ function isDataUrl(v: unknown): v is string {
     v.startsWith("data:image/") &&
     v.length <= MAX_DATA_URL_CHARS
   );
+}
+
+/** Opaque client idempotency token; bounded so it stays index-friendly. */
+function idempotencyKey(request: Request): string | null {
+  const raw = request.headers.get("Idempotency-Key");
+  if (!raw) return null;
+  const k = raw.trim();
+  return k.length >= 8 && k.length <= 200 ? k : null;
 }
 
 type RenderedLook = {
@@ -189,6 +199,38 @@ export async function POST(request: Request) {
     typeof body.anonId === "string" && body.anonId ? body.anonId : null;
 
   const admin = createAdminSupabase();
+
+  // 2b) Idempotency: a client sends a stable Idempotency-Key per "generate"
+  // intent. A lost-response retry with the same key returns the set already
+  // created for it — no second set, no second charge. (The partial unique
+  // index on (user_id, request_key) in 0039 also blocks a concurrent
+  // duplicate at the DB level; a race loser errors out having charged
+  // nothing.) Matches aren't persisted, so the replay omits Shop-the-Look.
+  const requestKey = idempotencyKey(request);
+  if (requestKey) {
+    const prior = await findLookSetByRequestKey(admin, user.id, requestKey);
+    if (prior) {
+      const result = await loadLookSetResult(admin, user.id, prior.id);
+      if (result) {
+        const balance = await creditBalance(admin, user.id);
+        return NextResponse.json({
+          setId: result.setId,
+          shareSlug: result.shareSlug,
+          carloNote: result.carloNote,
+          looks: result.looks.map((l) => ({
+            context: l.context,
+            title: l.title,
+            description: l.description,
+            palette: l.palette,
+            image: signedAssetProxyUrl(l.imagePath),
+            items: [],
+          })),
+          balance,
+          replayed: true,
+        });
+      }
+    }
+  }
 
   // 3) does this user need to submit a photo at all? Standalone-first reuse:
   // a Style Report profile or a prior look-set snapshot means no new upload
@@ -413,6 +455,7 @@ export async function POST(request: Request) {
     profile,
     isPublic: false,
     shareSlug,
+    requestKey,
   });
 
   // 9) per-look charge vector — deterministic, sums to `price` exactly.

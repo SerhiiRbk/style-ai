@@ -37,9 +37,20 @@ create table if not exists public.look_sets (
   name text not null,
   is_public boolean not null default false,
   share_slug text unique,
+  -- Request-level idempotency key (opaque client UUID). Not PII, not in the
+  -- public whitelist below, so anon can't read it.
+  request_key text,
   created_at timestamptz not null default now()
 );
 create index if not exists look_sets_user_idx on public.look_sets (user_id, created_at desc);
+
+-- Idempotency: the client sends a stable Idempotency-Key per "generate" intent;
+-- a lost-response retry with the same key returns the existing set rather than
+-- minting/charging a second one. Partial unique so rows without a key don't
+-- collide on NULL.
+create unique index if not exists look_sets_user_request_key_idx
+  on public.look_sets (user_id, request_key)
+  where request_key is not null;
 
 alter table public.looks add column if not exists set_id uuid
   references public.look_sets (id) on delete cascade;
