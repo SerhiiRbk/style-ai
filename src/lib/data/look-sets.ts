@@ -1,8 +1,7 @@
 import "server-only";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getLatestReportProfile } from "@/lib/data/match-profile";
-import { analyzeProfile, type PhotoInput } from "@/lib/ai/pipeline";
-import { styleProfileSchema, type StyleProfile, type Intake, type Boldness } from "@/lib/style-profile";
+import { styleProfileSchema, type StyleProfile, type Boldness } from "@/lib/style-profile";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
@@ -43,26 +42,6 @@ export async function resolveExistingProfile(
   }
 
   return null;
-}
-
-/**
- * Resolve the StyleProfile to use for a new "Create a Look" set: reuse an
- * existing one (report/prior_set — see {@link resolveExistingProfile}) when
- * available, else fall back to a fresh vision analysis over the supplied
- * intake + photos. `source` tells the caller which path was taken, for the
- * `create_look_analysis` event and to confirm a snapshot write is needed.
- */
-export async function resolveProfileForLookSet(
-  admin: AdminClient,
-  userId: string,
-  photos: PhotoInput[],
-  intake: Intake,
-): Promise<{ profile: StyleProfile; source: "report" | "prior_set" | "fresh" }> {
-  const existing = await resolveExistingProfile(admin, userId);
-  if (existing) return existing;
-
-  const profile = await analyzeProfile(intake, photos);
-  return { profile, source: "fresh" };
 }
 
 /**

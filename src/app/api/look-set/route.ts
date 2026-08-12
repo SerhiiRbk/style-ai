@@ -34,6 +34,7 @@ import {
 } from "@/lib/ai/pipeline";
 import { matchLookItems, type LookItems } from "@/lib/data/catalog";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
+import { getCatalogTryOnPhoto } from "@/lib/photo-tryon";
 import { Boldness, BodyType } from "@/lib/style-profile";
 import type { ReportContent, StyleProfile } from "@/lib/style-profile";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
@@ -425,6 +426,18 @@ export async function POST(request: Request) {
   const rendered: RenderedLook[] = [];
   const titlesSoFar: string[] = [];
 
+  // Face-anchor the renders on the user's own photo, matching the report /
+  // look-extra flow (which passes the user's reference photos to
+  // generateLookImage). Fresh path: the just-uploaded full-length photo.
+  // Reuse path (returning user, no upload): fall back to their stored
+  // full-length photo so the looks still render on THEM, not a generic model.
+  // No stored photo → renders fall back to the no-identity-reference path.
+  let refFullUrl: string | undefined = fullImage;
+  if (!refFullUrl) {
+    const stored = await getCatalogTryOnPhoto(admin, user.id);
+    if (stored.ok) refFullUrl = stored.signedUrl;
+  }
+
   for (let start = 0; start < looksCount; start += LOOK_CONCURRENCY) {
     const chunk = Array.from(
       { length: Math.min(LOOK_CONCURRENCY, looksCount - start) },
@@ -446,7 +459,7 @@ export async function POST(request: Request) {
           const img = await generateLookImage({
             profile,
             look,
-            referenceImageUrl: fullImage,
+            referenceImageUrl: refFullUrl,
             faceReferenceImageUrl: faceImage,
           });
           if (!img) return null;
