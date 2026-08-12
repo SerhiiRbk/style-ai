@@ -166,7 +166,10 @@ export const hasSupabase = Boolean(env.supabaseUrl && env.supabaseAnonKey);
 export const hasSupabaseAdmin = Boolean(
   env.supabaseUrl && env.supabaseServiceKey,
 );
-export const hasAI = Boolean(env.aiGatewayKey);
+/** AI Gateway: static key and/or Vercel OIDC (deployments + `vercel env pull`). */
+export const hasAI = Boolean(
+  env.aiGatewayKey || process.env.VERCEL_OIDC_TOKEN,
+);
 export const hasResend = Boolean(env.resendApiKey);
 export const hasVTON = Boolean(env.falKey);
 export const hasCatalogImportKey = Boolean(env.catalogImportKey);

@@ -118,35 +118,40 @@ export async function createLookSet(
 
   const id = data.id as string;
 
-  const { error: profileErr } = await admin
+  // Include ref paths on the insert when present. If the columns aren't
+  // migrated yet (pre-0041), retry without them so set creation still works;
+  // try-on then falls back to the user's default photo.
+  const profileRow: Record<string, unknown> = {
+    set_id: id,
+    user_id: userId,
+    profile,
+  };
+  if (faceRefPath) profileRow.face_ref_path = faceRefPath;
+  if (fullRefPath) profileRow.full_ref_path = fullRefPath;
+
+  let { error: profileErr } = await admin
     .from("look_set_profiles")
-    .insert({ set_id: id, user_id: userId, profile });
+    .insert(profileRow);
+  if (
+    profileErr &&
+    (faceRefPath || fullRefPath) &&
+    /face_ref_path|full_ref_path|column/i.test(profileErr.message)
+  ) {
+    console.error(
+      "[look-set] ref path columns missing (pre-0041?) — inserting profile without them",
+      id,
+      profileErr.message,
+    );
+    ({ error: profileErr } = await admin
+      .from("look_set_profiles")
+      .insert({ set_id: id, user_id: userId, profile }));
+  }
   if (profileErr) {
     // Compensate: don't leave an orphaned look_sets row with no profile and
     // no looks. Mirrors reports/report_intake's compensating delete on the
     // child insert's failure (src/lib/data/reports.ts:1661-1664).
     await admin.from("look_sets").delete().eq("id", id);
     throw new Error(profileErr.message);
-  }
-
-  // Best-effort (pre-0041-safe): remember which photo the set was rendered on
-  // so the try-on renders on the same one. A missing column just means the
-  // try-on falls back to the user's default photo — never fatal to the set.
-  if (faceRefPath || fullRefPath) {
-    const { error: refErr } = await admin
-      .from("look_set_profiles")
-      .update({
-        face_ref_path: faceRefPath ?? null,
-        full_ref_path: fullRefPath ?? null,
-      })
-      .eq("set_id", id);
-    if (refErr) {
-      console.error(
-        "[look-set] ref path persist failed (pre-0041?)",
-        id,
-        refErr.message,
-      );
-    }
   }
 
   return { id };

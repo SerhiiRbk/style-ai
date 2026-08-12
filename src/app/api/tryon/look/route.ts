@@ -22,6 +22,7 @@ import {
   resolveCapsuleCatalogItems,
   resolveLookCatalogItems,
   tryonStoragePath,
+  isTieTitle,
   type LookTryOnKind,
 } from "@/lib/look-tryon";
 import type { StyleProfile } from "@/lib/style-profile";
@@ -327,12 +328,28 @@ export async function POST(request: Request) {
 
   // Item selection (looks only): keep only the "Shop a look" items the user left
   // enabled. Empty/absent selection falls back to ALL items (current default).
-  const resolvedItems =
+  const selectedItems =
     kind === "look" && productIds && productIds.length
       ? allResolvedItems.filter((i) =>
           productIds.includes(i.productId ?? i.title),
         )
       : allResolvedItems;
+
+  // A tie can't be worn without a shirt. If the user deselected the shirt but
+  // kept a tie, the image model has to fabricate a base layer — and defaults to
+  // a low-contrast white shirt under the (often light) tie. Re-add the look's
+  // own shirt so the outfit stays coherent and contrast-correct. Only fires when
+  // the look actually offers a shirt; otherwise the prompt-side contrast rule
+  // (catalogPromptFromItems) guides the fabricated shirt instead.
+  const resolvedItems = ((): ShoppingItem[] => {
+    const hasTie = selectedItems.some(
+      (i) => i.category === "Accessories" && isTieTitle(i.title),
+    );
+    if (!hasTie) return selectedItems;
+    if (selectedItems.some((i) => i.category === "Shirts")) return selectedItems;
+    const shirt = allResolvedItems.find((i) => i.category === "Shirts");
+    return shirt ? [...selectedItems, shirt] : selectedItems;
+  })();
 
   // Never layer a short-sleeve knit over a long-sleeve shirt in try-on: if the
   // picks include BOTH a shirt and a short-sleeve knit, drop the short-sleeve

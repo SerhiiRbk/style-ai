@@ -36,7 +36,11 @@ import {
 } from "@/lib/ai/pipeline";
 import { matchLookItems, type LookItems } from "@/lib/data/catalog";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
-import { getCatalogTryOnPhoto, signPhotoPath } from "@/lib/photo-tryon";
+import {
+  getCatalogTryOnPhoto,
+  getLatestFacePhotoPath,
+  signPhotoPath,
+} from "@/lib/photo-tryon";
 import { Boldness, BodyType } from "@/lib/style-profile";
 import type { ReportContent, StyleProfile } from "@/lib/style-profile";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
@@ -470,6 +474,30 @@ export async function POST(request: Request) {
     : undefined;
   const name = setName(ctx.label, now.toISOString(), collisionTime);
 
+  // Resolve the EXACT photo paths this set will render on — and persist them
+  // on the set — so a later whole-look try-on uses the SAME photos, not the
+  // user's latest/default (which is often a newer report's photo).
+  let effectiveFullPath: string | undefined = fullRefPath;
+  let effectiveFacePath: string | undefined = faceRefPath;
+  // Guard `!fullRefUrl` too: in the legacy data-URL upload branch fullRefUrl is
+  // the just-uploaded photo — don't clobber it (and render on a stored photo)
+  // when there's no path. Mirrors the `&& !faceRefUrl` guard on the face branch.
+  if (!effectiveFullPath && !fullRefUrl) {
+    const stored = await getCatalogTryOnPhoto(admin, user.id);
+    if (stored.ok) {
+      effectiveFullPath = stored.path;
+      fullRefUrl = stored.signedUrl;
+    }
+  }
+  if (!effectiveFacePath) {
+    effectiveFacePath =
+      (await getLatestFacePhotoPath(admin, user.id)) ?? undefined;
+    if (effectiveFacePath && !faceRefUrl) {
+      faceRefUrl =
+        (await signPhotoPath(admin, effectiveFacePath)) ?? undefined;
+    }
+  }
+
   // 8) createLookSet — writes `profile` into the owner-only
   // `look_set_profiles` side table itself; `profile` is NEVER written onto
   // the publicly-readable `look_sets` row directly here.
@@ -486,8 +514,8 @@ export async function POST(request: Request) {
     isPublic: false,
     shareSlug,
     requestKey,
-    faceRefPath,
-    fullRefPath,
+    faceRefPath: effectiveFacePath,
+    fullRefPath: effectiveFullPath,
   });
 
   // 9) per-look charge vector — deterministic, sums to `price` exactly.
@@ -501,17 +529,14 @@ export async function POST(request: Request) {
   const rendered: RenderedLook[] = [];
   const titlesSoFar: string[] = [];
 
-  // Face-anchor the renders on the user's own photo, matching the report /
-  // look-extra flow (which passes the user's reference photos to
-  // generateLookImage). Prefer the selected/uploaded full-length photo (signed
-  // URL). Reuse path (returning user, no pick): fall back to their stored
-  // full-length photo so the looks still render on THEM, not a generic model.
-  // No stored photo → renders fall back to the no-identity-reference path.
-  let refFullUrl: string | undefined = fullRefUrl;
-  if (!refFullUrl) {
-    const stored = await getCatalogTryOnPhoto(admin, user.id);
-    if (stored.ok) refFullUrl = stored.signedUrl;
-  }
+  // Face-anchor the renders on the resolved photo paths above (selected or
+  // catalog-default). Prefer the signed full-length URL; no photo → no-identity
+  // reference path inside generateLookImage.
+  const refFullUrl: string | undefined =
+    fullRefUrl ??
+    (effectiveFullPath
+      ? ((await signPhotoPath(admin, effectiveFullPath)) ?? undefined)
+      : undefined);
 
   for (let start = 0; start < looksCount; start += LOOK_CONCURRENCY) {
     const chunk = Array.from(

@@ -5,7 +5,7 @@ type AdminClient = ReturnType<typeof createAdminSupabase>;
 export type ReportPhotoPath = { role: string; path: string };
 
 export type FullPhotoResult =
-  | { ok: true; signedUrl: string }
+  | { ok: true; signedUrl: string; path?: string }
   | {
       ok: false;
       error: string;
@@ -258,9 +258,10 @@ export async function getFullLengthPhotoUrl(
     };
   }
 
+  const path = full.storage_path as string;
   const { data: signed } = await admin.storage
     .from("photos")
-    .createSignedUrl(full.storage_path, 600);
+    .createSignedUrl(path, 600);
   if (!signed?.signedUrl) {
     return {
       ok: false,
@@ -269,7 +270,7 @@ export async function getFullLengthPhotoUrl(
     };
   }
 
-  return { ok: true, signedUrl: signed.signedUrl };
+  return { ok: true, signedUrl: signed.signedUrl, path };
 }
 
 /**
@@ -280,7 +281,7 @@ export async function getFullLengthPhotoUrl(
 export async function getDefaultTryOnPhoto(
   admin: AdminClient,
   userId: string,
-): Promise<{ ok: true; signedUrl: string } | null> {
+): Promise<{ ok: true; signedUrl: string; path: string } | null> {
   const { data: row } = await admin
     .from("photos")
     .select("storage_path, role")
@@ -290,29 +291,67 @@ export async function getDefaultTryOnPhoto(
 
   if (!row || (row.role as string) !== "full") return null;
 
-  const signedUrl = await signPhotoPath(admin, row.storage_path as string);
+  const path = row.storage_path as string;
+  const signedUrl = await signPhotoPath(admin, path);
   if (!signedUrl) return null;
-  return { ok: true, signedUrl };
+  return { ok: true, signedUrl, path };
 }
 
 /**
  * Reference photo for catalogue try-on (no report context): the user's pinned
  * default full-length photo when set, otherwise their latest full-length upload.
  * `usedDefault` lets the caller nudge users who haven't picked a default yet.
+ * `path` is the storage path so callers (Create-a-Look) can persist which photo
+ * a set was rendered on for a later same-photo try-on.
  */
 export async function getCatalogTryOnPhoto(
   admin: AdminClient,
   userId: string,
 ): Promise<
-  | { ok: true; signedUrl: string; usedDefault: boolean }
+  | { ok: true; signedUrl: string; path: string; usedDefault: boolean }
   | { ok: false; error: string; code: "no_photos" | "needs_full_photo" }
 > {
   const preferred = await getDefaultTryOnPhoto(admin, userId);
-  if (preferred) return { ok: true, signedUrl: preferred.signedUrl, usedDefault: true };
+  if (preferred) {
+    return {
+      ok: true,
+      signedUrl: preferred.signedUrl,
+      path: preferred.path,
+      usedDefault: true,
+    };
+  }
 
   const latest = await getFullLengthPhotoUrl(admin, userId);
   if (!latest.ok) return latest;
-  return { ok: true, signedUrl: latest.signedUrl, usedDefault: false };
+  if (!latest.path) {
+    return {
+      ok: false,
+      code: "no_photos",
+      error: "Could not read your photo",
+    };
+  }
+  return {
+    ok: true,
+    signedUrl: latest.signedUrl,
+    path: latest.path,
+    usedDefault: false,
+  };
+}
+
+/** Latest face portrait path for a user, if any — used to persist set identity anchors. */
+export async function getLatestFacePhotoPath(
+  admin: AdminClient,
+  userId: string,
+): Promise<string | null> {
+  const { data } = await admin
+    .from("photos")
+    .select("storage_path")
+    .eq("user_id", userId)
+    .eq("role", "face")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.storage_path as string | null) ?? null;
 }
 
 export function tryOnErrorCode(

@@ -2,6 +2,11 @@ import type { ShoppingItem } from "@/lib/report";
 
 export type LookTryOnKind = "look" | "capsule";
 
+/** A neck accessory that cannot be worn without a shirt (tie / necktie / bow tie). */
+export function isTieTitle(title: string): boolean {
+  return /\b(?:bow\s+)?(?:neck)?ties?\b/i.test(title);
+}
+
 /** Stable storage / cache key for a report look or capsule combo. */
 export function formatLookKey(opts: {
   kind?: LookTryOnKind;
@@ -47,11 +52,31 @@ export function catalogPromptFromItems(items: ShoppingItem[]): string | undefine
       : "";
     return `- wearing a ${colour}${i.category.toLowerCase()}: ${i.title}${note}`;
   });
+
+  // A tie with no shirt in the list forces the model to invent a base layer; it
+  // otherwise defaults to a white/pale shirt, which under a light tie reads as
+  // washed out (no near-face contrast). Direct the fabricated shirt to a
+  // mid-tone that contrasts with the tie. (When the caller already re-adds the
+  // look's shirt — see tryon/look route — this branch simply never fires.)
+  const hasTie = items.some(
+    (i) => i.category === "Accessories" && isTieTitle(i.title),
+  );
+  const hasShirt = items.some((i) => i.category === "Shirts");
+  const baseLayerRule =
+    hasTie && !hasShirt
+      ? `\nThis list has a tie but no shirt — add the one shirt the tie needs as ` +
+        `the base layer, in a mid-tone colour that clearly contrasts with the ` +
+        `tie. NEVER a white or pale shirt under a light, beige or greige tie ` +
+        `(a light tie on a light shirt looks washed out). A mid or deep blue ` +
+        `shirt is a safe default. `
+      : "";
+
   return (
     `Construct the entire outfit from these exact catalogue garments and nothing else:\n` +
     lines.join("\n") +
     `\nEvery piece worn by the person must come from this list — reproduce each ` +
-    `garment's type, colour and material faithfully. `
+    `garment's type, colour and material faithfully. ` +
+    baseLayerRule
   );
 }
 
