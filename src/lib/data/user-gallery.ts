@@ -3,6 +3,7 @@ import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { canShareReport } from "@/lib/report";
+import { lookContextById } from "@/lib/look-contexts";
 import type {
   GalleryItem,
   GalleryItemKind,
@@ -303,6 +304,68 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
       linkLabel: "Open catalog",
       items: catalogItems,
     });
+  }
+
+  // Create-a-Look sets (looks with a set_id, no parent report) — one group per
+  // set so its generated looks show up in the gallery like report looks do.
+  {
+    const { data: setRows } = await db
+      .from("look_sets")
+      .select("id, occasion_id, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    const setList = (setRows ?? []) as {
+      id: string;
+      occasion_id: string | null;
+      created_at: string;
+    }[];
+    if (setList.length) {
+      const { data: setLooks } = await db
+        .from("looks")
+        .select("set_id, image_path, title, created_at")
+        .in(
+          "set_id",
+          setList.map((s) => s.id),
+        )
+        .order("created_at", { ascending: true });
+      const bySet = new Map<
+        string,
+        { image_path: string | null; title: string | null }[]
+      >();
+      for (const l of setLooks ?? []) {
+        const sid = l.set_id as string;
+        const arr = bySet.get(sid) ?? [];
+        arr.push({
+          image_path: (l.image_path as string | null) ?? null,
+          title: (l.title as string | null) ?? null,
+        });
+        bySet.set(sid, arr);
+      }
+      for (const s of setList) {
+        const items: GalleryItem[] = [];
+        (bySet.get(s.id) ?? []).forEach((l, i) => {
+          if (!l.image_path) return;
+          items.push({
+            id: `set:${s.id}:look:${i}`,
+            kind: "look",
+            src: signedAssetProxyUrl(l.image_path),
+            label: l.title || `Look ${i + 1}`,
+          });
+        });
+        if (items.length) {
+          groups.push({
+            id: `set:${s.id}`,
+            headline: lookContextById(s.occasion_id ?? "")?.label ?? "Create a Look",
+            tier: "basic",
+            createdAt: s.created_at,
+            canShare: false,
+            href: `/looks/${s.id}`,
+            linkLabel: "Open set",
+            items,
+          });
+        }
+      }
+    }
   }
 
   // Newest first across reports and the catalogue group.
