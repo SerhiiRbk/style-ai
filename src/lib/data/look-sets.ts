@@ -159,12 +159,16 @@ export async function findLookSetByRequestKey(
   userId: string,
   requestKey: string,
 ): Promise<{ id: string } | null> {
-  const { data } = await admin
+  const { data, error } = await admin
     .from("look_sets")
     .select("id")
     .eq("user_id", userId)
     .eq("request_key", requestKey)
     .maybeSingle();
+  // A transient failure here is indistinguishable from "no prior set" and
+  // degrades safely (the partial unique index still blocks a duplicate insert),
+  // but log it so a persistent problem on this money-path lookup isn't invisible.
+  if (error) console.error("[look-set] findLookSetByRequestKey failed", error.message);
   return data ? { id: data.id as string } : null;
 }
 
@@ -193,19 +197,21 @@ export async function loadLookSetResult(
   carloNote: string | null;
   looks: LoadedSetLook[];
 } | null> {
-  const { data: set } = await admin
+  const { data: set, error: setErr } = await admin
     .from("look_sets")
     .select("id, user_id, share_slug, carlo_note")
     .eq("id", setId)
     .eq("user_id", userId)
     .maybeSingle();
+  if (setErr) console.error("[look-set] loadLookSetResult set query failed", setErr.message);
   if (!set) return null;
 
-  const { data: rows } = await admin
+  const { data: rows, error: rowsErr } = await admin
     .from("looks")
     .select("context, title, description, palette, image_path")
     .eq("set_id", setId)
     .order("created_at", { ascending: true });
+  if (rowsErr) console.error("[look-set] loadLookSetResult looks query failed", rowsErr.message);
 
   const looks: LoadedSetLook[] = (rows ?? [])
     .filter((r) => r.image_path)
