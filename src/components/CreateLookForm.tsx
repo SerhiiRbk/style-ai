@@ -7,6 +7,7 @@ import { LOOK_CONTEXTS } from "@/lib/look-contexts";
 import { LOOK_SET_BUNDLES, priceForBundle } from "@/lib/look-sets";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import { BodyTypePicker } from "@/components/BodyTypePicker";
+import { PhotoQualityGuide } from "@/components/PhotoQualityGuide";
 import type { BodyTypeId } from "@/lib/style-profile";
 import { checkPhotoGateClient } from "@/lib/client/photo-gate";
 import { LEGAL } from "@/lib/legal";
@@ -100,6 +101,7 @@ export function CreateLookForm({
   const [boldness, setBoldness] = useState<Boldness>("moderate");
   const [season, setSeason] = useState<LookBriefSeason>(defaultSeason());
   const [looks, setLooks] = useState<number>(3);
+  const [step, setStep] = useState<0 | 1>(0); // 0 = details, 1 = photo
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; buy?: boolean } | null>(
@@ -396,7 +398,33 @@ export function CreateLookForm({
           and rendered on you.
         </p>
 
+        <div className="mt-8 flex items-center gap-3">
+          {["Details", "Photo"].map((label, i) => (
+            <div key={label} className="flex items-center gap-2">
+              <span
+                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+                  i <= step ? "bg-ink text-paper" : "bg-sand text-stone"
+                }`}
+              >
+                {i + 1}
+              </span>
+              <span
+                className={`text-sm ${i === step ? "text-ink" : "text-stone-soft"}`}
+              >
+                {label}
+              </span>
+              {i === 0 ? (
+                <span
+                  className={`ml-1 h-px w-8 ${step > 0 ? "bg-ink" : "bg-line"}`}
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+
         <div className="mt-10 space-y-10">
+          {step === 1 && (
+            <>
           {/* Photos — selection + upload, shown to all users */}
           <Block
             eyebrow="Photos"
@@ -407,7 +435,8 @@ export function CreateLookForm({
                 : "We read your colouring from a clear, front-facing photo and render the looks on you. A face photo is required; a full-length adds better full-body renders."
             }
           >
-            <div className="rounded-2xl border hairline bg-cream/40 p-5">
+            <PhotoQualityGuide />
+            <div className="mt-5 rounded-2xl border hairline bg-cream/40 p-5">
               <div className="space-y-5">
                 <PhotoRolePicker
                   label={
@@ -464,7 +493,11 @@ export function CreateLookForm({
               </label>
             ) : null}
           </Block>
+            </>
+          )}
 
+          {step === 0 && (
+            <>
           {/* About you */}
           <Block
             eyebrow="About you"
@@ -621,6 +654,8 @@ export function CreateLookForm({
               <p className="mt-3 text-xs text-brass">Loyalty pricing applied.</p>
             ) : null}
           </Block>
+            </>
+          )}
 
           {error ? (
             <div className="rounded-xl border border-[#9E5C3C]/30 bg-[#9E5C3C]/5 px-5 py-3 text-sm text-[#9E5C3C]">
@@ -640,30 +675,50 @@ export function CreateLookForm({
             <div className="text-sm text-stone">
               {price} credits · balance {creditBalance}
             </div>
-            <button
-              onClick={onGenerate}
-              disabled={!canSubmit}
-              className="inline-flex items-center gap-2 rounded-full bg-ink px-7 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-40"
-            >
-              {submitting ? (
-                <>
-                  <LuxeSpinner size="xs" tone="paper" />
-                  Generating {looks} looks…
-                </>
-              ) : !ageValid ? (
-                "Enter your age"
-              ) : !photosReady ? (
-                !facePath ? (
-                  "Add a face photo"
-                ) : (
-                  "Accept the consent"
-                )
-              ) : !canAfford ? (
-                "Not enough credits"
-              ) : (
-                `Generate ${looks} looks`
-              )}
-            </button>
+            {step === 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (ageValid) setStep(1);
+                }}
+                disabled={!ageValid}
+                className="rounded-full bg-ink px-7 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-40"
+              >
+                {ageValid ? "Continue" : "Enter your age"}
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStep(0)}
+                  className="rounded-full border hairline px-5 py-3 text-sm text-ink transition-colors hover:bg-cream/40"
+                >
+                  ← Back
+                </button>
+                <button
+                  onClick={onGenerate}
+                  disabled={!canSubmit}
+                  className="inline-flex items-center gap-2 rounded-full bg-ink px-7 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-40"
+                >
+                  {submitting ? (
+                    <>
+                      <LuxeSpinner size="xs" tone="paper" />
+                      Generating {looks} looks…
+                    </>
+                  ) : !photosReady ? (
+                    !facePath ? (
+                      "Add a face photo"
+                    ) : (
+                      "Accept the consent"
+                    )
+                  ) : !canAfford ? (
+                    "Not enough credits"
+                  ) : (
+                    `Generate ${looks} looks`
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
