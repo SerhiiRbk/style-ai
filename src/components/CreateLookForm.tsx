@@ -8,6 +8,7 @@ import { LOOK_SET_BUNDLES, priceForBundle } from "@/lib/look-sets";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import { BodyTypePicker } from "@/components/BodyTypePicker";
 import { PhotoQualityGuide } from "@/components/PhotoQualityGuide";
+import { BRAND } from "@/lib/brand";
 import type { BodyTypeId } from "@/lib/style-profile";
 import { checkPhotoGateClient } from "@/lib/client/photo-gate";
 import { LEGAL } from "@/lib/legal";
@@ -274,6 +275,12 @@ export function CreateLookForm({
   if (result) {
     return (
       <main className="bg-paper">
+        <FlowHeader
+          onBack={() => {
+            setResult(null);
+            setError(null);
+          }}
+        />
         <div className="container-luxe max-w-5xl py-12">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -390,6 +397,7 @@ export function CreateLookForm({
           message="Carlo is building your set and rendering each look on you. This typically takes a minute or two."
         />
       ) : null}
+      <FlowHeader onBack={step > 0 ? () => setStep(0) : undefined} />
       <div className="container-luxe max-w-3xl py-12">
         <p className="eyebrow">Create a Look</p>
         <h1 className="mt-3 font-display text-3xl">A new set of looks</h1>
@@ -727,6 +735,34 @@ export function CreateLookForm({
 }
 
 /* ---------------------------------------------------------------- */
+
+/** Report-style flow chrome: logo → home, an optional Back, and a Your-sets
+ * exit. Mirrors the Style Report wizard header so the two flows feel the same. */
+function FlowHeader({ onBack }: { onBack?: () => void }) {
+  return (
+    <div className="border-b hairline bg-paper/80 backdrop-blur-md">
+      <div className="container-luxe flex h-16 items-center justify-between">
+        <Link href="/" className="font-display text-xl">
+          {BRAND.name}
+        </Link>
+        <div className="flex items-center gap-4">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="text-sm text-stone transition-colors hover:text-ink"
+            >
+              ← Back
+            </button>
+          ) : null}
+          <Link href="/looks" className="text-sm text-stone hover:text-ink">
+            Your sets
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Block({
   eyebrow,

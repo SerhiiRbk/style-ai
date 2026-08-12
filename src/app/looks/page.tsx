@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Navbar } from "@/components/Navbar";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import {
   createServerSupabase,
@@ -18,6 +19,7 @@ export default async function LooksPage() {
   if (!hasSupabase || !hasSupabaseAdmin) {
     return (
       <main className="bg-paper">
+        <Navbar />
         <div className="container-luxe max-w-3xl py-16 text-center text-stone">
           Create a Look is unavailable in demo mode.
         </div>
@@ -36,6 +38,7 @@ export default async function LooksPage() {
 
   return (
     <main className="bg-paper">
+      <Navbar />
       <div className="container-luxe max-w-5xl py-10">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>

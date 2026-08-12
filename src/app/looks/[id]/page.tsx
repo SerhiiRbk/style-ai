@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import { Navbar } from "@/components/Navbar";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import {
   createServerSupabase,
@@ -38,6 +39,7 @@ export default async function LookSetPage({
 
   return (
     <main className="bg-paper">
+      <Navbar />
       <div className="container-luxe max-w-5xl py-10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
