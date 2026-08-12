@@ -1,9 +1,15 @@
 import "server-only";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getLatestReportProfile } from "@/lib/data/match-profile";
-import { styleProfileSchema, type StyleProfile, type Boldness } from "@/lib/style-profile";
+import {
+  styleProfileSchema,
+  type StyleProfile,
+  type Boldness,
+  type ReportContent,
+} from "@/lib/style-profile";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import type { ShoppingItem } from "@/lib/report";
+import { matchLookItems } from "@/lib/data/catalog";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
@@ -243,6 +249,14 @@ export async function loadLookSetResult(
       imagePath: r.image_path as string,
     }));
 
+  // Self-heal: sets created before look_items were persisted (or where the
+  // match failed at generation) have no items — recompute once on first view
+  // and store them, so "Shop the look" + the whole-look try-on work for old
+  // sets too. Guarded by `!lookItems` so it runs at most once per set.
+  if (!lookItems && looks.length) {
+    lookItems = await backfillSetLookItems(admin, userId, setId, looks);
+  }
+
   return {
     setId: set.id as string,
     shareSlug: (set.share_slug as string | null) ?? null,
@@ -252,6 +266,54 @@ export async function loadLookSetResult(
     lookItems,
     looks,
   };
+}
+
+/**
+ * Recompute the catalogue match for a set's looks and persist it to
+ * `look_sets.look_items`. Used to backfill sets that predate item persistence.
+ * Best-effort: returns null (and leaves the column untouched) on any failure,
+ * so the set still renders — just without "Shop the look".
+ */
+async function backfillSetLookItems(
+  admin: AdminClient,
+  userId: string,
+  setId: string,
+  looks: LoadedSetLook[],
+): Promise<Record<number, ShoppingItem[]> | null> {
+  try {
+    const { data: prof } = await admin
+      .from("look_set_profiles")
+      .select("profile")
+      .eq("set_id", setId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    const parsed = styleProfileSchema.safeParse(prof?.profile);
+    if (!parsed.success) return null;
+
+    const content = {
+      colors: { best: [], avoid: [] },
+      looks: looks.map((l) => ({
+        context: l.context,
+        title: l.title,
+        description: l.description,
+        palette: l.palette,
+      })),
+    } as unknown as ReportContent;
+
+    const items = await matchLookItems(parsed.data, content);
+    const { error } = await admin
+      .from("look_sets")
+      .update({ look_items: items })
+      .eq("id", setId);
+    if (error) {
+      console.error("[look-set] backfill persist failed", setId, error.message);
+      return items; // still return them for this render even if the write failed
+    }
+    return items;
+  } catch (err) {
+    console.error("[look-set] backfill look_items failed", setId, err);
+    return null;
+  }
 }
 
 export type LookSetSummary = {
