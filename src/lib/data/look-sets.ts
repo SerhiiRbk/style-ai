@@ -76,6 +76,10 @@ export async function createLookSet(
      * index (user_id, request_key) in 0039; the route pre-checks and returns
      * the existing set on replay. */
     requestKey?: string | null;
+    /** Storage paths of the photo the set was rendered on — so the whole-look
+     * try-on renders on the SAME photo. Stored owner-only. */
+    faceRefPath?: string | null;
+    fullRefPath?: string | null;
   },
 ): Promise<{ id: string }> {
   const {
@@ -90,6 +94,8 @@ export async function createLookSet(
     isPublic,
     shareSlug,
     requestKey,
+    faceRefPath,
+    fullRefPath,
   } = opts;
 
   const { data, error } = await admin
@@ -121,6 +127,26 @@ export async function createLookSet(
     // child insert's failure (src/lib/data/reports.ts:1661-1664).
     await admin.from("look_sets").delete().eq("id", id);
     throw new Error(profileErr.message);
+  }
+
+  // Best-effort (pre-0041-safe): remember which photo the set was rendered on
+  // so the try-on renders on the same one. A missing column just means the
+  // try-on falls back to the user's default photo — never fatal to the set.
+  if (faceRefPath || fullRefPath) {
+    const { error: refErr } = await admin
+      .from("look_set_profiles")
+      .update({
+        face_ref_path: faceRefPath ?? null,
+        full_ref_path: fullRefPath ?? null,
+      })
+      .eq("set_id", id);
+    if (refErr) {
+      console.error(
+        "[look-set] ref path persist failed (pre-0041?)",
+        id,
+        refErr.message,
+      );
+    }
   }
 
   return { id };

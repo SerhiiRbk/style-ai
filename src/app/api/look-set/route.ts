@@ -486,6 +486,8 @@ export async function POST(request: Request) {
     isPublic: false,
     shareSlug,
     requestKey,
+    faceRefPath,
+    fullRefPath,
   });
 
   // 9) per-look charge vector — deterministic, sums to `price` exactly.

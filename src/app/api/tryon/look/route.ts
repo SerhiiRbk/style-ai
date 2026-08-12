@@ -26,7 +26,11 @@ import {
 } from "@/lib/look-tryon";
 import type { StyleProfile } from "@/lib/style-profile";
 import type { ShoppingItem } from "@/lib/report";
-import { getReportReferencePhotos } from "@/lib/photo-tryon";
+import {
+  getReportReferencePhotos,
+  getCatalogTryOnPhoto,
+  signPhotoPath,
+} from "@/lib/photo-tryon";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 /** Look rendering + fal polling can exceed the default Vercel function timeout. */
@@ -231,6 +235,11 @@ export async function POST(request: Request) {
   let refCreatedAt: string;
   let storageId: string;
   let reportIdForRow: string | null;
+  // For sets: the reference photo the set was rendered on (persisted on newer
+  // sets). Resolution falls back to the user's default photo — the SAME source
+  // the set generation used — not the latest report's photos.
+  let setFacePath: string | null = null;
+  let setFullPath: string | null = null;
 
   if (setId) {
     const { data: setRow } = await admin
@@ -254,6 +263,18 @@ export async function POST(request: Request) {
     refCreatedAt = setRow.created_at as string;
     storageId = setId;
     reportIdForRow = null;
+    // Best-effort (pre-0041-safe): the exact reference photo paths stored on the
+    // set at generation, if the columns exist.
+    const { data: rp, error: rpErr } = await admin
+      .from("look_set_profiles")
+      .select("face_ref_path, full_ref_path")
+      .eq("set_id", setId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!rpErr) {
+      setFacePath = (rp?.face_ref_path as string | null) ?? null;
+      setFullPath = (rp?.full_ref_path as string | null) ?? null;
+    }
   } else {
     // getReportById refreshes look_items via on-the-fly catalogue matching when
     // they are missing/stale and enriches each item with its product image URL —
@@ -346,17 +367,47 @@ export async function POST(request: Request) {
     );
   }
 
-  // Reference photos: for a report, its stored photos; for a set, pass no
-  // reportId so it falls back to the user's own face/full photos by role.
-  const photo = await getReportReferencePhotos(
-    admin,
-    user.id,
-    refCreatedAt,
-    reportIdForRow ?? undefined,
-  );
-  if (!photo.ok) {
+  // Reference photos. Report: its own stored photos. Set: the exact photo the
+  // set was rendered on — its stored ref paths when present, else the user's
+  // DEFAULT photo (getCatalogTryOnPhoto), the same source the set generation
+  // used. Never the latest report's photos.
+  let fullUrl: string | undefined;
+  let faceUrl: string | undefined;
+  let profileUrl: string | undefined;
+  if (setId) {
+    faceUrl = setFacePath
+      ? ((await signPhotoPath(admin, setFacePath)) ?? undefined)
+      : undefined;
+    fullUrl = setFullPath
+      ? ((await signPhotoPath(admin, setFullPath)) ?? undefined)
+      : undefined;
+    if (!fullUrl) {
+      const cat = await getCatalogTryOnPhoto(admin, user.id);
+      if (cat.ok) fullUrl = cat.signedUrl;
+    }
+  } else {
+    const photo = await getReportReferencePhotos(
+      admin,
+      user.id,
+      refCreatedAt,
+      reportIdForRow ?? undefined,
+    );
+    if (!photo.ok) {
+      return NextResponse.json(
+        { error: photo.error, code: photo.code },
+        { status: 422 },
+      );
+    }
+    fullUrl = photo.fullUrl;
+    faceUrl = photo.faceUrl;
+    profileUrl = photo.profileUrl;
+  }
+  if (!fullUrl) {
     return NextResponse.json(
-      { error: photo.error, code: photo.code },
+      {
+        error: "Upload a full-length photo (head to toe) to try looks on you.",
+        code: "needs_full_photo",
+      },
       { status: 422 },
     );
   }
@@ -367,7 +418,7 @@ export async function POST(request: Request) {
         // clothing and background (neutral studio), copying the face/hair/pose
         // verbatim so identity holds (no editorial re-synthesis of the face).
         await generateReportTryOnImage({
-          personImageUrl: photo.fullUrl,
+          personImageUrl: fullUrl,
           garmentsText:
             catalogContext ?? `Dress the person in this outfit: ${description}. `,
           garmentImageUrls: catalogImageUrls,
@@ -383,9 +434,9 @@ export async function POST(request: Request) {
           },
           // Identity reference ONLY — the user's own photo, never the report's
           // generated look image (which would copy the original outfit).
-          referenceImageUrl: photo.fullUrl,
-          faceReferenceImageUrl: photo.faceUrl,
-          profileReferenceImageUrl: photo.profileUrl,
+          referenceImageUrl: fullUrl,
+          faceReferenceImageUrl: faceUrl,
+          profileReferenceImageUrl: profileUrl,
           // Capsule combo photo defines the exact outfit to replicate on the user.
           outfitReferenceImageUrl:
             kind === "capsule" ? outfitReferenceUrl : undefined,
