@@ -6,9 +6,10 @@ import { COLOURS_ENABLED } from "@/lib/colours-feature";
 import { useNavSession } from "./NavSession";
 
 const MY_STYLE_LINKS = [
+  { href: "/start", label: "Create Report" },
   { href: "/reports", label: "Style Reports" },
   { href: "/create-look", label: "Create a Look" },
-  { href: "/looks", label: "Your sets" },
+  { href: "/looks", label: "My Looks" },
   { href: "/gallery", label: "Gallery" },
   ...(COLOURS_ENABLED
     ? [{ href: "/colours", label: "Colours" }]
@@ -17,7 +18,7 @@ const MY_STYLE_LINKS = [
 ] as const;
 
 const triggerClass =
-  "inline-flex items-center gap-1 whitespace-nowrap text-xs xl:text-sm text-stone transition-colors hover:text-ink";
+  "inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs font-medium tracking-wide text-ink transition-colors hover:text-brass xl:text-sm";
 
 /**
  * Desktop "My Style" dropdown — personal destinations for signed-in visitors
@@ -56,7 +57,7 @@ export function MyStyleMenu() {
         aria-expanded={open}
         aria-controls={menuId}
         onClick={() => setOpen((v) => !v)}
-        className={triggerClass}
+        className={`${triggerClass} ${open ? "text-brass" : ""}`}
       >
         My Style
         <svg

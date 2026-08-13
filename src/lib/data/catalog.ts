@@ -16,6 +16,7 @@ import { marketForCurrency } from "@/lib/currency";
 import {
   CASUAL_FOOTWEAR_RE,
   colorMatchScore,
+  colorFamilies,
   decomposeLook,
   garmentTitleMatchScore,
   isBlazerGarment,
@@ -165,8 +166,10 @@ const MIN_LOOK_PICK_SCORE = 0.42;
  *  per-look products realign with the rendered look on legacy reports.
  *  v8: mid-grey shade scoring + tailored-blazer filter (drop knit/zip "sport blazers").
  *  v9: drop short-sleeve knits/sweatshirts from the Knitwear slot (they layer as a
- *  tee over a long-sleeve shirt) — mirrors the matchShopping knit filter. */
-export const LOOK_MATCH_VERSION = 9;
+ *  tee over a long-sleeve shirt) — mirrors the matchShopping knit filter.
+ *  v10: reject shirt+trousers in the same chromatic family (sage shirt + olive
+ *  trousers) unless the look itself asked for that monochrome. */
+export const LOOK_MATCH_VERSION = 10;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
@@ -606,6 +609,111 @@ function toRerankCandidate(row: MatchRow, category: string): RerankGarmentSlot["
   };
 }
 
+/** Chromatic hues that read as a uniform when shirt and trousers share them.
+ *  Neutrals (grey/brown/black/white) and navy-on-navy (blue) are allowed. */
+const CHROMATIC_CLASH_FAMILIES = new Set([
+  "green",
+  "red",
+  "orange",
+  "yellow",
+  "pink",
+  "purple",
+]);
+
+function itemColorText(item: {
+  colorName?: string;
+  title: string;
+}): string {
+  return `${item.colorName ?? ""} ${item.title}`;
+}
+
+function rowColorText(row: MatchRow): string {
+  return `${row.color ?? ""} ${formatCatalogProductTitle(row.brand, row.title)}`;
+}
+
+function sharedChromaticFamily(aText: string, bText: string): string | null {
+  const a = colorFamilies(aText);
+  const b = colorFamilies(bText);
+  for (const fam of a) {
+    if (CHROMATIC_CLASH_FAMILIES.has(fam) && b.has(fam)) return fam;
+  }
+  return null;
+}
+
+function lookAskedForFamilyOnBoth(
+  shirt: LookGarment,
+  trousers: LookGarment,
+  family: string,
+): boolean {
+  const shirtAsked = colorFamilies(`${shirt.color ?? ""} ${shirt.clause}`);
+  const trousersAsked = colorFamilies(
+    `${trousers.color ?? ""} ${trousers.clause}`,
+  );
+  return shirtAsked.has(family) && trousersAsked.has(family);
+}
+
+/**
+ * Sage shirt + olive trousers (both `green`) looks like a uniform. Re-pick the
+ * trousers from the ranked pool unless the look itself named that family on
+ * both pieces. Keep the original pair only when every alternative also clashes.
+ */
+function resolveShirtTrouserClash(
+  items: ShoppingItem[],
+  matchSlots: GarmentMatchSlot[],
+  matchByKey: Map<string, MatchRow[]>,
+  profile: StyleProfile,
+  goal: string,
+): ShoppingItem[] {
+  const shirtIdx = items.findIndex((i) => i.category === "Shirts");
+  const trouserIdx = items.findIndex((i) => i.category === "Trousers");
+  if (shirtIdx < 0 || trouserIdx < 0) return items;
+
+  const shirt = items[shirtIdx];
+  const trousers = items[trouserIdx];
+  const clash = sharedChromaticFamily(
+    itemColorText(shirt),
+    itemColorText(trousers),
+  );
+  if (!clash) return items;
+
+  const shirtSlot = matchSlots.find((s) => s.garment.category === "Shirts");
+  const trouserSlot = matchSlots.find((s) => s.garment.category === "Trousers");
+  if (!shirtSlot || !trouserSlot) return items;
+  if (lookAskedForFamilyOnBoth(shirtSlot.garment, trouserSlot.garment, clash)) {
+    return items;
+  }
+
+  const usedIds = new Set(
+    items
+      .map((i) => i.productId)
+      .filter((id): id is string => Boolean(id) && id !== trousers.productId),
+  );
+  const shirtText = itemColorText(shirt);
+  const alt = rankMatchRows(
+    matchByKey.get(trouserSlot.matchKey) ?? [],
+    trouserSlot.garment.color,
+    trouserSlot.garment.garment,
+    profile.boldness,
+  )
+    .sort((a, b) => b.score - a.score)
+    .find((r) => {
+      if (usedIds.has(r.row.id)) return false;
+      if (r.garmentScore < 0.5 && r.colorScore < 0.45) return false;
+      return !sharedChromaticFamily(shirtText, rowColorText(r.row));
+    });
+  if (!alt) return items;
+
+  const next = [...items];
+  next[trouserIdx] = shoppingItemFromMatch(
+    alt.row,
+    trouserSlot.garment,
+    profile,
+    goal,
+    alt.similarPick,
+  );
+  return next;
+}
+
 function shoppingItemFromMatch(
   row: MatchRow,
   g: LookGarment,
@@ -728,7 +836,15 @@ async function matchItemsForLook(
         ),
       );
     }
-    if (items.length) return items;
+    if (items.length) {
+      return resolveShirtTrouserClash(
+        items,
+        matchSlots,
+        matchByKey,
+        profile,
+        goal,
+      );
+    }
   }
 
   for (const matchSlot of matchSlots) {
@@ -752,7 +868,13 @@ async function matchItemsForLook(
     );
   }
 
-  return items;
+  return resolveShirtTrouserClash(
+    items,
+    matchSlots,
+    matchByKey,
+    profile,
+    goal,
+  );
 }
 
 /** Per-look matched products, keyed by the look's index in content.looks. */

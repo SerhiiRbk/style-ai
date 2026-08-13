@@ -31,7 +31,7 @@ function formatDate(iso: string): string {
 
 type Filter = "all" | GalleryItemKind;
 
-/** Client-side type filter over the server-aggregated "My looks" gallery. */
+/** Client-side type filter over the server-aggregated "My Images" gallery. */
 export function GalleryView({ groups }: { groups: GalleryReportGroup[] }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [removed, setRemoved] = useState<Set<string>>(new Set());

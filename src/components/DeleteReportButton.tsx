@@ -28,17 +28,21 @@ function TrashIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
  * Owner-only "delete this report" control with an inline confirm step.
  * `tone` adapts the styling to dark headers vs light list rows.
  * `variant="compact"` — small icon control for list rows (next to the date).
+ * `onDeleted` lets a client list drop the row optimistically instead of a
+ * full refresh; without it we fall back to router.refresh() / redirectTo.
  */
 export function DeleteReportButton({
   reportId,
   tone = "light",
   variant = "default",
   redirectTo,
+  onDeleted,
 }: {
   reportId: string;
   tone?: "dark" | "light";
   variant?: "default" | "compact";
   redirectTo?: string;
+  onDeleted?: (reportId: string) => void;
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -55,6 +59,10 @@ export function DeleteReportButton({
           error?: string;
         } | null;
         throw new Error(payload?.error ?? "Could not delete report");
+      }
+      if (onDeleted) {
+        onDeleted(reportId);
+        return;
       }
       if (redirectTo) {
         router.push(redirectTo);

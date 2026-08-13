@@ -26,6 +26,7 @@ import {
   saveSetLook,
   findLookSetByRequestKey,
   loadLookSetResult,
+  markLookSetReady,
 } from "@/lib/data/look-sets";
 import {
   analyzeProfile,
@@ -92,6 +93,9 @@ function idempotencyKey(request: Request): string | null {
 }
 
 type RenderedLook = {
+  /** Stable content-order index (the chunk index it was generated at). Keys
+   *  look_items and the storage path so pairing survives concurrent inserts. */
+  idx: number;
   title: string;
   description: string;
   context: string;
@@ -233,7 +237,8 @@ export async function POST(request: Request) {
   // created for it — no second set, no second charge. (The partial unique
   // index on (user_id, request_key) in 0039 also blocks a concurrent
   // duplicate at the DB level; a race loser errors out having charged
-  // nothing.) Matches aren't persisted, so the replay omits Shop-the-Look.
+  // nothing.) look_items are persisted now, so the replay can restore
+  // Shop-the-Look too — keyed by each look's stable `idx`.
   const requestKey = idempotencyKey(request);
   if (requestKey) {
     const prior = await findLookSetByRequestKey(admin, user.id, requestKey);
@@ -245,13 +250,16 @@ export async function POST(request: Request) {
           setId: result.setId,
           shareSlug: result.shareSlug,
           carloNote: result.carloNote,
-          looks: result.looks.map((l) => ({
+          looks: result.looks
+            .filter((l) => l.imagePath)
+            .map((l) => ({
+            idx: l.idx,
             context: l.context,
             title: l.title,
             description: l.description,
             palette: l.palette,
-            image: signedAssetProxyUrl(l.imagePath),
-            items: [],
+            image: signedAssetProxyUrl(l.imagePath!),
+            items: result.lookItems?.[l.idx] ?? [],
           })),
           balance,
           replayed: true,
@@ -516,6 +524,7 @@ export async function POST(request: Request) {
     requestKey,
     faceRefPath: effectiveFacePath,
     fullRefPath: effectiveFullPath,
+    looksCount,
   });
 
   // 9) per-look charge vector — deterministic, sums to `price` exactly.
@@ -580,13 +589,13 @@ export async function POST(request: Request) {
             return null;
           }
 
-          await saveSetLook(admin, { setId, userId: user.id, look, imagePath });
+          await saveSetLook(admin, { setId, userId: user.id, idx: i, look, imagePath });
 
           // Billing is deferred to a single set-level spend after the loop —
           // spend_credits_once requires a UUID ref_id (the set id). Charging
           // per index with a string like `lookset:${setId}:${i}` fails the RPC
           // (22P02) and used to wipe every successful render as "generation_failed".
-          return { ...look, imagePath, charged: charge[i]! };
+          return { ...look, idx: i, imagePath, charged: charge[i]! };
         } catch (err) {
           console.error("[look-set] look render failed", setId, i, err);
           return null;
@@ -633,6 +642,8 @@ export async function POST(request: Request) {
     );
   }
 
+  await markLookSetReady(admin, setId);
+
   // 10) Carlo note.
   let carloNote: string | null = null;
   try {
@@ -663,7 +674,17 @@ export async function POST(request: Request) {
         palette: r.palette,
       })),
     } as unknown as ReportContent;
-    matched = await matchLookItems(profile, content);
+    // matchLookItems keys by position in content.looks (= position in
+    // `rendered`); re-key by each look's stable `idx` so look_items lines up
+    // with the looks as read back (ordered by idx), not by the concurrent
+    // insert order. A render that failed leaves a gap in idx — which is exactly
+    // why position-keying was unsafe.
+    const byPos = await matchLookItems(profile, content);
+    matched = {};
+    rendered.forEach((r, p) => {
+      const items = byPos[p];
+      if (items?.length) matched[r.idx] = items;
+    });
     // Persist the matched items on the set (mirrors reports.look_items) so the
     // set view can show "Shop the look" and the whole-look try-on can resolve
     // items later without recomputing. Best-effort — never fatal to the set.
@@ -695,13 +716,14 @@ export async function POST(request: Request) {
     setId,
     shareSlug,
     carloNote,
-    looks: rendered.map((r, idx) => ({
+    looks: rendered.map((r) => ({
+      idx: r.idx,
       context: r.context,
       title: r.title,
       description: r.description,
       palette: r.palette,
       image: signedAssetProxyUrl(r.imagePath),
-      items: matched[idx] ?? [],
+      items: matched[r.idx] ?? [],
     })),
     balance,
     currency: profile.currency,

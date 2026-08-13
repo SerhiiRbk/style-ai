@@ -2603,6 +2603,11 @@ function parseColorTokens(text: string): { families: Set<string>; shade?: Shade 
   return { families, shade: modShade ?? hueShade };
 }
 
+/** Hue families named in free text (product colour, title, or look clause). */
+export function colorFamilies(text: string): Set<string> {
+  return parseColorTokens(text).families;
+}
+
 /**
  * 0–1 colour fit between a look garment colour and a catalogue product. Matches
  * on hue family first, then on lightness: same hue + same lightness scores high,

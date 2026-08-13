@@ -4,15 +4,15 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { CreateReportButton } from "@/components/CreateReportButton";
+import { ViewModeToggle } from "@/components/ViewModeToggle";
+import {
+  ReportsBrowser,
+  type ReportsBrowserItem,
+} from "@/components/ReportsBrowser";
 import { hasSupabase } from "@/lib/env";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getCreditBalance } from "@/lib/credits";
-import { DeleteReportButton } from "@/components/DeleteReportButton";
-import {
-  getUserReports,
-  reportStatusLabel,
-  tierLabel,
-} from "@/lib/data/user-reports";
+import { getUserReports, tierLabel } from "@/lib/data/user-reports";
 import { languageNativeLabel } from "@/lib/languages";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +62,16 @@ export default async function ReportsPage() {
     getCreditBalance(),
   ]);
 
+  const items: ReportsBrowserItem[] = (reports ?? []).map((r) => ({
+    id: r.id,
+    headline: r.headline || "Style report",
+    date: formatDate(r.createdAt),
+    thumbUrl: r.coverImage ?? null,
+    tier: tierLabel(r.tier),
+    language: languageNativeLabel(r.language),
+    status: r.generating ? "processing" : r.status,
+  }));
+
   return (
     <>
       <Navbar />
@@ -94,8 +104,9 @@ export default async function ReportsPage() {
                 </div>
               )}
               <div className="flex items-center gap-3">
+                <ViewModeToggle storageKey="reports-view-mode" />
                 <ButtonLink href="/gallery" variant="outline">
-                  My looks
+                  My gallery
                 </ButtonLink>
                 <CreateReportButton compact label="New report" />
               </div>
@@ -104,79 +115,7 @@ export default async function ReportsPage() {
         </section>
 
         <section className="container-luxe py-10">
-          {!reports?.length ? (
-            <div className="rounded-2xl border hairline bg-paper px-6 py-16 text-center">
-              <p className="font-display text-2xl">No reports yet</p>
-              <p className="mx-auto mt-3 max-w-sm text-stone">
-                Create your first style report — it only takes a few minutes.
-              </p>
-              <div className="mt-8">
-                <ButtonLink href="/start">Create your first report</ButtonLink>
-              </div>
-            </div>
-          ) : (
-            <ul className="divide-y hairline rounded-2xl border hairline bg-paper">
-              {reports.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex flex-col gap-4 px-5 py-5 transition-colors hover:bg-cream/30 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6"
-                >
-                  {r.coverImage ? (
-                    <Link
-                      href={`/report/${r.id}`}
-                      className="relative hidden h-16 w-12 shrink-0 overflow-hidden rounded-lg border hairline bg-cream/40 sm:block"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={r.coverImage}
-                        alt=""
-                        className="h-full w-full object-cover object-top"
-                        loading="lazy"
-                      />
-                    </Link>
-                  ) : null}
-                  <div className="min-w-0 flex-1">
-                    <Link
-                      href={`/report/${r.id}`}
-                      className="block truncate font-display text-lg text-ink transition-colors hover:text-ink-soft"
-                    >
-                      {r.headline || "Style report"}
-                    </Link>
-                    <div className="mt-1 flex items-center gap-2 text-sm text-stone">
-                      <span>{formatDate(r.createdAt)}</span>
-                      <span className="text-stone-soft/60" aria-hidden>
-                        ·
-                      </span>
-                      <DeleteReportButton
-                        reportId={r.id}
-                        variant="compact"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
-                    <span className="rounded-full border hairline bg-cream/40 px-3 py-1 text-xs text-stone">
-                      {tierLabel(r.tier)}
-                    </span>
-                    <span className="rounded-full border hairline bg-cream/40 px-3 py-1 text-xs text-stone">
-                      {languageNativeLabel(r.language)}
-                    </span>
-                    <StatusBadge
-                      status={r.generating ? "processing" : r.status}
-                    />
-                    <Link
-                      href={`/report/${r.id}`}
-                      className="group inline-flex items-center justify-center gap-1 rounded-full border border-brass/40 bg-brass/5 px-5 py-2 text-sm text-ink transition-colors hover:border-brass/60 hover:bg-brass/10"
-                    >
-                      <span className="transition-colors group-hover:text-brass">
-                        Open
-                      </span>
-                      <span aria-hidden>→</span>
-                    </Link>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ReportsBrowser reports={items} />
         </section>
 
         <section className="container-luxe pb-20">
@@ -202,30 +141,5 @@ export default async function ReportsPage() {
       </main>
       <Footer />
     </>
-  );
-}
-
-function StatusBadge({
-  status,
-}: {
-  status: "processing" | "ready" | "failed";
-}) {
-  const label = reportStatusLabel(status);
-  const styles =
-    status === "processing"
-      ? "border-brass/30 bg-brass/10 text-brass"
-      : status === "failed"
-        ? "border-red-200 bg-red-50 text-red-800"
-        : "border-ink/10 bg-cream/60 text-ink";
-
-  return (
-    <span
-      className={`rounded-full border px-3 py-1 text-xs font-medium ${styles}`}
-    >
-      {status === "processing" && (
-        <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brass align-middle" />
-      )}
-      {label}
-    </span>
   );
 }

@@ -6,7 +6,8 @@ import {
   generateReportTryOnImage,
 } from "@/lib/ai/pipeline";
 import { getReportById } from "@/lib/data/reports";
-import { SHORT_SLEEVE_KNIT_RE } from "@/lib/data/catalog";
+import { lookItemsNeedRefresh, SHORT_SLEEVE_KNIT_RE } from "@/lib/data/catalog";
+import { ensureSetLookItems } from "@/lib/data/look-sets";
 import { isDemoReportId } from "@/lib/demo-report";
 import {
   CREDIT_COSTS,
@@ -90,6 +91,34 @@ function withVersion(url: string, version: number | string): string {
     typeof version === "string" ? Date.parse(version) || Date.now() : version;
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}v=${v}`;
+}
+
+/**
+ * Apply the user's Shop-the-look selection. After a catalogue rematch, stored
+ * productIds can point at replaced items (e.g. olive trousers swapped for teal);
+ * keep the hits that still exist and fill any category whose previous product
+ * disappeared, so the try-on doesn't drop trousers entirely.
+ */
+function selectLookCatalogItems(
+  all: ShoppingItem[],
+  productIds: string[] | null,
+): ShoppingItem[] {
+  if (!productIds?.length) return all;
+  const idSet = new Set(productIds);
+  const selected = all.filter((i) => idSet.has(i.productId ?? i.title));
+  if (!selected.length) return all;
+  const stale = productIds.some(
+    (id) => !all.some((i) => (i.productId ?? i.title) === id),
+  );
+  if (!stale) return selected;
+  const cats = new Set(selected.map((i) => i.category));
+  const filled = [...selected];
+  for (const item of all) {
+    if (cats.has(item.category)) continue;
+    filled.push(item);
+    cats.add(item.category);
+  }
+  return filled;
 }
 
 /** Return the latest saved full-look try-on for this report + look key, if any. */
@@ -261,6 +290,11 @@ export async function POST(request: Request) {
     profile = profRow.profile as StyleProfile;
     lookItems =
       (setRow.look_items as Record<number, ShoppingItem[]> | null) ?? undefined;
+    if (lookItemsNeedRefresh(lookItems)) {
+      lookItems =
+        (await ensureSetLookItems(admin, user.id, setId, lookItems)) ??
+        undefined;
+    }
     refCreatedAt = setRow.created_at as string;
     storageId = setId;
     reportIdForRow = null;
@@ -329,10 +363,8 @@ export async function POST(request: Request) {
   // Item selection (looks only): keep only the "Shop a look" items the user left
   // enabled. Empty/absent selection falls back to ALL items (current default).
   const selectedItems =
-    kind === "look" && productIds && productIds.length
-      ? allResolvedItems.filter((i) =>
-          productIds.includes(i.productId ?? i.title),
-        )
+    kind === "look"
+      ? selectLookCatalogItems(allResolvedItems, productIds)
       : allResolvedItems;
 
   // A tie can't be worn without a shirt. If the user deselected the shirt but
@@ -501,18 +533,36 @@ export async function POST(request: Request) {
     imageUrl: it.image ?? null,
   }));
 
-  const { data: insertedTryon } = await admin
+  const tryonRow = {
+    user_id: user.id,
+    report_id: reportIdForRow,
+    image_path: path,
+    status: "ready",
+    kind,
+    garments: garmentsMeta,
+  };
+  // Audit trail: record exactly what the user submitted to try on (looks only —
+  // the "Shop a look" selection). This is deliberately distinct from `garments`
+  // above, which is the outfit that actually went into the render AFTER the
+  // slot-dependency fix-ups (e.g. a tie silently re-adds its shirt). Keeping the
+  // raw request makes any future item-vs-render mismatch diagnosable: you can
+  // see what the user picked vs what got rendered. Best-effort: tolerate DBs
+  // where migration 0042 (tryons.selected_product_ids) hasn't run yet by
+  // retrying the insert without the column.
+  const selectedProductIds = kind === "look" ? productIds : null;
+  let inserted = await admin
     .from("tryons")
-    .insert({
-      user_id: user.id,
-      report_id: reportIdForRow,
-      image_path: path,
-      status: "ready",
-      kind,
-      garments: garmentsMeta,
-    })
+    .insert({ ...tryonRow, selected_product_ids: selectedProductIds })
     .select("created_at")
     .single();
+  if (inserted.error && /selected_product_ids/.test(inserted.error.message)) {
+    inserted = await admin
+      .from("tryons")
+      .insert(tryonRow)
+      .select("created_at")
+      .single();
+  }
+  const insertedTryon = inserted.data;
   const version = insertedTryon?.created_at
     ? Date.parse(insertedTryon.created_at as string) || Date.now()
     : Date.now();

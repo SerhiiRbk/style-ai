@@ -360,7 +360,7 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
             createdAt: s.created_at,
             canShare: false,
             href: `/looks/${s.id}`,
-            linkLabel: "Open set",
+            linkLabel: "Open look",
             items,
           });
         }

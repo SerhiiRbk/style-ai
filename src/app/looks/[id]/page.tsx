@@ -15,6 +15,8 @@ import {
 import { loadLookSetResult, loadPublicLookSet } from "@/lib/data/look-sets";
 import { lookContextById } from "@/lib/look-contexts";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
+import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
+import { LookGeneratingRefresh } from "@/components/LookGeneratingRefresh";
 
 export const metadata = { title: "Look set · Valetti" };
 
@@ -52,16 +54,29 @@ export default async function LookSetPage({
 
   const looksGrid = (
     <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-      {set.looks.map((look, i) => (
-        <article key={i} className="flex flex-col">
-          <ReportZoomImage
-            src={signedAssetProxyUrl(look.imagePath)}
-            alt={look.title}
-            wrapperClassName="relative block aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline"
-            className="h-full w-full object-cover"
-          />
-          <h2 className="mt-3 font-display text-lg text-ink">{look.title}</h2>
-          <p className="mt-1 text-sm text-stone">{look.description}</p>
+      {set.looks.map((look) => (
+        <article key={look.idx} className="flex flex-col">
+          {look.imagePath ? (
+            <ReportZoomImage
+              src={signedAssetProxyUrl(look.imagePath)}
+              alt={look.title || "Look"}
+              wrapperClassName="relative block aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="relative aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline bg-cream/40">
+              <ReportImageGenerating
+                label={look.title || "Generating look"}
+                detail="Styling this look on your photo"
+              />
+            </div>
+          )}
+          {look.title ? (
+            <h2 className="mt-3 font-display text-lg text-ink">{look.title}</h2>
+          ) : null}
+          {look.description ? (
+            <p className="mt-1 text-sm text-stone">{look.description}</p>
+          ) : null}
           {look.palette?.length ? (
             <div className="mt-3 flex gap-1.5">
               {look.palette.map((hex, k) => (
@@ -74,23 +89,29 @@ export default async function LookSetPage({
               ))}
             </div>
           ) : null}
-          <LookShopAndTryOn
-            items={set.lookItems?.[i] ?? []}
-            currency="EUR"
-            canTryOn={isOwner}
-            setId={isOwner ? set.setId : undefined}
-            title={look.title}
-            description={look.description}
-            palette={look.palette}
-            lookIndex={i}
-          />
+          {look.imagePath ? (
+            <LookShopAndTryOn
+              items={set.lookItems?.[look.idx] ?? []}
+              currency="EUR"
+              canTryOn={isOwner}
+              setId={isOwner ? set.setId : undefined}
+              title={look.title}
+              description={look.description}
+              palette={look.palette}
+              lookIndex={look.idx}
+            />
+          ) : null}
         </article>
       ))}
     </div>
   );
 
+  const readyCount = set.looks.filter((l) => l.imagePath).length;
+  const generating = set.generating;
+
   return (
     <main className="bg-paper">
+      <LookGeneratingRefresh active={generating} />
       <Navbar />
       <div className="container-luxe max-w-5xl py-10">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -98,7 +119,10 @@ export default async function LookSetPage({
             <p className="eyebrow text-brass">{occasion}</p>
             <h1 className="mt-1 font-display text-3xl text-ink">{occasion}</h1>
             <p className="mt-1 text-sm text-stone-soft">
-              {date} · {set.looks.length} looks
+              {date} ·{" "}
+              {generating
+                ? `${readyCount} of ${set.looks.length} looks`
+                : `${readyCount} looks`}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -113,7 +137,7 @@ export default async function LookSetPage({
                   href="/looks"
                   className="rounded-full border border-line px-4 py-2 text-sm text-stone transition-colors hover:border-ink/30 hover:text-ink"
                 >
-                  All sets
+                  All looks
                 </Link>
               </>
             ) : (

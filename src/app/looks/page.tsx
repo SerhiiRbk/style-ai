@@ -11,8 +11,8 @@ import { lookContextById } from "@/lib/look-contexts";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 export const metadata = {
-  title: "Your sets · Valetti",
-  description: "Every set of looks you've created with Create a Look.",
+  title: "Looks · Valetti",
+  description: "Every look you've created with Create a Look.",
 };
 
 export default async function LooksPage() {
@@ -49,6 +49,7 @@ export default async function LooksPage() {
       occasion,
       date,
       thumbUrl: s.thumbPath ? signedAssetProxyUrl(s.thumbPath) : null,
+      generating: s.generating,
     };
   });
 

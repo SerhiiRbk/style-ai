@@ -45,6 +45,9 @@ function defaultSeason(): LookBriefSeason {
 }
 
 type ResultLook = {
+  /** Stable content-order index; sent as lookIndex so try-on resolves the
+   *  same look_items the server keyed by idx. */
+  idx: number;
   context: string;
   title: string;
   description: string;
@@ -281,12 +284,12 @@ export function CreateLookForm({
         <div className="container-luxe max-w-5xl py-12">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="eyebrow">Your set</p>
+              <p className="eyebrow">Looks</p>
               <h1 className="mt-2 font-display text-3xl">Your looks</h1>
               <p className="mt-1 text-sm text-stone-soft">
                 Saved to{" "}
                 <Link href="/looks" className="text-brass hover:text-ink">
-                  your sets
+                  Looks
                 </Link>
                 .
               </p>
@@ -296,7 +299,7 @@ export function CreateLookForm({
                 href={`/looks/${result.setId}`}
                 className="rounded-full border hairline px-5 py-2 text-sm text-ink transition-colors hover:bg-cream/40"
               >
-                Open set
+                Open look
               </Link>
               <button
                 onClick={() => {
@@ -323,8 +326,8 @@ export function CreateLookForm({
 
           <CreditsProvider initialBalance={result.balance}>
           <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {result.looks.map((look, i) => (
-              <article key={i} className="flex flex-col">
+            {result.looks.map((look) => (
+              <article key={look.idx} className="flex flex-col">
                 <ReportZoomImage
                   src={look.image}
                   alt={look.title}
@@ -357,7 +360,7 @@ export function CreateLookForm({
                   title={look.title}
                   description={look.description}
                   palette={look.palette}
-                  lookIndex={i}
+                  lookIndex={look.idx}
                 />
               </article>
             ))}
@@ -740,7 +743,7 @@ function FlowHeader({ onBack }: { onBack?: () => void }) {
             </button>
           ) : null}
           <Link href="/looks" className="text-sm text-stone hover:text-ink">
-            Your sets
+            Looks
           </Link>
         </div>
       </div>

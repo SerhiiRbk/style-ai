@@ -9,7 +9,7 @@ import {
 } from "@/lib/style-profile";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import type { ShoppingItem } from "@/lib/report";
-import { matchLookItems } from "@/lib/data/catalog";
+import { lookItemsNeedRefresh, matchLookItems } from "@/lib/data/catalog";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
@@ -76,6 +76,8 @@ export async function createLookSet(
      * index (user_id, request_key) in 0039; the route pre-checks and returns
      * the existing set on replay. */
     requestKey?: string | null;
+    /** How many looks this set was billed to generate. */
+    looksCount: number;
     /** Storage paths of the photo the set was rendered on — so the whole-look
      * try-on renders on the SAME photo. Stored owner-only. */
     faceRefPath?: string | null;
@@ -94,27 +96,37 @@ export async function createLookSet(
     isPublic,
     shareSlug,
     requestKey,
+    looksCount,
     faceRefPath,
     fullRefPath,
   } = opts;
 
-  const { data, error } = await admin
+  const baseRow = {
+    user_id: userId,
+    report_id: reportId,
+    occasion_id: occasionId,
+    season,
+    boldness,
+    carlo_note: carloNote ?? null,
+    name,
+    is_public: isPublic,
+    share_slug: shareSlug ?? null,
+    request_key: requestKey ?? null,
+  };
+  let { data, error } = await admin
     .from("look_sets")
-    .insert({
-      user_id: userId,
-      report_id: reportId,
-      occasion_id: occasionId,
-      season,
-      boldness,
-      carlo_note: carloNote ?? null,
-      name,
-      is_public: isPublic,
-      share_slug: shareSlug ?? null,
-      request_key: requestKey ?? null,
-    })
+    .insert({ ...baseRow, looks_count: looksCount, status: "generating" })
     .select("id")
     .single();
+  if (error && /looks_count|status/.test(error.message)) {
+    ({ data, error } = await admin
+      .from("look_sets")
+      .insert(baseRow)
+      .select("id")
+      .single());
+  }
   if (error) throw new Error(error.message);
+  if (!data) throw new Error("look_sets insert returned no row");
 
   const id = data.id as string;
 
@@ -168,15 +180,21 @@ export async function saveSetLook(
   opts: {
     setId: string;
     userId: string;
+    idx: number;
     look: { context: string; title: string; description: string; palette: string[] };
     imagePath: string;
   },
 ): Promise<void> {
-  const { setId, userId, look, imagePath } = opts;
+  const { setId, userId, idx, look, imagePath } = opts;
+  // `idx` is the look's stable content-order position (0-based). It keeps looks
+  // aligned with `look_sets.look_items` (also keyed by idx) and with the
+  // `{idx}.ext` storage path — set looks are inserted concurrently in chunks, so
+  // created_at order is non-deterministic and must not be relied on for pairing.
   const { error } = await admin.from("looks").insert({
     report_id: null,
     set_id: setId,
     user_id: userId,
+    idx,
     context: look.context,
     title: look.title,
     description: look.description,
@@ -184,6 +202,93 @@ export async function saveSetLook(
     image_path: imagePath,
   });
   if (error) throw new Error(error.message);
+}
+
+const GENERATING_STALE_MS = 20 * 60 * 1000;
+
+/** True while the look-set route is still writing looks. `status` is the
+ *  source of truth once migration 0043 is applied; without it we treat a
+ *  recent incomplete set as still in flight so placeholders still show. */
+export function setIsGenerating(
+  status: string | null | undefined,
+  createdAt: string,
+  readyCount: number,
+  looksCount: number | null,
+): boolean {
+  if (status === "ready") return false;
+  if (status === "generating") return true;
+  const age = Date.now() - new Date(createdAt).getTime();
+  if (Number.isNaN(age) || age > GENERATING_STALE_MS) return false;
+  if (looksCount != null) return readyCount < looksCount;
+  return readyCount === 0;
+}
+
+export async function markLookSetReady(
+  admin: AdminClient,
+  setId: string,
+): Promise<void> {
+  const { error } = await admin
+    .from("look_sets")
+    .update({ status: "ready" })
+    .eq("id", setId);
+  if (error && !/status/.test(error.message)) {
+    console.error("[look-set] markLookSetReady failed", setId, error.message);
+  }
+}
+
+function looksFromRows(
+  rows: {
+    idx: unknown;
+    context: unknown;
+    title: unknown;
+    description: unknown;
+    palette: unknown;
+    image_path: unknown;
+  }[],
+  looksCount: number | null,
+  generating: boolean,
+): LoadedSetLook[] {
+  const ready: LoadedSetLook[] = rows
+    .filter((r) => r.image_path)
+    .map((r, i) => ({
+      idx: (r.idx as number | null) ?? i,
+      context: (r.context as string | null) ?? "",
+      title: (r.title as string | null) ?? "",
+      description: (r.description as string | null) ?? "",
+      palette: (r.palette as string[] | null) ?? [],
+      imagePath: r.image_path as string,
+    }));
+  if (!generating) return ready;
+  const count = looksCount ?? Math.max(ready.length, 3);
+  const byIdx = new Map(ready.map((l) => [l.idx, l]));
+  return Array.from({ length: count }, (_, i) => {
+    return (
+      byIdx.get(i) ?? {
+        idx: i,
+        context: "",
+        title: "",
+        description: "",
+        palette: [],
+        imagePath: null,
+      }
+    );
+  });
+}
+
+async function readSetProgress(
+  admin: AdminClient,
+  setId: string,
+): Promise<{ looksCount: number | null; status: string | null }> {
+  const { data, error } = await admin
+    .from("look_sets")
+    .select("looks_count, status")
+    .eq("id", setId)
+    .maybeSingle();
+  if (error) return { looksCount: null, status: null };
+  return {
+    looksCount: (data?.looks_count as number | null) ?? null,
+    status: (data?.status as string | null) ?? null,
+  };
 }
 
 /**
@@ -211,11 +316,14 @@ export async function findLookSetByRequestKey(
 }
 
 export type LoadedSetLook = {
+  /** Stable content-order index; the key into `look_items` (see saveSetLook). */
+  idx: number;
   context: string;
   title: string;
   description: string;
   palette: string[];
-  imagePath: string;
+  /** Null while this slot is still rendering (set status = generating). */
+  imagePath: string | null;
 };
 
 /**
@@ -238,6 +346,7 @@ export async function loadLookSetResult(
   createdAt: string;
   lookItems: Record<number, ShoppingItem[]> | null;
   looks: LoadedSetLook[];
+  generating: boolean;
 } | null> {
   const { data: set, error: setErr } = await admin
     .from("look_sets")
@@ -247,6 +356,8 @@ export async function loadLookSetResult(
     .maybeSingle();
   if (setErr) console.error("[look-set] loadLookSetResult set query failed", setErr.message);
   if (!set) return null;
+
+  const { looksCount, status } = await readSetProgress(admin, setId);
 
   // Best-effort separate read: on a DB where 0040 (look_sets.look_items) is not
   // yet applied, selecting the column would error the whole set load — isolate
@@ -264,29 +375,39 @@ export async function loadLookSetResult(
     }
   }
 
+  // Order by the stable `idx` (set looks are inserted concurrently, so
+  // created_at is non-deterministic); created_at is only a tie-break for legacy
+  // rows predating idx (null idx sorts last). For those legacy rows the fallback
+  // idx below is their created_at position — which matches how their look_items
+  // were keyed, so alignment is preserved.
   const { data: rows, error: rowsErr } = await admin
     .from("looks")
-    .select("context, title, description, palette, image_path")
+    .select("idx, context, title, description, palette, image_path")
     .eq("set_id", setId)
+    .order("idx", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
   if (rowsErr) console.error("[look-set] loadLookSetResult looks query failed", rowsErr.message);
 
-  const looks: LoadedSetLook[] = (rows ?? [])
-    .filter((r) => r.image_path)
-    .map((r) => ({
-      context: (r.context as string | null) ?? "",
-      title: (r.title as string | null) ?? "",
-      description: (r.description as string | null) ?? "",
-      palette: (r.palette as string[] | null) ?? [],
-      imagePath: r.image_path as string,
-    }));
+  const readyCount = (rows ?? []).filter((r) => r.image_path).length;
+  const generating = setIsGenerating(
+    status,
+    set.created_at as string,
+    readyCount,
+    looksCount,
+  );
+  const looks = looksFromRows(rows ?? [], looksCount, generating);
 
-  // Self-heal: sets created before look_items were persisted (or where the
-  // match failed at generation) have no items — recompute once on first view
-  // and store them, so "Shop the look" + the whole-look try-on work for old
-  // sets too. Guarded by `!lookItems` so it runs at most once per set.
-  if (!lookItems && looks.length) {
-    lookItems = await backfillSetLookItems(admin, userId, setId, looks);
+  // Self-heal: missing look_items (pre-persistence sets) or a stale match
+  // version (e.g. shirt+trouser colour clash guard). Await so this view and
+  // a same-session try-on see the new picks, not the stored sage+olive pair.
+  if (looks.some((l) => l.imagePath)) {
+    lookItems = await ensureSetLookItems(
+      admin,
+      userId,
+      setId,
+      lookItems,
+      looks,
+    );
   }
 
   return {
@@ -298,6 +419,7 @@ export async function loadLookSetResult(
     createdAt: set.created_at as string,
     lookItems,
     looks,
+    generating,
   };
 }
 
@@ -319,6 +441,7 @@ export async function loadPublicLookSet(
   createdAt: string;
   lookItems: Record<number, ShoppingItem[]> | null;
   looks: LoadedSetLook[];
+  generating: boolean;
 } | null> {
   const { data: set, error: setErr } = await admin
     .from("look_sets")
@@ -344,20 +467,13 @@ export async function loadPublicLookSet(
 
   const { data: rows, error: rowsErr } = await admin
     .from("looks")
-    .select("context, title, description, palette, image_path")
+    .select("idx, context, title, description, palette, image_path")
     .eq("set_id", setId)
+    .order("idx", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
   if (rowsErr) console.error("[look-set] loadPublicLookSet looks query failed", rowsErr.message);
 
-  const looks: LoadedSetLook[] = (rows ?? [])
-    .filter((r) => r.image_path)
-    .map((r) => ({
-      context: (r.context as string | null) ?? "",
-      title: (r.title as string | null) ?? "",
-      description: (r.description as string | null) ?? "",
-      palette: (r.palette as string[] | null) ?? [],
-      imagePath: r.image_path as string,
-    }));
+  const looks = looksFromRows(rows ?? [], null, false);
 
   return {
     setId: set.id as string,
@@ -366,7 +482,47 @@ export async function loadPublicLookSet(
     createdAt: set.created_at as string,
     lookItems,
     looks,
+    generating: false,
   };
+}
+
+/**
+ * Recompute and persist look_items when they are missing or a stale match
+ * version. Used on set load and on try-on so a version bump (e.g. the
+ * shirt+trouser clash guard) takes effect in the same session.
+ */
+export async function ensureSetLookItems(
+  admin: AdminClient,
+  userId: string,
+  setId: string,
+  lookItems: Record<number, ShoppingItem[]> | null | undefined,
+  looks?: LoadedSetLook[],
+): Promise<Record<number, ShoppingItem[]> | null> {
+  if (lookItems && !lookItemsNeedRefresh(lookItems)) return lookItems;
+
+  let resolved = looks;
+  if (!resolved) {
+    const { data: rows, error } = await admin
+      .from("looks")
+      .select("idx, context, title, description, palette, image_path")
+      .eq("set_id", setId)
+      .order("idx", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true });
+    if (error) {
+      console.error(
+        "[look-set] ensureSetLookItems looks query failed",
+        error.message,
+      );
+      return lookItems ?? null;
+    }
+    resolved = looksFromRows(rows ?? [], null, false);
+  }
+
+  const withImages = resolved.filter(
+    (l): l is LoadedSetLook & { imagePath: string } => Boolean(l.imagePath),
+  );
+  if (!withImages.length) return lookItems ?? null;
+  return backfillSetLookItems(admin, userId, setId, withImages);
 }
 
 /**
@@ -401,7 +557,15 @@ async function backfillSetLookItems(
       })),
     } as unknown as ReportContent;
 
-    const items = await matchLookItems(parsed.data, content);
+    // matchLookItems keys results by position in content.looks; re-key by each
+    // look's stable `idx` so the persisted map lines up with how the set view
+    // and try-on look items up (by idx, not array position).
+    const byPos = await matchLookItems(parsed.data, content);
+    const items: Record<number, ShoppingItem[]> = {};
+    looks.forEach((l, p) => {
+      const matched = byPos[p];
+      if (matched?.length) items[l.idx] = matched;
+    });
     const { error } = await admin
       .from("look_sets")
       .update({ look_items: items })
@@ -423,11 +587,12 @@ export type LookSetSummary = {
   name: string;
   createdAt: string;
   thumbPath: string | null;
+  generating: boolean;
 };
 
 /**
  * List a user's look sets (newest first) with a thumbnail (their first look's
- * image path — signed by the caller). Owner-scoped. Powers the "Your sets"
+ * image path — signed by the caller). Owner-scoped. Powers the Looks list
  * history page.
  */
 export async function listUserLookSets(
@@ -435,12 +600,41 @@ export async function listUserLookSets(
   userId: string,
   limit = 60,
 ): Promise<LookSetSummary[]> {
-  const { data: sets } = await admin
-    .from("look_sets")
-    .select("id, occasion_id, name, created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  type SetRow = {
+    id: unknown;
+    occasion_id: unknown;
+    name: unknown;
+    created_at: unknown;
+    looks_count?: unknown;
+    status?: unknown;
+  };
+  let sets: SetRow[] | null = null;
+  {
+    const first = await admin
+      .from("look_sets")
+      .select("id, occasion_id, name, created_at, looks_count, status")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (first.error && /looks_count|status/.test(first.error.message)) {
+      const fallback = await admin
+        .from("look_sets")
+        .select("id, occasion_id, name, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (fallback.error) {
+        console.error("[look-set] listUserLookSets failed", fallback.error.message);
+        return [];
+      }
+      sets = fallback.data as SetRow[] | null;
+    } else if (first.error) {
+      console.error("[look-set] listUserLookSets failed", first.error.message);
+      return [];
+    } else {
+      sets = first.data as SetRow[] | null;
+    }
+  }
   if (!sets?.length) return [];
 
   const ids = sets.map((s) => s.id as string);
@@ -451,18 +645,31 @@ export async function listUserLookSets(
     .order("created_at", { ascending: true });
 
   const thumbBySet = new Map<string, string>();
+  const readyBySet = new Map<string, number>();
   for (const l of looks ?? []) {
     const sid = l.set_id as string;
-    if (l.image_path && !thumbBySet.has(sid)) {
-      thumbBySet.set(sid, l.image_path as string);
+    if (l.image_path) {
+      readyBySet.set(sid, (readyBySet.get(sid) ?? 0) + 1);
+      if (!thumbBySet.has(sid)) thumbBySet.set(sid, l.image_path as string);
     }
   }
 
-  return sets.map((s) => ({
-    id: s.id as string,
-    occasionId: (s.occasion_id as string | null) ?? "",
-    name: (s.name as string | null) ?? "",
-    createdAt: s.created_at as string,
-    thumbPath: thumbBySet.get(s.id as string) ?? null,
-  }));
+  return sets.map((s) => {
+    const id = s.id as string;
+    const looksCount = (s.looks_count as number | null | undefined) ?? null;
+    const status = (s.status as string | null | undefined) ?? null;
+    return {
+      id,
+      occasionId: (s.occasion_id as string | null) ?? "",
+      name: (s.name as string | null) ?? "",
+      createdAt: s.created_at as string,
+      thumbPath: thumbBySet.get(id) ?? null,
+      generating: setIsGenerating(
+        status,
+        s.created_at as string,
+        readyBySet.get(id) ?? 0,
+        looksCount,
+      ),
+    };
+  });
 }

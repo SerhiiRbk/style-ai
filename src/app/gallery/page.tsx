@@ -11,7 +11,7 @@ import { getUserGallery } from "@/lib/data/user-gallery";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "My looks",
+  title: "My Images",
   robots: { index: false, follow: false },
 };
 
@@ -22,7 +22,7 @@ export default async function GalleryPage() {
         <Navbar />
         <main className="flex-1">
           <section className="container-luxe py-24 text-center">
-            <p className="eyebrow">My looks</p>
+            <p className="eyebrow">My Images</p>
             <h1 className="mt-4 font-display text-4xl">
               Sign in to see your looks
             </h1>
@@ -61,7 +61,7 @@ export default async function GalleryPage() {
       <main className="flex-1">
         <section className="border-b hairline bg-cream/40">
           <div className="container-luxe py-16">
-            <p className="eyebrow">My looks</p>
+            <p className="eyebrow">My Images</p>
             <h1 className="mt-4 font-display text-4xl leading-tight sm:text-5xl">
               Your style gallery
             </h1>

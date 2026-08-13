@@ -95,6 +95,7 @@ export async function getUserReports(): Promise<UserReportSummary[] | null> {
   }
 
   return rows.map((row) => {
+    const lookRows = looksByReport.get(row.id) ?? [];
     const state = reportGenerationState(
       {
         status: row.status,
@@ -106,18 +107,20 @@ export async function getUserReports(): Promise<UserReportSummary[] | null> {
         accessories: row.accessories,
         headwear: row.headwear,
       },
-      looksByReport.get(row.id) ?? [],
+      lookRows,
       { hasReferencePhoto },
     );
+    const thumbPath =
+      row.cover_image ??
+      lookRows.find((l) => l.image_path)?.image_path ??
+      null;
     return {
       id: row.id,
       createdAt: row.created_at,
       headline: row.headline ?? null,
       tier: row.tier ?? "basic",
       language: normalizeLanguage(row.language),
-      coverImage: row.cover_image
-        ? signedAssetProxyUrl(row.cover_image)
-        : undefined,
+      coverImage: thumbPath ? signedAssetProxyUrl(thumbPath) : undefined,
       status:
         row.status === "processing" || row.status === "failed"
           ? row.status

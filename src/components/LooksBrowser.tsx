@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { DeleteSetButton } from "@/components/DeleteSetButton";
+import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
+import { LookGeneratingRefresh } from "@/components/LookGeneratingRefresh";
+import {
+  ViewModeToggle,
+  useViewMode,
+} from "@/components/ViewModeToggle";
 
 export type LooksBrowserItem = {
   id: string;
@@ -14,105 +20,21 @@ export type LooksBrowserItem = {
   date: string;
   /** Signed thumbnail URL, or null when the set has no rendered look yet. */
   thumbUrl: string | null;
+  /** True while the set's looks are still being generated. */
+  generating: boolean;
 };
 
-type ViewMode = "grid" | "list";
 const STORAGE_KEY = "looks-view-mode";
 
-// The chosen view mode is external state (localStorage), read via
-// useSyncExternalStore so it hydrates cleanly (server → "grid") without a
-// setState-in-effect. A module-level cache + listener set lets a same-tab
-// write re-render immediately (the "storage" DOM event only fires cross-tab).
-let cachedView: ViewMode | null = null;
-const viewListeners = new Set<() => void>();
-
-function readStoredView(): ViewMode {
-  if (typeof window === "undefined") return "grid";
-  return window.localStorage.getItem(STORAGE_KEY) === "list" ? "list" : "grid";
-}
-
-function subscribeView(cb: () => void) {
-  viewListeners.add(cb);
-  return () => {
-    viewListeners.delete(cb);
-  };
-}
-
-function getViewSnapshot(): ViewMode {
-  if (cachedView === null) cachedView = readStoredView();
-  return cachedView;
-}
-
-function getViewServerSnapshot(): ViewMode {
-  return "grid";
-}
-
-function writeView(next: ViewMode) {
-  cachedView = next;
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, next);
-  }
-  viewListeners.forEach((l) => l());
-}
-
-function GridIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <rect x="3" y="3" width="7" height="7" rx="1" />
-      <rect x="14" y="3" width="7" height="7" rx="1" />
-      <rect x="3" y="14" width="7" height="7" rx="1" />
-      <rect x="14" y="14" width="7" height="7" rx="1" />
-    </svg>
-  );
-}
-
-function ListIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <line x1="8" y1="6" x2="21" y2="6" />
-      <line x1="8" y1="12" x2="21" y2="12" />
-      <line x1="8" y1="18" x2="21" y2="18" />
-      <line x1="3.5" y1="6" x2="3.5" y2="6" />
-      <line x1="3.5" y1="12" x2="3.5" y2="12" />
-      <line x1="3.5" y1="18" x2="3.5" y2="18" />
-    </svg>
-  );
-}
-
 export function LooksBrowser({ sets }: { sets: LooksBrowserItem[] }) {
-  const view = useSyncExternalStore(
-    subscribeView,
-    getViewSnapshot,
-    getViewServerSnapshot,
-  );
+  const view = useViewMode(STORAGE_KEY);
   // Deleted sets are tracked as ids to hide, so the visible list is derived
   // from the server-provided `sets` prop (no state sync effect needed).
   const [removed, setRemoved] = useState<ReadonlySet<string>>(
     () => new Set<string>(),
   );
   const items = sets.filter((s) => !removed.has(s.id));
-
-  function choose(next: ViewMode) {
-    writeView(next);
-  }
+  const anyGenerating = items.some((s) => s.generating);
 
   function handleDeleted(id: string) {
     setRemoved((prev) => new Set(prev).add(id));
@@ -120,49 +42,19 @@ export function LooksBrowser({ sets }: { sets: LooksBrowserItem[] }) {
 
   return (
     <>
+      <LookGeneratingRefresh active={anyGenerating} />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="eyebrow text-brass">Your sets</p>
-          <h1 className="mt-1 font-display text-3xl text-ink">Create a Look</h1>
+          <p className="eyebrow text-brass">My Style</p>
+          <h1 className="mt-1 font-display text-3xl text-ink">Looks</h1>
         </div>
         <div className="flex items-center gap-3">
-          <div
-            className="inline-flex items-center gap-0.5 rounded-full border hairline bg-cream/40 p-1"
-            role="group"
-            aria-label="View mode"
-          >
-            <button
-              type="button"
-              onClick={() => choose("grid")}
-              aria-pressed={view === "grid"}
-              title="Large previews"
-              className={`inline-flex items-center justify-center rounded-full p-1.5 transition-colors ${
-                view === "grid"
-                  ? "bg-ink text-paper"
-                  : "text-stone hover:text-ink"
-              }`}
-            >
-              <GridIcon />
-            </button>
-            <button
-              type="button"
-              onClick={() => choose("list")}
-              aria-pressed={view === "list"}
-              title="List view"
-              className={`inline-flex items-center justify-center rounded-full p-1.5 transition-colors ${
-                view === "list"
-                  ? "bg-ink text-paper"
-                  : "text-stone hover:text-ink"
-              }`}
-            >
-              <ListIcon />
-            </button>
-          </div>
+          <ViewModeToggle storageKey={STORAGE_KEY} />
           <Link
             href="/create-look"
             className="rounded-full bg-ink px-5 py-2.5 text-sm text-paper transition-colors hover:bg-ink-soft"
           >
-            New set
+            New look
           </Link>
         </div>
       </div>
@@ -174,7 +66,7 @@ export function LooksBrowser({ sets }: { sets: LooksBrowserItem[] }) {
             href="/create-look"
             className="mt-5 inline-flex rounded-full bg-ink px-5 py-2.5 text-sm text-paper transition-colors hover:bg-ink-soft"
           >
-            Create your first set
+            Create your first look
           </Link>
         </div>
       ) : view === "grid" ? (
@@ -200,6 +92,11 @@ export function LooksBrowser({ sets }: { sets: LooksBrowserItem[] }) {
                       alt={s.occasion}
                       className="h-full w-full object-cover"
                       loading="lazy"
+                    />
+                  ) : s.generating ? (
+                    <ReportImageGenerating
+                      label="Generating look"
+                      detail="Styling this look on your photo"
                     />
                   ) : null}
                 </div>
@@ -230,6 +127,8 @@ export function LooksBrowser({ sets }: { sets: LooksBrowserItem[] }) {
                     className="h-full w-full object-cover object-top"
                     loading="lazy"
                   />
+                ) : s.generating ? (
+                  <ReportImageGenerating label="Generating look" detail="" />
                 ) : null}
               </Link>
               <div className="min-w-0 flex-1">
