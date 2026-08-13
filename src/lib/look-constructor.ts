@@ -54,6 +54,7 @@ export const CONSTRUCTOR_TYPES: Record<string, ConstructorTypeOption[]> = {
     { id: "belt", label: "Belt" },
     { id: "watch", label: "Watch" },
     { id: "tie", label: "Tie" },
+    { id: "scarf", label: "Scarf" },
     { id: "sunglasses", label: "Sunglasses" },
   ],
 };
@@ -116,12 +117,6 @@ const CANONICAL_GARMENT: Record<string, string> = {
   brogues: "derbies",
   shoes: "loafers",
   sandals: "loafers",
-  cap: "sunglasses",
-  hat: "sunglasses",
-  scarf: "tie",
-  gloves: "belt",
-  bag: "belt",
-  socks: "belt",
 };
 
 function lastColorToken(color: string | null): string {

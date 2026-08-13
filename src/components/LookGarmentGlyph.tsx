@@ -171,6 +171,13 @@ function pathsFor(garment: string, category: string): ReactNode {
       return (
         <path d="M28 8 H36 L34 16 L40 52 L32 58 L24 52 L30 16 Z" />
       );
+    case "scarf":
+      return (
+        <>
+          <path d="M22 8 C18 14 18 22 24 28 L28 56 H36 L32 28 C40 22 42 12 36 8 Z" />
+          <path d="M24 28 C28 32 36 32 40 26" fill="none" />
+        </>
+      );
     case "sunglasses":
       return (
         <>
