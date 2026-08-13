@@ -6,15 +6,15 @@ import { COLOURS_ENABLED } from "@/lib/colours-feature";
 import { useNavSession } from "./NavSession";
 
 const MY_STYLE_LINKS = [
-  { href: "/start", label: "Create Report" },
-  { href: "/reports", label: "Style Reports" },
-  { href: "/create-look", label: "Create a Look" },
-  { href: "/looks", label: "My Looks" },
-  { href: "/gallery", label: "Gallery" },
+  { href: "/start", label: "Create my report" },
+  { href: "/reports", label: "Reports" },
+  { href: "/create-look", label: "Create a look" },
+  { href: "/looks", label: "Looks" },
+  { href: "/gallery", label: "Images" },
   ...(COLOURS_ENABLED
     ? [{ href: "/colours", label: "Colours" }]
     : []),
-  { href: "/account", label: "Style Profile" },
+  { href: "/account", label: "Account" },
 ] as const;
 
 const triggerClass =
@@ -22,7 +22,7 @@ const triggerClass =
 
 /**
  * Desktop "My Style" dropdown — personal destinations for signed-in visitors
- * (reports, gallery, colours, style profile). Anon visitors never see this;
+ * (reports, looks, images, colours, account). Anon visitors never see this;
  * they keep Colours / Demo as top-level links.
  */
 export function MyStyleMenu() {
