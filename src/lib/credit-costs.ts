@@ -43,8 +43,8 @@ export const CREDIT_COSTS = {
    * look count. Try-on on the look is billed separately at `tryon`.
    */
   look_extra: 5,
-  /** Re-render an extra look's photo (cheaper than a brand-new look). */
-  look_regen: 3,
+  /** Re-render a look from constructor slots (same price as a try-on). */
+  look_regen: 1,
   /** Re-generate the report's bespoke editorial cover photo. */
   cover_regen: 1,
   /** Re-translate an existing report's text into a different language. */

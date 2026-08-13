@@ -17,6 +17,7 @@ export const WORKING = {
   outfit: "Rendering your outfit…",
   look: "Composing a new look on your photo…",
   regen: "Refining this preview…",
+  construct: "Redrawing this look…",
   report: "Crafting your report…",
   upload: "Uploading your photo…",
 } as const;

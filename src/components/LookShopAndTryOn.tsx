@@ -24,6 +24,7 @@ export function LookShopAndTryOn({
   description,
   palette,
   lookIndex,
+  resetStoredTryOn = false,
 }: {
   items: ShoppingItem[];
   currency: Currency;
@@ -36,6 +37,8 @@ export function LookShopAndTryOn({
   description: string;
   palette?: string[];
   lookIndex: number;
+  /** After constructor Apply, drop the previous try-on (it was a different outfit). */
+  resetStoredTryOn?: boolean;
 }) {
   const keyOf = (it: ShoppingItem) => it.productId ?? it.title;
   const [selected, setSelected] = useState<Set<string>>(
@@ -75,6 +78,7 @@ export function LookShopAndTryOn({
             lookIndex={lookIndex}
             selectedProductIds={items.length ? selectedProductIds : undefined}
             requireSelection={items.length > 0}
+            resetStoredTryOn={resetStoredTryOn}
           />
         </div>
       ) : null}

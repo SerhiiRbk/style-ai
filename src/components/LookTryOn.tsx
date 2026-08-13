@@ -27,6 +27,7 @@ export function LookTryOn({
   cost = 1,
   selectedProductIds,
   requireSelection = false,
+  resetStoredTryOn = false,
 }: {
   /** One of reportId / setId identifies the try-on's context. */
   reportId?: string;
@@ -50,6 +51,8 @@ export function LookTryOn({
   selectedProductIds?: string[];
   /** When true, disable the button until at least one item is selected. */
   requireSelection?: boolean;
+  /** Skip loading a stored try-on (look was reconstructed into a new outfit). */
+  resetStoredTryOn?: boolean;
 }) {
   const isCapsule = kind === "capsule";
   const actionLabelDefault = isCapsule
@@ -74,6 +77,13 @@ export function LookTryOn({
     requireSelection && (selectedProductIds?.length ?? 0) === 0;
 
   useEffect(() => {
+    if (resetStoredTryOn) {
+      startTransition(() => {
+        setUrl(null);
+        setState("idle");
+      });
+      return;
+    }
     let cancelled = false;
     const query = new URLSearchParams({ kind });
     if (setId) query.set("setId", setId);
@@ -101,7 +111,7 @@ export function LookTryOn({
     return () => {
       cancelled = true;
     };
-  }, [reportId, setId, kind, lookIndex, title]);
+  }, [reportId, setId, kind, lookIndex, title, resetStoredTryOn]);
 
   async function run() {
     if (insufficient || noneSelected) return;

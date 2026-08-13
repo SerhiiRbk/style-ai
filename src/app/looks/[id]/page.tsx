@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
-import { ReportZoomImage } from "@/components/ReportZoomImage";
-import { LookShopAndTryOn } from "@/components/LookShopAndTryOn";
+import { LookSetCard } from "@/components/LookSetCard";
 import { CreditsProvider } from "@/components/CreditsContext";
 import { ShareSetButton } from "@/components/ShareSetButton";
 import { DeleteSetButton } from "@/components/DeleteSetButton";
@@ -54,55 +53,33 @@ export default async function LookSetPage({
 
   const looksGrid = (
     <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-      {set.looks.map((look) => (
-        <article key={look.idx} className="flex flex-col">
-          {look.imagePath ? (
-            <ReportZoomImage
-              src={signedAssetProxyUrl(look.imagePath)}
-              alt={look.title || "Look"}
-              wrapperClassName="relative block aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline"
-              className="h-full w-full object-cover"
-            />
-          ) : (
+      {set.looks.map((look) =>
+        look.imagePath ? (
+          <LookSetCard
+            key={look.idx}
+            setId={set.setId}
+            lookIndex={look.idx}
+            title={look.title}
+            description={look.description}
+            palette={look.palette}
+            imageSrc={signedAssetProxyUrl(look.imagePath)}
+            items={set.lookItems?.[look.idx] ?? []}
+            isOwner={isOwner}
+          />
+        ) : (
+          <article key={look.idx} className="flex flex-col">
             <div className="relative aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline bg-cream/40">
               <ReportImageGenerating
                 label={look.title || "Generating look"}
                 detail="Styling this look on your photo"
               />
             </div>
-          )}
-          {look.title ? (
-            <h2 className="mt-3 font-display text-lg text-ink">{look.title}</h2>
-          ) : null}
-          {look.description ? (
-            <p className="mt-1 text-sm text-stone">{look.description}</p>
-          ) : null}
-          {look.palette?.length ? (
-            <div className="mt-3 flex gap-1.5">
-              {look.palette.map((hex, k) => (
-                <span
-                  key={k}
-                  title={hex}
-                  className="h-5 w-5 rounded-full border border-black/10"
-                  style={{ backgroundColor: hex }}
-                />
-              ))}
-            </div>
-          ) : null}
-          {look.imagePath ? (
-            <LookShopAndTryOn
-              items={set.lookItems?.[look.idx] ?? []}
-              currency="EUR"
-              canTryOn={isOwner}
-              setId={isOwner ? set.setId : undefined}
-              title={look.title}
-              description={look.description}
-              palette={look.palette}
-              lookIndex={look.idx}
-            />
-          ) : null}
-        </article>
-      ))}
+            {look.title ? (
+              <h2 className="mt-3 font-display text-lg text-ink">{look.title}</h2>
+            ) : null}
+          </article>
+        ),
+      )}
     </div>
   );
 
