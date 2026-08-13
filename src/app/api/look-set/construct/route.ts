@@ -9,7 +9,7 @@ import {
   spendCredits,
   InsufficientCreditsError,
 } from "@/lib/credits";
-import { styleProfileSchema, type ReportContent } from "@/lib/style-profile";
+import { styleProfileSchema, type ReportContent, type StyleProfile } from "@/lib/style-profile";
 import type { ShoppingItem } from "@/lib/report";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import {
@@ -60,8 +60,8 @@ export async function POST(request: Request) {
   if (typeof lookIndex !== "number" || !Number.isInteger(lookIndex) || lookIndex < 0) {
     return NextResponse.json({ error: "Invalid lookIndex" }, { status: 400 });
   }
-  if (!Array.isArray(rawSlots) || rawSlots.length < 1 || rawSlots.length > 6) {
-    return NextResponse.json({ error: "Pick between 1 and 6 pieces" }, { status: 400 });
+  if (!Array.isArray(rawSlots) || rawSlots.length < 1 || rawSlots.length > 8) {
+    return NextResponse.json({ error: "Pick between 1 and 8 pieces" }, { status: 400 });
   }
 
   const slots: ConstructorSlot[] = [];
@@ -82,6 +82,10 @@ export async function POST(request: Request) {
       category: slot.category,
       garment: slot.garment.trim().toLowerCase(),
       color: slot.color.trim().toLowerCase(),
+      on: slot.on === false ? false : true,
+      ...(typeof slot.shape === "string" && slot.shape.trim()
+        ? { shape: slot.shape.trim().toLowerCase() }
+        : {}),
     });
   }
 
@@ -96,27 +100,82 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Set not found" }, { status: 404 });
   }
 
-  const { data: lookRow } = await admin
+  // Prefer idx, but don't use maybeSingle — duplicate (set_id, idx) rows make
+  // PostgREST return no data. Fall back to position in the set if idx misses
+  // (legacy rows with a null idx).
+  const lookSelect = "id, idx, title, description, palette, image_path, context";
+  const { data: byIdx, error: byIdxErr } = await admin
     .from("looks")
-    .select("idx, title, description, palette, image_path, context")
+    .select(lookSelect)
     .eq("set_id", setId)
     .eq("idx", lookIndex)
-    .maybeSingle();
-  if (!lookRow?.image_path) {
-    return NextResponse.json({ error: "Look not ready" }, { status: 409 });
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (byIdxErr) {
+    console.error("[look-set] construct look by idx failed", setId, lookIndex, byIdxErr);
+  }
+  let lookRow = byIdx?.[0] ?? null;
+  if (!lookRow) {
+    const { data: allLooks, error: allErr } = await admin
+      .from("looks")
+      .select(lookSelect)
+      .eq("set_id", setId)
+      .order("idx", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true });
+    if (allErr) {
+      console.error("[look-set] construct looks list failed", setId, allErr);
+    }
+    lookRow =
+      (allLooks ?? []).find((r) => r.idx === lookIndex) ??
+      (allLooks ?? [])[lookIndex] ??
+      null;
+  }
+  if (!lookRow) {
+    return NextResponse.json(
+      { error: "Look not found", code: "look_not_found" },
+      { status: 409 },
+    );
   }
 
-  const { data: profRow } = await admin
+  // Profile first without ref-photo columns (pre-0041 DBs error if selected).
+  const { data: profRow, error: profErr } = await admin
     .from("look_set_profiles")
-    .select("profile, face_ref_path, full_ref_path")
+    .select("profile")
     .eq("set_id", setId)
     .eq("user_id", user.id)
     .maybeSingle();
-  const parsed = styleProfileSchema.safeParse(profRow?.profile);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Look profile missing" }, { status: 409 });
+  if (profErr) {
+    console.error("[look-set] construct profile failed", setId, profErr);
   }
-  const profile = parsed.data;
+  const parsed = styleProfileSchema.safeParse(profRow?.profile);
+  let profile = parsed.success ? parsed.data : null;
+  if (!profile && profRow?.profile && typeof profRow.profile === "object") {
+    console.error(
+      "[look-set] construct profile schema mismatch",
+      setId,
+      parsed.success ? null : parsed.error.issues,
+    );
+    profile = profRow.profile as StyleProfile;
+  }
+  if (!profile) {
+    return NextResponse.json(
+      { error: "Look profile missing", code: "profile_missing" },
+      { status: 409 },
+    );
+  }
+
+  let facePath: string | null = null;
+  let fullPath: string | null = null;
+  const { data: rp, error: rpErr } = await admin
+    .from("look_set_profiles")
+    .select("face_ref_path, full_ref_path")
+    .eq("set_id", setId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!rpErr) {
+    facePath = (rp?.face_ref_path as string | null) ?? null;
+    fullPath = (rp?.full_ref_path as string | null) ?? null;
+  }
 
   const cost = CREDIT_COSTS.look_regen;
   if (hasSupabaseAdmin) {
@@ -134,8 +193,6 @@ export async function POST(request: Request) {
     }
   }
 
-  const facePath = (profRow?.face_ref_path as string | null) ?? null;
-  const fullPath = (profRow?.full_ref_path as string | null) ?? null;
   let faceRefUrl = facePath ? await signPhotoPath(admin, facePath) : null;
   let fullRefUrl = fullPath ? await signPhotoPath(admin, fullPath) : null;
   if (!fullRefUrl) {
@@ -180,8 +237,7 @@ export async function POST(request: Request) {
       palette,
       image_path: imagePath,
     })
-    .eq("set_id", setId)
-    .eq("idx", lookIndex);
+    .eq("id", lookRow.id as string);
   if (updErr) {
     return NextResponse.json({ error: "Could not save look" }, { status: 500 });
   }
@@ -209,7 +265,7 @@ export async function POST(request: Request) {
         .maybeSingle();
       const lookItems =
         (li?.look_items as Record<number, ShoppingItem[]> | null) ?? {};
-      lookItems[lookIndex] = items;
+      lookItems[typeof lookRow.idx === "number" ? lookRow.idx : lookIndex] = items;
       await admin.from("look_sets").update({ look_items: lookItems }).eq("id", setId);
     }
   } catch (err) {

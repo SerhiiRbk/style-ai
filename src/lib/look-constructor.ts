@@ -5,6 +5,10 @@ export type ConstructorSlot = {
   category: string;
   garment: string;
   color: string;
+  /** Accessories can be turned off without deleting the slot. Default on. */
+  on?: boolean;
+  /** Eyewear frame shape (round, wayfarer, …). Ignored for other garments. */
+  shape?: string;
 };
 
 export type ConstructorTypeOption = {
@@ -48,7 +52,9 @@ export const CONSTRUCTOR_TYPES: Record<string, ConstructorTypeOption[]> = {
     { id: "loafers", label: "Loafers" },
     { id: "sneakers", label: "Sneakers" },
     { id: "boots", label: "Boots" },
+    { id: "hiking", label: "Hiking boots" },
     { id: "derbies", label: "Derbies" },
+    { id: "sandals", label: "Sandals" },
   ],
   Accessories: [
     { id: "belt", label: "Belt" },
@@ -56,6 +62,7 @@ export const CONSTRUCTOR_TYPES: Record<string, ConstructorTypeOption[]> = {
     { id: "tie", label: "Tie" },
     { id: "scarf", label: "Scarf" },
     { id: "sunglasses", label: "Sunglasses" },
+    { id: "glasses", label: "Glasses" },
   ],
 };
 
@@ -82,11 +89,56 @@ export const CONSTRUCTOR_COLORS: ConstructorColorOption[] = [
   { id: "khaki", label: "Khaki", hex: "#9A8B5C" },
   { id: "brown", label: "Brown", hex: "#6B4A2F" },
   { id: "burgundy", label: "Burgundy", hex: "#6B2D3C" },
+  { id: "plum", label: "Plum", hex: "#7A6577" },
+  { id: "rose", label: "Rose", hex: "#C29AA0" },
   { id: "rust", label: "Rust", hex: "#B85C38" },
   { id: "red", label: "Red", hex: "#8B2E2E" },
+  { id: "greige", label: "Greige", hex: "#DAD3C6" },
+  { id: "mushroom", label: "Mushroom", hex: "#A99C8C" },
+  { id: "taupe", label: "Taupe", hex: "#B49C7E" },
 ];
 
 const COLOR_BY_ID = new Map(CONSTRUCTOR_COLORS.map((c) => [c.id, c]));
+
+/** Tokens from look briefs that map onto a constructor colour id. */
+const COLOR_ALIASES: Record<string, string> = {
+  slateblue: "sky",
+  powderblue: "sky",
+  iceblue: "sky",
+  steelblue: "blue",
+  purple: "plum",
+  mauve: "plum",
+  aubergine: "plum",
+};
+
+const SHADE_ONLY = new Set([
+  "soft",
+  "muted",
+  "light",
+  "pale",
+  "dusty",
+  "dark",
+  "deep",
+  "mid",
+  "medium",
+  "midtone",
+  "off",
+]);
+
+function lastColorToken(color: string | null): string {
+  if (!color) return "";
+  const words = color.toLowerCase().split(/\s+/).filter(Boolean);
+  for (let i = words.length - 1; i >= 0; i--) {
+    const w = words[i]!;
+    const mapped = COLOR_ALIASES[w] ?? w;
+    if (COLOR_BY_ID.has(mapped)) return mapped;
+  }
+  // A bare shade ("soft", "muted") is not a colour — using it as an id
+  // paints the glyph default grey, as if the garment had no colour.
+  const last = words[words.length - 1] ?? "";
+  if (SHADE_ONLY.has(last)) return "";
+  return last;
+}
 
 /** Map parsed garment keywords onto the constructor's type ids. */
 const CANONICAL_GARMENT: Record<string, string> = {
@@ -114,20 +166,24 @@ const CANONICAL_GARMENT: Record<string, string> = {
   chelsea: "boots",
   derby: "derbies",
   oxfords: "derbies",
+  "oxford shoes": "derbies",
+  "oxford shoe": "derbies",
   brogues: "derbies",
+  chukka: "boots",
+  hiking: "hiking",
+  "hiking boots": "hiking",
+  trail: "hiking",
+  "trail boots": "hiking",
+  trek: "hiking",
   shoes: "loafers",
-  sandals: "loafers",
+  sandal: "sandals",
+  sandals: "sandals",
+  glasses: "glasses",
+  eyeglasses: "glasses",
+  spectacles: "glasses",
+  goggles: "sunglasses",
+  "ski goggles": "sunglasses",
 };
-
-function lastColorToken(color: string | null): string {
-  if (!color) return "";
-  const words = color.toLowerCase().split(/\s+/).filter(Boolean);
-  for (let i = words.length - 1; i >= 0; i--) {
-    const w = words[i]!;
-    if (COLOR_BY_ID.has(w)) return w;
-  }
-  return words[words.length - 1] ?? "";
-}
 
 export function canonicalGarment(raw: string, category: string): string {
   const key = raw.toLowerCase().trim();
@@ -168,6 +224,130 @@ export function colorsForSlot(currentColor: string): ConstructorColorOption[] {
   ];
 }
 
+export function isSlotEnabled(slot: ConstructorSlot): boolean {
+  return slot.on !== false;
+}
+
+export function isEyewear(garment: string): boolean {
+  return garment === "sunglasses" || garment === "glasses";
+}
+
+/** Sunglasses / goggle shapes. */
+export const SUNGLASSES_SHAPES: ConstructorTypeOption[] = [
+  { id: "round", label: "Round" },
+  { id: "wayfarer", label: "Wayfarer" },
+  { id: "aviator", label: "Aviator" },
+  { id: "rectangle", label: "Rectangular" },
+  { id: "geometric", label: "Geometric" },
+  { id: "oval", label: "Oval" },
+  { id: "sport", label: "Sport" },
+  { id: "ski", label: "Ski goggles" },
+];
+
+/** Optical glasses shapes. */
+export const GLASSES_SHAPES: ConstructorTypeOption[] = [
+  { id: "round", label: "Round" },
+  { id: "rectangle", label: "Rectangular" },
+  { id: "oval", label: "Oval" },
+  { id: "geometric", label: "Geometric" },
+  { id: "rimless", label: "Rimless" },
+];
+
+const ALL_EYEWEAR_SHAPES = [...SUNGLASSES_SHAPES, ...GLASSES_SHAPES];
+
+export function shapesForEyewear(garment: string): ConstructorTypeOption[] {
+  if (garment === "glasses") return GLASSES_SHAPES;
+  if (garment === "sunglasses") return SUNGLASSES_SHAPES;
+  return [];
+}
+
+export function defaultEyewearShape(garment: string): string {
+  return garment === "glasses" ? "round" : "wayfarer";
+}
+
+export function coerceEyewearShape(garment: string, shape?: string): string {
+  const allowed = new Set(shapesForEyewear(garment).map((s) => s.id));
+  if (shape && allowed.has(shape)) return shape;
+  return defaultEyewearShape(garment);
+}
+
+export function shapeLabel(shape: string): string {
+  return ALL_EYEWEAR_SHAPES.find((s) => s.id === shape)?.label ?? shape;
+}
+
+export function canonicalEyewearShape(raw: string, garment?: string): string {
+  const t = raw.toLowerCase();
+  let id = "";
+  if (/\bski\b/.test(t) || (/\bgoggles?\b/.test(t) && !/\bsport\b/.test(t))) {
+    id = "ski";
+  } else if (/\brimless\b|\bframeless\b/.test(t)) id = "rimless";
+  else if (/\bwraparound\b|\bsport\b/.test(t)) id = "sport";
+  else if (/\bwayfarer\b/.test(t)) id = "wayfarer";
+  else if (/\baviator\b/.test(t) || /\bnavigator\b/.test(t)) id = "aviator";
+  else if (/\boval\b/.test(t)) id = "oval";
+  else if (/\brectang/.test(t) || /\bsquare\b/.test(t)) id = "rectangle";
+  else if (/\bgeometric\b|\bbrowline\b|\bclubmaster\b/.test(t)) id = "geometric";
+  else if (/\bround\b/.test(t)) id = "round";
+  if (!id) return "";
+  if (garment) return coerceEyewearShape(garment, id) === id ? id : "";
+  return id;
+}
+
+function eyewearBrief(slot: ConstructorSlot): string {
+  const color = slot.color ? `${slot.color} ` : "";
+  const shape = slot.shape || "";
+  if (slot.garment === "sunglasses") {
+    if (shape === "ski") {
+      return `${color}ski goggles worn on the face covering both eyes`;
+    }
+    if (shape === "sport") {
+      return `${color}wraparound sport sunglasses worn on the face`;
+    }
+    const named = shape ? `${shapeLabel(shape).toLowerCase()} ` : "";
+    return `${color}${named}sunglasses worn on the face`;
+  }
+  if (shape === "rimless") {
+    return `${color}rimless glasses worn on the face (lenses mounted to bridge/temples, no surrounding frame)`;
+  }
+  const named = shape ? `${shapeLabel(shape).toLowerCase()} ` : "";
+  return `${color}${named}glasses worn on the face`;
+}
+
+/** Prompt override so face-lock on the reference photo cannot drop listed eyewear. */
+export function eyewearPromptDirective(description: string): string {
+  if (!/\bsunglasses\b|\bglasses\b|\bgoggles\b|\beyewear\b/i.test(description)) {
+    return "";
+  }
+  return (
+    `CRITICAL eyewear: the outfit lists sunglasses, glasses or goggles — they MUST ` +
+    `be clearly visible on this person's face, resting on the nose over the eyes, ` +
+    `in the named frame. Adding listed eyewear is required clothing, not an identity ` +
+    `change: copy the face from the reference, THEN put the eyewear on that face. ` +
+    `A bare face with the eyewear omitted is wrong. `
+  );
+}
+
+export const MAX_ACCESSORY_SLOTS = 3;
+
+export function nextAccessorySlot(
+  slots: ConstructorSlot[],
+): ConstructorSlot | null {
+  const used = new Set(
+    slots.filter((s) => s.category === "Accessories").map((s) => s.garment),
+  );
+  const next = CONSTRUCTOR_TYPES.Accessories.find((t) => !used.has(t.id));
+  if (!next) return null;
+  return {
+    category: "Accessories",
+    garment: next.id,
+    color: "black",
+    on: true,
+    ...(isEyewear(next.id)
+      ? { shape: defaultEyewearShape(next.id) }
+      : {}),
+  };
+}
+
 export function isAllowedConstructorSlot(slot: ConstructorSlot): boolean {
   if (!slot.category || !slot.garment) return false;
   const types = CONSTRUCTOR_TYPES[slot.category];
@@ -175,13 +355,21 @@ export function isAllowedConstructorSlot(slot: ConstructorSlot): boolean {
   const typeOk =
     types.some((t) => t.id === slot.garment) || Boolean(slot.garment.trim());
   const colorOk = !slot.color || COLOR_BY_ID.has(slot.color) || slot.color.length <= 24;
-  return typeOk && colorOk;
+  const shapeOk =
+    !slot.shape ||
+    !isEyewear(slot.garment) ||
+    shapesForEyewear(slot.garment).some((s) => s.id === slot.shape);
+  return typeOk && colorOk && shapeOk;
 }
 
 /** Build the look description the image model will render. */
 export function composeLookDescription(slots: ConstructorSlot[]): string {
   return slots
+    .filter(isSlotEnabled)
     .map((s) => {
+      if (isEyewear(s.garment)) {
+        return eyewearBrief(s);
+      }
       const type = typeLabel(s.category, s.garment).toLowerCase();
       return s.color ? `${s.color} ${type}` : type;
     })
@@ -191,7 +379,7 @@ export function composeLookDescription(slots: ConstructorSlot[]): string {
 export function composeLookPalette(slots: ConstructorSlot[]): string[] {
   const seen = new Set<string>();
   const hexes: string[] = [];
-  for (const s of slots) {
+  for (const s of slots.filter(isSlotEnabled)) {
     const hex = colorHex(s.color);
     if (seen.has(hex)) continue;
     seen.add(hex);
@@ -211,7 +399,34 @@ export function slotsFromLook(title: string, description: string): ConstructorSl
     const key = `${g.category}:${garment}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    slots.push({ category: g.category, garment, color });
+    const shape = isEyewear(garment)
+      ? canonicalEyewearShape(g.clause, garment)
+      : "";
+    slots.push({
+      category: g.category,
+      garment,
+      color,
+      ...(shape ? { shape } : {}),
+    });
+  }
+  // Every look needs a footwear slot so colour/style can be edited even when
+  // the brief named "oxford shoes" (which used to parse as a shirt) or omitted
+  // shoes entirely.
+  if (!slots.some((s) => s.category === "Footwear")) {
+    const color =
+      slots.map((s) => s.color).find((c) =>
+        ["charcoal", "brown", "navy", "black", "grey", "stone"].includes(c),
+      ) ?? "charcoal";
+    slots.push({ category: "Footwear", garment: "derbies", color });
+  }
+  if (!slots.some((s) => s.category === "Accessories")) {
+    slots.push({
+      category: "Accessories",
+      garment: "sunglasses",
+      color: "black",
+      shape: "wayfarer",
+      on: false,
+    });
   }
   return slots;
 }
@@ -222,6 +437,8 @@ export function slotsEqual(a: ConstructorSlot[], b: ConstructorSlot[]): boolean 
     (s, i) =>
       s.category === b[i]?.category &&
       s.garment === b[i]?.garment &&
-      s.color === b[i]?.color,
+      s.color === b[i]?.color &&
+      (s.shape || "") === (b[i]?.shape || "") &&
+      isSlotEnabled(s) === isSlotEnabled(b[i]!),
   );
 }

@@ -2350,9 +2350,14 @@ const GARMENT_CATEGORY: Record<string, string> = {
   denim: "Trousers", slacks: "Trousers", pants: "Trousers",
   loafers: "Footwear", loafer: "Footwear", boots: "Footwear", boot: "Footwear", sneakers: "Footwear",
   sneaker: "Footwear", derbies: "Footwear", derby: "Footwear", oxfords: "Footwear", brogues: "Footwear",
-  chelsea: "Footwear", shoes: "Footwear", trainers: "Footwear", sandals: "Footwear",
+  "oxford shoes": "Footwear", "oxford shoe": "Footwear",
+  chelsea: "Footwear", chukka: "Footwear",
+  hiking: "Footwear", "hiking boots": "Footwear", trail: "Footwear", "trail boots": "Footwear",
+  shoes: "Footwear", trainers: "Footwear", sandals: "Footwear", sandal: "Footwear",
   belt: "Accessories", watch: "Accessories", scarf: "Accessories", tie: "Accessories",
-  sunglasses: "Accessories", hat: "Accessories", cap: "Accessories", gloves: "Accessories",
+  sunglasses: "Accessories", glasses: "Accessories", eyeglasses: "Accessories",
+  goggles: "Accessories", "ski goggles": "Accessories",
+  hat: "Accessories", cap: "Accessories", gloves: "Accessories",
   bag: "Accessories", socks: "Accessories",
 };
 
@@ -2397,6 +2402,7 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   beige: { family: "brown", shade: "light" }, sand: { family: "brown", shade: "light" },
   stone: { family: "brown", shade: "light" }, oat: { family: "brown", shade: "light" },
   oatmeal: { family: "brown", shade: "light" },
+  greige: { family: "brown", shade: "light" }, mushroom: { family: "brown", shade: "light" },
   chocolate: { family: "brown", shade: "dark" }, chestnut: { family: "brown", shade: "dark" },
   espresso: { family: "brown", shade: "dark" },
   // green
@@ -2407,7 +2413,9 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   red: { family: "red" },   rust: { family: "red" }, terracotta: { family: "red" }, copper: { family: "red" },
   burgundy: { family: "red", shade: "dark" }, maroon: { family: "red", shade: "dark" },
   // other hues
-  pink: { family: "pink" }, purple: { family: "purple" }, orange: { family: "orange" },
+  pink: { family: "pink" }, purple: { family: "purple" }, plum: { family: "purple" },
+  mauve: { family: "purple" }, aubergine: { family: "purple" },
+  orange: { family: "orange" },
   amber: { family: "orange" }, ochre: { family: "yellow" },
   yellow: { family: "yellow" }, mustard: { family: "yellow" },
 };
@@ -2446,12 +2454,16 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   watch: ["watch"],
   scarf: ["scarf"],
   tie: ["tie"],
-  sunglasses: ["sunglasses", "sunglass"],
+  sunglasses: ["sunglasses", "sunglass", "goggles"],
+  glasses: ["glasses", "eyeglasses", "spectacles"],
+  eyeglasses: ["glasses", "eyeglasses", "spectacles"],
+  goggles: ["goggles", "ski goggles", "sunglasses"],
 };
 
 /** Standalone lightness modifiers; override any shade implied by the hue word. */
 const SHADE_WORDS: Record<string, Shade> = {
   light: "light", pale: "light", soft: "light", dusty: "light", off: "light",
+  muted: "light",
   mid: "mid", medium: "mid", midtone: "mid",
   dark: "dark", deep: "dark",
 };

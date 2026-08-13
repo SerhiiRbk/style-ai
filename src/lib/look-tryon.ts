@@ -7,6 +7,13 @@ export function isTieTitle(title: string): boolean {
   return /\b(?:bow\s+)?(?:neck)?ties?\b/i.test(title);
 }
 
+/** Sunglasses or optical glasses — must sit on the face, not in a hand/pocket. */
+export function isEyewearTitle(title: string): boolean {
+  return /\b(?:sun)?glasses\b|\beyeglasses\b|\bspectacles\b|\beyewear\b|\bgoggles?\b/i.test(
+    title,
+  );
+}
+
 /** Stable storage / cache key for a report look or capsule combo. */
 export function formatLookKey(opts: {
   kind?: LookTryOnKind;
@@ -50,6 +57,9 @@ export function catalogPromptFromItems(items: ShoppingItem[]): string | undefine
     const note = i.similarPick
       ? " (match the garment type and tone closely)"
       : "";
+    if (i.category === "Accessories" && isEyewearTitle(i.title)) {
+      return `- wearing on the face over the eyes (never held, never in a pocket): ${colour}${i.title}${note}`;
+    }
     return `- wearing a ${colour}${i.category.toLowerCase()}: ${i.title}${note}`;
   });
 
@@ -61,6 +71,9 @@ export function catalogPromptFromItems(items: ShoppingItem[]): string | undefine
   const hasTie = items.some(
     (i) => i.category === "Accessories" && isTieTitle(i.title),
   );
+  const hasEyewear = items.some(
+    (i) => i.category === "Accessories" && isEyewearTitle(i.title),
+  );
   const hasShirt = items.some((i) => i.category === "Shirts");
   const baseLayerRule =
     hasTie && !hasShirt
@@ -70,13 +83,19 @@ export function catalogPromptFromItems(items: ShoppingItem[]): string | undefine
         `(a light tie on a light shirt looks washed out). A mid or deep blue ` +
         `shirt is a safe default. `
       : "";
+  const eyewearRule = hasEyewear
+    ? `\nSunglasses or glasses from this list are already on the person's face, ` +
+      `resting on the nose over the eyes. Do not hold them, fold them, put them ` +
+      `in a pocket, or hang them from a shirt. `
+    : "";
 
   return (
     `Construct the entire outfit from these exact catalogue garments and nothing else:\n` +
     lines.join("\n") +
     `\nEvery piece worn by the person must come from this list — reproduce each ` +
     `garment's type, colour and material faithfully. ` +
-    baseLayerRule
+    baseLayerRule +
+    eyewearRule
   );
 }
 

@@ -2,6 +2,7 @@ import "server-only";
 import { creditBalance } from "@/lib/credits";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
+import { lookContextById } from "@/lib/look-contexts";
 import type { Tier } from "@/lib/report";
 
 const PAGE_SIZE = 30;
@@ -43,6 +44,7 @@ export type AdminUserSummary = {
   createdAt: string;
   creditBalance: number;
   reportsCount: number;
+  looksCount: number;
   purchasesCount: number;
   creditsPurchased: number;
   promosCount: number;
@@ -158,8 +160,17 @@ export type AdminUserLedgerEntry = {
   balanceAfter: number | null;
 };
 
+export type AdminUserLookSet = {
+  id: string;
+  createdAt: string;
+  occasionId: string | null;
+  occasionLabel: string | null;
+  isPublic: boolean;
+};
+
 export type AdminUserDetail = AdminUserSummary & {
   reports: AdminUserReport[];
+  lookSets: AdminUserLookSet[];
   purchases: AdminUserPurchase[];
   promos: AdminUserPromo[];
   ledger: AdminUserLedgerEntry[];
@@ -178,6 +189,7 @@ async function loadProfileStats(
   const [
     { data: ledgerRows },
     { data: reportRows },
+    { data: lookSetRows },
     { data: tryonRows },
     { data: photoRows },
     { data: promoRows },
@@ -187,6 +199,7 @@ async function loadProfileStats(
       .select("user_id, delta, reason, ref_id, ref_ext, balance_after, created_at")
       .in("user_id", userIds),
     admin.from("reports").select("user_id").in("user_id", userIds),
+    admin.from("look_sets").select("user_id").in("user_id", userIds),
     admin.from("tryons").select("user_id, status").in("user_id", userIds),
     admin.from("photos").select("user_id").in("user_id", userIds),
     admin
@@ -207,6 +220,12 @@ async function loadProfileStats(
   for (const row of reportRows ?? []) {
     const uid = row.user_id as string;
     reportCount.set(uid, (reportCount.get(uid) ?? 0) + 1);
+  }
+
+  const lookSetCount = new Map<string, number>();
+  for (const row of lookSetRows ?? []) {
+    const uid = row.user_id as string;
+    lookSetCount.set(uid, (lookSetCount.get(uid) ?? 0) + 1);
   }
 
   const tryonCount = new Map<string, number>();
@@ -243,6 +262,7 @@ async function loadProfileStats(
       createdAt: "",
       creditBalance: balance,
       reportsCount: reportCount.get(userId) ?? 0,
+      looksCount: lookSetCount.get(userId) ?? 0,
       purchasesCount: purchases.length,
       creditsPurchased,
       promosCount: promoCount.get(userId) ?? 0,
@@ -302,6 +322,7 @@ export async function listAdminUsers(opts?: {
       createdAt: p.created_at as string,
       creditBalance: stats?.creditBalance ?? 0,
       reportsCount: stats?.reportsCount ?? 0,
+      looksCount: stats?.looksCount ?? 0,
       purchasesCount: stats?.purchasesCount ?? 0,
       creditsPurchased: stats?.creditsPurchased ?? 0,
       promosCount: stats?.promosCount ?? 0,
@@ -341,6 +362,7 @@ export async function getAdminUserDetail(
   const [
     balance,
     { data: reportRows },
+    { data: lookSetRows },
     { data: ledgerRows },
     { data: promoRows },
     { data: tryonRows },
@@ -350,6 +372,11 @@ export async function getAdminUserDetail(
     admin
       .from("reports")
       .select("id, created_at, headline, tier, status")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
+    admin
+      .from("look_sets")
+      .select("id, created_at, occasion_id, is_public")
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
     admin
@@ -412,6 +439,17 @@ export async function getAdminUserDetail(
     intake: intakeByReport.get(row.id as string) ?? null,
   }));
 
+  const lookSets: AdminUserLookSet[] = (lookSetRows ?? []).map((row) => {
+    const occasionId = (row.occasion_id as string | null) ?? null;
+    return {
+      id: row.id as string,
+      createdAt: row.created_at as string,
+      occasionId,
+      occasionLabel: lookContextById(occasionId)?.label ?? occasionId,
+      isPublic: Boolean(row.is_public),
+    };
+  });
+
   const promos: AdminUserPromo[] = [];
   for (const row of promoRows ?? []) {
     const promo = row.promotions as
@@ -443,6 +481,7 @@ export async function getAdminUserDetail(
     createdAt: profile.created_at as string,
     creditBalance: balance,
     reportsCount: reports.length,
+    looksCount: lookSets.length,
     purchasesCount: purchases.length,
     creditsPurchased: purchases.reduce((s, p) => s + p.credits, 0),
     promosCount: promos.length,
@@ -452,6 +491,7 @@ export async function getAdminUserDetail(
     creditsEarned: earned,
     activityByReason,
     reports,
+    lookSets,
     purchases,
     promos,
     tryonsReady,

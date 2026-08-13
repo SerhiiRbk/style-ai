@@ -87,6 +87,10 @@ const NON_BUTTON_SHIRT_RE =
 export const SHORT_SLEEVE_KNIT_RE =
   /\b(short[- ]?sleeve|sleeveless|t-?shirts?|tees?|tank|vest\s*tops?)\b/i;
 
+/** Roll-neck / turtleneck — worn instead of a shirt, never with one. */
+export const TURTLENECK_KNIT_RE =
+  /\b(turtlenecks?|turtle\s*necks?|roll[- ]?necks?|rollnecks?|polo\s*necks?)\b/i;
+
 /**
  * Swatch colour for a shopping item — the display uses this as a CSS colour, so
  * it must be a hex. Prefer the normalised `color_hex`, fall back to a hex that

@@ -38,6 +38,7 @@ import {
   resolveImagePromptVersion,
   type LookPromptParts,
 } from "@/lib/ai/look-prompt";
+import { eyewearPromptDirective } from "@/lib/look-constructor";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -626,6 +627,7 @@ export async function generateLookImage(opts: {
     const hasFull = Boolean(referenceImageUrl);
     const faceImageCount = (hasFace ? 1 : 0) + (hasProfile ? 1 : 0);
     const personImageCount = faceImageCount + (hasFull ? 1 : 0);
+    const eyewearBlock = eyewearPromptDirective(look.description);
     const ordinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"];
     const ordinal = (n: number) => ordinals[n - 1] ?? `${n}TH`;
 
@@ -659,7 +661,13 @@ export async function generateLookImage(opts: {
       `listed; never add an unlisted shirt beneath a knit. When BOTH a knit and a ` +
       `shirt are listed, the knit is worn OVER the shirt (a long-sleeve knit over a ` +
       `long-sleeve shirt so the collar and cuffs peek out), never a button-up shirt ` +
-      `on top of a knit; a blazer, overshirt or coat is always the outermost layer. ` +
+      `on top of a knit — EXCEPT a roll-neck / turtleneck, which is never worn with ` +
+      `a collared shirt (no collar peeking out of, or sitting on top of, the roll-neck; ` +
+      `the roll-neck replaces the shirt). A blazer, overshirt or coat is always the outermost layer. ` +
+      `If sunglasses, glasses or ski goggles are listed, they are worn ON the face over the eyes — ` +
+      `never held in a hand, tucked in a pocket, hanging from a shirt, or pushed up on the forehead. Match the ` +
+      `named frame exactly: sunglasses may be round, wayfarer, aviator, rectangular, geometric, oval, wraparound sport, or ski goggles; ` +
+      `optical glasses may be round, rectangular, oval, geometric, or rimless (lenses mounted directly to the bridge and temples, no surrounding frame). ` +
       `Trousers described as "suit", "tailored", "dress" trousers or chinos are ` +
       `smooth woven wool or cotton cloth — NEVER blue or washed denim / jeans, even ` +
       `if the item name contains the word "washed". `;
@@ -755,7 +763,8 @@ export async function generateLookImage(opts: {
         `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
         `Do NOT change the hair colour. ` +
         `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
-        `what the reference photo shows. `;
+        `what the reference photo shows. ` +
+        eyewearBlock;
     }
     if (!personImageCount && !catalogImageUrls.length) {
       imageRoles = `Do not show identifiable facial features. `;
@@ -797,6 +806,7 @@ export async function generateLookImage(opts: {
       subject +
       imageRoles +
       faceAnchor +
+      eyewearBlock +
       NO_TEXT_RULE;
 
     // EXPERIMENTAL prompt versioning (see look-prompt.ts). v2+ pull the hard
@@ -806,8 +816,10 @@ export async function generateLookImage(opts: {
       `A knit may be worn on its own with a bare neckline — only show a shirt ` +
       `under a knit if a shirt is listed. When both a knit and a shirt are worn, ` +
       `a long-sleeve knit goes OVER a long-sleeve shirt (only the shirt's collar ` +
-      `and cuffs peek out); a blazer, overshirt or coat is always the outermost ` +
-      `layer. `;
+      `and cuffs peek out); a roll-neck or turtleneck is never worn with a collared ` +
+      `shirt — it replaces the shirt. A blazer, overshirt or coat is always the outermost ` +
+      `layer. Sunglasses, glasses or ski goggles, when listed, sit on the face over the eyes ` +
+      `in the named frame shape. Rimless glasses have no surrounding frame — the lenses attach directly to the bridge and temples. Ski goggles cover both eyes as a visor, not on the forehead. `;
     const constraints = [
       `render EXACTLY the garments listed — do not add any layer that is not ` +
         `listed (no extra jumper, knit, waistcoat or shirt)`,
@@ -816,7 +828,14 @@ export async function generateLookImage(opts: {
         `even if the item name contains the word "washed"`,
       `no text, letters, words, captions, labels, headings, watermarks, logos, ` +
         `numbers, arrows or graphic overlays anywhere in the frame`,
+      `sunglasses, glasses or ski goggles listed in the outfit are worn on the face over the ` +
+        `eyes in the named frame shape — not held, not in a pocket, not hanging from clothing, not on the forehead`,
     ];
+    if (eyewearBlock) {
+      constraints.push(
+        `listed eyewear is mandatory on the face — never render a bare face if sunglasses, glasses or goggles appear in the outfit`,
+      );
+    }
     const promptParts: LookPromptParts = {
       legacyPrompt,
       preamble,
@@ -1253,6 +1272,7 @@ export async function generateReportTryOnImage(opts: {
     const garmentImageUrls = (opts.garmentImageUrls ?? []).filter(
       (u): u is string => Boolean(u && /^https?:\/\//i.test(u)),
     );
+    const eyewearBlock = eyewearPromptDirective(opts.garmentsText);
 
     const prompt =
       `Photorealistic virtual try-on for a style report. ` +
@@ -1264,11 +1284,18 @@ export async function generateReportTryOnImage(opts: {
       `tone, same body shape, same pose and hand positions. Do NOT relight, ` +
       `recolour, slim, age or restyle the face — copy the face, hair and skin tone ` +
       `EXACTLY as in the photo, keeping the same light on the face. ` +
+      eyewearBlock +
       `Replace the background with a clean, seamless neutral studio backdrop ` +
       `(pale grey / greige) under soft, even, flattering studio light that is ` +
       `consistent with the subject — but keep the light on the person's face ` +
       `consistent with the original photo so their features and skin tone are ` +
-      `unchanged. Full body, head to shoes visible. ` +
+      `unchanged. ` +
+      `Output a vertical 9:16 frame, full body head to shoes visible, with the ` +
+      `person standing in the same pose. If the source photo is wider or shorter, ` +
+      `extend the studio wall above the head and below the feet so the canvas ` +
+      `fills 9:16 — continue the same backdrop with natural light falloff and ` +
+      `subtle wall texture. Do NOT letterbox, pillarbox, or pad the image with ` +
+      `flat solid-colour bars. ` +
       (garmentImageUrls.length
         ? `The remaining ${garmentImageUrls.length} image(s) show the actual ` +
           `catalogue garment(s) — reproduce these exact products, not similar ones. `
@@ -1278,7 +1305,13 @@ export async function generateReportTryOnImage(opts: {
       `cardigans) is always worn OVER a base layer, never on bare skin. A knit may ` +
       `be worn on its own; only show a shirt under a knit if a shirt is listed, and ` +
       `then a long-sleeve knit goes OVER a long-sleeve shirt (collar and cuffs peek ` +
-      `out), never a shirt over a knit. Trousers described as "suit", "tailored" or ` +
+      `out), never a shirt over a knit. A roll-neck or turtleneck is never worn with ` +
+      `a collared shirt — no collar peeking out of or sitting on the roll-neck; the ` +
+      `roll-neck replaces the shirt. If sunglasses, glasses or ski goggles are listed, they are ` +
+      `worn ON the face over the eyes — never held in a hand, in a pocket, hanging ` +
+      `from a shirt, or pushed onto the forehead — in the named frame shape. Rimless glasses ` +
+      `have lenses mounted directly to the bridge and temples with no surrounding frame. ` +
+      `Trousers described as "suit", "tailored" or ` +
       `"dress" trousers or chinos are smooth woven wool or cotton — never blue or ` +
       `washed denim, even if the item name contains "washed". ` +
       `Reproduce each garment faithfully — exact colour, fabric texture, pattern, ` +
@@ -1286,6 +1319,7 @@ export async function generateReportTryOnImage(opts: {
       `realistic shadows. The result must look like a real photograph of the SAME ` +
       `person, same face, now wearing the new outfit against a clean studio ` +
       `backdrop.` +
+      eyewearBlock +
       NO_TEXT_RULE;
 
     const content: (

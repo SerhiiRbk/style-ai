@@ -326,18 +326,7 @@ export type LoadedSetLook = {
   imagePath: string | null;
 };
 
-/**
- * Load an owner's set + its stored looks (raw `image_path`s — the caller signs
- * them). Owner-scoped; returns null if the set doesn't exist or isn't the
- * user's. Used for idempotent replay (return the existing set's looks instead
- * of regenerating). Does not touch `look_set_profiles` — the reused profile is
- * not needed to render a result the client already paid for.
- */
-export async function loadLookSetResult(
-  admin: AdminClient,
-  userId: string,
-  setId: string,
-): Promise<{
+export type LoadedLookSet = {
   setId: string;
   shareSlug: string | null;
   isPublic: boolean;
@@ -347,16 +336,27 @@ export async function loadLookSetResult(
   lookItems: Record<number, ShoppingItem[]> | null;
   looks: LoadedSetLook[];
   generating: boolean;
-} | null> {
-  const { data: set, error: setErr } = await admin
-    .from("look_sets")
-    .select("id, user_id, share_slug, is_public, carlo_note, occasion_id, created_at")
-    .eq("id", setId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (setErr) console.error("[look-set] loadLookSetResult set query failed", setErr.message);
-  if (!set) return null;
+};
 
+type LookSetHeaderRow = {
+  id: string;
+  user_id: string;
+  share_slug: string | null;
+  is_public: boolean | null;
+  carlo_note: string | null;
+  occasion_id: string | null;
+  created_at: string;
+};
+
+const LOOK_SET_HEADER_SELECT =
+  "id, user_id, share_slug, is_public, carlo_note, occasion_id, created_at";
+
+async function assembleLookSetResult(
+  admin: AdminClient,
+  set: LookSetHeaderRow,
+  logLabel: string,
+): Promise<LoadedLookSet> {
+  const setId = set.id;
   const { looksCount, status } = await readSetProgress(admin, setId);
 
   // Best-effort separate read: on a DB where 0040 (look_sets.look_items) is not
@@ -386,12 +386,12 @@ export async function loadLookSetResult(
     .eq("set_id", setId)
     .order("idx", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
-  if (rowsErr) console.error("[look-set] loadLookSetResult looks query failed", rowsErr.message);
+  if (rowsErr) console.error(`[look-set] ${logLabel} looks query failed`, rowsErr.message);
 
   const readyCount = (rows ?? []).filter((r) => r.image_path).length;
   const generating = setIsGenerating(
     status,
-    set.created_at as string,
+    set.created_at,
     readyCount,
     looksCount,
   );
@@ -403,7 +403,7 @@ export async function loadLookSetResult(
   if (looks.some((l) => l.imagePath)) {
     lookItems = await ensureSetLookItems(
       admin,
-      userId,
+      set.user_id,
       setId,
       lookItems,
       looks,
@@ -411,16 +411,54 @@ export async function loadLookSetResult(
   }
 
   return {
-    setId: set.id as string,
-    shareSlug: (set.share_slug as string | null) ?? null,
-    isPublic: (set.is_public as boolean | null) ?? false,
-    carloNote: (set.carlo_note as string | null) ?? null,
-    occasionId: (set.occasion_id as string | null) ?? "",
-    createdAt: set.created_at as string,
+    setId: set.id,
+    shareSlug: set.share_slug ?? null,
+    isPublic: set.is_public ?? false,
+    carloNote: set.carlo_note ?? null,
+    occasionId: set.occasion_id ?? "",
+    createdAt: set.created_at,
     lookItems,
     looks,
     generating,
   };
+}
+
+/**
+ * Load an owner's set + its stored looks (raw `image_path`s — the caller signs
+ * them). Owner-scoped; returns null if the set doesn't exist or isn't the
+ * user's. Used for idempotent replay (return the existing set's looks instead
+ * of regenerating). Does not touch `look_set_profiles` — the reused profile is
+ * not needed to render a result the client already paid for.
+ */
+export async function loadLookSetResult(
+  admin: AdminClient,
+  userId: string,
+  setId: string,
+): Promise<LoadedLookSet | null> {
+  const { data: set, error: setErr } = await admin
+    .from("look_sets")
+    .select(LOOK_SET_HEADER_SELECT)
+    .eq("id", setId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (setErr) console.error("[look-set] loadLookSetResult set query failed", setErr.message);
+  if (!set) return null;
+  return assembleLookSetResult(admin, set as LookSetHeaderRow, "loadLookSetResult");
+}
+
+/** Any look set by id (admin / internal). Returns null if missing. */
+export async function loadLookSetById(
+  admin: AdminClient,
+  setId: string,
+): Promise<LoadedLookSet | null> {
+  const { data: set, error: setErr } = await admin
+    .from("look_sets")
+    .select(LOOK_SET_HEADER_SELECT)
+    .eq("id", setId)
+    .maybeSingle();
+  if (setErr) console.error("[look-set] loadLookSetById set query failed", setErr.message);
+  if (!set) return null;
+  return assembleLookSetResult(admin, set as LookSetHeaderRow, "loadLookSetById");
 }
 
 /**

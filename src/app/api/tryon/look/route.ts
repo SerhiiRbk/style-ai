@@ -6,7 +6,7 @@ import {
   generateReportTryOnImage,
 } from "@/lib/ai/pipeline";
 import { getReportById } from "@/lib/data/reports";
-import { lookItemsNeedRefresh, SHORT_SLEEVE_KNIT_RE } from "@/lib/data/catalog";
+import { lookItemsNeedRefresh, SHORT_SLEEVE_KNIT_RE, TURTLENECK_KNIT_RE } from "@/lib/data/catalog";
 import { ensureSetLookItems } from "@/lib/data/look-sets";
 import { isDemoReportId } from "@/lib/demo-report";
 import {
@@ -37,36 +37,7 @@ import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 /** Look rendering + fal polling can exceed the default Vercel function timeout. */
 export const maxDuration = 300;
-/** sharp (studio-aspect normalisation) needs the Node.js runtime. */
 export const runtime = "nodejs";
-
-/**
- * Look images render at 9:16; the studio try-on edits the user's own photo and
- * so inherits ITS aspect ratio, giving a differently-shaped/sized tile. Pad the
- * studio output to a canonical 9:16 on a neutral studio-grey background — this
- * reads as extra backdrop and never crops the person — so its tile matches the
- * look images exactly. The editorial path already renders at 9:16.
- */
-async function normalizeStudioAspect(
-  bytes: Uint8Array,
-  mediaType: string,
-): Promise<{ bytes: Uint8Array; mediaType: string }> {
-  try {
-    const sharp = (await import("sharp")).default;
-    const canvas = sharp(Buffer.from(bytes)).resize(900, 1600, {
-      fit: "contain",
-      background: { r: 233, g: 230, b: 225 },
-    });
-    const isJpeg = mediaType.includes("jpeg");
-    const out = isJpeg
-      ? await canvas.jpeg({ quality: 92 }).toBuffer()
-      : await canvas.png().toBuffer();
-    return { bytes: new Uint8Array(out), mediaType };
-  } catch (e) {
-    console.error("[tryon] studio aspect normalise failed", e);
-    return { bytes, mediaType };
-  }
-}
 
 function parseLookIndex(raw: unknown): number | undefined {
   if (typeof raw === "number" && Number.isInteger(raw)) return raw;
@@ -388,12 +359,20 @@ export async function POST(request: Request) {
   // knit (stale look_items from before the knit filter can still carry one). A
   // short-sleeve knit worn on its own (no shirt in the set) is left untouched.
   const hasShirt = resolvedItems.some((i) => i.category === "Shirts");
-  const catalogItems = hasShirt
+  let catalogItems = hasShirt
     ? resolvedItems.filter(
         (i) =>
           !(i.category === "Knitwear" && SHORT_SLEEVE_KNIT_RE.test(i.title)),
       )
     : resolvedItems;
+  // A roll-neck / turtleneck replaces the shirt. Keeping both makes the model
+  // paint a collar ON TOP of the roll-neck and the jumper body over the shirt.
+  const hasTurtleneck = catalogItems.some(
+    (i) => i.category === "Knitwear" && TURTLENECK_KNIT_RE.test(i.title),
+  );
+  if (hasTurtleneck) {
+    catalogItems = catalogItems.filter((i) => i.category !== "Shirts");
+  }
 
   const effectivePalette =
     palette.length > 0
@@ -500,19 +479,12 @@ export async function POST(request: Request) {
     );
   }
 
-  // Studio try-on inherits the user photo's shape — pad it to the looks' 9:16 so
-  // every try-on tile matches the look images. Editorial already renders 9:16.
-  const normalized =
-    tryOnStyle === "studio"
-      ? await normalizeStudioAspect(result.bytes, result.mediaType)
-      : result;
-
-  const ext = normalized.mediaType.includes("jpeg") ? "jpg" : "png";
+  const ext = result.mediaType.includes("jpeg") ? "jpg" : "png";
   const path = tryonStoragePath(user.id, storageId, lookKey, ext);
   const { error: upErr } = await admin.storage
     .from("assets")
-    .upload(path, normalized.bytes, {
-      contentType: normalized.mediaType,
+    .upload(path, result.bytes, {
+      contentType: result.mediaType,
       upsert: true,
     });
   if (upErr) {

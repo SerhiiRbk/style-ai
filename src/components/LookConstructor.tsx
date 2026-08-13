@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { LookGarmentGlyph } from "./LookGarmentGlyph";
 import { useCredits } from "./CreditsContext";
@@ -8,9 +8,16 @@ import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 import { WORKING } from "@/components/luxe/messages";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
 import {
+  coerceEyewearShape,
   colorsForSlot,
   colorLabel,
   composeLookDescription,
+  isEyewear,
+  isSlotEnabled,
+  MAX_ACCESSORY_SLOTS,
+  nextAccessorySlot,
+  shapeLabel,
+  shapesForEyewear,
   slotsEqual,
   slotsFromLook,
   typeLabel,
@@ -58,6 +65,10 @@ export function LookConstructor({
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [msg, setMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    setSlots(initial);
+  }, [initial]);
+
   const dirty = !slotsEqual(slots, initial);
   const creditsApply = balance !== null;
   const insufficient = creditsApply && (balance ?? 0) < cost;
@@ -69,6 +80,15 @@ export function LookConstructor({
     setSlots((prev) =>
       prev.map((s, i) => (i === index ? { ...s, ...next } : s)),
     );
+  }
+
+  function addAccessory() {
+    const extra = nextAccessorySlot(slots);
+    if (!extra) return;
+    const accessoryCount = slots.filter((s) => s.category === "Accessories").length;
+    if (accessoryCount >= MAX_ACCESSORY_SLOTS) return;
+    setSlots((prev) => [...prev, extra]);
+    setOpen(slots.length);
   }
 
   async function apply() {
@@ -115,34 +135,85 @@ export function LookConstructor({
       <div className="flex flex-wrap gap-2">
         {slots.map((slot, i) => {
           const active = open === i;
+          const enabled = isSlotEnabled(slot);
           return (
             <button
-              key={`${slot.category}-${i}`}
+              key={`${slot.category}-${slot.garment}-${i}`}
               type="button"
-              onClick={() => setOpen(active ? null : i)}
+              onClick={() => {
+                const nextOpen = active ? null : i;
+                if (
+                  nextOpen != null &&
+                  slot.category === "Accessories" &&
+                  !enabled
+                ) {
+                  patch(i, { on: true });
+                }
+                setOpen(nextOpen);
+              }}
               disabled={state === "loading" || disabled}
               aria-pressed={active}
-              title={`${colorLabel(slot.color)} ${typeLabel(slot.category, slot.garment)}`}
+              title={`${enabled ? "" : "Off · "}${colorLabel(slot.color)} ${slot.shape ? `${shapeLabel(slot.shape)} ` : ""}${typeLabel(slot.category, slot.garment)}`}
               className={`flex w-[4.5rem] flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 active
                   ? "border-brass/50 bg-brass/10"
                   : "hairline bg-cream/40 hover:border-ink/20"
-              }`}
+              } ${enabled ? "" : "opacity-45"}`}
             >
               <LookGarmentGlyph slot={slot} className="h-12 w-12" />
               <span className="text-[10px] leading-tight text-stone">
                 {typeLabel(slot.category, slot.garment)}
               </span>
+              {!enabled ? (
+                <span className="text-[9px] leading-none text-stone-soft">
+                  Off
+                </span>
+              ) : null}
             </button>
           );
         })}
+        {slots.filter((s) => s.category === "Accessories").length <
+          MAX_ACCESSORY_SLOTS && nextAccessorySlot(slots) ? (
+          <button
+            type="button"
+            onClick={addAccessory}
+            disabled={state === "loading" || disabled}
+            className="flex w-[4.5rem] flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-line p-2 text-center text-stone transition-colors hover:border-ink/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span className="text-lg leading-none">+</span>
+            <span className="text-[10px] leading-tight">Accessory</span>
+          </button>
+        ) : null}
       </div>
 
       {open != null && slots[open] ? (
         <SlotEditor
           slot={slots[open]}
-          onType={(garment) => patch(open, { garment })}
-          onColor={(color) => patch(open, { color })}
+          onType={(garment) =>
+            patch(open, {
+              garment,
+              ...(slots[open].category === "Accessories" ? { on: true } : {}),
+              ...(isEyewear(garment)
+                ? { shape: coerceEyewearShape(garment, slots[open].shape) }
+                : { shape: "" }),
+            })
+          }
+          onColor={(color) =>
+            patch(open, {
+              color,
+              ...(slots[open].category === "Accessories" ? { on: true } : {}),
+            })
+          }
+          onShape={
+            isEyewear(slots[open].garment)
+              ? (shape) => patch(open, { shape, on: true })
+              : undefined
+          }
+          onEnabled={
+            slots[open].category === "Accessories"
+              ? (on) => patch(open, { on })
+              : undefined
+          }
         />
       ) : null}
 
@@ -202,19 +273,40 @@ function SlotEditor({
   slot,
   onType,
   onColor,
+  onShape,
+  onEnabled,
 }: {
   slot: ConstructorSlot;
   onType: (garment: string) => void;
   onColor: (color: string) => void;
+  onShape?: (shape: string) => void;
+  onEnabled?: (on: boolean) => void;
 }) {
   const types = typesForSlot(slot.category, slot.garment);
   const colors = colorsForSlot(slot.color);
+  const enabled = isSlotEnabled(slot);
 
   return (
     <div className="mt-3 rounded-2xl border hairline bg-cream/30 p-3">
-      <p className="text-[11px] uppercase tracking-wider text-stone-soft">
-        {slot.category}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] uppercase tracking-wider text-stone-soft">
+          {slot.category}
+        </p>
+        {onEnabled ? (
+          <button
+            type="button"
+            onClick={() => onEnabled(!enabled)}
+            aria-pressed={enabled}
+            className={`rounded-full px-3 py-1 text-xs transition-colors ${
+              enabled
+                ? "bg-ink text-paper"
+                : "border border-line text-stone hover:border-ink/30 hover:text-ink"
+            }`}
+          >
+            {enabled ? "On look" : "Off"}
+          </button>
+        ) : null}
+      </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {types.map((t) => {
           const selected = t.id === slot.garment;
@@ -235,6 +327,33 @@ function SlotEditor({
           );
         })}
       </div>
+      {onShape ? (
+        <div className="mt-3">
+          <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">
+            Shape
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {shapesForEyewear(slot.garment).map((s) => {
+              const selected = s.id === slot.shape;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => onShape(s.id)}
+                  aria-pressed={selected}
+                  className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                    selected
+                      ? "bg-ink text-paper"
+                      : "border border-line text-stone hover:border-ink/30 hover:text-ink"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {colors.map((c) => {
           const selected = c.id === slot.color;
@@ -260,3 +379,4 @@ function SlotEditor({
     </div>
   );
 }
+

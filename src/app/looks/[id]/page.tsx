@@ -11,7 +11,12 @@ import {
   createServerSupabase,
   createAdminSupabase,
 } from "@/lib/supabase/server";
-import { loadLookSetResult, loadPublicLookSet } from "@/lib/data/look-sets";
+import { isAdminEmail } from "@/lib/admin";
+import {
+  loadLookSetById,
+  loadLookSetResult,
+  loadPublicLookSet,
+} from "@/lib/data/look-sets";
 import { lookContextById } from "@/lib/look-contexts";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
@@ -34,11 +39,15 @@ export default async function LookSetPage({
 
   const admin = createAdminSupabase();
 
-  // Owner sees the full set (try-on, share, delete); anyone else can only view
-  // it once it's shared (is_public). A logged-in non-owner falls through to the
-  // public path too.
+  // Owner sees the full set (try-on, share, delete). Admins can open any set
+  // (including private ones), same as reports. Everyone else can only view it
+  // once it's shared (is_public).
   const owned = user ? await loadLookSetResult(admin, user.id, id) : null;
-  const set = owned ?? (await loadPublicLookSet(admin, id));
+  const isAdmin = Boolean(user && isAdminEmail(user.email));
+  const set =
+    owned ??
+    (isAdmin ? await loadLookSetById(admin, id) : null) ??
+    (await loadPublicLookSet(admin, id));
   if (!set) notFound();
 
   const isOwner = owned !== null;
@@ -100,6 +109,7 @@ export default async function LookSetPage({
               {generating
                 ? `${readyCount} of ${set.looks.length} looks`
                 : `${readyCount} looks`}
+              {isAdmin && !isOwner ? " · Admin view" : ""}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -117,6 +127,13 @@ export default async function LookSetPage({
                   All looks
                 </Link>
               </>
+            ) : isAdmin ? (
+              <Link
+                href="/admin/looks"
+                className="rounded-full border border-line px-4 py-2 text-sm text-stone transition-colors hover:border-ink/30 hover:text-ink"
+              >
+                All looks
+              </Link>
             ) : (
               <Link
                 href="/create-look"
