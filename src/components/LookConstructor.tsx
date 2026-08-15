@@ -30,6 +30,7 @@ import {
 
 export type ConstructedLook = {
   image: string;
+  imageTq?: string | null;
   title: string;
   description: string;
   palette: string[];
@@ -57,7 +58,10 @@ export function LookConstructor({
   onApplied: (look: ConstructedLook) => void;
   onApplyingChange?: (busy: boolean) => void;
 }) {
-  const cost = CREDIT_COSTS.look_regen;
+  const [includeThreeQuarter, setIncludeThreeQuarter] = useState(false);
+  const cost =
+    CREDIT_COSTS.look_regen +
+    (includeThreeQuarter ? CREDIT_COSTS.look_three_quarter : 0);
   const { balance, setBalance } = useCredits();
   const initial = useMemo(
     () => slotsFromLook(title, description),
@@ -103,7 +107,12 @@ export function LookConstructor({
       const res = await fetch("/api/look-set/construct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ setId, lookIndex, slots }),
+        body: JSON.stringify({
+          setId,
+          lookIndex,
+          slots,
+          includeThreeQuarter,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -115,6 +124,7 @@ export function LookConstructor({
       if (typeof data.balance === "number") setBalance(data.balance);
       onApplied({
         image: data.image,
+        imageTq: data.imageTq ?? null,
         title: data.title,
         description: data.description,
         palette: data.palette ?? [],
@@ -122,6 +132,11 @@ export function LookConstructor({
       });
       setState("idle");
       setOpen(null);
+      setMsg(
+        data.threeQuarterFailed
+          ? "Look updated. 3/4 view could not be generated — use Generate 3/4 on the look."
+          : null,
+      );
     } catch {
       setState("error");
       setMsg("Could not apply the look");
@@ -233,6 +248,19 @@ export function LookConstructor({
       ) : null}
 
       <div className="mt-3">
+        <label className="mb-2 flex cursor-pointer items-center gap-2 text-sm text-stone">
+          <input
+            type="checkbox"
+            checked={includeThreeQuarter}
+            onChange={(e) => setIncludeThreeQuarter(e.target.checked)}
+            disabled={state === "loading" || disabled}
+            className="h-3.5 w-3.5 rounded border-line accent-ink"
+          />
+          Also generate 3/4 view
+          <span className="text-stone-soft">
+            +{CREDIT_COSTS.look_three_quarter} credit
+          </span>
+        </label>
         <button
           type="button"
           onClick={() => void apply()}
@@ -253,7 +281,7 @@ export function LookConstructor({
               Apply
               <span className="text-stone-soft">
                 {" "}
-                · {cost} credits →
+                · {cost} credit{cost === 1 ? "" : "s"} →
               </span>
             </>
           )}
@@ -268,7 +296,10 @@ export function LookConstructor({
                 </Link>
               </>
             ) : dirty ? (
-              <>Redraws this look · {balance} credits left</>
+              <>
+                Redraws this look
+                {includeThreeQuarter ? " + 3/4" : ""} · {balance} credits left
+              </>
             ) : (
               <>Change a type or colour, then apply</>
             )}

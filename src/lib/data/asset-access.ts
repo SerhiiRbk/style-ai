@@ -33,6 +33,17 @@ export async function canAccessAssetPath(storagePath: string): Promise<boolean> 
     reportId = (tryon?.report_id as string | null) ?? null;
   }
 
+  if (parts[1] === "looksets") {
+    const setId = parts[2];
+    if (!setId) return false;
+    const { data: set } = await admin
+      .from("look_sets")
+      .select("user_id, is_public")
+      .eq("id", setId)
+      .maybeSingle();
+    return Boolean(set && set.user_id === ownerUserId && set.is_public);
+  }
+
   if (!reportId) return false;
 
   const { data: row } = await admin

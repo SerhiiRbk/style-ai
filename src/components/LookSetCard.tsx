@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { LookShopAndTryOn } from "@/components/LookShopAndTryOn";
 import { LookConstructor } from "@/components/LookConstructor";
 import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
+import { useCredits } from "@/components/CreditsContext";
+import { CREDIT_COSTS } from "@/lib/credit-costs";
 import type { ShoppingItem } from "@/lib/report";
 import type { Currency } from "@/lib/currency";
 
@@ -20,6 +23,7 @@ export function LookSetCard({
   description: initialDescription,
   palette: initialPalette,
   imageSrc: initialImage,
+  imageTqSrc: initialImageTq,
   items: initialItems,
   isOwner,
   currency = "EUR",
@@ -30,6 +34,7 @@ export function LookSetCard({
   description: string;
   palette: string[];
   imageSrc: string;
+  imageTqSrc?: string | null;
   items: ShoppingItem[];
   isOwner: boolean;
   currency?: Currency;
@@ -38,26 +43,88 @@ export function LookSetCard({
   const [description, setDescription] = useState(initialDescription);
   const [palette, setPalette] = useState(initialPalette);
   const [imageSrc, setImageSrc] = useState(initialImage);
+  const [imageTqSrc, setImageTqSrc] = useState<string | null>(
+    initialImageTq ?? null,
+  );
+  const [view, setView] = useState<"front" | "tq">("front");
   const [items, setItems] = useState(initialItems);
   const [applying, setApplying] = useState(false);
+  const [tqBusy, setTqBusy] = useState(false);
+  const [tqMsg, setTqMsg] = useState<string | null>(null);
   const [tryOnReset, setTryOnReset] = useState<string | undefined>();
+  const { balance, setBalance } = useCredits();
+  const tqCost = CREDIT_COSTS.look_three_quarter;
+  const tqInsufficient = balance !== null && balance < tqCost;
+  const shownSrc = view === "tq" && imageTqSrc ? imageTqSrc : imageSrc;
+  const busy = applying || tqBusy;
+
+  async function generateThreeQuarter() {
+    if (!isOwner || imageTqSrc || tqBusy || applying || tqInsufficient) return;
+    setTqBusy(true);
+    setTqMsg(null);
+    try {
+      const res = await fetch("/api/look-set/three-quarter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setId, lookIndex }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (typeof data.balance === "number") setBalance(data.balance);
+      if (!res.ok) {
+        setTqMsg(data.error ?? "Could not generate 3/4 view");
+        return;
+      }
+      if (typeof data.imageTq === "string" && data.imageTq) {
+        setImageTqSrc(data.imageTq);
+        setView("tq");
+      }
+    } catch {
+      setTqMsg("Could not generate 3/4 view");
+    } finally {
+      setTqBusy(false);
+    }
+  }
 
   return (
     <article className="flex flex-col">
-      {applying ? (
+      {busy ? (
         <div className="relative aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline bg-cream/40">
           <ReportImageGenerating
-            label={title || "Redrawing look"}
-            detail="Applying the new pieces to this look"
+            label={title || (tqBusy ? "3/4 view" : "Redrawing look")}
+            detail={
+              tqBusy
+                ? "Turning this look to a three-quarter angle"
+                : "Applying the new pieces to this look"
+            }
           />
         </div>
       ) : (
-        <ReportZoomImage
-          src={imageSrc}
-          alt={title || "Look"}
-          wrapperClassName="relative block aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline"
-          className="h-full w-full object-cover"
-        />
+        <div className="relative">
+          <ReportZoomImage
+            src={shownSrc}
+            alt={
+              view === "tq"
+                ? `${title || "Look"} · 3/4`
+                : title || "Look"
+            }
+            wrapperClassName="relative block aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline"
+            className="h-full w-full object-cover"
+          />
+          {imageTqSrc ? (
+            <button
+              type="button"
+              onClick={() => setView((v) => (v === "front" ? "tq" : "front"))}
+              aria-label={
+                view === "front" ? "Show 3/4 view" : "Show front view"
+              }
+              title={view === "front" ? "3/4 view" : "Front view"}
+              className="absolute bottom-3 right-3 z-10 inline-flex h-10 items-center gap-1.5 rounded-full border border-paper/30 bg-ink/55 px-3 text-xs text-paper backdrop-blur-sm transition-colors hover:bg-ink/75"
+            >
+              <LookAngleGlyph turned={view === "front"} />
+              <span>{view === "front" ? "3/4" : "Front"}</span>
+            </button>
+          ) : null}
+        </div>
       )}
       {title ? (
         <h2 className="mt-3 font-display text-lg text-ink">{title}</h2>
@@ -77,6 +144,39 @@ export function LookSetCard({
           ))}
         </div>
       ) : null}
+      {isOwner && !imageTqSrc ? (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => void generateThreeQuarter()}
+            disabled={busy || tqInsufficient}
+            title={
+              tqInsufficient
+                ? "Not enough credits — top up to generate 3/4"
+                : "Generate a 3/4 view of this look"
+            }
+            className="inline-flex min-h-[2.25rem] items-center rounded-full border border-line px-4 py-2 text-sm text-stone transition-colors hover:border-ink/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Generate 3/4 view
+            <span className="text-stone-soft"> · {tqCost} credit</span>
+          </button>
+          {balance !== null ? (
+            <p className="mt-1 text-[11px] text-stone-soft">
+              {tqInsufficient ? (
+                <>
+                  Not enough credits ({balance} left).{" "}
+                  <Link href="/pricing" className="text-brass hover:text-ink">
+                    Buy credits
+                  </Link>
+                </>
+              ) : (
+                <>Adds a side angle of this look · {balance} credits left</>
+              )}
+            </p>
+          ) : null}
+          {tqMsg ? <p className="mt-1 text-xs text-stone-soft">{tqMsg}</p> : null}
+        </div>
+      ) : null}
       {isOwner ? (
         <LookConstructor
           key={description}
@@ -84,15 +184,18 @@ export function LookSetCard({
           lookIndex={lookIndex}
           title={title}
           description={description}
-          disabled={applying}
+          disabled={busy}
           onApplyingChange={setApplying}
           onApplied={(look) => {
             setTitle(look.title);
             setDescription(look.description);
             setPalette(look.palette);
             setImageSrc(look.image);
+            setImageTqSrc(look.imageTq ?? null);
+            setView("front");
             setItems(look.items);
             setTryOnReset(look.image);
+            setTqMsg(null);
           }}
         />
       ) : null}
@@ -109,5 +212,24 @@ export function LookSetCard({
         resetStoredTryOn={Boolean(tryOnReset)}
       />
     </article>
+  );
+}
+
+function LookAngleGlyph({ turned }: { turned: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden
+    >
+      {turned ? (
+        <path d="M8 4.5h7.2L18.5 19.5H10.2L8 4.5z" />
+      ) : (
+        <rect x="7" y="4.5" width="10" height="15" rx="1" />
+      )}
+    </svg>
   );
 }

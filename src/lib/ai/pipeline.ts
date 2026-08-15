@@ -603,6 +603,12 @@ export async function generateLookImage(opts: {
   profileReferenceImageUrl?: string;
   /** Pre-rendered outfit photo (e.g. capsule combo) — clothing reference only. */
   outfitReferenceImageUrl?: string;
+  /**
+   * Camera for a companion 3/4 render. Default stays front-facing (unchanged).
+   * When `three_quarter`, pass the current front look as `outfitReferenceImageUrl`
+   * so garments stay locked and only the angle changes.
+   */
+  view?: "front" | "three_quarter";
   /** Deep palette hex to place on the garment nearest the face (contrast/definition). */
   nearFaceHex?: string;
   /** EXPERIMENTAL — per-run prompt-version override (else `IMAGE_PROMPT_VERSION`). */
@@ -619,6 +625,8 @@ export async function generateLookImage(opts: {
       outfitReferenceImageUrl,
       nearFaceHex,
     } = opts;
+    const view = opts.view ?? "front";
+    const isThreeQuarter = view === "three_quarter";
     const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
     const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
     const hasOutfitRef = Boolean(outfitReferenceImageUrl);
@@ -636,7 +644,10 @@ export async function generateLookImage(opts: {
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.bodyType} build. Soft natural light, neutral studio backdrop, ` +
       `confident relaxed pose, sharp focus, magazine quality. ` +
-      `Vertical 9:16 framing, full body head to shoes visible. `;
+      `Vertical 9:16 framing, full body head to shoes visible. ` +
+      (isThreeQuarter
+        ? `CRITICAL camera: three-quarter view — the body is turned 30 to 45 degrees from the camera, not front-on and not a full profile. Most of the face stays visible. Same studio, lighting and distance as a front look. `
+        : "");
 
     // When catalogue picks exist, THEY define the outfit. The free-text look
     // description is demoted to a styling/mood hint so it stops dominating and
@@ -709,9 +720,10 @@ export async function generateLookImage(opts: {
     }
     if (hasOutfitRef) {
       imgIdx += 1;
-      imageRoles +=
-        `The ${ordinal(imgIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
-        `colours and proportions; do not copy the model's face or body. `;
+      imageRoles += isThreeQuarter
+        ? `The ${ordinal(imgIdx)} image is this SAME look photographed from the front — keep this exact person and every garment, colour, fabric, fit and accessory identical. Do not redesign the clothes or change the styling. Only rotate the camera to a 30–45° three-quarter angle. `
+        : `The ${ordinal(imgIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
+          `colours and proportions; do not copy the model's face or body. `;
     }
     if (catalogImageUrls.length) {
       const catalogStart = imgIdx + 1;
@@ -843,6 +855,11 @@ export async function generateLookImage(opts: {
     }
     if (tuckBlock) {
       constraints.push(tuckBlock.trim());
+    }
+    if (isThreeQuarter) {
+      constraints.push(
+        `three-quarter camera only — do not redesign garments; keep the front-look clothes identical and only change the angle`,
+      );
     }
     const promptParts: LookPromptParts = {
       legacyPrompt,

@@ -72,6 +72,9 @@ export default async function LookSetPage({
             description={look.description}
             palette={look.palette}
             imageSrc={signedAssetProxyUrl(look.imagePath)}
+            imageTqSrc={
+              look.imagePathTq ? signedAssetProxyUrl(look.imagePathTq) : null
+            }
             items={set.lookItems?.[look.idx] ?? []}
             isOwner={isOwner}
           />

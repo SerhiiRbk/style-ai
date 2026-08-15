@@ -10,6 +10,10 @@ import {
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import type { ShoppingItem } from "@/lib/report";
 import { lookItemsNeedRefresh, matchLookItems } from "@/lib/data/catalog";
+import {
+  parseArchivedLookImages,
+  type ArchivedLookImage,
+} from "@/lib/look-archive";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
@@ -236,15 +240,44 @@ export async function markLookSetReady(
   }
 }
 
+type SetLookRow = {
+  idx: unknown;
+  context: unknown;
+  title: unknown;
+  description: unknown;
+  palette: unknown;
+  image_path: unknown;
+  image_path_tq?: unknown;
+};
+
+const LOOK_ROW_SELECT =
+  "idx, context, title, description, palette, image_path, image_path_tq";
+const LOOK_ROW_SELECT_BASE =
+  "idx, context, title, description, palette, image_path";
+
+async function selectSetLookRows(
+  admin: AdminClient,
+  setId: string,
+): Promise<{ data: SetLookRow[] | null; error: { message: string } | null }> {
+  const first = await admin
+    .from("looks")
+    .select(LOOK_ROW_SELECT)
+    .eq("set_id", setId)
+    .order("idx", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+  if (first.error && /image_path_tq/.test(first.error.message)) {
+    return admin
+      .from("looks")
+      .select(LOOK_ROW_SELECT_BASE)
+      .eq("set_id", setId)
+      .order("idx", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true });
+  }
+  return first;
+}
+
 function looksFromRows(
-  rows: {
-    idx: unknown;
-    context: unknown;
-    title: unknown;
-    description: unknown;
-    palette: unknown;
-    image_path: unknown;
-  }[],
+  rows: SetLookRow[],
   looksCount: number | null,
   generating: boolean,
 ): LoadedSetLook[] {
@@ -257,6 +290,10 @@ function looksFromRows(
       description: (r.description as string | null) ?? "",
       palette: (r.palette as string[] | null) ?? [],
       imagePath: r.image_path as string,
+      imagePathTq:
+        typeof r.image_path_tq === "string" && r.image_path_tq
+          ? r.image_path_tq
+          : null,
     }));
   if (!generating) return ready;
   const count = looksCount ?? Math.max(ready.length, 3);
@@ -270,6 +307,7 @@ function looksFromRows(
         description: "",
         palette: [],
         imagePath: null,
+        imagePathTq: null,
       }
     );
   });
@@ -324,7 +362,100 @@ export type LoadedSetLook = {
   palette: string[];
   /** Null while this slot is still rendering (set status = generating). */
   imagePath: string | null;
+  /** Optional 3/4 companion; null until the owner generates it. */
+  imagePathTq: string | null;
 };
+
+export type { ArchivedLookImage };
+
+/** Persist replaced look images so the gallery can list them as plain pictures. */
+export async function archiveReplacedLookImages(
+  admin: AdminClient,
+  setId: string,
+  images: { path: string | null | undefined; title: string }[],
+): Promise<void> {
+  const incoming = images.filter(
+    (i): i is { path: string; title: string } => Boolean(i.path),
+  );
+  if (!incoming.length) return;
+
+  const { data, error } = await admin
+    .from("look_sets")
+    .select("archived_images")
+    .eq("id", setId)
+    .maybeSingle();
+  if (error) {
+    if (/archived_images/.test(error.message)) {
+      console.error(
+        "[look-set] archived_images column missing",
+        setId,
+        error.message,
+      );
+      return;
+    }
+    console.error("[look-set] read archived_images failed", setId, error.message);
+    return;
+  }
+
+  const existing = parseArchivedLookImages(data?.archived_images);
+  const seen = new Set(existing.map((e) => e.path));
+  const now = new Date().toISOString();
+  for (const img of incoming) {
+    if (seen.has(img.path)) continue;
+    existing.push({ path: img.path, title: img.title, createdAt: now });
+    seen.add(img.path);
+  }
+
+  const { error: updErr } = await admin
+    .from("look_sets")
+    .update({ archived_images: existing })
+    .eq("id", setId);
+  if (updErr) {
+    console.error("[look-set] write archived_images failed", setId, updErr.message);
+  }
+}
+
+/** Storage paths to delete with a set (current looks, 3/4, archived). */
+export async function lookSetAssetPaths(
+  admin: AdminClient,
+  setId: string,
+): Promise<string[]> {
+  const paths = new Set<string>();
+  const firstLooks = await admin
+    .from("looks")
+    .select("image_path, image_path_tq")
+    .eq("set_id", setId);
+  const looksQuery =
+    firstLooks.error && /image_path_tq/.test(firstLooks.error.message)
+      ? await admin.from("looks").select("image_path").eq("set_id", setId)
+      : firstLooks;
+  if (looksQuery.error) {
+    console.error(
+      "[look-set] lookSetAssetPaths looks failed",
+      setId,
+      looksQuery.error.message,
+    );
+  }
+  for (const row of looksQuery.data ?? []) {
+    const front = row.image_path as string | null;
+    const tq = (row as { image_path_tq?: string | null }).image_path_tq ?? null;
+    if (front) paths.add(front);
+    if (tq) paths.add(tq);
+  }
+
+  const { data: set, error: setErr } = await admin
+    .from("look_sets")
+    .select("archived_images")
+    .eq("id", setId)
+    .maybeSingle();
+  if (setErr && !/archived_images/.test(setErr.message)) {
+    console.error("[look-set] lookSetAssetPaths archive failed", setId, setErr.message);
+  }
+  for (const img of parseArchivedLookImages(set?.archived_images)) {
+    paths.add(img.path);
+  }
+  return [...paths];
+}
 
 export type LoadedLookSet = {
   setId: string;
@@ -380,12 +511,7 @@ async function assembleLookSetResult(
   // rows predating idx (null idx sorts last). For those legacy rows the fallback
   // idx below is their created_at position — which matches how their look_items
   // were keyed, so alignment is preserved.
-  const { data: rows, error: rowsErr } = await admin
-    .from("looks")
-    .select("idx, context, title, description, palette, image_path")
-    .eq("set_id", setId)
-    .order("idx", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true });
+  const { data: rows, error: rowsErr } = await selectSetLookRows(admin, setId);
   if (rowsErr) console.error(`[look-set] ${logLabel} looks query failed`, rowsErr.message);
 
   const readyCount = (rows ?? []).filter((r) => r.image_path).length;
@@ -503,12 +629,7 @@ export async function loadPublicLookSet(
     }
   }
 
-  const { data: rows, error: rowsErr } = await admin
-    .from("looks")
-    .select("idx, context, title, description, palette, image_path")
-    .eq("set_id", setId)
-    .order("idx", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true });
+  const { data: rows, error: rowsErr } = await selectSetLookRows(admin, setId);
   if (rowsErr) console.error("[look-set] loadPublicLookSet looks query failed", rowsErr.message);
 
   const looks = looksFromRows(rows ?? [], null, false);
@@ -540,12 +661,7 @@ export async function ensureSetLookItems(
 
   let resolved = looks;
   if (!resolved) {
-    const { data: rows, error } = await admin
-      .from("looks")
-      .select("idx, context, title, description, palette, image_path")
-      .eq("set_id", setId)
-      .order("idx", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: true });
+    const { data: rows, error } = await selectSetLookRows(admin, setId);
     if (error) {
       console.error(
         "[look-set] ensureSetLookItems looks query failed",

@@ -395,6 +395,12 @@ const COMPARISON_ROWS: CompareRow[] = [
     detail: "Change pieces, colour, eyewear or tuck — same look",
     value: `${CREDIT_COSTS.look_regen} cr`,
   },
+  {
+    kind: "addon",
+    feature: "Look 3/4 view",
+    detail: "Extra angle on a ready look, locked to the front image",
+    value: `${CREDIT_COSTS.look_three_quarter} cr`,
+  },
 ];
 
 export default function PricingPage() {
@@ -580,6 +586,7 @@ export default function PricingPage() {
                       "Shop the look — catalogue matches per outfit",
                       "Constructor: type, colour, eyewear, tucked / untucked",
                       `Redraw a look · ${CREDIT_COSTS.look_regen} credit`,
+                      `3/4 view · ${CREDIT_COSTS.look_three_quarter} credit`,
                       `Try-on · ${CREDIT_COSTS.tryon} credit`,
                     ].map((f) => (
                       <li key={f} className="flex items-start gap-2.5">
@@ -616,7 +623,7 @@ export default function PricingPage() {
           </p>
 
           {/* Per-action costs */}
-          <div className="mt-12 grid gap-4 rounded-2xl border hairline bg-cream/40 p-8 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mt-12 grid gap-4 rounded-2xl border hairline bg-cream/40 p-8 sm:grid-cols-2 lg:grid-cols-3">
             <CostRow
               label="Generate a report"
               value={`${REPORT_COST.free}–${REPORT_COST.premium} credits`}
@@ -631,6 +638,11 @@ export default function PricingPage() {
               label="Redraw a look"
               value={`${CREDIT_COSTS.look_regen} credit`}
               note="Constructor — same look, new pieces"
+            />
+            <CostRow
+              label="Look 3/4 view"
+              value={`${CREDIT_COSTS.look_three_quarter} credit`}
+              note="Extra angle on a ready look"
             />
             <CostRow
               label="Virtual try-on"

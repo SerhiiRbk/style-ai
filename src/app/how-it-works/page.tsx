@@ -71,7 +71,7 @@ const FEATURES: FeatureSection[] = [
       "Open Create a look, pick an occasion, season and a set of 3, 6 or 9 looks.",
       "Reuse a style profile from a report, or upload a photo so the looks are rendered on you.",
       "When the set is ready, tap a look and use the constructor — type, colour, eyewear shape, mirrored lenses, tucked in or untucked.",
-      `Apply redraws that look (${CREDIT_COSTS.look_regen} credit). Try-on is a separate button. Sets live under Looks.`,
+      `Apply redraws that look (${CREDIT_COSTS.look_regen} credit). Optional 3/4 view is +${CREDIT_COSTS.look_three_quarter} credit. Try-on is a separate button. Sets live under Looks.`,
     ],
     links: [
       { href: "/create-look", label: "Create a look" },
@@ -392,6 +392,7 @@ export default function HowItWorksPage() {
             <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-stone sm:text-base">
               A look set is {LOOK_SET_BUNDLES.map((b) => `${b.looks} looks / ${b.credits} cr`).join(", ")}.
               Redrawing a look in the constructor costs {CREDIT_COSTS.look_regen}{" "}
+              credit; a 3/4 companion is +{CREDIT_COSTS.look_three_quarter}{" "}
               credit; catalogue and Shop a Look try-ons are{" "}
               {CREDIT_COSTS.tryon} credit each. Same balance as reports.
             </p>

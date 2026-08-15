@@ -17,6 +17,7 @@ export type CreditReason =
   | "premium_addon"
   | "look_extra"
   | "look_regen"
+  | "look_three_quarter"
   | "look_set"
   | "cover_regen"
   | "language_change"
@@ -45,6 +46,8 @@ export const CREDIT_COSTS = {
   look_extra: 5,
   /** Re-render a look from constructor slots (same price as a try-on). */
   look_regen: 1,
+  /** Extra 3/4 camera on a ready look, conditioned on the front image. */
+  look_three_quarter: 1,
   /** Re-generate the report's bespoke editorial cover photo. */
   cover_regen: 1,
   /** Re-translate an existing report's text into a different language. */

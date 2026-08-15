@@ -4,6 +4,7 @@ import {
   createServerSupabase,
   createAdminSupabase,
 } from "@/lib/supabase/server";
+import { lookSetAssetPaths } from "@/lib/data/look-sets";
 
 /**
  * Delete a Create-a-Look set the user owns. Removing the `look_sets` row cascades
@@ -42,13 +43,7 @@ export async function DELETE(
   }
 
   // Best-effort: remove the rendered images before the rows go away.
-  const { data: looks } = await admin
-    .from("looks")
-    .select("image_path")
-    .eq("set_id", id);
-  const paths = (looks ?? [])
-    .map((l) => l.image_path as string | null)
-    .filter((p): p is string => Boolean(p));
+  const paths = await lookSetAssetPaths(admin, id);
   if (paths.length) {
     const { error: rmErr } = await admin.storage.from("assets").remove(paths);
     if (rmErr) {
