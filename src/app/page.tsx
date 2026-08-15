@@ -894,6 +894,7 @@ function Pricing() {
         "Everything in Basic",
         `${lookCountForTier("lookbook")} photorealistic looks`,
         "Capsule wardrobe + week matrix",
+        "Finishing kit: shoes, belts, ties and a watch",
         `Virtual try-on (${CREDIT_COSTS.tryon} credit each)`,
         "Good · Better · Best buying plan",
         "4 hairstyle previews on your photo (front + side)",
@@ -909,6 +910,7 @@ function Pricing() {
       features: [
         "Everything in Lookbook",
         `${lookCountForTier("premium")} photorealistic looks`,
+        "Finishing kit: shoes, belts, ties and a watch",
         "4 facial-hair previews on your photo",
         "2 optical + 2 sunglasses previews",
         "Deeper grooming guidance",

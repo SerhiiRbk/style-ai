@@ -16,6 +16,11 @@ import {
   SIGNUP_BONUS,
 } from "@/lib/credit-costs";
 import {
+  LOOK_SET_BUNDLES,
+  LOYALTY_DISCOUNT,
+  LOYALTY_PURCHASE_THRESHOLD,
+} from "@/lib/look-sets";
+import {
   HAIR_AVOID_GEN_LIMIT,
   hairRecommendGenLimit,
   lookCountForTier,
@@ -30,12 +35,12 @@ import { BRAND } from "@/lib/brand";
 export const metadata: Metadata = {
   title: `Pricing — credits, no subscription · ${BRAND.name}`,
   description:
-    "Honest, credit-based pricing for your personal style report — pay only for the AI work you use. New accounts start with 6 free credits, and credits never expire.",
+    "Honest, credit-based pricing for style reports and look sets — pay only for the AI work you use. New accounts start with 6 free credits, and credits never expire.",
   alternates: { canonical: "/pricing" },
   openGraph: {
     title: `${BRAND.name} pricing — pay for the work, not a subscription`,
     description:
-      "Credit-based pricing for personal style reports. New accounts start with 6 free credits.",
+      "Credit-based pricing for style reports and look sets. New accounts start with 6 free credits.",
     url: "/pricing",
     type: "website",
     images: [
@@ -51,7 +56,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: `${BRAND.name} pricing — pay for the work, not a subscription`,
     description:
-      "Credit-based pricing for personal style reports. New accounts start with 6 free credits.",
+      "Credit-based pricing for style reports and look sets. New accounts start with 6 free credits.",
     images: [BRAND.ogImage],
   },
 };
@@ -103,6 +108,7 @@ const TIERS: TierCard[] = [
       "Everything in Basic",
       `${lookCountForTier("lookbook")} photorealistic looks`,
       "Capsule wardrobe + week-of-outfits matrix",
+      "Finishing kit: shoes, belts, ties and a watch",
       `Virtual try-on on your photo (${CREDIT_COSTS.tryon} credit each)`,
       "Good · Better · Best buying plan",
       "4 hairstyle previews on your photo (front + side)",
@@ -119,6 +125,7 @@ const TIERS: TierCard[] = [
     features: [
       "Everything in Lookbook",
       `${lookCountForTier("premium")} photorealistic looks`,
+      "Finishing kit: shoe board, belt guide, ties and watch",
       "4 facial-hair previews on your photo",
       "2 optical + 2 sunglasses previews",
       "2 accessory previews (scarves, neckwear, ties)",
@@ -273,6 +280,12 @@ const COMPARISON_ROWS: CompareRow[] = [
     cells: { free: false, basic: false, lookbook: true, premium: true },
   },
   {
+    kind: "feature",
+    feature: "Finishing kit",
+    detail: "Shoes, belts, ties and a watch matched to your palette",
+    cells: { free: false, basic: false, lookbook: true, premium: true },
+  },
+  {
     kind: "section",
     title: "Deliverables",
   },
@@ -367,8 +380,20 @@ const COMPARISON_ROWS: CompareRow[] = [
   {
     kind: "addon",
     feature: "Extra look on your photo",
-    detail: "One more occasion outfit",
+    detail: "One more occasion outfit on a report",
     value: `${PAYG.lookExtra} each`,
+  },
+  {
+    kind: "addon",
+    feature: "Create a Look set",
+    detail: `${LOOK_SET_BUNDLES.map((b) => `${b.looks} looks`).join(" · ")}`,
+    value: `${LOOK_SET_BUNDLES[0].credits}–${LOOK_SET_BUNDLES[LOOK_SET_BUNDLES.length - 1].credits} cr`,
+  },
+  {
+    kind: "addon",
+    feature: "Redraw a look (constructor)",
+    detail: "Change pieces, colour, eyewear or tuck — same look",
+    value: `${CREDIT_COSTS.look_regen} cr`,
   },
 ];
 
@@ -495,17 +520,117 @@ export default function PricingPage() {
 
           <TierComparisonTable />
 
+          <div className="mt-20 max-w-2xl">
+            <p className="eyebrow">Look sets</p>
+            <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
+              Occasion looks, without a full report.
+            </h2>
+            <p className="mt-4 text-stone">
+              Create a Look builds a set of photorealistic outfits on your photo.
+              Open any look and reconstruct it — type, colour, sunglasses,
+              tucked or untucked — then redraw that look for{" "}
+              {CREDIT_COSTS.look_regen} credit. Try-on is billed separately.
+            </p>
+          </div>
+
+          <div className="mt-12 grid gap-6 md:grid-cols-3">
+            {LOOK_SET_BUNDLES.map((b) => {
+              const featured = b.looks === 6;
+              return (
+                <div
+                  key={b.looks}
+                  className={`relative flex flex-col rounded-2xl border p-7 ${
+                    featured
+                      ? "border-ink bg-ink text-paper"
+                      : "border-line bg-paper"
+                  }`}
+                >
+                  {featured ? (
+                    <span className="absolute -top-3 left-7 rounded-full bg-brass px-3 py-1 text-[11px] uppercase tracking-wider text-paper">
+                      Popular
+                    </span>
+                  ) : null}
+                  <div className="text-sm tracking-wide opacity-80">
+                    {b.looks} looks
+                  </div>
+                  <div className="mt-3 flex items-baseline gap-2">
+                    <span className="font-display text-4xl">{b.credits}</span>
+                    <span
+                      className={`text-xs ${
+                        featured ? "text-paper/60" : "text-stone-soft"
+                      }`}
+                    >
+                      credits
+                    </span>
+                  </div>
+                  <p
+                    className={`mt-2 text-sm ${
+                      featured ? "text-paper/70" : "text-stone"
+                    }`}
+                  >
+                    {b.looks === 3
+                      ? "A tight set for one occasion."
+                      : b.looks === 6
+                        ? "A week of outfits, one brief."
+                        : "The full occasion wardrobe."}
+                  </p>
+                  <ul className="mt-6 flex-1 space-y-3 text-sm">
+                    {[
+                      `${b.looks} photorealistic looks on your photo`,
+                      "Shop the look — catalogue matches per outfit",
+                      "Constructor: type, colour, eyewear, tucked / untucked",
+                      `Redraw a look · ${CREDIT_COSTS.look_regen} credit`,
+                      `Try-on · ${CREDIT_COSTS.tryon} credit`,
+                    ].map((f) => (
+                      <li key={f} className="flex items-start gap-2.5">
+                        <span
+                          className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                            featured ? "bg-brass-soft" : "bg-brass"
+                          }`}
+                        />
+                        <span
+                          className={featured ? "text-paper/85" : "text-stone"}
+                        >
+                          {f}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Link
+                    href="/create-look"
+                    className={`mt-7 inline-flex items-center justify-center rounded-full px-5 py-3 text-sm transition-all ${
+                      featured
+                        ? "bg-paper text-ink hover:bg-cream"
+                        : "border border-ink/25 text-ink hover:bg-ink hover:text-paper"
+                    }`}
+                  >
+                    Create a look
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-4 text-sm text-stone">
+            {LOYALTY_DISCOUNT} credits off each set after you have purchased{" "}
+            {LOYALTY_PURCHASE_THRESHOLD} credits.
+          </p>
+
           {/* Per-action costs */}
-          <div className="mt-12 grid gap-4 rounded-2xl border hairline bg-cream/40 p-8 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-12 grid gap-4 rounded-2xl border hairline bg-cream/40 p-8 sm:grid-cols-2 lg:grid-cols-5">
             <CostRow
               label="Generate a report"
               value={`${REPORT_COST.free}–${REPORT_COST.premium} credits`}
               note={`By tier (Starter Report is ${REPORT_COST.free})`}
             />
             <CostRow
-              label="Extra look"
-              value={`${CREDIT_COSTS.look_extra} credits`}
-              note="One more occasion outfit on your photo"
+              label="Look set"
+              value={`${LOOK_SET_BUNDLES[0].credits}–${LOOK_SET_BUNDLES[LOOK_SET_BUNDLES.length - 1].credits} credits`}
+              note={`${LOOK_SET_BUNDLES.map((b) => b.looks).join(" / ")} looks`}
+            />
+            <CostRow
+              label="Redraw a look"
+              value={`${CREDIT_COSTS.look_regen} credit`}
+              note="Constructor — same look, new pieces"
             />
             <CostRow
               label="Virtual try-on"

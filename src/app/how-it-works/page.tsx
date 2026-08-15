@@ -6,16 +6,17 @@ import { Footer } from "@/components/Footer";
 import { ButtonLink } from "@/components/Button";
 import { absoluteUrl } from "@/lib/site-url";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
+import { LOOK_SET_BUNDLES } from "@/lib/look-sets";
 
 export const metadata: Metadata = {
   title: "How it works — Valetti",
   description:
-    "Catalogue try-on, Shop a Look, your Looks gallery, and personalised style reports — how every part of Valetti fits together.",
+    "Style reports, Create a Look with a constructor, catalogue try-on and Shop a Look — how every part of Valetti fits together.",
   alternates: { canonical: absoluteUrl("/how-it-works") },
   openGraph: {
     title: "How Valetti works",
     description:
-      "Try pieces from the catalogue, match any outfit photo, and build a full style report — all in one place.",
+      "Build a style report, generate occasion looks, then reconstruct any look piece by piece — all in one place.",
     url: absoluteUrl("/how-it-works"),
   },
 };
@@ -42,12 +43,12 @@ const FEATURES: FeatureSection[] = [
     eyebrow: "Style reports",
     title: "A detailed plan built around you",
     intro:
-      "Answer a short questionnaire and upload a few photos. Valetti analyses your colouring, proportions and goals, then delivers a structured report: palette, hair and grooming guidance, photorealistic looks, a capsule wardrobe and a shoppable buying plan.",
+      "Answer a short questionnaire and upload a few photos. Valetti analyses your colouring, proportions and goals, then delivers a structured report: palette, hair and grooming guidance, photorealistic looks, a capsule wardrobe and a shoppable buying plan. Lookbook and Premium also include a finishing kit — shoes, belts, ties and a watch — so the details hold every look together.",
     steps: [
-      "Start from Create report — choose a tier (Starter, Lookbook or Capsule).",
+      "Start from Create my report — choose a tier (Starter, Basic, Lookbook or Premium).",
       "Upload a front portrait and a full-length photo for the most accurate looks and try-ons.",
       "When your report is ready, open it for looks, shopping picks, PDF export and per-look try-on.",
-      "Every report you generate is listed under Reports — reopen any time to review or share.",
+      "Lookbook and Premium add the finishing kit: a shoe board, belt guide and watch — plus tie and neckwear picks. Every report lives under Reports.",
     ],
     links: [
       { href: "/start", label: "Create a report" },
@@ -57,7 +58,30 @@ const FEATURES: FeatureSection[] = [
     image: {
       src: "/images/look-work.png",
       alt: "Photorealistic tailored work look from a Valetti style report",
-      caption: "Photorealistic looks · colour story · shopping plan",
+      caption: "Photorealistic looks · colour story · finishing kit",
+    },
+  },
+  {
+    id: "create-look",
+    eyebrow: "Create a look",
+    title: "Occasion looks you can rebuild",
+    intro:
+      "Need outfits for work, dinner or a weekend — without a full report? Create a Look generates a set of photorealistic looks on your photo. Then open any look and use the constructor: change a jacket, colour, sunglasses shape, or whether a shirt is tucked in, and redraw just that look.",
+    steps: [
+      "Open Create a look, pick an occasion, season and a set of 3, 6 or 9 looks.",
+      "Reuse a style profile from a report, or upload a photo so the looks are rendered on you.",
+      "When the set is ready, tap a look and use the constructor — type, colour, eyewear shape, mirrored lenses, tucked in or untucked.",
+      `Apply redraws that look (${CREDIT_COSTS.look_regen} credit). Try-on is a separate button. Sets live under Looks.`,
+    ],
+    links: [
+      { href: "/create-look", label: "Create a look" },
+      { href: "/looks", label: "Looks" },
+    ],
+    reverse: true,
+    image: {
+      src: "/images/look-travel.png",
+      alt: "Travel look generated as part of a Valetti look set",
+      caption: "3, 6 or 9 looks · constructor on every piece",
     },
   },
   {
@@ -76,7 +100,6 @@ const FEATURES: FeatureSection[] = [
       { href: "/catalog", label: "Open catalog" },
       { href: "/photos", label: "Manage try-on photos" },
     ],
-    reverse: true,
     image: {
       src: "/images/flatlay-essentials.png",
       alt: "Warm-toned menswear essentials laid flat — navy, cream and brown",
@@ -96,6 +119,7 @@ const FEATURES: FeatureSection[] = [
       "Carlo's verdict and the exact pieces tried are saved with the render.",
     ],
     links: [{ href: "/shop-a-look", label: "Shop a Look" }],
+    reverse: true,
     image: {
       src: "/images/look-weekend.png",
       alt: "Relaxed weekend outfit rendered as a shoppable look",
@@ -103,33 +127,50 @@ const FEATURES: FeatureSection[] = [
     },
   },
   {
-    id: "looks",
-    eyebrow: "Looks",
-    title: "Your try-on history in one gallery",
+    id: "images",
+    eyebrow: "Images",
+    title: "Every generated image in one gallery",
     intro:
-      "Every catalogue and Shop a Look render is collected on the Looks page, grouped by source. You can download, share or delete a render, and reopen Carlo's notes whenever you like.",
+      "Looks you created, report looks, catalogue try-ons and Shop a Look renders collect under Images. Download, share or delete a render, and reopen Carlo's notes whenever you like.",
     steps: [
-      "Open Looks from the menu (sign in required).",
-      "Catalogue try-ons and Shop a Look renders appear in separate groups.",
+      "Open Images from My Style (sign in required).",
+      "Create-a-Look sets also live under Looks — open any set to reconstruct a piece.",
       "Tap the V icon on a try-on tile to read Carlo's verdict and see which catalogue pieces were used.",
-      "Report-linked looks, capsules, hair previews and grooming images from your reports appear here too.",
+      "Hair, grooming and capsule stills from your reports appear here too.",
     ],
-    links: [{ href: "/gallery", label: "My looks" }],
-    reverse: true,
+    links: [
+      { href: "/gallery", label: "Images" },
+      { href: "/looks", label: "Looks" },
+    ],
     image: {
       src: "/images/look-dinner.png",
-      alt: "Evening dinner look saved in a personal try-on gallery",
-      caption: "Catalogue · Shop a Look · report looks — one place",
+      alt: "Evening dinner look saved in a personal image gallery",
+      caption: "Looks · reports · try-ons — one gallery",
     },
   },
 ];
 
 const JOURNEY = [
   { n: "01", label: "Profile", detail: "Photos & goals" },
-  { n: "02", label: "Report", detail: "Colours & looks" },
-  { n: "03", label: "Try on", detail: "Catalogue or photo" },
-  { n: "04", label: "Decide", detail: "Carlo's verdict" },
+  { n: "02", label: "Report", detail: "Colours & finishing kit" },
+  { n: "03", label: "Looks", detail: "Create & reconstruct" },
+  { n: "04", label: "Try on", detail: "Catalogue or photo" },
 ];
+
+const CONSTRUCTOR_PIECES = [
+  { src: "/images/products/olive-overshirt.png", label: "Overshirt" },
+  { src: "/images/products/charcoal-trousers.png", label: "Trousers" },
+  { src: "/images/products/chelsea-boots.png", label: "Boots" },
+  { src: "/images/demo/accessory-tie.png", label: "Tie" },
+  { src: "/images/products/field-watch.png", label: "Watch" },
+] as const;
+
+const FINISHING_PIECES = [
+  { src: "/images/products/brown-loafers.png", label: "Shoes" },
+  { src: "/images/catalog/tradedoubler-anderson-s_td-blt-brn.png", label: "Belt" },
+  { src: "/images/demo/accessory-tie.png", label: "Tie" },
+  { src: "/images/products/field-watch.png", label: "Watch" },
+] as const;
 
 export default function HowItWorksPage() {
   return (
@@ -150,13 +191,13 @@ export default function HowItWorksPage() {
                 <em className="not-italic text-brass">wardrobe</em>
               </h1>
               <p className="mt-6 max-w-md text-lg leading-relaxed text-stone">
-                From a full style report to a single try-on — each feature
-                connects, and your history lives in one place.
+                From a full style report to a look you rebuild piece by piece —
+                each feature connects, and your history lives in one place.
               </p>
               <div className="mt-9 flex flex-wrap gap-3">
                 <ButtonLink href="/start">Create a report</ButtonLink>
-                <ButtonLink href="/catalog" variant="outline">
-                  Browse catalog
+                <ButtonLink href="/create-look" variant="outline">
+                  Create a look
                 </ButtonLink>
               </div>
             </div>
@@ -173,10 +214,10 @@ export default function HowItWorksPage() {
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/55 via-ink/15 to-transparent px-5 pb-5 pt-16">
                   <p className="font-display text-lg leading-snug text-paper">
-                    Report · try-on · gallery
+                    Report · looks · constructor
                   </p>
                   <p className="mt-1 text-xs tracking-wide text-paper/75">
-                    One atelier, four ways in
+                    One atelier, from plan to piece
                   </p>
                 </div>
               </div>
@@ -241,6 +282,27 @@ export default function HowItWorksPage() {
                         className="object-cover object-top transition-transform duration-700 ease-out hover:scale-[1.03]"
                       />
                     </div>
+                    {feature.id === "create-look" || feature.id === "reports" ? (
+                      <div className="mt-3 flex gap-2">
+                        {(feature.id === "create-look"
+                          ? CONSTRUCTOR_PIECES
+                          : FINISHING_PIECES
+                        ).map((piece) => (
+                          <div
+                            key={piece.label}
+                            className="relative aspect-square min-w-0 flex-1 overflow-hidden rounded-xl border hairline bg-cream/40"
+                          >
+                            <Image
+                              src={piece.src}
+                              alt={piece.label}
+                              fill
+                              sizes="80px"
+                              className="object-contain p-1.5"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     <p className="mt-3 text-xs tracking-wide text-stone-soft">
                       {feature.image.caption}
                     </p>
@@ -324,18 +386,20 @@ export default function HowItWorksPage() {
           <div className="mx-auto max-w-2xl text-center">
             <p className="eyebrow">Credits</p>
             <h2 className="mt-3 font-display text-2xl text-ink sm:text-3xl">
-              Try-on costs {CREDIT_COSTS.tryon} credit
-              {CREDIT_COSTS.tryon === 1 ? "" : "s"} per render
+              Looks from {LOOK_SET_BUNDLES[0].credits} credits · constructor{" "}
+              {CREDIT_COSTS.look_regen} credit
             </h2>
             <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-stone sm:text-base">
-              Catalogue and Shop a Look try-ons use the same balance as report
-              extras. New accounts receive free credits to get started.
+              A look set is {LOOK_SET_BUNDLES.map((b) => `${b.looks} looks / ${b.credits} cr`).join(", ")}.
+              Redrawing a look in the constructor costs {CREDIT_COSTS.look_regen}{" "}
+              credit; catalogue and Shop a Look try-ons are{" "}
+              {CREDIT_COSTS.tryon} credit each. Same balance as reports.
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
               <ButtonLink href="/pricing" variant="outline">
                 See pricing
               </ButtonLink>
-              <ButtonLink href="/start">Create a report</ButtonLink>
+              <ButtonLink href="/create-look">Create a look</ButtonLink>
             </div>
           </div>
         </section>
