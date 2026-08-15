@@ -42,7 +42,8 @@ export const LOOK_CONTEXTS: LookContext[] = [
     label: "Dinner / date",
     context: "Dinner / date",
     brief:
-      "Evening-ready and confident — a step up from daywear with a refined edge.",
+      "A date or evening out — relaxed and approachable, confident without being formal. " +
+      "A step up from daywear with a refined edge.",
   },
   {
     id: "formal",
@@ -58,9 +59,81 @@ export const LOOK_CONTEXTS: LookContext[] = [
     brief:
       "Comfortable for transit yet put-together on arrival — layered and adaptable.",
   },
+  {
+    id: "business_social",
+    label: "Business social (client dinner · networking · conference)",
+    context: "Business social",
+    brief:
+      "Professional but relaxed — the after-hours edge of work. Polished separates " +
+      "over a full suit; approachable, never stiff. Follows the strictness and season settings.",
+  },
+  {
+    id: "wedding_guest",
+    label: "Wedding guest",
+    context: "Wedding guest",
+    brief:
+      "Celebratory and occasion-appropriate for a guest (never upstaging). Sharp tailoring, " +
+      "seasonal fabric and colour; dress code lifts or relaxes with the strictness setting.",
+  },
+  {
+    id: "party",
+    label: "Party / night out",
+    context: "Party",
+    brief:
+      "Evening energy — a confident, considered going-out look with one standout element. " +
+      "Bolder at higher strictness; keep it wearable, not costume.",
+  },
+  {
+    id: "cultural",
+    label: "Cultural (theatre · gallery · dinner reservation)",
+    context: "Cultural",
+    brief:
+      "Refined, quietly intellectual, put-together without trying hard. Texture over logos; " +
+      "season-appropriate layers.",
+  },
+  {
+    id: "outdoor",
+    label: "Outdoor / active",
+    context: "Outdoor",
+    brief:
+      "Practical and weather-ready while still looking considered — technical fabrics, layering, " +
+      "grounded palette. Strictness nudges rugged↔refined.",
+  },
+  {
+    id: "resort",
+    label: "Resort / holiday",
+    context: "Resort / holiday",
+    brief:
+      "Warm-weather ease — breathable fabrics, relaxed tailoring, a lighter palette. Season " +
+      "biases fabric weight; strictness nudges beach↔dinner-on-the-terrace.",
+  },
 ];
 
 export function lookContextById(id: string | undefined | null): LookContext | undefined {
   if (!id) return undefined;
   return LOOK_CONTEXTS.find((c) => c.id === id);
 }
+
+/** Reserved occasion for look sets mirrored from a Style Report. Not in the
+ *  Create-a-Look picker — reports already chose their own mix of contexts. */
+export const REPORT_LOOK_SET_OCCASION_ID = "style_report";
+
+export function lookSetOccasionLabel(id: string | undefined | null): string {
+  if (id === REPORT_LOOK_SET_OCCASION_ID) return "Style report";
+  return lookContextById(id)?.label ?? "Looks";
+}
+
+/** Occasions offered by the shipped single "extra look" add-on. Explicit so
+ * that appending new Create-a-Look occasions to LOOK_CONTEXTS never silently
+ * expands that live picker. */
+export const EXTRA_LOOK_CONTEXT_IDS = [
+  "work",
+  "smart_casual",
+  "weekend",
+  "dinner",
+  "formal",
+  "travel",
+] as const;
+export const EXTRA_LOOK_CONTEXTS: LookContext[] = LOOK_CONTEXTS.filter((c) =>
+  (EXTRA_LOOK_CONTEXT_IDS as readonly string[]).includes(c.id),
+);

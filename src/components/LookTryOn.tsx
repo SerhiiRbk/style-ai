@@ -14,6 +14,7 @@ import { WORKING } from "@/components/luxe/messages";
  */
 export function LookTryOn({
   reportId,
+  setId,
   title,
   description,
   palette = [],
@@ -24,8 +25,13 @@ export function LookTryOn({
   label,
   regenLabel,
   cost = 1,
+  selectedProductIds,
+  requireSelection = false,
+  resetStoredTryOn = false,
 }: {
-  reportId: string;
+  /** One of reportId / setId identifies the try-on's context. */
+  reportId?: string;
+  setId?: string;
   title: string;
   description: string;
   palette?: string[];
@@ -41,6 +47,12 @@ export function LookTryOn({
   regenLabel?: string;
   /** Credit cost per render (try-on and re-render are both 1). */
   cost?: number;
+  /** Keys (productId ?? title) of the "Shop a look" items to render; omit = all. */
+  selectedProductIds?: string[];
+  /** When true, disable the button until at least one item is selected. */
+  requireSelection?: boolean;
+  /** Skip loading a stored try-on (look was reconstructed into a new outfit). */
+  resetStoredTryOn?: boolean;
 }) {
   const isCapsule = kind === "capsule";
   const actionLabelDefault = isCapsule
@@ -53,13 +65,29 @@ export function LookTryOn({
   );
   const [url, setUrl] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  // "editorial" = a fresh styled scene (best styling, face may drift a little);
+  // "studio" = your own photo on a clean studio backdrop (face/pose preserved).
+  const [tryOnStyle, setTryOnStyle] = useState<"editorial" | "studio">(
+    "editorial",
+  );
 
   const creditsApply = balance !== null;
   const insufficient = creditsApply && (balance ?? 0) < cost;
+  const noneSelected =
+    requireSelection && (selectedProductIds?.length ?? 0) === 0;
 
   useEffect(() => {
+    if (resetStoredTryOn) {
+      startTransition(() => {
+        setUrl(null);
+        setState("idle");
+      });
+      return;
+    }
     let cancelled = false;
-    const query = new URLSearchParams({ reportId, kind });
+    const query = new URLSearchParams({ kind });
+    if (setId) query.set("setId", setId);
+    else if (reportId) query.set("reportId", reportId);
     if (typeof lookIndex === "number") {
       query.set("lookIndex", String(lookIndex));
     } else {
@@ -83,10 +111,10 @@ export function LookTryOn({
     return () => {
       cancelled = true;
     };
-  }, [reportId, kind, lookIndex, title]);
+  }, [reportId, setId, kind, lookIndex, title, resetStoredTryOn]);
 
   async function run() {
-    if (insufficient) return;
+    if (insufficient || noneSelected) return;
     const regen = state === "done";
     setState("loading");
     setMsg(null);
@@ -96,6 +124,7 @@ export function LookTryOn({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reportId,
+          setId,
           title,
           description,
           palette,
@@ -105,6 +134,10 @@ export function LookTryOn({
           lookIndex,
           kind,
           regen,
+          style: tryOnStyle,
+          ...(kind === "look" && selectedProductIds
+            ? { productIds: selectedProductIds }
+            : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -133,15 +166,67 @@ export function LookTryOn({
     ? "We're dressing your photo in this capsule combination — the same mix of pieces shown above, styled on you."
     : "We're dressing your photo in this look — fabric, fit, and colours aligned with the outfit above.";
 
+  const styleOptions: {
+    id: "editorial" | "studio";
+    label: string;
+    hint: string;
+  }[] = [
+    {
+      id: "editorial",
+      label: "Styled scene",
+      hint: "A fresh, styled photo of you in this outfit.",
+    },
+    {
+      id: "studio",
+      label: "My photo · studio",
+      hint: "Your own photo on a clean studio backdrop — face and pose preserved.",
+    },
+  ];
+  const activeStyleHint = styleOptions.find((o) => o.id === tryOnStyle)?.hint;
+
   return (
     <div aria-busy={state === "loading"}>
+      <p className="mb-1 text-[11px] uppercase tracking-wider text-stone-soft">
+        {state === "done" ? "Render again as" : "Result style"}
+      </p>
+      <div
+        role="radiogroup"
+        aria-label="Try-on style"
+        className="mb-2 inline-flex rounded-full border hairline bg-cream/60 p-0.5"
+      >
+        {styleOptions.map((opt) => {
+          const active = tryOnStyle === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => setTryOnStyle(opt.id)}
+              disabled={state === "loading"}
+              className={`rounded-full px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                active
+                  ? "bg-brass/15 text-brass"
+                  : "text-stone-soft hover:text-ink"
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      {activeStyleHint && (
+        <p className="mb-2 text-[11px] text-stone-soft">{activeStyleHint}</p>
+      )}
       <button
         onClick={run}
-        disabled={state === "loading" || insufficient}
+        disabled={state === "loading" || insufficient || noneSelected}
         title={
           insufficient
             ? "Not enough credits — top up to render"
-            : undefined
+            : noneSelected
+              ? "Select at least one item to try on"
+              : undefined
         }
         className="inline-flex min-h-[2.25rem] items-center rounded-full border border-brass/30 bg-brass/5 px-4 py-2 text-sm text-brass transition-colors hover:border-brass/50 hover:bg-brass/10 disabled:cursor-not-allowed disabled:opacity-60"
       >
@@ -169,6 +254,11 @@ export function LookTryOn({
           ) : (
             <>Balance: {balance} credits</>
           )}
+        </p>
+      )}
+      {noneSelected && (
+        <p className="mt-1 text-[11px] text-stone-soft">
+          Select at least one item above to try on.
         </p>
       )}
       {msg && <p className="mt-1 text-xs text-stone-soft">{msg}</p>}

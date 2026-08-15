@@ -157,43 +157,32 @@ const navLinkClass =
 const creditsPillClass =
   "whitespace-nowrap rounded-full border border-brass/40 bg-brass/5 text-ink transition-colors hover:border-brass";
 
-/** Desktop "Reports" link — rendered first in the nav when signed in. */
-export function NavDesktopReportsLink() {
+/** First desktop nav item for anonymous visitors — Colours (when enabled). */
+export function NavDesktopAnonLeadLink() {
   const { authed } = useNavSession();
-  if (!authed) return null;
+  if (authed || !COLOURS_ENABLED) return null;
   return (
-    <Link href="/reports" className={navLinkClass}>
-      Reports
+    <Link href="/colours" className={navLinkClass}>
+      Colours
     </Link>
   );
 }
 
-/** Desktop nav links that depend on the visitor's session. */
+/**
+ * Desktop session links that stay OUTSIDE the "My Style" dropdown:
+ * anon Demo, and Admin. Personal destinations live in MyStyleMenu; anon Colours
+ * is rendered first via NavDesktopAnonLeadLink.
+ */
 export function NavDesktopAuthLinks() {
   const { authed, isAdmin } = useNavSession();
   return (
     <>
-      {!authed && COLOURS_ENABLED && (
-        <Link href="/colours" className={navLinkClass}>
-          Colours
-        </Link>
-      )}
       {!authed && (
         <Link
           href="/report/valetti-style-prospect-demo"
           className={`${navLinkClass} hidden 2xl:inline-flex`}
         >
           Demo
-        </Link>
-      )}
-      {authed && (
-        <Link href="/gallery" className={navLinkClass}>
-          Looks
-        </Link>
-      )}
-      {authed && (
-        <Link href="/account" className={navLinkClass}>
-          Account
         </Link>
       )}
       {isAdmin && (

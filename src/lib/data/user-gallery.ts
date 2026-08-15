@@ -3,6 +3,8 @@ import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { canShareReport } from "@/lib/report";
+import { lookContextById } from "@/lib/look-contexts";
+import { parseArchivedLookImages } from "@/lib/look-archive";
 import type {
   GalleryItem,
   GalleryItemKind,
@@ -303,6 +305,116 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
       linkLabel: "Open catalog",
       items: catalogItems,
     });
+  }
+
+  // Create-a-Look sets (looks with a set_id, no parent report) — one group per
+  // set so its generated looks show up in the gallery like report looks do.
+  {
+    const setFirst = await db
+      .from("look_sets")
+      .select("id, occasion_id, created_at, archived_images, report_id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    const setQuery =
+      setFirst.error && /archived_images/.test(setFirst.error.message)
+        ? await db
+            .from("look_sets")
+            .select("id, occasion_id, created_at, report_id")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+        : setFirst;
+    const setList = (
+      (setQuery.data ?? []) as {
+        id: string;
+        occasion_id: string | null;
+        created_at: string;
+        archived_images?: unknown;
+        report_id?: string | null;
+      }[]
+    ).filter((s) => !s.report_id);
+    if (setList.length) {
+      const looksFirst = await db
+        .from("looks")
+        .select("set_id, image_path, image_path_tq, title, created_at")
+        .in(
+          "set_id",
+          setList.map((s) => s.id),
+        )
+        .order("created_at", { ascending: true });
+      const looksQuery =
+        looksFirst.error && /image_path_tq/.test(looksFirst.error.message)
+          ? await db
+              .from("looks")
+              .select("set_id, image_path, title, created_at")
+              .in(
+                "set_id",
+                setList.map((s) => s.id),
+              )
+              .order("created_at", { ascending: true })
+          : looksFirst;
+      const bySet = new Map<
+        string,
+        {
+          image_path: string | null;
+          image_path_tq: string | null;
+          title: string | null;
+        }[]
+      >();
+      for (const l of looksQuery.data ?? []) {
+        const sid = l.set_id as string;
+        const arr = bySet.get(sid) ?? [];
+        arr.push({
+          image_path: (l.image_path as string | null) ?? null,
+          image_path_tq:
+            ((l as { image_path_tq?: string | null }).image_path_tq as
+              | string
+              | null) ?? null,
+          title: (l.title as string | null) ?? null,
+        });
+        bySet.set(sid, arr);
+      }
+      for (const s of setList) {
+        const items: GalleryItem[] = [];
+        (bySet.get(s.id) ?? []).forEach((l, i) => {
+          if (l.image_path) {
+            items.push({
+              id: `set:${s.id}:look:${i}`,
+              kind: "look",
+              src: signedAssetProxyUrl(l.image_path),
+              label: l.title || `Look ${i + 1}`,
+            });
+          }
+          if (l.image_path_tq) {
+            items.push({
+              id: `set:${s.id}:look:${i}:tq`,
+              kind: "look",
+              src: signedAssetProxyUrl(l.image_path_tq),
+              label: `${l.title || `Look ${i + 1}`} · 3/4`,
+            });
+          }
+        });
+        parseArchivedLookImages(s.archived_images).forEach((img, i) => {
+          items.push({
+            id: `set:${s.id}:archive:${i}`,
+            kind: "look",
+            src: signedAssetProxyUrl(img.path),
+            label: img.title || "Look",
+          });
+        });
+        if (items.length) {
+          groups.push({
+            id: `set:${s.id}`,
+            headline: lookContextById(s.occasion_id ?? "")?.label ?? "Create a Look",
+            tier: "basic",
+            createdAt: s.created_at,
+            canShare: false,
+            href: `/looks/${s.id}`,
+            linkLabel: "Open look",
+            items,
+          });
+        }
+      }
+    }
   }
 
   // Newest first across reports and the catalogue group.

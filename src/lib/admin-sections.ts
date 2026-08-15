@@ -16,6 +16,11 @@ export const ADMIN_SECTIONS = [
     description: "Browse every generated style report across all users.",
   },
   {
+    href: "/admin/looks",
+    title: "Looks",
+    description: "Browse every generated look set across all users.",
+  },
+  {
     href: "/admin/promos",
     title: "Promotions",
     description: "Create promo codes, credit grants, and invite links.",

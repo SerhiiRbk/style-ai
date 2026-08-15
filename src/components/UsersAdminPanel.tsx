@@ -14,6 +14,7 @@ type AdminUserSummary = {
   createdAt: string;
   creditBalance: number;
   reportsCount: number;
+  looksCount: number;
   purchasesCount: number;
   creditsPurchased: number;
   promosCount: number;
@@ -53,6 +54,13 @@ type AdminUserDetail = AdminUserSummary & {
     tier: Tier;
     status: "processing" | "ready" | "failed";
     intake: AdminUserReportIntake | null;
+  }[];
+  lookSets: {
+    id: string;
+    createdAt: string;
+    occasionId: string | null;
+    occasionLabel: string | null;
+    isPublic: boolean;
   }[];
   purchases: { createdAt: string; credits: number; refExt: string | null }[];
   promos: { code: string; name: string; credits: number; redeemedAt: string }[];
@@ -220,6 +228,7 @@ function UserDetailPanel({
       <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Credit balance" value={user.creditBalance} />
         <StatCard label="Reports" value={user.reportsCount} />
+        <StatCard label="Look sets" value={user.looksCount} />
         <StatCard label="Purchases" value={user.purchasesCount} />
         <StatCard label="Credits bought" value={user.creditsPurchased} />
         <StatCard label="Credits spent" value={user.creditsSpent} />
@@ -300,6 +309,41 @@ function UserDetailPanel({
                   </li>
                 );
               })}
+            </ul>
+          )}
+        </section>
+
+        <section>
+          <h4 className="font-display text-lg">Look sets</h4>
+          {!user.lookSets.length ? (
+            <p className="mt-2 text-sm text-stone">No look sets yet.</p>
+          ) : (
+            <ul className="mt-3 divide-y hairline rounded-xl border hairline bg-paper">
+              {user.lookSets.map((s) => (
+                <li
+                  key={s.id}
+                  className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <Link
+                      href={`/looks/${s.id}`}
+                      className="block truncate font-medium text-ink hover:text-brass"
+                    >
+                      {s.occasionLabel || "Look set"}
+                    </Link>
+                    <p className="text-xs text-stone">
+                      {formatDate(s.createdAt)}
+                      {s.isPublic ? " · Public" : ""}
+                    </p>
+                  </div>
+                  <Link
+                    href={`/looks/${s.id}`}
+                    className="shrink-0 text-xs text-brass hover:text-ink"
+                  >
+                    Open →
+                  </Link>
+                </li>
+              ))}
             </ul>
           )}
         </section>
@@ -485,6 +529,7 @@ export function UsersAdminPanel() {
                 <th className="px-4 py-3 font-normal">User</th>
                 <th className="px-4 py-3 font-normal text-right">Balance</th>
                 <th className="px-4 py-3 font-normal text-right">Reports</th>
+                <th className="px-4 py-3 font-normal text-right">Looks</th>
                 <th className="px-4 py-3 font-normal text-right">Purchases</th>
                 <th className="px-4 py-3 font-normal text-right">Spent</th>
                 <th className="px-4 py-3 font-normal text-right">Try-ons</th>
@@ -511,6 +556,7 @@ export function UsersAdminPanel() {
                   </td>
                   <td className="px-4 py-3 text-right font-medium">{u.creditBalance}</td>
                   <td className="px-4 py-3 text-right text-stone">{u.reportsCount}</td>
+                  <td className="px-4 py-3 text-right text-stone">{u.looksCount}</td>
                   <td className="px-4 py-3 text-right text-stone">
                     {u.purchasesCount}
                     {u.creditsPurchased > 0 && (

@@ -17,6 +17,7 @@ import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { getReportReferencePhotos } from "@/lib/photo-tryon";
 import { translateReportParts } from "@/lib/ai/translate-report";
 import { normalizeLanguage } from "@/lib/languages";
+import { ensureReportLookSet } from "@/lib/data/report-look-sets";
 
 export const maxDuration = 300;
 
@@ -167,6 +168,7 @@ export async function POST(request: Request) {
   const { error: insErr } = await admin.from("looks").insert({
     report_id: reportId,
     user_id: user.id,
+    idx: newIndex,
     context: look.context,
     title: look.title,
     description: look.description,
@@ -202,6 +204,10 @@ export async function POST(request: Request) {
   } catch {
     // Non-fatal — keyword fallback covers Shop the Look.
   }
+
+  await ensureReportLookSet(admin, { reportId, userId: user.id }).catch((err) => {
+    console.error("[look-set] promote extra report look failed", reportId, err);
+  });
 
   let balance: number | null = null;
   if (hasSupabaseAdmin) {

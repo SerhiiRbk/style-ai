@@ -24,12 +24,30 @@ import {
   type Intake,
   type StyleProfile,
   type ReportContent,
+  type Boldness,
 } from "@/lib/style-profile";
+import { composeLookBrief, type LookBriefSeason } from "@/lib/ai/look-brief";
 import { languageInstruction, type ReportLanguage } from "@/lib/languages";
 import {
   reportPalette,
   annotateNearFaceGuidance,
 } from "@/lib/colour-palette";
+// EXPERIMENTAL prompt versioning — see look-prompt.ts for how to remove.
+import {
+  buildLookImagePrompt,
+  resolveImagePromptVersion,
+  type LookPromptParts,
+} from "@/lib/ai/look-prompt";
+import {
+  blazerTypePromptDirective,
+  eyewearPromptDirective,
+  fabricPromptDirective,
+  hatPromptDirective,
+  shoeMaterialPromptDirective,
+  sneakerPromptDirective,
+  tiePromptDirective,
+  tuckPromptDirective,
+} from "@/lib/look-constructor";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -458,8 +476,13 @@ export async function generateExtraLook(opts: {
   note?: string;
   rules?: string[];
   existingTitles?: string[];
+  /** Per-request strictness override — shapes the TEXT brief only (never the image prompt). */
+  boldness?: Boldness;
+  /** Per-request season override — shapes the TEXT brief only (never the image prompt). */
+  season?: LookBriefSeason;
 }): Promise<{ context: string; title: string; description: string; palette: string[] }> {
-  const { intake, profile, context, brief, note, rules, existingTitles } = opts;
+  const { intake, profile, context, brief, note, rules, existingTitles, boldness, season } =
+    opts;
 
   if (!hasAI) {
     const mock = mockReportContent(intake);
@@ -468,6 +491,10 @@ export async function generateExtraLook(opts: {
       mock.looks.find((l) => !used.has(l.title.toLowerCase())) ?? mock.looks[0]!;
     return { ...pick, context };
   }
+
+  // Weave season + strictness into the brief text only — the look IMAGE prompt
+  // (generateLookImage) is untouched by design; see look-brief.ts.
+  const effectiveBrief = composeLookBrief(brief, { boldness, season });
 
   const grounding = rules?.length
     ? `Ground the look in these established style rules:\n- ${rules.join("\n- ")}\n`
@@ -496,7 +523,7 @@ export async function generateExtraLook(opts: {
       `Boldness: ${intake.boldness}. Budget: €${intake.budgetEur.min}–${intake.budgetEur.max}. ` +
       `City climate: ${profile.demographics.climate}.\n` +
       `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
-      `Occasion: ${context}. Styling brief: ${brief}\n` +
+      `Occasion: ${context}. Styling brief: ${effectiveBrief}\n` +
       noteLine +
       avoid +
       grounding +
@@ -516,6 +543,48 @@ export async function generateExtraLook(opts: {
   // Guarantee the returned palette is on-report even if the model drifted; the
   // look image is prompted from this palette.
   return { ...output, palette: snapPaletteToBest(output.palette ?? [], colors.best), context };
+}
+
+const carloNoteSchema = z.object({ note: z.string() });
+
+/**
+ * One short Carlo-voice closing note summarising a just-generated "look set"
+ * (several outfit directions for one occasion, Create-a-Look). Returns the
+ * text stored on `look_sets.carlo_note`. Best-effort in spirit — callers
+ * should treat a thrown error as non-fatal to the set — but this function
+ * itself does not swallow errors; falls back to a deterministic sentence
+ * when AI is unavailable rather than calling the model.
+ */
+export async function carloNoteForSet(opts: {
+  profile: StyleProfile;
+  occasionLabel: string;
+  looks: { title: string }[];
+}): Promise<string> {
+  const { profile, occasionLabel, looks } = opts;
+  const titles = looks.map((l) => l.title.trim()).filter(Boolean);
+
+  if (!hasAI) {
+    return titles.length
+      ? `A set of ${titles.length} looks for ${occasionLabel}, each built from your palette ` +
+          `and profile — pick whichever fits the moment, they all hold together as a set.`
+      : `A set of looks for ${occasionLabel}, each built from your palette and profile.`;
+  }
+
+  const { output } = await generateText({
+    model: env.modelReasoning,
+    output: Output.object({ schema: carloNoteSchema }),
+    prompt:
+      `You are Carlo Valetti, a calm, precise personal stylist, writing a short closing note ` +
+      `for a client who just received a set of looks for "${occasionLabel}".\n\n` +
+      `Style Profile (JSON):\n${JSON.stringify(profile)}\n\n` +
+      `The set contains these looks:\n- ${titles.join("\n- ")}\n\n` +
+      `Write ONE short note in your voice, 2–3 sentences, calm and encouraging, no hype words. ` +
+      `Tie it to the client's colouring/profile and the occasion, and note how the looks work ` +
+      `together as a set (e.g. shared palette, versatility across the occasion). Do not list ` +
+      `the look titles verbatim — refer to the set as a whole. Write in English.`,
+  });
+
+  return output.note.trim();
 }
 
 /**
@@ -543,8 +612,16 @@ export async function generateLookImage(opts: {
   profileReferenceImageUrl?: string;
   /** Pre-rendered outfit photo (e.g. capsule combo) — clothing reference only. */
   outfitReferenceImageUrl?: string;
+  /**
+   * Camera for a companion 3/4 render. Default stays front-facing (unchanged).
+   * When `three_quarter`, pass the current front look as `outfitReferenceImageUrl`
+   * so garments stay locked and only the angle changes.
+   */
+  view?: "front" | "three_quarter";
   /** Deep palette hex to place on the garment nearest the face (contrast/definition). */
   nearFaceHex?: string;
+  /** EXPERIMENTAL — per-run prompt-version override (else `IMAGE_PROMPT_VERSION`). */
+  promptVersion?: string | number | null;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
@@ -557,6 +634,8 @@ export async function generateLookImage(opts: {
       outfitReferenceImageUrl,
       nearFaceHex,
     } = opts;
+    const view = opts.view ?? "front";
+    const isThreeQuarter = view === "three_quarter";
     const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
     const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
     const hasOutfitRef = Boolean(outfitReferenceImageUrl);
@@ -565,6 +644,14 @@ export async function generateLookImage(opts: {
     const hasFull = Boolean(referenceImageUrl);
     const faceImageCount = (hasFace ? 1 : 0) + (hasProfile ? 1 : 0);
     const personImageCount = faceImageCount + (hasFull ? 1 : 0);
+    const eyewearBlock = eyewearPromptDirective(look.description);
+    const tuckBlock = tuckPromptDirective(look.description);
+    const tieBlock = tiePromptDirective(look.description);
+    const hatBlock = hatPromptDirective(look.description);
+    const sneakerBlock = sneakerPromptDirective(look.description);
+    const fabricBlock = fabricPromptDirective(look.description);
+    const blazerTypeBlock = blazerTypePromptDirective(look.description);
+    const shoeMaterialBlock = shoeMaterialPromptDirective(look.description);
     const ordinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"];
     const ordinal = (n: number) => ordinals[n - 1] ?? `${n}TH`;
 
@@ -572,7 +659,10 @@ export async function generateLookImage(opts: {
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
       `${profile.physical.bodyType} build. Soft natural light, neutral studio backdrop, ` +
       `confident relaxed pose, sharp focus, magazine quality. ` +
-      `Vertical 9:16 framing, full body head to shoes visible. `;
+      `Vertical 9:16 framing, full body head to shoes visible. ` +
+      (isThreeQuarter
+        ? `CRITICAL camera: three-quarter view — the body is turned 30 to 45 degrees from the camera, not front-on and not a full profile. Most of the face stays visible. Same studio, lighting and distance as a front look. `
+        : "");
 
     // When catalogue picks exist, THEY define the outfit. The free-text look
     // description is demoted to a styling/mood hint so it stops dominating and
@@ -593,13 +683,25 @@ export async function generateLookImage(opts: {
     // exactly the "grey jumper under every blazer" artefact.
     const layeringRule =
       `Render ONLY the garments listed above — do not add any layer that is not ` +
-      `listed (no extra jumper, knit, waistcoat or shirt). When BOTH a knit and a ` +
-      `shirt are listed, the knit is worn OVER the shirt (only the shirt's collar ` +
-      `and cuffs peek out), never a button-up shirt on top of a knit; a blazer, ` +
-      `overshirt or coat is always the outermost layer. Trousers described as ` +
-      `"suit", "tailored", "dress" trousers or chinos are smooth woven wool or ` +
-      `cotton cloth — NEVER blue or washed denim / jeans, even if the item name ` +
-      `contains the word "washed". `;
+      `listed (no extra jumper, knit, waistcoat or shirt). A knit may be worn on ` +
+      `its own with a bare neckline — only show a shirt under a knit if a shirt is ` +
+      `listed; never add an unlisted shirt beneath a knit. When BOTH a knit and a ` +
+      `shirt are listed, the knit is worn OVER the shirt (a long-sleeve knit over a ` +
+      `long-sleeve shirt so the collar and cuffs peek out), never a button-up shirt ` +
+      `on top of a knit — EXCEPT a roll-neck / turtleneck, which is never worn with ` +
+      `a collared shirt (no collar peeking out of, or sitting on top of, the roll-neck; ` +
+      `the roll-neck replaces the shirt). A blazer, overshirt or coat is always the outermost layer. ` +
+      `If sunglasses or glasses are listed, they are worn ON the face over the eyes — ` +
+      `never held in a hand, tucked in a pocket, hanging from a shirt, or pushed up on the forehead. Match the ` +
+      `named frame exactly: sunglasses may be round, wayfarer, aviator, rectangular, geometric, oval, or wraparound sport; ` +
+      `optical glasses may be round, rectangular, oval, geometric, or rimless (lenses mounted directly to the bridge and temples, no surrounding frame). ` +
+      `When sunglasses are described as mirrored, the lenses are a reflective mirror finish, not a flat dark tint. ` +
+      `If a shirt, oxford, tee, polo or henley is tucked in, the hem sits inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
+      `A necktie is never worn on top of a jumper or knit — it sits on the shirt ` +
+      `under the knit (V-neck or open cardigan) or between jacket lapels. ` +
+      `Trousers described as "suit", "tailored", "dress" trousers or chinos are ` +
+      `smooth woven wool or cotton cloth — NEVER blue or washed denim / jeans, even ` +
+      `if the item name contains the word "washed". `;
 
     // Describe the role of each input image so identity (person photos) and the
     // garments (catalogue product photos) are not confused. Images are attached
@@ -635,9 +737,10 @@ export async function generateLookImage(opts: {
     }
     if (hasOutfitRef) {
       imgIdx += 1;
-      imageRoles +=
-        `The ${ordinal(imgIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
-        `colours and proportions; do not copy the model's face or body. `;
+      imageRoles += isThreeQuarter
+        ? `The ${ordinal(imgIdx)} image is this SAME look photographed from the front — keep this exact person and every garment, colour, fabric, fit and accessory identical. Do not redesign the clothes or change the styling. Only rotate the camera to a 30–45° three-quarter angle. `
+        : `The ${ordinal(imgIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
+          `colours and proportions; do not copy the model's face or body. `;
     }
     if (catalogImageUrls.length) {
       const catalogStart = imgIdx + 1;
@@ -692,7 +795,8 @@ export async function generateLookImage(opts: {
         `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
         `Do NOT change the hair colour. ` +
         `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
-        `what the reference photo shows. `;
+        `what the reference photo shows. ` +
+        eyewearBlock;
     }
     if (!personImageCount && !catalogImageUrls.length) {
       imageRoles = `Do not show identifiable facial features. `;
@@ -719,17 +823,101 @@ export async function generateLookImage(opts: {
         `this tone; other garments keep their described colours. `
       : nearFacePrinciple;
 
-    const prompt =
-      `Editorial, full-length fashion photograph for a premium style report. ` +
+    const preamble =
+      `Editorial, full-length fashion photograph for a premium style report. `;
+    const paletteLine = `Colour palette: ${look.palette.join(", ")}. `;
+
+    // v1 baseline — kept byte-identical so version 1 == the historical prompt.
+    const legacyPrompt =
+      preamble +
       outfitBlock +
       layeringRule +
       footwearBlock +
-      `Colour palette: ${look.palette.join(", ")}. ` +
+      paletteLine +
       nearFaceBlock +
       subject +
       imageRoles +
       faceAnchor +
+      eyewearBlock +
+      tuckBlock +
+      tieBlock +
+      hatBlock +
+      sneakerBlock +
+      fabricBlock +
+      blazerTypeBlock +
+      shoeMaterialBlock +
       NO_TEXT_RULE;
+
+    // EXPERIMENTAL prompt versioning (see look-prompt.ts). v2+ pull the hard
+    // negatives out of the descriptive blocks into one trailing Constraints
+    // group; `layeringOrder` is the positive-only remainder of `layeringRule`.
+    const layeringOrder =
+      `A knit may be worn on its own with a bare neckline — only show a shirt ` +
+      `under a knit if a shirt is listed. When both a knit and a shirt are worn, ` +
+      `a long-sleeve knit goes OVER a long-sleeve shirt (only the shirt's collar ` +
+      `and cuffs peek out); a roll-neck or turtleneck is never worn with a collared ` +
+      `shirt — it replaces the shirt. A blazer, overshirt or coat is always the outermost ` +
+      `layer. Sunglasses or glasses, when listed, sit on the face over the eyes ` +
+      `in the named frame shape. Rimless glasses have no surrounding frame — the lenses attach directly to the bridge and temples. Mirrored sunglasses have reflective mirror lenses, not a flat dark tint. ` +
+      `A shirt, oxford, tee, polo or henley described as tucked in has its hem inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
+      `A necktie is never worn on top of a jumper — it sits on the shirt under a V-neck knit or open cardigan. `;
+    const constraints = [
+      `render EXACTLY the garments listed — do not add any layer that is not ` +
+        `listed (no extra jumper, knit, waistcoat or shirt)`,
+      `trousers described as "suit", "tailored" or "dress" trousers, or chinos, ` +
+        `are smooth woven wool or cotton — never blue or washed denim / jeans, ` +
+        `even if the item name contains the word "washed"`,
+      `no text, letters, words, captions, labels, headings, watermarks, logos, ` +
+        `numbers, arrows or graphic overlays anywhere in the frame`,
+      `sunglasses or glasses listed in the outfit are worn on the face over the ` +
+        `eyes in the named frame shape — not held, not in a pocket, not hanging from clothing, not on the forehead`,
+    ];
+    if (eyewearBlock) {
+      constraints.push(
+        `listed eyewear is mandatory on the face — never render a bare face if sunglasses, glasses or goggles appear in the outfit`,
+      );
+    }
+    if (tuckBlock) {
+      constraints.push(tuckBlock.trim());
+    }
+    if (tieBlock) {
+      constraints.push(tieBlock.trim());
+    }
+    if (hatBlock) {
+      constraints.push(hatBlock.trim());
+    }
+    if (sneakerBlock) {
+      constraints.push(sneakerBlock.trim());
+    }
+    if (fabricBlock) {
+      constraints.push(fabricBlock.trim());
+    }
+    if (blazerTypeBlock) {
+      constraints.push(blazerTypeBlock.trim());
+    }
+    if (shoeMaterialBlock) {
+      constraints.push(shoeMaterialBlock.trim());
+    }
+    if (isThreeQuarter) {
+      constraints.push(
+        `three-quarter camera only — do not redesign garments; keep the front-look clothes identical and only change the angle`,
+      );
+    }
+    const promptParts: LookPromptParts = {
+      legacyPrompt,
+      preamble,
+      subject,
+      outfitBlock,
+      footwearBlock,
+      paletteLine,
+      nearFaceBlock,
+      imageRoles,
+      faceAnchor,
+      layeringOrder,
+      constraints,
+    };
+    const promptVersion = resolveImagePromptVersion(opts.promptVersion);
+    const prompt = buildLookImagePrompt(promptParts, promptVersion);
 
     const content: (
       | { type: "text"; text: string }
@@ -767,7 +955,8 @@ export async function generateLookImage(opts: {
     }
 
     return await renderImage(content);
-  } catch {
+  } catch (err) {
+    console.error("[generateLookImage] render failed", err);
     return null;
   }
 }
@@ -1029,6 +1218,10 @@ export async function generateShoeBoardImage(opts: {
       `a named cognac moccasin stays cognac). Regardless of the names, never render ANY shoe in a ` +
       `novelty or non-leather colour — no pink, coral, peach, lilac, lavender, mint, lime, yellow, ` +
       `turquoise, cyan or neon / fluorescent tones anywhere in the sheet. ` +
+      `Trainer-sole rule: any trainer / sneaker with a coloured upper must have a clean ` +
+      `CONTRASTING midsole and outsole — white, cream, gum or pale grey — not a fully ` +
+      `monochrome shoe where the sole matches the upper, UNLESS the whole trainer is ` +
+      `white / off-white or black (where a tonal sole is natural). ` +
       `Render generic, unbranded shoes — NO brand names, NO logos, NO text of any kind on ` +
       `the shoes, soles or background. Classic, refined menswear silhouettes. ` +
       `The pairs must clearly differ in style and colour exactly as described. ` +
@@ -1117,6 +1310,120 @@ export async function generateCatalogTryOnImage(opts: {
     return await renderImage(content);
   } catch (e) {
     console.error("[tryon] image-pipeline render failed", e);
+    return null;
+  }
+}
+
+/**
+ * Report "try it on me" — CONSERVATIVE studio variant (recreate-in-place).
+ *
+ * The alternative to `generateLookImage` for report try-on: instead of rendering
+ * a fresh editorial scene (which re-synthesises and drifts the face), this edits
+ * the customer's OWN full-length photo. It copies the face, skin tone, hair and
+ * pose verbatim and swaps only the clothing, replacing just the background with a
+ * neutral studio backdrop under soft, even light consistent with the subject. The
+ * face is never relit/recoloured, so identity holds as well as the catalogue
+ * try-on. Selectable per-render (`style: "studio"`); the editorial path and the
+ * catalogue / Shop-a-look flows are unchanged.
+ */
+export async function generateReportTryOnImage(opts: {
+  /** The customer's own full-length photo — the base to recreate. */
+  personImageUrl: string;
+  /** Garment instruction block (catalogue prompt or an "Outfit: …" fallback). */
+  garmentsText: string;
+  /** Optional catalogue product image URLs to reproduce exact garments. */
+  garmentImageUrls?: string[];
+}): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  if (!hasAI) return null;
+  try {
+    const garmentImageUrls = (opts.garmentImageUrls ?? []).filter(
+      (u): u is string => Boolean(u && /^https?:\/\//i.test(u)),
+    );
+    const eyewearBlock = eyewearPromptDirective(opts.garmentsText);
+    const tuckBlock = tuckPromptDirective(opts.garmentsText);
+    const tieBlock = tiePromptDirective(opts.garmentsText);
+    const hatBlock = hatPromptDirective(opts.garmentsText);
+    const sneakerBlock = sneakerPromptDirective(opts.garmentsText);
+    const fabricBlock = fabricPromptDirective(opts.garmentsText);
+    const blazerTypeBlock = blazerTypePromptDirective(opts.garmentsText);
+    const shoeMaterialBlock = shoeMaterialPromptDirective(opts.garmentsText);
+
+    const prompt =
+      `Photorealistic virtual try-on for a style report. ` +
+      `The FIRST image is the customer's own full-length photo. Recreate this ` +
+      `photograph of the SAME person, changing only their CLOTHING and the ` +
+      `BACKGROUND. ` +
+      `Preserve identity perfectly: same face and expression, same facial features ` +
+      `and proportions, same hairstyle and hair colour, same eye colour, same skin ` +
+      `tone, same body shape, same pose and hand positions. Do NOT relight, ` +
+      `recolour, slim, age or restyle the face — copy the face, hair and skin tone ` +
+      `EXACTLY as in the photo, keeping the same light on the face. ` +
+      eyewearBlock +
+      `Replace the background with a clean, seamless neutral studio backdrop ` +
+      `(pale grey / greige) under soft, even, flattering studio light that is ` +
+      `consistent with the subject — but keep the light on the person's face ` +
+      `consistent with the original photo so their features and skin tone are ` +
+      `unchanged. ` +
+      `Output a vertical 9:16 frame, full body head to shoes visible, with the ` +
+      `person standing in the same pose. If the source photo is wider or shorter, ` +
+      `extend the studio wall above the head and below the feet so the canvas ` +
+      `fills 9:16 — continue the same backdrop with natural light falloff and ` +
+      `subtle wall texture. Do NOT letterbox, pillarbox, or pad the image with ` +
+      `flat solid-colour bars. ` +
+      (garmentImageUrls.length
+        ? `The remaining ${garmentImageUrls.length} image(s) show the actual ` +
+          `catalogue garment(s) — reproduce these exact products, not similar ones. `
+        : ``) +
+      opts.garmentsText +
+      `Layering — follow strictly: outerwear (jackets, blazers, coats, overshirts, ` +
+      `cardigans) is always worn OVER a base layer, never on bare skin. A knit may ` +
+      `be worn on its own; only show a shirt under a knit if a shirt is listed, and ` +
+      `then a long-sleeve knit goes OVER a long-sleeve shirt (collar and cuffs peek ` +
+      `out), never a shirt over a knit. A necktie is never worn on top of a jumper — ` +
+      `it sits on the shirt under a V-neck knit or open cardigan. A roll-neck or turtleneck is never worn with ` +
+      `a collared shirt — no collar peeking out of or sitting on the roll-neck; the ` +
+      `roll-neck replaces the shirt. If sunglasses or glasses are listed, they are ` +
+      `worn ON the face over the eyes — never held in a hand, in a pocket, hanging ` +
+      `from a shirt, or pushed onto the forehead — in the named frame shape. Rimless glasses ` +
+      `have lenses mounted directly to the bridge and temples with no surrounding frame. ` +
+      `Mirrored sunglasses have reflective mirror lenses, not a flat dark tint. ` +
+      `If a shirt, oxford, tee, polo or henley is tucked in, the hem sits inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
+      `Trousers described as "suit", "tailored" or ` +
+      `"dress" trousers or chinos are smooth woven wool or cotton — never blue or ` +
+      `washed denim, even if the item name contains "washed". ` +
+      `Reproduce each garment faithfully — exact colour, fabric texture, pattern, ` +
+      `buttons, zips, stitching, fit and proportions — with natural drape and ` +
+      `realistic shadows. The result must look like a real photograph of the SAME ` +
+      `      person, same face, now wearing the new outfit against a clean studio ` +
+      `backdrop.` +
+      eyewearBlock +
+      tuckBlock +
+      tieBlock +
+      hatBlock +
+      sneakerBlock +
+      fabricBlock +
+      blazerTypeBlock +
+      shoeMaterialBlock +
+      NO_TEXT_RULE;
+
+    const content: (
+      | { type: "text"; text: string }
+      | { type: "image"; image: URL }
+    )[] = [
+      { type: "text", text: prompt },
+      { type: "image", image: new URL(opts.personImageUrl) },
+    ];
+    for (const url of garmentImageUrls) {
+      try {
+        content.push({ type: "image", image: new URL(url) });
+      } catch {
+        // Skip malformed product URLs rather than failing the whole render.
+      }
+    }
+
+    return await renderImage(content);
+  } catch (e) {
+    console.error("[tryon] studio try-on render failed", e);
     return null;
   }
 }

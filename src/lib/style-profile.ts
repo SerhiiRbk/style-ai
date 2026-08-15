@@ -14,6 +14,7 @@ export const Boldness = z.enum([
   "experimental",
   "statement",
 ]);
+export type Boldness = z.infer<typeof Boldness>;
 export const ColorSeason = z.enum([
   "winter",
   "spring",

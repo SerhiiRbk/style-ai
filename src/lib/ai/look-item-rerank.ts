@@ -86,6 +86,12 @@ function buildRerankPrompt(
     `grey or charcoal), and formality of this look. Use -1 only when every ` +
     `candidate is clearly wrong (wrong category, clashing colour, or unrelated ` +
     `item).\n` +
+    `Outfit-level colour: do NOT pair a shirt and trousers in the same chromatic ` +
+    `family (green, red, orange, yellow, pink, purple) unless the look description ` +
+    `itself names that family on BOTH pieces. Sage + olive is a clash. Teal is ` +
+    `blue, not green — a sage shirt wants teal, navy, stone, or cream trousers, ` +
+    `not another green. Navy-on-navy and neutrals (grey, brown, black, white) are ` +
+    `fine.\n` +
     `Set similarPick=true when the pick is the closest available option but not a ` +
     `strong colour or style match.\n` +
     `For every pick with candidateIndex >= 0 also write "why" — ONE calm sentence ` +

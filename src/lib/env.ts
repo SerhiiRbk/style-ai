@@ -94,8 +94,9 @@ export const env = {
   coloursDailyCap: intEnv(process.env.COLOURS_DAILY_CAP, 2500),
   // Generous per-IP hourly limit — carrier NAT puts many real users behind one IP.
   coloursIpHourlyCap: intEnv(process.env.COLOURS_IP_HOURLY_CAP, 25),
-  // Polite per-anon daily limit — a soft-gate trigger, not a spend defence.
-  coloursAnonDailyCap: intEnv(process.env.COLOURS_ANON_DAILY_CAP, 10),
+  // Strict per-anon daily limit — a soft-gate trigger pushing registration,
+  // not a spend defence (the global cap is that).
+  coloursAnonDailyCap: intEnv(process.env.COLOURS_ANON_DAILY_CAP, 5),
 
   // A0 cost fuse for the anonymous "Shop your colours" recommendations, whose
   // cost is one LLM rerank per run (~$0.015). Same shape as the colours caps.
@@ -109,6 +110,22 @@ export const env = {
   // Per-anon (per-browser) daily cap on palette/lead emails — anti-spam layer
   // on top of the per-IP cap; fails OPEN. A person only needs their palette once.
   leadAnonDailyCap: intEnv(process.env.LEAD_ANON_DAILY_CAP, 5),
+
+  // A0 cost fuse for the batch "Create a Look" set endpoint (/api/look-set).
+  // Create-a-Look generates IMAGES (Gemini ≈ $0.04/look), unlike the colours/
+  // looks reranks above (~$0.015/run text) — roughly 3x the unit cost and N
+  // renders per request — so it gets its own set-count fuse.
+  // Global daily cap on sets, all users — the real spend control, fails CLOSED.
+  // ~$0.05/look x ~6 looks/set avg -> 150 sets/day ~= $45/day worst-case.
+  lookSetDailyCap: intEnv(process.env.LOOK_SET_DAILY_CAP, 150),
+  // Per-user daily cap for users with purchased credits (purchased>0) — fails
+  // OPEN (never blocks a paying user on limiter flake). A 100-credit whale
+  // does ~5 sets/day, well under this.
+  lookSetUserCapPaid: intEnv(process.env.LOOK_SET_USER_CAP_PAID, 15),
+  // Per-user daily cap for signup-bonus-only users (purchased===0) — fails
+  // OPEN; a pure bug backstop since bonus credits already bound these users
+  // below this cap.
+  lookSetUserCapFree: intEnv(process.env.LOOK_SET_USER_CAP_FREE, 3),
 
   // Salt for hashing IPs before they become rate-limit bucket keys (IP is PII).
   rateLimitSalt: process.env.RATE_LIMIT_SALT ?? "",
@@ -149,7 +166,10 @@ export const hasSupabase = Boolean(env.supabaseUrl && env.supabaseAnonKey);
 export const hasSupabaseAdmin = Boolean(
   env.supabaseUrl && env.supabaseServiceKey,
 );
-export const hasAI = Boolean(env.aiGatewayKey);
+/** AI Gateway: static key and/or Vercel OIDC (deployments + `vercel env pull`). */
+export const hasAI = Boolean(
+  env.aiGatewayKey || process.env.VERCEL_OIDC_TOKEN,
+);
 export const hasResend = Boolean(env.resendApiKey);
 export const hasVTON = Boolean(env.falKey);
 export const hasCatalogImportKey = Boolean(env.catalogImportKey);

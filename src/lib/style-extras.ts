@@ -2350,9 +2350,24 @@ const GARMENT_CATEGORY: Record<string, string> = {
   denim: "Trousers", slacks: "Trousers", pants: "Trousers",
   loafers: "Footwear", loafer: "Footwear", boots: "Footwear", boot: "Footwear", sneakers: "Footwear",
   sneaker: "Footwear", derbies: "Footwear", derby: "Footwear", oxfords: "Footwear", brogues: "Footwear",
-  chelsea: "Footwear", shoes: "Footwear", trainers: "Footwear", sandals: "Footwear",
+  "oxford shoes": "Footwear", "oxford shoe": "Footwear",
+  chelsea: "Footwear", chukka: "Footwear",
+  hiking: "Footwear", "hiking boots": "Footwear", trail: "Footwear", "trail boots": "Footwear",
+  shoes: "Footwear", trainers: "Footwear", sandals: "Footwear", sandal: "Footwear",
   belt: "Accessories", watch: "Accessories", scarf: "Accessories", tie: "Accessories",
-  sunglasses: "Accessories", hat: "Accessories", cap: "Accessories", gloves: "Accessories",
+  necktie: "Accessories", bowtie: "Accessories", "bow tie": "Accessories",
+  sunglasses: "Accessories", glasses: "Accessories", eyeglasses: "Accessories",
+  goggles: "Accessories", "ski goggles": "Accessories",
+  hat: "Accessories", cap: "Accessories", beanie: "Accessories",
+  fedora: "Accessories", trilby: "Accessories", borsalino: "Accessories",
+  boater: "Accessories", bucket: "Accessories", panama: "Accessories",
+  "bucket hat": "Accessories", "panama hat": "Accessories",
+  "baseball cap": "Accessories", baseball: "Accessories",
+  kartuz: "Accessories", kepi: "Accessories", "peaked cap": "Accessories",
+  "cowboy hat": "Accessories", cowboy: "Accessories",
+  newsboy: "Accessories", "newsboy cap": "Accessories", "flat cap": "Accessories",
+  "fisherman beanie": "Accessories", "slouch beanie": "Accessories",
+  gloves: "Accessories",
   bag: "Accessories", socks: "Accessories",
 };
 
@@ -2374,6 +2389,7 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   heather: { family: "grey", shade: "mid" },
   dove: { family: "grey", shade: "light" }, ash: { family: "grey", shade: "light" },
   silver: { family: "grey", shade: "light" }, pearl: { family: "grey", shade: "light" },
+  mirrored: { family: "grey", shade: "light" }, mirror: { family: "grey", shade: "light" },
   charcoal: { family: "grey", shade: "dark" }, slate: { family: "grey", shade: "dark" },
   graphite: { family: "grey", shade: "dark" }, anthracite: { family: "grey", shade: "dark" },
   asphalt: { family: "grey", shade: "dark" }, gunmetal: { family: "grey", shade: "dark" },
@@ -2397,6 +2413,7 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   beige: { family: "brown", shade: "light" }, sand: { family: "brown", shade: "light" },
   stone: { family: "brown", shade: "light" }, oat: { family: "brown", shade: "light" },
   oatmeal: { family: "brown", shade: "light" },
+  greige: { family: "brown", shade: "light" }, mushroom: { family: "brown", shade: "light" },
   chocolate: { family: "brown", shade: "dark" }, chestnut: { family: "brown", shade: "dark" },
   espresso: { family: "brown", shade: "dark" },
   // green
@@ -2407,9 +2424,13 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   red: { family: "red" },   rust: { family: "red" }, terracotta: { family: "red" }, copper: { family: "red" },
   burgundy: { family: "red", shade: "dark" }, maroon: { family: "red", shade: "dark" },
   // other hues
-  pink: { family: "pink" }, purple: { family: "purple" }, orange: { family: "orange" },
+  pink: { family: "pink" }, purple: { family: "purple" }, plum: { family: "purple" },
+  mauve: { family: "purple" }, aubergine: { family: "purple" },
+  orange: { family: "orange" },
   amber: { family: "orange" }, ochre: { family: "yellow" },
   yellow: { family: "yellow" }, mustard: { family: "yellow" },
+  gold: { family: "yellow" }, golden: { family: "yellow" },
+  tortoise: { family: "brown" }, havana: { family: "brown" },
 };
 
 /** Synonyms used to verify a catalogue title matches the parsed garment. */
@@ -2445,13 +2466,23 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   belt: ["belt"],
   watch: ["watch"],
   scarf: ["scarf"],
-  tie: ["tie"],
-  sunglasses: ["sunglasses", "sunglass"],
+  tie: ["tie", "necktie", "bow tie", "bowtie"],
+  necktie: ["tie", "necktie"],
+  bowtie: ["bow tie", "bowtie", "tie"],
+  hat: ["hat", "cap", "beanie", "fedora"],
+  cap: ["cap", "hat"],
+  beanie: ["beanie", "watch cap"],
+  fedora: ["fedora", "hat"],
+  sunglasses: ["sunglasses", "sunglass", "goggles"],
+  glasses: ["glasses", "eyeglasses", "spectacles"],
+  eyeglasses: ["glasses", "eyeglasses", "spectacles"],
+  goggles: ["goggles", "ski goggles", "sunglasses"],
 };
 
 /** Standalone lightness modifiers; override any shade implied by the hue word. */
 const SHADE_WORDS: Record<string, Shade> = {
   light: "light", pale: "light", soft: "light", dusty: "light", off: "light",
+  muted: "light",
   mid: "mid", medium: "mid", midtone: "mid",
   dark: "dark", deep: "dark",
 };
@@ -2473,7 +2504,9 @@ function normalizeCompoundColors(text: string): string {
     .replace(/slate\s+blue/g, "slateblue")
     .replace(/powder\s+blue/g, "powderblue")
     .replace(/ice\s+blue/g, "iceblue")
-    .replace(/steel\s+blue/g, "steelblue");
+    .replace(/steel\s+blue/g, "steelblue")
+    .replace(/tortoise\s*shell/g, "tortoise")
+    .replace(/yellow\s+gold/g, "gold");
 }
 
 function parseHexRgb(hex: string): [number, number, number] | null {
@@ -2601,6 +2634,11 @@ function parseColorTokens(text: string): { families: Set<string>; shade?: Shade 
   // An explicit lightness word always wins, regardless of token order, so
   // "soft slate blue" reads light even though "slate" alone implies dark.
   return { families, shade: modShade ?? hueShade };
+}
+
+/** Hue families named in free text (product colour, title, or look clause). */
+export function colorFamilies(text: string): Set<string> {
+  return parseColorTokens(text).families;
 }
 
 /**

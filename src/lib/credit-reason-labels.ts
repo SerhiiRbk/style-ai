@@ -9,6 +9,7 @@ export const CREDIT_REASON_LABELS: Record<string, string> = {
   premium_addon: "Grooming unlock / extra previews",
   look_extra: "Extra look generated",
   look_regen: "Look re-render",
+  look_three_quarter: "Look 3/4 view",
   admin_grant: "Admin grant",
 };
 

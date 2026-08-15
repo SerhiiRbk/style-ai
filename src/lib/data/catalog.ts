@@ -16,6 +16,7 @@ import { marketForCurrency } from "@/lib/currency";
 import {
   CASUAL_FOOTWEAR_RE,
   colorMatchScore,
+  colorFamilies,
   decomposeLook,
   garmentTitleMatchScore,
   isBlazerGarment,
@@ -76,6 +77,19 @@ const HEX_RE = /^#?[0-9a-f]{6}$/i;
  */
 const NON_BUTTON_SHIRT_RE =
   /\b(t-?shirts?|tees?|tank|vest\s*tops?|camisole|polo|henley|sweat(?:er|shirt)?|hoodie|jersey)\b/i;
+
+/**
+ * Short-sleeve pieces mis-filed under "Knitwear" (e.g. a "Short Sleeve
+ * Sweatshirt") read as a t-shirt when layered over a long-sleeve shirt — the
+ * cuffs poke out awkwardly. A layering knit needs long sleeves, so the knit slot
+ * drops these unless nothing else matches.
+ */
+export const SHORT_SLEEVE_KNIT_RE =
+  /\b(short[- ]?sleeve|sleeveless|t-?shirts?|tees?|tank|vest\s*tops?)\b/i;
+
+/** Roll-neck / turtleneck — worn instead of a shirt, never with one. */
+export const TURTLENECK_KNIT_RE =
+  /\b(turtlenecks?|turtle\s*necks?|roll[- ]?necks?|rollnecks?|polo\s*necks?)\b/i;
 
 /**
  * Swatch colour for a shopping item — the display uses this as a CSS colour, so
@@ -154,8 +168,12 @@ const MIN_LOOK_PICK_SCORE = 0.42;
 /** Bumped when look-matching heuristics change — triggers background refresh.
  *  v7: re-derive look_items after looks gained a stable `idx` ordering, so
  *  per-look products realign with the rendered look on legacy reports.
- *  v8: mid-grey shade scoring + tailored-blazer filter (drop knit/zip "sport blazers"). */
-export const LOOK_MATCH_VERSION = 8;
+ *  v8: mid-grey shade scoring + tailored-blazer filter (drop knit/zip "sport blazers").
+ *  v9: drop short-sleeve knits/sweatshirts from the Knitwear slot (they layer as a
+ *  tee over a long-sleeve shirt) — mirrors the matchShopping knit filter.
+ *  v10: reject shirt+trousers in the same chromatic family (sage shirt + olive
+ *  trousers) unless the look itself asked for that monochrome. */
+export const LOOK_MATCH_VERSION = 10;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
@@ -331,12 +349,19 @@ export async function matchShopping(
         category === "Shirts"
           ? " Button-down collared shirts: oxford, poplin, linen or flannel shirts — not t-shirts, tees, tank tops, polos or sweatshirts."
           : "";
+      // Knitwear is a layering piece (worn over a shirt or on its own), so it
+      // must be long-sleeve — steer away from short-sleeve sweatshirts/tees.
+      const knitBias =
+        category === "Knitwear"
+          ? " Long-sleeve knitwear: jumpers, sweaters, crewnecks, roll-necks or cardigans — not short-sleeve sweatshirts, t-shirts, tank tops or sleeveless knits."
+          : "";
       const query =
         `${category} in ${palette}; ${profile.colorSeason} palette; ` +
         `${profile.goals.join(", ")}; ${profile.physical.bodyType} build; ` +
         styleIntentPhrase(profile.boldness) +
         footwearBias +
-        shirtBias;
+        shirtBias +
+        knitBias;
       const { embedding } = await embed({ model: env.embedModel, value: query });
       const data = await rpcMatchProducts(sb, {
         query_embedding: embedding,
@@ -398,6 +423,16 @@ export async function matchShopping(
           (r) => !NON_BUTTON_SHIRT_RE.test(r.title),
         );
         if (buttonShirts.length) ranked = buttonShirts;
+      }
+
+      // A layering knit must be long-sleeve — hard-drop short-sleeve sweatshirts
+      // / tees that slipped into Knitwear (they render as a tee over the shirt).
+      // Falls back to the full pool only if no long-sleeve knit was matched.
+      if (category === "Knitwear") {
+        const longSleeve = ranked.filter(
+          (r) => !SHORT_SLEEVE_KNIT_RE.test(r.title),
+        );
+        if (longSleeve.length) ranked = longSleeve;
       }
 
       // A report should never surface two pairs of sandals: cap open/casual
@@ -578,6 +613,111 @@ function toRerankCandidate(row: MatchRow, category: string): RerankGarmentSlot["
   };
 }
 
+/** Chromatic hues that read as a uniform when shirt and trousers share them.
+ *  Neutrals (grey/brown/black/white) and navy-on-navy (blue) are allowed. */
+const CHROMATIC_CLASH_FAMILIES = new Set([
+  "green",
+  "red",
+  "orange",
+  "yellow",
+  "pink",
+  "purple",
+]);
+
+function itemColorText(item: {
+  colorName?: string;
+  title: string;
+}): string {
+  return `${item.colorName ?? ""} ${item.title}`;
+}
+
+function rowColorText(row: MatchRow): string {
+  return `${row.color ?? ""} ${formatCatalogProductTitle(row.brand, row.title)}`;
+}
+
+function sharedChromaticFamily(aText: string, bText: string): string | null {
+  const a = colorFamilies(aText);
+  const b = colorFamilies(bText);
+  for (const fam of a) {
+    if (CHROMATIC_CLASH_FAMILIES.has(fam) && b.has(fam)) return fam;
+  }
+  return null;
+}
+
+function lookAskedForFamilyOnBoth(
+  shirt: LookGarment,
+  trousers: LookGarment,
+  family: string,
+): boolean {
+  const shirtAsked = colorFamilies(`${shirt.color ?? ""} ${shirt.clause}`);
+  const trousersAsked = colorFamilies(
+    `${trousers.color ?? ""} ${trousers.clause}`,
+  );
+  return shirtAsked.has(family) && trousersAsked.has(family);
+}
+
+/**
+ * Sage shirt + olive trousers (both `green`) looks like a uniform. Re-pick the
+ * trousers from the ranked pool unless the look itself named that family on
+ * both pieces. Keep the original pair only when every alternative also clashes.
+ */
+function resolveShirtTrouserClash(
+  items: ShoppingItem[],
+  matchSlots: GarmentMatchSlot[],
+  matchByKey: Map<string, MatchRow[]>,
+  profile: StyleProfile,
+  goal: string,
+): ShoppingItem[] {
+  const shirtIdx = items.findIndex((i) => i.category === "Shirts");
+  const trouserIdx = items.findIndex((i) => i.category === "Trousers");
+  if (shirtIdx < 0 || trouserIdx < 0) return items;
+
+  const shirt = items[shirtIdx];
+  const trousers = items[trouserIdx];
+  const clash = sharedChromaticFamily(
+    itemColorText(shirt),
+    itemColorText(trousers),
+  );
+  if (!clash) return items;
+
+  const shirtSlot = matchSlots.find((s) => s.garment.category === "Shirts");
+  const trouserSlot = matchSlots.find((s) => s.garment.category === "Trousers");
+  if (!shirtSlot || !trouserSlot) return items;
+  if (lookAskedForFamilyOnBoth(shirtSlot.garment, trouserSlot.garment, clash)) {
+    return items;
+  }
+
+  const usedIds = new Set(
+    items
+      .map((i) => i.productId)
+      .filter((id): id is string => Boolean(id) && id !== trousers.productId),
+  );
+  const shirtText = itemColorText(shirt);
+  const alt = rankMatchRows(
+    matchByKey.get(trouserSlot.matchKey) ?? [],
+    trouserSlot.garment.color,
+    trouserSlot.garment.garment,
+    profile.boldness,
+  )
+    .sort((a, b) => b.score - a.score)
+    .find((r) => {
+      if (usedIds.has(r.row.id)) return false;
+      if (r.garmentScore < 0.5 && r.colorScore < 0.45) return false;
+      return !sharedChromaticFamily(shirtText, rowColorText(r.row));
+    });
+  if (!alt) return items;
+
+  const next = [...items];
+  next[trouserIdx] = shoppingItemFromMatch(
+    alt.row,
+    trouserSlot.garment,
+    profile,
+    goal,
+    alt.similarPick,
+  );
+  return next;
+}
+
 function shoppingItemFromMatch(
   row: MatchRow,
   g: LookGarment,
@@ -636,6 +776,16 @@ async function matchItemsForLook(
     if (matchSlots.length >= 6) break;
     if (usedCategories.has(g.category)) continue;
     const matchKey = matchKeyFor(g);
+    // Knitwear is a layering piece — drop short-sleeve knits/sweatshirts so a
+    // short-sleeve knit never gets layered over a long-sleeve shirt (mirrors
+    // matchShopping). Falls back to the full pool if that would empty it.
+    if (g.category === "Knitwear") {
+      const pool = matchByKey.get(matchKey) ?? [];
+      const longSleeve = pool.filter((r) => !SHORT_SLEEVE_KNIT_RE.test(r.title));
+      if (longSleeve.length && longSleeve.length !== pool.length) {
+        matchByKey.set(matchKey, longSleeve);
+      }
+    }
     const rows = topRankedCandidates(
       matchByKey.get(matchKey) ?? [],
       g.color,
@@ -690,7 +840,15 @@ async function matchItemsForLook(
         ),
       );
     }
-    if (items.length) return items;
+    if (items.length) {
+      return resolveShirtTrouserClash(
+        items,
+        matchSlots,
+        matchByKey,
+        profile,
+        goal,
+      );
+    }
   }
 
   for (const matchSlot of matchSlots) {
@@ -714,7 +872,13 @@ async function matchItemsForLook(
     );
   }
 
-  return items;
+  return resolveShirtTrouserClash(
+    items,
+    matchSlots,
+    matchByKey,
+    profile,
+    goal,
+  );
 }
 
 /** Per-look matched products, keyed by the look's index in content.looks. */

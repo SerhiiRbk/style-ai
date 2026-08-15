@@ -3,6 +3,8 @@ export function navigationMessage(path: string | null): string {
   if (!path) return "One moment…";
   if (path.startsWith("/reports")) return "Gathering your reports…";
   if (path.startsWith("/report/")) return "Opening your style report…";
+  if (path.startsWith("/looks/")) return "Opening your look…";
+  if (path.startsWith("/looks")) return "Gathering your looks…";
   if (path.startsWith("/start")) return "Preparing your atelier…";
   if (path.startsWith("/catalog")) return "Curating the collection…";
   if (path.startsWith("/pricing")) return "Loading pricing…";
@@ -15,6 +17,7 @@ export const WORKING = {
   outfit: "Rendering your outfit…",
   look: "Composing a new look on your photo…",
   regen: "Refining this preview…",
+  construct: "Redrawing this look…",
   report: "Crafting your report…",
   upload: "Uploading your photo…",
 } as const;

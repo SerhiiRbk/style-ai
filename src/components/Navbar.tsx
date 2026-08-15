@@ -6,10 +6,11 @@ import { NavErrorBoundary } from "./NavErrorBoundary";
 import { ValettiLogo } from "./brand/ValettiLogo";
 import { COLOURS_ENABLED } from "@/lib/colours-feature";
 import {
+  NavDesktopAnonLeadLink,
   NavDesktopAuthLinks,
-  NavDesktopReportsLink,
   NavCreditPill,
 } from "./NavSession";
+import { MyStyleMenu } from "./MyStyleMenu";
 
 const primaryLinks: NavLink[] = [
   { href: "/shop-a-look", label: "Shop a look" },
@@ -18,13 +19,13 @@ const primaryLinks: NavLink[] = [
   { href: "/#sample", label: "Sample" },
 ];
 
-// "Colours" is anon-only (hidden once signed in — logged-in users reach it via
-// Account → "My Colours"), so it lives here rather than in `primaryLinks`.
+// Anon-only extras. Colours is listed first so the mobile menu can hoist it
+// ahead of the product links; signed-in users reach Colours via My Style.
 const secondaryLinks: NavLink[] = [
-  { href: "/report/valetti-style-prospect-demo", label: "Demo", hideWhenAuthed: true },
   ...(COLOURS_ENABLED
     ? [{ href: "/colours", label: "Colours", hideWhenAuthed: true } as NavLink]
     : []),
+  { href: "/report/valetti-style-prospect-demo", label: "Demo", hideWhenAuthed: true },
 ];
 
 const navLinkClass =
@@ -50,7 +51,8 @@ export function Navbar() {
         <NavErrorBoundary fallback={<NavbarFallback />}>
           <div className="hidden min-w-0 flex-1 items-center justify-end gap-4 lg:flex xl:gap-5">
             <div className="flex items-center gap-4 xl:gap-5">
-              <NavDesktopReportsLink />
+              <NavDesktopAnonLeadLink />
+              <MyStyleMenu />
               {primaryLinks.map((l) => (
                 <Link key={l.href} href={l.href} className={navLinkClass}>
                   {l.label}
@@ -90,6 +92,11 @@ function NavbarFallback() {
   return (
     <div className="ml-auto flex items-center gap-4">
       <div className="hidden items-center gap-4 sm:flex">
+        {COLOURS_ENABLED ? (
+          <Link href="/colours" className={navLinkClass}>
+            Colours
+          </Link>
+        ) : null}
         {primaryLinks.map((l) => (
           <Link key={l.href} href={l.href} className={navLinkClass}>
             {l.label}

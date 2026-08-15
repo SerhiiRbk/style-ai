@@ -19,7 +19,7 @@ function readAnonId(): string | null {
  * than the colours 768px edge because full-length/crop judgements need a bit
  * more detail, but still well under the route's size cap.
  */
-async function fileToDataUrl(file: File): Promise<string> {
+export async function fileToDataUrl(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file, {
     imageOrientation: "from-image",
   }).catch(() => createImageBitmap(file));

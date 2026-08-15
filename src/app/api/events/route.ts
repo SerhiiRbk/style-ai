@@ -19,6 +19,8 @@ const ALLOWED = new Set([
   "filter_changed",
   "shop_colours_click",
   "tryon_gate_click",
+  "look_set_started",
+  "look_set_shared",
 ]);
 
 function clientIp(request: Request): string {
