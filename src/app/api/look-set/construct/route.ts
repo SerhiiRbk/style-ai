@@ -22,6 +22,7 @@ import {
 import { resolveLookSetReferencePhotos } from "@/lib/photo-tryon";
 import {
   coerceBlazerType,
+  coerceConstructorColor,
   coerceEyewearShape,
   coerceHatType,
   coerceLensColor,
@@ -117,7 +118,7 @@ export async function POST(request: Request) {
     slots.push({
       category: slot.category,
       garment,
-      color: slot.color.trim().toLowerCase(),
+      color: coerceConstructorColor(slot.color),
       on: slot.on === false ? false : true,
       ...(isEyewear(garment)
         ? { shape: coerceEyewearShape(garment, rawShape || undefined) }

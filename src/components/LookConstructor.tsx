@@ -17,8 +17,11 @@ import {
   coerceOuterwearFabric,
   coerceShoeMaterial,
   coerceTieType,
+  coerceConstructorColor,
   colorsForSlot,
+  colorHex,
   colorLabel,
+  isCustomHex,
   composeLookDescription,
   isBlazer,
   isEyewear,
@@ -673,6 +676,40 @@ function SlotEditor({
               </button>
             );
           })}
+          <label
+            title={
+              isCustomHex(slot.color) ? `Custom ${slot.color}` : "Custom colour"
+            }
+            className={`relative h-7 w-7 shrink-0 overflow-hidden rounded-full border transition-shadow ${
+              isCustomHex(slot.color)
+                ? "border-ink ring-2 ring-brass ring-offset-2 ring-offset-paper"
+                : "border-black/10 hover:border-ink/30"
+            }`}
+          >
+            <input
+              type="color"
+              value={
+                /^#[0-9a-f]{6}$/i.test(colorHex(slot.color))
+                  ? colorHex(slot.color)
+                  : "#6b4a2f"
+              }
+              onChange={(e) => onColor(coerceConstructorColor(e.target.value))}
+              aria-label="Custom colour"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+            <span
+              className="block h-full w-full"
+              style={
+                isCustomHex(slot.color)
+                  ? { backgroundColor: slot.color }
+                  : {
+                      backgroundImage:
+                        "conic-gradient(#E24B4B, #F5C542, #5BC45B, #3DB8C9, #4A6FE3, #C44BC4, #E24B4B)",
+                    }
+              }
+            />
+            <span className="sr-only">Custom colour</span>
+          </label>
         </div>
       </div>
       {onLensColor ? (

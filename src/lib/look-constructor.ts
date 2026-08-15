@@ -101,7 +101,9 @@ export const CONSTRUCTOR_COLORS: ConstructorColorOption[] = [
   { id: "beige", label: "Beige", hex: "#D4C4A8" },
   { id: "sand", label: "Sand", hex: "#D9C7A3" },
   { id: "khaki", label: "Khaki", hex: "#9A8B5C" },
+  { id: "lightbrown", label: "Light brown", hex: "#A3784F" },
   { id: "brown", label: "Brown", hex: "#6B4A2F" },
+  { id: "darkbrown", label: "Dark brown", hex: "#3A2416" },
   { id: "burgundy", label: "Burgundy", hex: "#6B2D3C" },
   { id: "plum", label: "Plum", hex: "#7A6577" },
   { id: "rose", label: "Rose", hex: "#C29AA0" },
@@ -152,6 +154,11 @@ const COLOR_ALIASES: Record<string, string> = {
   steel: "silver",
   tortoiseshell: "tortoise",
   havana: "tortoise",
+  tan: "lightbrown",
+  cognac: "brown",
+  chocolate: "darkbrown",
+  espresso: "darkbrown",
+  chestnut: "brown",
 };
 
 const SHADE_ONLY = new Set([
@@ -168,9 +175,35 @@ const SHADE_ONLY = new Set([
   "off",
 ]);
 
+export function isCustomHex(color?: string): boolean {
+  return /^#[0-9a-f]{6}$/i.test(color ?? "");
+}
+
+export function normalizeHex(color?: string): string | null {
+  const m = (color ?? "").trim().match(/^#?([0-9a-f]{6})$/i);
+  return m ? `#${m[1]!.toLowerCase()}` : null;
+}
+
+/** Snap an exact named-swatch hex back to its id; otherwise keep the custom hex. */
+export function coerceConstructorColor(raw: string): string {
+  const hex = normalizeHex(raw);
+  if (!hex) return raw.trim().toLowerCase();
+  const named = [...CONSTRUCTOR_COLORS, ...FRAME_FINISHES].find(
+    (c) => c.hex.toLowerCase() === hex,
+  );
+  return named?.id ?? hex;
+}
+
 function lastColorToken(color: string | null): string {
   if (!color) return "";
-  const words = color.toLowerCase().split(/\s+/).filter(Boolean);
+  const hex = color.match(/#([0-9a-f]{6})\b/i);
+  if (hex) return `#${hex[1]!.toLowerCase()}`;
+  const words = color
+    .toLowerCase()
+    .replace(/light[\s-]+brown/g, "lightbrown")
+    .replace(/dark[\s-]+brown/g, "darkbrown")
+    .split(/\s+/)
+    .filter(Boolean);
   for (let i = words.length - 1; i >= 0; i--) {
     const w = words[i]!;
     const mapped = COLOR_ALIASES[w] ?? w;
@@ -267,6 +300,7 @@ export function canonicalGarment(raw: string, category: string): string {
 }
 
 export function colorHex(colorId: string): string {
+  if (isCustomHex(colorId)) return colorId.toLowerCase();
   return COLOR_BY_ID.get(colorId)?.hex ?? LENS_BY_ID.get(colorId)?.hex ?? "#8A8A86";
 }
 
@@ -275,7 +309,15 @@ export function lensColorHex(lensColor: string): string {
 }
 
 export function colorLabel(colorId: string): string {
+  if (isCustomHex(colorId)) return "Custom";
   return COLOR_BY_ID.get(colorId)?.label ?? colorId;
+}
+
+function colorBriefPrefix(color?: string): string {
+  if (!color || color === "mirrored") return "";
+  if (color === "lightbrown") return "light brown ";
+  if (color === "darkbrown") return "dark brown ";
+  return `${color} `;
 }
 
 export function typeLabel(category: string, garment: string): string {
@@ -301,7 +343,13 @@ export function colorsForSlot(
     garment === "sunglasses"
       ? [...CONSTRUCTOR_COLORS, ...FRAME_FINISHES]
       : CONSTRUCTOR_COLORS;
-  if (!currentColor || base.some((c) => c.id === currentColor)) return base;
+  if (
+    !currentColor ||
+    base.some((c) => c.id === currentColor) ||
+    isCustomHex(currentColor)
+  ) {
+    return base;
+  }
   return [
     { id: currentColor, label: colorLabel(currentColor), hex: colorHex(currentColor) },
     ...base,
@@ -498,7 +546,7 @@ function fabricWord(material?: string): string {
 }
 
 function outerwearBrief(slot: ConstructorSlot): string {
-  const color = slot.color ? `${slot.color} ` : "";
+  const color = colorBriefPrefix(slot.color);
   const fabric = fabricWord(slot.material);
   if (isBlazer(slot.garment)) {
     return `${color}${fabric}${blazerCutBrief(slot.blazerType)}blazer`;
@@ -509,7 +557,7 @@ function outerwearBrief(slot: ConstructorSlot): string {
 
 function footwearBrief(slot: ConstructorSlot): string {
   if (isSneaker(slot.garment)) return sneakerBrief(slot);
-  const color = slot.color ? `${slot.color} ` : "";
+  const color = colorBriefPrefix(slot.color);
   const finish = fabricWord(slot.material);
   const type = typeLabel(slot.category, slot.garment).toLowerCase();
   return `${color}${finish}${type}`;
@@ -578,7 +626,9 @@ const WARM_SNEAKER_UPPER = new Set([
   "sand",
   "stone",
   "khaki",
+  "lightbrown",
   "brown",
+  "darkbrown",
   "rust",
   "burgundy",
   "taupe",
@@ -589,11 +639,18 @@ const WARM_SNEAKER_UPPER = new Set([
 export function sneakerSoleColor(upperColor?: string): "white" | "cream" {
   const id = (upperColor ?? "").toLowerCase();
   if (LIGHT_SNEAKER_UPPER.has(id) || WARM_SNEAKER_UPPER.has(id)) return "cream";
+  if (isCustomHex(id)) {
+    const r = parseInt(id.slice(1, 3), 16);
+    const g = parseInt(id.slice(3, 5), 16);
+    const b = parseInt(id.slice(5, 7), 16);
+    const luminance = (r * 299 + g * 587 + b * 114) / 1000;
+    if (luminance > 186 || r > b + 20) return "cream";
+  }
   return "white";
 }
 
 function sneakerBrief(slot: ConstructorSlot): string {
-  const color = slot.color ? `${slot.color} ` : "";
+  const color = colorBriefPrefix(slot.color);
   const finish = slot.material || "leather";
   const sole = sneakerSoleColor(slot.color);
   return `${color}${finish} sneakers with a ${sole} rubber sole`;
@@ -603,9 +660,14 @@ function sneakerBrief(slot: ConstructorSlot): string {
 export function sneakerPromptDirective(description: string): string {
   if (!/\bsneakers?\b|\btrainers?\b/i.test(description)) return "";
   const named = description.match(
-    /\b(white|ivory|cream|dove|greige|camel|beige|sand|stone|khaki|brown|rust|burgundy|taupe|mushroom|navy|black|charcoal|grey|gray|olive|green|blue|teal)\s+(?:(?:leather|suede|nubuck)\s+)?(?:sneakers?|trainers?)\b/i,
+    /\b(white|ivory|cream|dove|greige|camel|beige|sand|stone|khaki|lightbrown|light[\s-]+brown|darkbrown|dark[\s-]+brown|brown|rust|burgundy|taupe|mushroom|navy|black|charcoal|grey|gray|olive|green|blue|teal)\s+(?:(?:leather|suede|nubuck)\s+)?(?:sneakers?|trainers?)\b/i,
   );
-  const sole = sneakerSoleColor(named?.[1]);
+  const sole = sneakerSoleColor(
+    named?.[1]
+      ?.toLowerCase()
+      .replace(/light[\s-]+brown/g, "lightbrown")
+      .replace(/dark[\s-]+brown/g, "darkbrown"),
+  );
   const finishMatch = description.match(
     /\b(nubuck|suede|leather)\s+(?:sneakers?|trainers?)\b/i,
   );
@@ -680,7 +742,7 @@ export function canonicalHatType(raw: string): string {
 }
 
 function hatBrief(slot: ConstructorSlot): string {
-  const color = slot.color ? `${slot.color} ` : "";
+  const color = colorBriefPrefix(slot.color);
   switch (slot.hatType) {
     case "baseball":
       return `${color}baseball cap worn on the head`;
@@ -831,7 +893,7 @@ export function canonicalTieType(raw: string): string {
 }
 
 function tieBrief(slot: ConstructorSlot): string {
-  const color = slot.color ? `${slot.color} ` : "";
+  const color = colorBriefPrefix(slot.color);
   switch (slot.tieType) {
     case "bow":
       return `${color}bow tie tied at the collar`;
@@ -854,7 +916,7 @@ function isClosedKnit(garment: string): boolean {
 }
 
 function knitBriefWithTie(slot: ConstructorSlot): string {
-  const color = slot.color ? `${slot.color} ` : "";
+  const color = colorBriefPrefix(slot.color);
   if (slot.garment === "cardigan") {
     return `${color}cardigan worn open over the shirt and tie`;
   }
@@ -975,7 +1037,7 @@ export function canonicalEyewearShape(raw: string, garment?: string): string {
 }
 
 function eyewearBrief(slot: ConstructorSlot): string {
-  const frame = slot.color && slot.color !== "mirrored" ? `${slot.color} ` : "";
+  const frame = colorBriefPrefix(slot.color);
   const lenses =
     slot.garment === "sunglasses" && slot.lensColor
       ? slot.lensColor === "mirrored"
@@ -1071,7 +1133,11 @@ export function isAllowedConstructorSlot(slot: ConstructorSlot): boolean {
   if (!types) return false;
   const typeOk =
     types.some((t) => t.id === slot.garment) || Boolean(slot.garment.trim());
-  const colorOk = !slot.color || COLOR_BY_ID.has(slot.color) || slot.color.length <= 24;
+  const colorOk =
+    !slot.color ||
+    COLOR_BY_ID.has(slot.color) ||
+    isCustomHex(slot.color) ||
+    slot.color.length <= 24;
   const shapeOk =
     !slot.shape ||
     !isEyewear(slot.garment) ||
@@ -1138,7 +1204,7 @@ export function composeLookDescription(slots: ConstructorSlot[]): string {
         return knitBriefWithTie(s);
       }
       const type = typeLabel(s.category, s.garment).toLowerCase();
-      const base = s.color ? `${s.color} ${type}` : type;
+      const base = `${colorBriefPrefix(s.color)}${type}`.trim();
       if (isTuckable(s.garment) && s.tuck === "in") {
         return `${base} tucked in`;
       }
@@ -1175,7 +1241,10 @@ export function slotsFromLook(title: string, description: string): ConstructorSl
     ) {
       garment = "blazer";
     }
-    const color = lastColorToken(g.color);
+    const hexInClause = g.clause.match(/#([0-9a-f]{6})\b/i);
+    const color = hexInClause
+      ? `#${hexInClause[1]!.toLowerCase()}`
+      : lastColorToken(g.color);
     const key = `${g.category}:${garment}`;
     if (seen.has(key)) continue;
     seen.add(key);
