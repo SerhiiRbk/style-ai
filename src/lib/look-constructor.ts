@@ -9,8 +9,14 @@ export type ConstructorSlot = {
   on?: boolean;
   /** Eyewear frame shape (round, wayfarer, …). Ignored for other garments. */
   shape?: string;
+  /** Sunglasses lens tint. Optical glasses stay clear — no lens colour. */
+  lensColor?: string;
   /** Shirt / tee hem: tucked into the trousers, or worn untucked. */
   tuck?: "in" | "out";
+  /** Necktie cut: classic, grenadine, knitted, skinny, bow. */
+  tieType?: string;
+  /** Headwear cut: baseball, fedora, beanie, … */
+  hatType?: string;
 };
 
 export type ConstructorTypeOption = {
@@ -65,6 +71,7 @@ export const CONSTRUCTOR_TYPES: Record<string, ConstructorTypeOption[]> = {
     { id: "scarf", label: "Scarf" },
     { id: "sunglasses", label: "Sunglasses" },
     { id: "glasses", label: "Glasses" },
+    { id: "hat", label: "Hat" },
   ],
 };
 
@@ -100,16 +107,29 @@ export const CONSTRUCTOR_COLORS: ConstructorColorOption[] = [
   { id: "taupe", label: "Taupe", hex: "#B49C7E" },
 ];
 
-/** Sunglasses-only swatch: frame stays dark, lenses render as a mirror finish. */
-export const MIRROR_COLOR: ConstructorColorOption = {
-  id: "mirrored",
-  label: "Mirrored",
-  hex: "#9EC4D4",
-};
+/** Sunglasses frame finishes that are not ordinary cloth colours. */
+export const FRAME_FINISHES: ConstructorColorOption[] = [
+  { id: "gold", label: "Gold", hex: "#C9A227" },
+  { id: "silver", label: "Silver", hex: "#C0C4C8" },
+  { id: "tortoise", label: "Tortoise", hex: "#6B3A1F" },
+];
+
+/** Sunglasses lens tints. Optical glasses stay clear. */
+export const LENS_COLORS: ConstructorColorOption[] = [
+  { id: "grey", label: "Grey", hex: "#4A4A4A" },
+  { id: "brown", label: "Brown", hex: "#5C3A1E" },
+  { id: "green", label: "Green", hex: "#3D5C3A" },
+  { id: "blue", label: "Blue", hex: "#2A4A6B" },
+  { id: "amber", label: "Amber", hex: "#C47A2A" },
+  { id: "black", label: "Black", hex: "#1A1A1A" },
+  { id: "mirrored", label: "Mirrored", hex: "#9EC4D4" },
+];
 
 const COLOR_BY_ID = new Map(
-  [...CONSTRUCTOR_COLORS, MIRROR_COLOR].map((c) => [c.id, c]),
+  [...CONSTRUCTOR_COLORS, ...FRAME_FINISHES].map((c) => [c.id, c]),
 );
+
+const LENS_BY_ID = new Map(LENS_COLORS.map((c) => [c.id, c]));
 
 /** Tokens from look briefs that map onto a constructor colour id. */
 const COLOR_ALIASES: Record<string, string> = {
@@ -121,6 +141,12 @@ const COLOR_ALIASES: Record<string, string> = {
   mauve: "plum",
   aubergine: "plum",
   mirror: "mirrored",
+  golden: "gold",
+  gilt: "gold",
+  chrome: "silver",
+  steel: "silver",
+  tortoiseshell: "tortoise",
+  havana: "tortoise",
 };
 
 const SHADE_ONLY = new Set([
@@ -196,6 +222,32 @@ const CANONICAL_GARMENT: Record<string, string> = {
   goggles: "sunglasses",
   "ski goggles": "sunglasses",
   "sport glasses": "sunglasses",
+  necktie: "tie",
+  bowtie: "tie",
+  "bow tie": "tie",
+  cap: "hat",
+  hat: "hat",
+  beanie: "hat",
+  fedora: "hat",
+  trilby: "hat",
+  borsalino: "hat",
+  boater: "hat",
+  bucket: "hat",
+  panama: "hat",
+  "bucket hat": "hat",
+  "panama hat": "hat",
+  "baseball cap": "hat",
+  baseball: "hat",
+  kartuz: "hat",
+  kepi: "hat",
+  "peaked cap": "hat",
+  "cowboy hat": "hat",
+  cowboy: "hat",
+  newsboy: "hat",
+  "newsboy cap": "hat",
+  "flat cap": "hat",
+  "fisherman beanie": "hat",
+  "slouch beanie": "hat",
 };
 
 export function canonicalGarment(raw: string, category: string): string {
@@ -207,7 +259,11 @@ export function canonicalGarment(raw: string, category: string): string {
 }
 
 export function colorHex(colorId: string): string {
-  return COLOR_BY_ID.get(colorId)?.hex ?? "#8A8A86";
+  return COLOR_BY_ID.get(colorId)?.hex ?? LENS_BY_ID.get(colorId)?.hex ?? "#8A8A86";
+}
+
+export function lensColorHex(lensColor: string): string {
+  return LENS_BY_ID.get(lensColor)?.hex ?? colorHex(lensColor);
 }
 
 export function colorLabel(colorId: string): string {
@@ -235,7 +291,7 @@ export function colorsForSlot(
 ): ConstructorColorOption[] {
   const base =
     garment === "sunglasses"
-      ? [...CONSTRUCTOR_COLORS, MIRROR_COLOR]
+      ? [...CONSTRUCTOR_COLORS, ...FRAME_FINISHES]
       : CONSTRUCTOR_COLORS;
   if (!currentColor || base.some((c) => c.id === currentColor)) return base;
   return [
@@ -244,12 +300,262 @@ export function colorsForSlot(
   ];
 }
 
+export function lensColorsForSlot(currentLens?: string): ConstructorColorOption[] {
+  if (!currentLens || LENS_BY_ID.has(currentLens)) return LENS_COLORS;
+  return [
+    {
+      id: currentLens,
+      label: lensColorLabel(currentLens),
+      hex: colorHex(currentLens),
+    },
+    ...LENS_COLORS,
+  ];
+}
+
+export function defaultLensColor(): string {
+  return "grey";
+}
+
+export function coerceLensColor(lensColor?: string): string {
+  if (lensColor && LENS_BY_ID.has(lensColor)) return lensColor;
+  return defaultLensColor();
+}
+
+export function lensColorLabel(lensColor?: string): string {
+  return LENS_BY_ID.get(lensColor ?? "")?.label ?? lensColor ?? "";
+}
+
+export function canonicalLensColor(raw: string): string {
+  const t = raw.toLowerCase();
+  if (/\bmirrored\b|\bmirror(?:ed)?\s+lenses?\b/.test(t)) return "mirrored";
+  if (/\b(?:g-?15|green)\s+lenses?\b/.test(t) || /\bgreen-tinted\b/.test(t)) {
+    return "green";
+  }
+  if (/\bamber\s+lenses?\b|\byellow\s+lenses?\b/.test(t)) return "amber";
+  if (/\bbrown\s+lenses?\b|\bamber-brown\s+lenses?\b/.test(t)) return "brown";
+  if (/\b(?:grey|gray|smoke)\s+lenses?\b/.test(t)) return "grey";
+  if (/\bblue\s+lenses?\b/.test(t)) return "blue";
+  if (/\b(?:black|dark)\s+lenses?\b/.test(t)) return "black";
+  const named = t.match(/\bwith\s+([a-z]+)\s+lenses?\b/);
+  if (named?.[1]) {
+    const mapped = COLOR_ALIASES[named[1]] ?? named[1];
+    if (LENS_BY_ID.has(mapped)) return mapped;
+  }
+  return "";
+}
+
 export function isSlotEnabled(slot: ConstructorSlot): boolean {
   return slot.on !== false;
 }
 
 export function isEyewear(garment: string): boolean {
   return garment === "sunglasses" || garment === "glasses";
+}
+
+export function isSunglasses(garment: string): boolean {
+  return garment === "sunglasses";
+}
+
+export function isTie(garment: string): boolean {
+  return garment === "tie";
+}
+
+export function isHat(garment: string): boolean {
+  return garment === "hat";
+}
+
+export function isSneaker(garment: string): boolean {
+  return garment === "sneakers";
+}
+
+const LIGHT_SNEAKER_UPPER = new Set([
+  "white",
+  "ivory",
+  "cream",
+  "dove",
+  "greige",
+]);
+const WARM_SNEAKER_UPPER = new Set([
+  "camel",
+  "beige",
+  "sand",
+  "stone",
+  "khaki",
+  "brown",
+  "rust",
+  "burgundy",
+  "taupe",
+  "mushroom",
+]);
+
+/** White sole on cool/dark uppers; cream on warm or already-light uppers. */
+export function sneakerSoleColor(upperColor?: string): "white" | "cream" {
+  const id = (upperColor ?? "").toLowerCase();
+  if (LIGHT_SNEAKER_UPPER.has(id) || WARM_SNEAKER_UPPER.has(id)) return "cream";
+  return "white";
+}
+
+function sneakerBrief(slot: ConstructorSlot): string {
+  const color = slot.color ? `${slot.color} ` : "";
+  const sole = sneakerSoleColor(slot.color);
+  return `${color}leather sneakers with a ${sole} rubber sole`;
+}
+
+/** Prompt override so sneakers keep a contrasting light sole, not a monochrome shoe. */
+export function sneakerPromptDirective(description: string): string {
+  if (!/\bsneakers?\b|\btrainers?\b/i.test(description)) return "";
+  const named = description.match(
+    /\b(white|ivory|cream|dove|greige|camel|beige|sand|stone|khaki|brown|rust|burgundy|taupe|mushroom|navy|black|charcoal|grey|gray|olive|green|blue|teal)\s+(?:leather\s+)?(?:sneakers?|trainers?)\b/i,
+  );
+  const sole = sneakerSoleColor(named?.[1]);
+  return (
+    `CRITICAL sneakers: the trainers have a coloured UPPER and a CONTRASTING ` +
+    `${sole} rubber midsole and outsole — not a fully monochrome shoe where the ` +
+    `sole matches the upper. A tonal sole is only acceptable if the whole trainer ` +
+    `is already white, ivory or cream. `
+  );
+}
+
+export const HAT_TYPES: ConstructorTypeOption[] = [
+  { id: "cap", label: "Cap" },
+  { id: "baseball", label: "Baseball" },
+  { id: "kartuz", label: "Kartuz" },
+  { id: "bucket", label: "Bucket" },
+  { id: "boater", label: "Boater" },
+  { id: "kepi", label: "Kepi" },
+  { id: "peaked", label: "Peaked cap" },
+  { id: "fedora", label: "Fedora" },
+  { id: "trilby", label: "Trilby" },
+  { id: "borsalino", label: "Borsalino" },
+  { id: "beanie", label: "Beanie" },
+  { id: "fisherman", label: "Fisherman" },
+  { id: "slouch", label: "Slouch beanie" },
+  { id: "cowboy", label: "Cowboy" },
+  { id: "newsboy", label: "Newsboy" },
+];
+
+export function defaultHatType(): string {
+  return "baseball";
+}
+
+export function coerceHatType(hatType?: string): string {
+  if (hatType && HAT_TYPES.some((t) => t.id === hatType)) return hatType;
+  return defaultHatType();
+}
+
+export function hatTypeLabel(hatType?: string): string {
+  return HAT_TYPES.find((t) => t.id === hatType)?.label ?? "";
+}
+
+export function canonicalHatType(raw: string): string {
+  const t = raw.toLowerCase();
+  if (/\bcowboy\b|\bstetson\b/.test(t)) return "cowboy";
+  if (/\bborsalino\b/.test(t)) return "borsalino";
+  if (/\btrilby\b/.test(t)) return "trilby";
+  if (/\bfedora\b/.test(t)) return "fedora";
+  if (/\bboater\b|\bcanotier\b|\bskimmer\b/.test(t)) return "boater";
+  if (/\bbucket\b|\bpanama\b/.test(t)) return "bucket";
+  if (/\bfisherman\b/.test(t)) return "fisherman";
+  if (/\bslouch\b|\bbaggy\s+beanie\b|\bsack\s+beanie\b/.test(t)) return "slouch";
+  if (/\bbeanie\b|\bwatch\s+cap\b/.test(t)) return "beanie";
+  if (/\bnewsboy\b|\bbaker\s*boy\b|\beight[\s-]?panel\b|\bвосьмиклин/.test(t)) {
+    return "newsboy";
+  }
+  if (/\bkartuz\b|\bкартуз/.test(t)) return "kartuz";
+  if (/\bkepi\b|\bкеппи/.test(t)) return "kepi";
+  if (/\bpeaked\s+cap\b|\bofficer'?s?\s+cap\b|\bfуражк/.test(t)) return "peaked";
+  if (/\bbaseball\b|\bdad\s+hat\b|\bsnapback\b/.test(t)) return "baseball";
+  if (/\bflat\s+cap\b|\bivy\s+cap\b/.test(t)) return "cap";
+  if (/\bcap\b/.test(t) && !/\bhat\b/.test(t)) return "cap";
+  return "";
+}
+
+function hatBrief(slot: ConstructorSlot): string {
+  const color = slot.color ? `${slot.color} ` : "";
+  switch (slot.hatType) {
+    case "baseball":
+      return `${color}baseball cap worn on the head`;
+    case "kartuz":
+      return `${color}kartuz (soft rounded crown, short visor) worn on the head`;
+    case "bucket":
+      return `${color}bucket hat worn on the head`;
+    case "boater":
+      return `${color}straw boater (flat crown, flat brim) worn on the head`;
+    case "kepi":
+      return `${color}English kepi (cylindrical crown, short visor) worn on the head`;
+    case "peaked":
+      return `${color}peaked cap (structured crown, visor) worn on the head`;
+    case "fedora":
+      return `${color}fedora worn on the head`;
+    case "trilby":
+      return `${color}trilby (short snapped brim) worn on the head`;
+    case "borsalino":
+      return `${color}Borsalino felt fedora worn on the head`;
+    case "beanie":
+      return `${color}knit beanie worn on the head`;
+    case "fisherman":
+      return `${color}fisherman beanie (short cuff, close fit) worn on the head`;
+    case "slouch":
+      return `${color}slouch beanie (baggy, extra length) worn on the head`;
+    case "cowboy":
+      return `${color}cowboy hat worn on the head`;
+    case "newsboy":
+      return `${color}newsboy cap (eight-panel, short brim) worn on the head`;
+    case "cap":
+      return `${color}soft cap worn on the head`;
+    default:
+      return `${color}hat worn on the head`;
+  }
+}
+
+/** Prompt override so a listed hat renders as the named cut, on the head. */
+export function hatPromptDirective(description: string): string {
+  if (
+    !/\bhat\b|\bcap\b|\bbeanie\b|\bfedora\b|\btrilby\b|\bborsalino\b|\bboater\b|\bbucket\b|\bkepi\b|\bkartuz\b|\bcowboy\b|\bnewsboy\b/i.test(
+      description,
+    )
+  ) {
+    return "";
+  }
+  const kind = canonicalHatType(description);
+  const cut =
+    kind === "baseball"
+      ? `It is a BASEBALL CAP — structured crown and a firm curved visor at the front. `
+      : kind === "kartuz"
+        ? `It is a KARTUZ — a soft rounded crown with a short visor, not a baseball cap. `
+        : kind === "bucket"
+          ? `It is a BUCKET HAT — a soft downward brim all the way around, no visor. `
+          : kind === "boater"
+            ? `It is a STRAW BOATER — flat stiff crown and a flat oval brim. `
+            : kind === "kepi"
+              ? `It is an ENGLISH KEPI — a short cylindrical crown and a small visor. `
+              : kind === "peaked"
+                ? `It is a PEAKED CAP — a tall structured crown and a firm visor (officer / military style). `
+                : kind === "fedora"
+                  ? `It is a FEDORA — pinched crown and a medium brim, worn level. `
+                  : kind === "trilby"
+                    ? `It is a TRILBY — a fedora-like crown with a short brim snapped down in front. `
+                    : kind === "borsalino"
+                      ? `It is a BORSALINO — a refined felt fedora with a generous brim. `
+                      : kind === "beanie"
+                        ? `It is a KNIT BEANIE — close-fitting, no brim or visor. `
+                        : kind === "fisherman"
+                          ? `It is a FISHERMAN BEANIE — short folded cuff, close to the skull, no slouch. `
+                          : kind === "slouch"
+                            ? `It is a SLOUCH BEANIE — extra length, baggy at the crown, not a tight watch cap. `
+                            : kind === "cowboy"
+                              ? `It is a COWBOY HAT — high dented crown and a wide brim. `
+                              : kind === "newsboy"
+                                ? `It is a NEWSBOY / eight-panel cap — puffy paneled crown and a short stiff brim. `
+                                : kind === "cap"
+                                  ? `It is a soft CAP with a short visor — not a baseball cap and not a brimmed hat. `
+                                  : "";
+  return (
+    `CRITICAL headwear: the outfit lists a hat or cap — it MUST be worn ON the ` +
+    `head, sitting naturally, clearly visible. Do not omit it, do not hold it, ` +
+    `and do not replace it with a different hat style. ` +
+    cut
+  );
 }
 
 const TUCKABLE = new Set(["shirt", "oxford", "tee", "polo", "henley"]);
@@ -276,6 +582,122 @@ export function canonicalTuck(raw: string): "in" | "out" | "" {
     return "in";
   }
   return "";
+}
+
+export const TIE_TYPES: ConstructorTypeOption[] = [
+  { id: "classic", label: "Classic" },
+  { id: "grenadine", label: "Grenadine" },
+  { id: "knitted", label: "Knitted" },
+  { id: "skinny", label: "Skinny" },
+  { id: "bow", label: "Bow tie" },
+];
+
+export function defaultTieType(): string {
+  return "classic";
+}
+
+export function coerceTieType(tieType?: string): string {
+  if (tieType && TIE_TYPES.some((t) => t.id === tieType)) return tieType;
+  return defaultTieType();
+}
+
+export function tieTypeLabel(tieType?: string): string {
+  return TIE_TYPES.find((t) => t.id === tieType)?.label ?? "";
+}
+
+export function canonicalTieType(raw: string): string {
+  const t = raw.toLowerCase();
+  if (/\bbow(?:\s*-?\s*tie)?\b/.test(t)) return "bow";
+  if (/\bgrenadine\b/.test(t)) return "grenadine";
+  if (/\bknitted\b/.test(t) || /\bknit(?:ted)?\s+tie\b/.test(t) || /\bsquare[\s-]?end\b/.test(t)) {
+    return "knitted";
+  }
+  if (/\bskinny\b/.test(t) || /\bslim\s+tie\b/.test(t) || /\bnarrow\s+tie\b/.test(t)) {
+    return "skinny";
+  }
+  if (/\bsilk\s+tie\b/.test(t) || /\bpointed\b/.test(t) || /\bclassic\s+tie\b/.test(t)) {
+    return "classic";
+  }
+  return "";
+}
+
+function tieBrief(slot: ConstructorSlot): string {
+  const color = slot.color ? `${slot.color} ` : "";
+  switch (slot.tieType) {
+    case "bow":
+      return `${color}bow tie tied at the collar`;
+    case "grenadine":
+      return `${color}grenadine silk tie (open-weave texture, pointed blade) knotted at the collar`;
+    case "knitted":
+      return `${color}knitted tie with a square end, knotted at the collar`;
+    case "skinny":
+      return `${color}skinny silk tie (narrow blade) knotted at the collar`;
+    case "classic":
+      return `${color}silk tie with a pointed blade, knotted at the collar`;
+    default:
+      return `${color}tie`;
+  }
+}
+
+/** Closed knits hide a tie; with a tie they must render as a V-neck over the shirt. */
+function isClosedKnit(garment: string): boolean {
+  return garment === "crewneck" || garment === "turtleneck";
+}
+
+function knitBriefWithTie(slot: ConstructorSlot): string {
+  const color = slot.color ? `${slot.color} ` : "";
+  if (slot.garment === "cardigan") {
+    return `${color}cardigan worn open over the shirt and tie`;
+  }
+  return `${color}V-neck jumper worn over the shirt and tie`;
+}
+
+/** Knit / jumper in the outfit — not a "knitted tie". */
+function descriptionHasKnit(description: string): boolean {
+  return /\b(crewnecks?|crew\s*necks?|jumpers?|sweaters?|pullovers?|knitwear|hoodies?|cardigans?|roll-?necks?|turtlenecks?|v-?necks?)\b/i.test(
+    description,
+  );
+}
+
+/** Prompt override so a listed tie renders as the named cut, not a generic blade. */
+export function tiePromptDirective(description: string): string {
+  if (!/\btie\b|\bnecktie\b|\bbow\s*tie\b/i.test(description)) return "";
+  const kind = canonicalTieType(description);
+  const cut =
+    kind === "bow"
+      ? `It is a BOW TIE — a bow at the collar, not a long hanging blade. `
+      : kind === "grenadine"
+        ? `It is a GRENADINE silk tie: open-weave textured silk, pointed blade. `
+        : kind === "knitted"
+          ? `It is a KNITTED tie with a square (not pointed) end. `
+          : kind === "skinny"
+            ? `It is a SKINNY silk tie — a narrow blade, not a standard width. `
+            : kind === "classic"
+              ? `It is a classic silk necktie with a pointed blade. `
+              : "";
+  const hasCardigan = /\bcardigans?\b/i.test(description);
+  const hasClosedKnit =
+    descriptionHasKnit(description) &&
+    !hasCardigan &&
+    !/\bv-?necks?\b/i.test(description);
+  const layering = descriptionHasKnit(description)
+    ? hasCardigan && !hasClosedKnit
+      ? `The cardigan is worn OVER the shirt and tie. The tie lies flat on the ` +
+        `SHIRT placket and is visible in the cardigan opening — NEVER on top of ` +
+        `the knit. `
+      : `A closed crewneck or roll-neck cannot carry a tie on its surface. Wear ` +
+        `a V-neck knit OVER the shirt and tie. The tie is knotted at the shirt ` +
+        `collar and lies on the shirt, visible only in the V — NEVER draped or ` +
+        `painted on top of the jumper. `
+    : `The tie is knotted at the shirt collar and clearly visible (between ` +
+      `jacket lapels if a jacket is worn). `;
+  return (
+    `CRITICAL neckwear: the outfit lists a tie — it MUST be knotted at the shirt ` +
+    `collar. ` +
+    layering +
+    `Do not omit it, do not drape it untied, and do not replace it with a scarf. ` +
+    cut
+  );
 }
 
 /** Sunglasses shapes. Legacy `ski` slots coerce to sport. */
@@ -344,22 +766,26 @@ export function canonicalEyewearShape(raw: string, garment?: string): string {
 }
 
 function eyewearBrief(slot: ConstructorSlot): string {
-  const mirrored = slot.color === "mirrored";
-  const color = !mirrored && slot.color ? `${slot.color} ` : "";
-  const lenses = mirrored ? " with mirrored lenses" : "";
+  const frame = slot.color && slot.color !== "mirrored" ? `${slot.color} ` : "";
+  const lenses =
+    slot.garment === "sunglasses" && slot.lensColor
+      ? slot.lensColor === "mirrored"
+        ? " with mirrored lenses"
+        : ` with ${slot.lensColor} lenses`
+      : "";
   const shape = slot.shape || "";
   if (slot.garment === "sunglasses") {
     if (shape === "sport") {
-      return `${color}wraparound sport sunglasses${lenses} worn on the face`;
+      return `${frame}wraparound sport sunglasses${lenses} worn on the face`;
     }
     const named = shape ? `${shapeLabel(shape).toLowerCase()} ` : "";
-    return `${color}${named}sunglasses${lenses} worn on the face`;
+    return `${frame}${named}sunglasses${lenses} worn on the face`;
   }
   if (shape === "rimless") {
-    return `${color}rimless glasses worn on the face (lenses mounted to bridge/temples, no surrounding frame)`;
+    return `${frame}rimless glasses worn on the face (lenses mounted to bridge/temples, no surrounding frame)`;
   }
   const named = shape ? `${shapeLabel(shape).toLowerCase()} ` : "";
-  return `${color}${named}glasses worn on the face`;
+  return `${frame}${named}glasses worn on the face`;
 }
 
 /** Prompt override so face-lock on the reference photo cannot drop listed eyewear. */
@@ -367,9 +793,17 @@ export function eyewearPromptDirective(description: string): string {
   if (!/\bsunglasses\b|\bglasses\b|\bgoggles\b|\beyewear\b/i.test(description)) {
     return "";
   }
-  const mirrored = /\bmirrored\b/i.test(description)
-    ? `If the outfit names mirrored lenses, the sunglasses lenses are a reflective ` +
-      `mirror finish (silver, chrome or coloured flash) — not a flat dark tint. `
+  const isSun = /\bsunglasses\b|\bgoggles\b/i.test(description);
+  const lensKind = canonicalLensColor(description);
+  const lensNote = !isSun
+    ? `Optical glasses have CLEAR lenses — do not tint them. Only the frame has colour. `
+    : lensKind === "mirrored"
+      ? `The sunglasses LENSES are a reflective mirror finish (silver, chrome or coloured flash) — not a flat dark tint. `
+      : lensKind
+        ? `The sunglasses LENSES are a ${lensKind} tint — not the same colour as the frame unless the brief says so. `
+        : `Sunglasses have a distinct lens tint (classic grey or brown if unnamed) — do not paint the lenses the same colour as the frame. `;
+  const frameNote = isSun
+    ? `The FRAME has its own colour (including gold, silver or tortoise when named) — metal or acetate as implied. `
     : "";
   return (
     `CRITICAL eyewear: the outfit lists sunglasses, glasses or goggles — they MUST ` +
@@ -377,7 +811,8 @@ export function eyewearPromptDirective(description: string): string {
     `in the named frame. Adding listed eyewear is required clothing, not an identity ` +
     `change: copy the face from the reference, THEN put the eyewear on that face. ` +
     `A bare face with the eyewear omitted is wrong. ` +
-    mirrored
+    frameNote +
+    lensNote
   );
 }
 
@@ -415,6 +850,9 @@ export function nextAccessorySlot(
     ...(isEyewear(next.id)
       ? { shape: defaultEyewearShape(next.id) }
       : {}),
+    ...(isSunglasses(next.id) ? { lensColor: defaultLensColor() } : {}),
+    ...(isTie(next.id) ? { tieType: defaultTieType() } : {}),
+    ...(isHat(next.id) ? { hatType: defaultHatType() } : {}),
   };
 }
 
@@ -434,16 +872,39 @@ export function isAllowedConstructorSlot(slot: ConstructorSlot): boolean {
   const tuckOk =
     !slot.tuck ||
     (isTuckable(slot.garment) && (slot.tuck === "in" || slot.tuck === "out"));
-  return typeOk && colorOk && shapeOk && tuckOk;
+  const tieOk =
+    !slot.tieType ||
+    (isTie(slot.garment) && TIE_TYPES.some((t) => t.id === slot.tieType));
+  const lensOk =
+    !slot.lensColor ||
+    (isSunglasses(slot.garment) &&
+      (LENS_BY_ID.has(slot.lensColor) || slot.lensColor.length <= 24));
+  const hatOk =
+    !slot.hatType ||
+    (isHat(slot.garment) && HAT_TYPES.some((t) => t.id === slot.hatType));
+  return typeOk && colorOk && shapeOk && tuckOk && tieOk && lensOk && hatOk;
 }
 
 /** Build the look description the image model will render. */
 export function composeLookDescription(slots: ConstructorSlot[]): string {
-  return slots
-    .filter(isSlotEnabled)
+  const enabled = slots.filter(isSlotEnabled);
+  const hasTie = enabled.some((s) => isTie(s.garment));
+  return enabled
     .map((s) => {
       if (isEyewear(s.garment)) {
         return eyewearBrief(s);
+      }
+      if (isTie(s.garment)) {
+        return tieBrief(s);
+      }
+      if (isHat(s.garment)) {
+        return hatBrief(s);
+      }
+      if (isSneaker(s.garment)) {
+        return sneakerBrief(s);
+      }
+      if (hasTie && (s.category === "Knitwear" || isClosedKnit(s.garment))) {
+        return knitBriefWithTie(s);
       }
       const type = typeLabel(s.category, s.garment).toLowerCase();
       const base = s.color ? `${s.color} ${type}` : type;
@@ -486,12 +947,26 @@ export function slotsFromLook(title: string, description: string): ConstructorSl
       : "";
     const shape = parsed ? coerceEyewearShape(garment, parsed) : "";
     const tuck = isTuckable(garment) ? canonicalTuck(g.clause) : "";
+    const tieType = isTie(garment) ? canonicalTieType(g.clause) : "";
+    const hatType = isHat(garment) ? canonicalHatType(g.clause) : "";
+    let frameColor = color;
+    let lensColor = "";
+    if (isSunglasses(garment)) {
+      lensColor = canonicalLensColor(`${description} ${g.clause}`);
+      if (frameColor === "mirrored") {
+        if (!lensColor) lensColor = "mirrored";
+        frameColor = "black";
+      }
+    }
     slots.push({
       category: g.category,
       garment,
-      color,
+      color: frameColor,
       ...(shape ? { shape } : {}),
       ...(tuck ? { tuck } : {}),
+      ...(tieType ? { tieType } : {}),
+      ...(hatType ? { hatType } : {}),
+      ...(lensColor ? { lensColor } : {}),
     });
   }
   // Every look needs a footwear slot so colour/style can be edited even when
@@ -525,6 +1000,9 @@ export function slotsEqual(a: ConstructorSlot[], b: ConstructorSlot[]): boolean 
       s.color === b[i]?.color &&
       (s.shape || "") === (b[i]?.shape || "") &&
       (s.tuck || "") === (b[i]?.tuck || "") &&
+      (s.tieType || "") === (b[i]?.tieType || "") &&
+      (s.lensColor || "") === (b[i]?.lensColor || "") &&
+      (s.hatType || "") === (b[i]?.hatType || "") &&
       isSlotEnabled(s) === isSlotEnabled(b[i]!),
   );
 }

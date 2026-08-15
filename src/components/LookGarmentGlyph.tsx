@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
-import { colorHex, type ConstructorSlot } from "@/lib/look-constructor";
+import {
+  colorHex,
+  lensColorHex,
+  sneakerSoleColor,
+  type ConstructorSlot,
+} from "@/lib/look-constructor";
 
 function isLight(hex: string): boolean {
   const h = hex.replace("#", "");
@@ -12,39 +17,38 @@ function isLight(hex: string): boolean {
 
 function GlyphFrame({
   fill,
-  mirrored,
   children,
 }: {
   fill: string;
-  mirrored?: boolean;
   children: ReactNode;
 }) {
   const stroke = isLight(fill) ? "rgba(26,26,26,0.35)" : "rgba(26,26,26,0.12)";
-  const paint = mirrored ? "url(#lens-mirror)" : fill;
   return (
     <svg
       viewBox="0 0 64 64"
       className="h-full w-full"
       aria-hidden
     >
-      {mirrored ? (
-        <defs>
-          <linearGradient id="lens-mirror" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#E8F2F6" />
-            <stop offset="45%" stopColor="#7EB8C9" />
-            <stop offset="100%" stopColor="#2A4A5C" />
-          </linearGradient>
-        </defs>
-      ) : null}
-      <g fill={paint} stroke={stroke} strokeWidth="1.25" strokeLinejoin="round">
+      <defs>
+        <linearGradient id="lens-mirror" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#E8F2F6" />
+          <stop offset="45%" stopColor="#7EB8C9" />
+          <stop offset="100%" stopColor="#2A4A5C" />
+        </linearGradient>
+      </defs>
+      <g fill={fill} stroke={stroke} strokeWidth="1.25" strokeLinejoin="round">
         {children}
       </g>
     </svg>
   );
 }
 
-function eyewearLenses(shape: string | undefined, outlined: boolean): ReactNode {
-  const fill = outlined ? "none" : undefined;
+function eyewearLenses(
+  shape: string | undefined,
+  outlined: boolean,
+  lensFill?: string,
+): ReactNode {
+  const fill = outlined ? "none" : (lensFill ?? undefined);
   const bridge = (
     <path d="M8 28 H20 A8 8 0 0 0 36 28 H44 A8 8 0 0 0 56 28" fill="none" />
   );
@@ -129,7 +133,112 @@ function eyewearLenses(shape: string | undefined, outlined: boolean): ReactNode 
   }
 }
 
-function pathsFor(garment: string, category: string, shape?: string): ReactNode {
+function hatPaths(hatType?: string): ReactNode {
+  switch (hatType) {
+    case "baseball":
+      return (
+        <>
+          <path d="M14 34 C16 20 48 20 50 34 L50 38 H14 Z" />
+          <path d="M14 36 C8 38 6 44 18 44 H36" />
+        </>
+      );
+    case "kartuz":
+      return (
+        <>
+          <path d="M16 36 C18 22 46 22 48 36 L46 40 H18 Z" />
+          <path d="M16 38 C10 40 10 44 20 44 H34" />
+        </>
+      );
+    case "bucket":
+      return (
+        <>
+          <path d="M20 22 H44 L48 36 H16 Z" />
+          <path d="M8 36 C12 44 52 44 56 36 H8 Z" />
+        </>
+      );
+    case "boater":
+      return (
+        <>
+          <rect x="18" y="20" width="28" height="14" rx="1" />
+          <path d="M6 34 H58 L54 40 H10 Z" />
+        </>
+      );
+    case "kepi":
+      return (
+        <>
+          <path d="M20 16 H44 L46 34 H18 Z" />
+          <path d="M18 34 H36 L34 40 H12 Z" />
+        </>
+      );
+    case "peaked":
+      return (
+        <>
+          <path d="M18 12 H46 L48 34 H16 Z" />
+          <path d="M16 34 H38 L36 42 H8 Z" />
+        </>
+      );
+    case "fedora":
+    case "borsalino":
+      return (
+        <>
+          <path d="M18 28 C20 14 44 14 46 28 L48 32 H16 Z" />
+          <path d="M6 32 C14 40 50 40 58 32 H6 Z" />
+          <path d="M28 16 L32 22 L36 16" fill="none" />
+        </>
+      );
+    case "trilby":
+      return (
+        <>
+          <path d="M20 26 C22 14 42 14 44 26 L46 30 H18 Z" />
+          <path d="M12 30 C18 36 46 36 52 30 H12 Z" />
+        </>
+      );
+    case "beanie":
+      return <path d="M16 38 C16 20 48 20 48 38 L46 44 H18 Z" />;
+    case "fisherman":
+      return (
+        <>
+          <path d="M16 32 C16 18 48 18 48 32 Z" />
+          <path d="M16 32 H48 L46 40 H18 Z" />
+        </>
+      );
+    case "slouch":
+      return <path d="M14 42 C10 18 28 8 40 14 C54 20 54 34 48 42 L44 48 H18 Z" />;
+    case "cowboy":
+      return (
+        <>
+          <path d="M22 26 C24 10 40 10 42 26 L44 30 H20 Z" />
+          <path d="M4 30 C16 24 48 24 60 30 C50 40 14 40 4 30 Z" />
+        </>
+      );
+    case "newsboy":
+      return (
+        <>
+          <path d="M14 34 C16 18 48 18 50 34 L48 38 H16 Z" />
+          <path d="M16 36 H40 L38 42 H14 Z" />
+          <path d="M32 18 L32 36 M24 22 L24 36 M40 22 L40 36" fill="none" />
+        </>
+      );
+    case "cap":
+    default:
+      return (
+        <>
+          <path d="M16 34 C18 22 46 22 48 34 L46 38 H18 Z" />
+          <path d="M16 36 H34 L32 42 H12 Z" />
+        </>
+      );
+  }
+}
+
+function pathsFor(
+  garment: string,
+  category: string,
+  shape?: string,
+  tieType?: string,
+  lensFill?: string,
+  hatType?: string,
+  soleFill?: string,
+): ReactNode {
   switch (garment) {
     case "blazer":
       return (
@@ -237,6 +346,10 @@ function pathsFor(garment: string, category: string, shape?: string): ReactNode 
         <>
           <path d="M12 38 C12 32 22 30 32 34 L52 38 C56 38 56 46 50 48 L18 50 C12 50 12 44 12 38 Z" />
           <path d="M20 42 H46" fill="none" />
+          <path
+            d="M14 46 C16 51 50 51 52 46 L50 48 C48 52 16 52 14 48 Z"
+            fill={soleFill ?? "#F3EDE0"}
+          />
         </>
       );
     case "boots":
@@ -280,9 +393,22 @@ function pathsFor(garment: string, category: string, shape?: string): ReactNode 
         </>
       );
     case "tie":
-      return (
-        <path d="M28 8 H36 L34 16 L40 52 L32 58 L24 52 L30 16 Z" />
-      );
+      if (tieType === "bow") {
+        return (
+          <>
+            <path d="M8 26 L28 30 L28 38 L8 42 Z" />
+            <path d="M36 30 L56 26 L56 42 L36 38 Z" />
+            <rect x="28" y="28" width="8" height="12" rx="1" />
+          </>
+        );
+      }
+      if (tieType === "knitted") {
+        return <path d="M28 8 H36 L34 16 L38 54 H26 L30 16 Z" />;
+      }
+      if (tieType === "skinny") {
+        return <path d="M29 8 H35 L33 16 L36 54 L32 58 L28 54 L31 16 Z" />;
+      }
+      return <path d="M28 8 H36 L34 16 L40 52 L32 58 L24 52 L30 16 Z" />;
     case "scarf":
       return (
         <>
@@ -290,8 +416,10 @@ function pathsFor(garment: string, category: string, shape?: string): ReactNode 
           <path d="M24 28 C28 32 36 32 40 26" fill="none" />
         </>
       );
+    case "hat":
+      return hatPaths(hatType);
     case "sunglasses":
-      return eyewearLenses(shape, false);
+      return eyewearLenses(shape, false, lensFill);
     case "glasses":
       return eyewearLenses(shape, true);
     default:
@@ -311,14 +439,29 @@ export function LookGarmentGlyph({
   slot: ConstructorSlot;
   className?: string;
 }) {
-  const fill = colorHex(slot.color);
+  const fill = colorHex(slot.color === "mirrored" ? "black" : slot.color);
+  const lensFill =
+    slot.garment === "sunglasses"
+      ? slot.lensColor === "mirrored" || slot.color === "mirrored"
+        ? "url(#lens-mirror)"
+        : lensColorHex(slot.lensColor || "grey")
+      : undefined;
   return (
     <span className={`block ${className}`}>
-      <GlyphFrame
-        fill={fill}
-        mirrored={slot.garment === "sunglasses" && slot.color === "mirrored"}
-      >
-        {pathsFor(slot.garment, slot.category, slot.shape)}
+      <GlyphFrame fill={fill}>
+        {pathsFor(
+          slot.garment,
+          slot.category,
+          slot.shape,
+          slot.tieType,
+          lensFill,
+          slot.hatType,
+          slot.garment === "sneakers"
+            ? sneakerSoleColor(slot.color) === "cream"
+              ? "#E8DCC8"
+              : "#F4F1EA"
+            : undefined,
+        )}
       </GlyphFrame>
     </span>
   );

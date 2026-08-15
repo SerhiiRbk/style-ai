@@ -82,6 +82,10 @@ export async function createLookSet(
     requestKey?: string | null;
     /** How many looks this set was billed to generate. */
     looksCount: number;
+    /** Defaults to generating; ready when mirroring an already-finished report. */
+    status?: "generating" | "ready";
+    /** When mirroring a report, keep the report's original date for sort/display. */
+    createdAt?: string;
     /** Storage paths of the photo the set was rendered on — so the whole-look
      * try-on renders on the SAME photo. Stored owner-only. */
     faceRefPath?: string | null;
@@ -103,6 +107,8 @@ export async function createLookSet(
     looksCount,
     faceRefPath,
     fullRefPath,
+    status = "generating",
+    createdAt,
   } = opts;
 
   const baseRow = {
@@ -116,10 +122,11 @@ export async function createLookSet(
     is_public: isPublic,
     share_slug: shareSlug ?? null,
     request_key: requestKey ?? null,
+    ...(createdAt ? { created_at: createdAt } : {}),
   };
   let { data, error } = await admin
     .from("look_sets")
-    .insert({ ...baseRow, looks_count: looksCount, status: "generating" })
+    .insert({ ...baseRow, looks_count: looksCount, status })
     .select("id")
     .single();
   if (error && /looks_count|status/.test(error.message)) {
@@ -463,6 +470,8 @@ export type LoadedLookSet = {
   isPublic: boolean;
   carloNote: string | null;
   occasionId: string;
+  name: string;
+  reportId: string | null;
   createdAt: string;
   lookItems: Record<number, ShoppingItem[]> | null;
   looks: LoadedSetLook[];
@@ -476,11 +485,13 @@ type LookSetHeaderRow = {
   is_public: boolean | null;
   carlo_note: string | null;
   occasion_id: string | null;
+  name: string | null;
+  report_id: string | null;
   created_at: string;
 };
 
 const LOOK_SET_HEADER_SELECT =
-  "id, user_id, share_slug, is_public, carlo_note, occasion_id, created_at";
+  "id, user_id, share_slug, is_public, carlo_note, occasion_id, name, report_id, created_at";
 
 async function assembleLookSetResult(
   admin: AdminClient,
@@ -488,31 +499,32 @@ async function assembleLookSetResult(
   logLabel: string,
 ): Promise<LoadedLookSet> {
   const setId = set.id;
-  const { looksCount, status } = await readSetProgress(admin, setId);
 
-  // Best-effort separate read: on a DB where 0040 (look_sets.look_items) is not
-  // yet applied, selecting the column would error the whole set load — isolate
-  // it so the set still renders (just without "Shop the look").
+  // Progress, shop items, and look rows are independent — don't pay three
+  // sequential round-trips on every /looks/[id] open (or Link prefetch).
+  const [progress, itemsResult, looksResult] = await Promise.all([
+    readSetProgress(admin, setId),
+    admin.from("look_sets").select("look_items").eq("id", setId).maybeSingle(),
+    selectSetLookRows(admin, setId),
+  ]);
+  const { looksCount, status } = progress;
+
+  // Best-effort: on a DB where 0040 (look_sets.look_items) is not yet applied,
+  // selecting the column errors — isolate it so the set still renders.
   let lookItems: Record<number, ShoppingItem[]> | null = null;
-  {
-    const { data: li, error: liErr } = await admin
-      .from("look_sets")
-      .select("look_items")
-      .eq("id", setId)
-      .maybeSingle();
-    if (!liErr) {
-      lookItems =
-        (li?.look_items as Record<number, ShoppingItem[]> | null) ?? null;
-    }
+  if (!itemsResult.error) {
+    lookItems =
+      (itemsResult.data?.look_items as Record<number, ShoppingItem[]> | null) ??
+      null;
   }
 
-  // Order by the stable `idx` (set looks are inserted concurrently, so
-  // created_at is non-deterministic); created_at is only a tie-break for legacy
-  // rows predating idx (null idx sorts last). For those legacy rows the fallback
-  // idx below is their created_at position — which matches how their look_items
-  // were keyed, so alignment is preserved.
-  const { data: rows, error: rowsErr } = await selectSetLookRows(admin, setId);
-  if (rowsErr) console.error(`[look-set] ${logLabel} looks query failed`, rowsErr.message);
+  if (looksResult.error) {
+    console.error(
+      `[look-set] ${logLabel} looks query failed`,
+      looksResult.error.message,
+    );
+  }
+  const rows = looksResult.data;
 
   const readyCount = (rows ?? []).filter((r) => r.image_path).length;
   const generating = setIsGenerating(
@@ -523,10 +535,12 @@ async function assembleLookSetResult(
   );
   const looks = looksFromRows(rows ?? [], looksCount, generating);
 
-  // Self-heal: missing look_items (pre-persistence sets) or a stale match
-  // version (e.g. shirt+trouser colour clash guard). Await so this view and
-  // a same-session try-on see the new picks, not the stored sage+olive pair.
-  if (looks.some((l) => l.imagePath)) {
+  // Fill shop items only when the set has none. A stale matchVersion used to
+  // block the page on embedMany + catalogue RPCs — and Next.js prefetch from
+  // /looks fired that for every card in view. Try-on still rematches via
+  // ensureSetLookItems when the user actually shops.
+  const hasItems = Boolean(lookItems && Object.keys(lookItems).length);
+  if (!hasItems && looks.some((l) => l.imagePath)) {
     lookItems = await ensureSetLookItems(
       admin,
       set.user_id,
@@ -542,6 +556,8 @@ async function assembleLookSetResult(
     isPublic: set.is_public ?? false,
     carloNote: set.carlo_note ?? null,
     occasionId: set.occasion_id ?? "",
+    name: set.name ?? "",
+    reportId: set.report_id ?? null,
     createdAt: set.created_at,
     lookItems,
     looks,
@@ -602,6 +618,8 @@ export async function loadPublicLookSet(
   setId: string;
   carloNote: string | null;
   occasionId: string;
+  name: string;
+  reportId: string | null;
   createdAt: string;
   lookItems: Record<number, ShoppingItem[]> | null;
   looks: LoadedSetLook[];
@@ -609,7 +627,7 @@ export async function loadPublicLookSet(
 } | null> {
   const { data: set, error: setErr } = await admin
     .from("look_sets")
-    .select("id, carlo_note, occasion_id, created_at")
+    .select("id, carlo_note, occasion_id, name, report_id, created_at")
     .eq("id", setId)
     .eq("is_public", true)
     .maybeSingle();
@@ -638,6 +656,8 @@ export async function loadPublicLookSet(
     setId: set.id as string,
     carloNote: (set.carlo_note as string | null) ?? null,
     occasionId: (set.occasion_id as string | null) ?? "",
+    name: (set.name as string | null) ?? "",
+    reportId: (set.report_id as string | null) ?? null,
     createdAt: set.created_at as string,
     lookItems,
     looks,
@@ -739,6 +759,7 @@ export type LookSetSummary = {
   id: string;
   occasionId: string;
   name: string;
+  reportId: string | null;
   createdAt: string;
   thumbPath: string | null;
   generating: boolean;
@@ -758,6 +779,7 @@ export async function listUserLookSets(
     id: unknown;
     occasion_id: unknown;
     name: unknown;
+    report_id?: unknown;
     created_at: unknown;
     looks_count?: unknown;
     status?: unknown;
@@ -766,14 +788,14 @@ export async function listUserLookSets(
   {
     const first = await admin
       .from("look_sets")
-      .select("id, occasion_id, name, created_at, looks_count, status")
+      .select("id, occasion_id, name, report_id, created_at, looks_count, status")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(limit);
     if (first.error && /looks_count|status/.test(first.error.message)) {
       const fallback = await admin
         .from("look_sets")
-        .select("id, occasion_id, name, created_at")
+        .select("id, occasion_id, name, report_id, created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(limit);
@@ -816,6 +838,7 @@ export async function listUserLookSets(
       id,
       occasionId: (s.occasion_id as string | null) ?? "",
       name: (s.name as string | null) ?? "",
+      reportId: (s.report_id as string | null) ?? null,
       createdAt: s.created_at as string,
       thumbPath: thumbBySet.get(id) ?? null,
       generating: setIsGenerating(
@@ -825,5 +848,5 @@ export async function listUserLookSets(
         looksCount,
       ),
     };
-  });
+  }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

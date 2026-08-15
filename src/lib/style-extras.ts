@@ -2355,9 +2355,19 @@ const GARMENT_CATEGORY: Record<string, string> = {
   hiking: "Footwear", "hiking boots": "Footwear", trail: "Footwear", "trail boots": "Footwear",
   shoes: "Footwear", trainers: "Footwear", sandals: "Footwear", sandal: "Footwear",
   belt: "Accessories", watch: "Accessories", scarf: "Accessories", tie: "Accessories",
+  necktie: "Accessories", bowtie: "Accessories", "bow tie": "Accessories",
   sunglasses: "Accessories", glasses: "Accessories", eyeglasses: "Accessories",
   goggles: "Accessories", "ski goggles": "Accessories",
-  hat: "Accessories", cap: "Accessories", gloves: "Accessories",
+  hat: "Accessories", cap: "Accessories", beanie: "Accessories",
+  fedora: "Accessories", trilby: "Accessories", borsalino: "Accessories",
+  boater: "Accessories", bucket: "Accessories", panama: "Accessories",
+  "bucket hat": "Accessories", "panama hat": "Accessories",
+  "baseball cap": "Accessories", baseball: "Accessories",
+  kartuz: "Accessories", kepi: "Accessories", "peaked cap": "Accessories",
+  "cowboy hat": "Accessories", cowboy: "Accessories",
+  newsboy: "Accessories", "newsboy cap": "Accessories", "flat cap": "Accessories",
+  "fisherman beanie": "Accessories", "slouch beanie": "Accessories",
+  gloves: "Accessories",
   bag: "Accessories", socks: "Accessories",
 };
 
@@ -2419,6 +2429,8 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   orange: { family: "orange" },
   amber: { family: "orange" }, ochre: { family: "yellow" },
   yellow: { family: "yellow" }, mustard: { family: "yellow" },
+  gold: { family: "yellow" }, golden: { family: "yellow" },
+  tortoise: { family: "brown" }, havana: { family: "brown" },
 };
 
 /** Synonyms used to verify a catalogue title matches the parsed garment. */
@@ -2454,7 +2466,13 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   belt: ["belt"],
   watch: ["watch"],
   scarf: ["scarf"],
-  tie: ["tie"],
+  tie: ["tie", "necktie", "bow tie", "bowtie"],
+  necktie: ["tie", "necktie"],
+  bowtie: ["bow tie", "bowtie", "tie"],
+  hat: ["hat", "cap", "beanie", "fedora"],
+  cap: ["cap", "hat"],
+  beanie: ["beanie", "watch cap"],
+  fedora: ["fedora", "hat"],
   sunglasses: ["sunglasses", "sunglass", "goggles"],
   glasses: ["glasses", "eyeglasses", "spectacles"],
   eyeglasses: ["glasses", "eyeglasses", "spectacles"],
@@ -2486,7 +2504,9 @@ function normalizeCompoundColors(text: string): string {
     .replace(/slate\s+blue/g, "slateblue")
     .replace(/powder\s+blue/g, "powderblue")
     .replace(/ice\s+blue/g, "iceblue")
-    .replace(/steel\s+blue/g, "steelblue");
+    .replace(/steel\s+blue/g, "steelblue")
+    .replace(/tortoise\s*shell/g, "tortoise")
+    .replace(/yellow\s+gold/g, "gold");
 }
 
 function parseHexRgb(hex: string): [number, number, number] | null {

@@ -66,11 +66,11 @@ const FEATURES: FeatureSection[] = [
     eyebrow: "Create a look",
     title: "Occasion looks you can rebuild",
     intro:
-      "Need outfits for work, dinner or a weekend — without a full report? Create a Look generates a set of photorealistic looks on your photo. Then open any look and use the constructor: change a jacket, colour, sunglasses shape, or whether a shirt is tucked in, and redraw just that look.",
+      "Need outfits for work, dinner or a weekend — without a full report? Create a Look generates a set of photorealistic looks on your photo. Then open any look and use the constructor: change a jacket, colour, sunglasses frame and lenses, tie type, or whether a shirt is tucked in, and redraw just that look.",
     steps: [
       "Open Create a look, pick an occasion, season and a set of 3, 6 or 9 looks.",
       "Reuse a style profile from a report, or upload a photo so the looks are rendered on you.",
-      "When the set is ready, tap a look and use the constructor — type, colour, eyewear shape, mirrored lenses, tucked in or untucked.",
+      "When the set is ready, tap a look and use the constructor — type, colour, eyewear, hat, tie type, tucked in or untucked.",
       `Apply redraws that look (${CREDIT_COSTS.look_regen} credit). Optional 3/4 view is +${CREDIT_COSTS.look_three_quarter} credit. Try-on is a separate button. Sets live under Looks.`,
     ],
     links: [

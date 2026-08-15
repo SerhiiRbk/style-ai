@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { LookGarmentGlyph } from "./LookGarmentGlyph";
 import { useCredits } from "./CreditsContext";
@@ -9,18 +9,30 @@ import { WORKING } from "@/components/luxe/messages";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
 import {
   coerceEyewearShape,
+  coerceHatType,
+  coerceLensColor,
+  coerceTieType,
   colorsForSlot,
   colorLabel,
   composeLookDescription,
   isEyewear,
   isSlotEnabled,
+  isHat,
+  isSunglasses,
+  isTie,
+  HAT_TYPES,
+  hatTypeLabel,
   isTuckable,
+  lensColorLabel,
+  lensColorsForSlot,
   MAX_ACCESSORY_SLOTS,
   nextAccessorySlot,
   shapeLabel,
   shapesForEyewear,
   slotsEqual,
   slotsFromLook,
+  TIE_TYPES,
+  tieTypeLabel,
   tuckLabel,
   TUCK_OPTIONS,
   typeLabel,
@@ -171,7 +183,7 @@ export function LookConstructor({
               }}
               disabled={state === "loading" || disabled}
               aria-pressed={active}
-              title={`${enabled ? "" : "Off · "}${colorLabel(slot.color)} ${slot.shape ? `${shapeLabel(slot.shape)} ` : ""}${slot.tuck ? `${tuckLabel(slot.tuck)} ` : ""}${typeLabel(slot.category, slot.garment)}`}
+              title={`${enabled ? "" : "Off · "}${colorLabel(slot.color)} ${slot.lensColor ? `${lensColorLabel(slot.lensColor)} lens ` : ""}${slot.shape ? `${shapeLabel(slot.shape)} ` : ""}${slot.hatType ? `${hatTypeLabel(slot.hatType)} ` : ""}${slot.tieType ? `${tieTypeLabel(slot.tieType)} ` : ""}${slot.tuck ? `${tuckLabel(slot.tuck)} ` : ""}${typeLabel(slot.category, slot.garment)}`}
               className={`flex w-[4.5rem] flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 active
                   ? "border-brass/50 bg-brass/10"
@@ -207,23 +219,48 @@ export function LookConstructor({
       {open != null && slots[open] ? (
         <SlotEditor
           slot={slots[open]}
-          onType={(garment) =>
+          onType={(garment) => {
+            const prev = slots[open];
+            let color = prev.color;
+            let lensColor = prev.lensColor;
+            if (isSunglasses(garment)) {
+              if (color === "mirrored") {
+                lensColor = "mirrored";
+                color = "black";
+              } else {
+                lensColor = coerceLensColor(lensColor);
+              }
+            } else {
+              lensColor = undefined;
+              if (color === "mirrored") color = "black";
+            }
             patch(open, {
               garment,
-              ...(slots[open].category === "Accessories" ? { on: true } : {}),
+              color,
+              ...(prev.category === "Accessories" ? { on: true } : {}),
               ...(isEyewear(garment)
-                ? { shape: coerceEyewearShape(garment, slots[open].shape) }
+                ? { shape: coerceEyewearShape(garment, prev.shape) }
                 : { shape: "" }),
-              ...(isTuckable(garment)
-                ? { tuck: slots[open].tuck }
-                : { tuck: undefined }),
-            })
-          }
+              ...(isTuckable(garment) ? { tuck: prev.tuck } : { tuck: undefined }),
+              ...(isTie(garment)
+                ? { tieType: coerceTieType(prev.tieType) }
+                : { tieType: undefined }),
+              ...(isHat(garment)
+                ? { hatType: coerceHatType(prev.hatType) }
+                : { hatType: undefined }),
+              lensColor,
+            });
+          }}
           onColor={(color) =>
             patch(open, {
               color,
               ...(slots[open].category === "Accessories" ? { on: true } : {}),
             })
+          }
+          onLensColor={
+            isSunglasses(slots[open].garment)
+              ? (lensColor) => patch(open, { lensColor, on: true })
+              : undefined
           }
           onShape={
             isEyewear(slots[open].garment)
@@ -233,6 +270,16 @@ export function LookConstructor({
           onTuck={
             isTuckable(slots[open].garment)
               ? (tuck) => patch(open, { tuck })
+              : undefined
+          }
+          onTieType={
+            isTie(slots[open].garment)
+              ? (tieType) => patch(open, { tieType, on: true })
+              : undefined
+          }
+          onHatType={
+            isHat(slots[open].garment)
+              ? (hatType) => patch(open, { hatType, on: true })
               : undefined
           }
           onEnabled={
@@ -311,23 +358,55 @@ export function LookConstructor({
   );
 }
 
+function swatchStyle(id: string, hex: string): CSSProperties {
+  if (id === "mirrored") {
+    return {
+      backgroundImage: "linear-gradient(135deg, #E8F2F6, #7EB8C9, #2A4A5C)",
+    };
+  }
+  if (id === "tortoise") {
+    return {
+      backgroundImage:
+        "linear-gradient(135deg, #3E2412 0%, #C4A46A 35%, #5C3317 60%, #1A1008 100%)",
+    };
+  }
+  if (id === "gold") {
+    return {
+      backgroundImage: "linear-gradient(135deg, #F5E6A8, #C9A227, #8A7014)",
+    };
+  }
+  if (id === "silver") {
+    return {
+      backgroundImage: "linear-gradient(135deg, #F4F4F4, #C0C4C8, #7A7E84)",
+    };
+  }
+  return { backgroundColor: hex };
+}
+
 function SlotEditor({
   slot,
   onType,
   onColor,
+  onLensColor,
   onShape,
   onTuck,
+  onTieType,
+  onHatType,
   onEnabled,
 }: {
   slot: ConstructorSlot;
   onType: (garment: string) => void;
   onColor: (color: string) => void;
+  onLensColor?: (lensColor: string) => void;
   onShape?: (shape: string) => void;
   onTuck?: (tuck: "in" | "out") => void;
+  onTieType?: (tieType: string) => void;
+  onHatType?: (hatType: string) => void;
   onEnabled?: (on: boolean) => void;
 }) {
   const types = typesForSlot(slot.category, slot.garment);
   const colors = colorsForSlot(slot.color, slot.garment);
+  const lenses = onLensColor ? lensColorsForSlot(slot.lensColor) : [];
   const enabled = isSlotEnabled(slot);
 
   return (
@@ -398,6 +477,60 @@ function SlotEditor({
           </div>
         </div>
       ) : null}
+      {onTieType ? (
+        <div className="mt-3">
+          <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">
+            Tie
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {TIE_TYPES.map((t) => {
+              const selected = t.id === slot.tieType;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onTieType(t.id)}
+                  aria-pressed={selected}
+                  className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                    selected
+                      ? "bg-ink text-paper"
+                      : "border border-line text-stone hover:border-ink/30 hover:text-ink"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      {onHatType ? (
+        <div className="mt-3">
+          <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">
+            Hat
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {HAT_TYPES.map((t) => {
+              const selected = t.id === slot.hatType;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onHatType(t.id)}
+                  aria-pressed={selected}
+                  className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                    selected
+                      ? "bg-ink text-paper"
+                      : "border border-line text-stone hover:border-ink/30 hover:text-ink"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       {onShape ? (
         <div className="mt-3">
           <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">
@@ -425,35 +558,62 @@ function SlotEditor({
           </div>
         </div>
       ) : null}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {colors.map((c) => {
-          const selected = c.id === slot.color;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => onColor(c.id)}
-              aria-pressed={selected}
-              title={c.label}
-              className={`h-7 w-7 rounded-full border transition-shadow ${
-                selected
-                  ? "border-ink ring-2 ring-brass ring-offset-2 ring-offset-paper"
-                  : "border-black/10 hover:border-ink/30"
-              }`}
-              style={
-                c.id === "mirrored"
-                  ? {
-                      backgroundImage:
-                        "linear-gradient(135deg, #E8F2F6, #7EB8C9, #2A4A5C)",
-                    }
-                  : { backgroundColor: c.hex }
-              }
-            >
-              <span className="sr-only">{c.label}</span>
-            </button>
-          );
-        })}
+      <div className="mt-3">
+        <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">
+          {isEyewear(slot.garment) ? "Frame" : "Colour"}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {colors.map((c) => {
+            const selected = c.id === slot.color;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => onColor(c.id)}
+                aria-pressed={selected}
+                title={c.label}
+                className={`h-7 w-7 rounded-full border transition-shadow ${
+                  selected
+                    ? "border-ink ring-2 ring-brass ring-offset-2 ring-offset-paper"
+                    : "border-black/10 hover:border-ink/30"
+                }`}
+                style={swatchStyle(c.id, c.hex)}
+              >
+                <span className="sr-only">{c.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
+      {onLensColor ? (
+        <div className="mt-3">
+          <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">
+            Lenses
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {lenses.map((c) => {
+              const selected = c.id === slot.lensColor;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onLensColor(c.id)}
+                  aria-pressed={selected}
+                  title={c.label}
+                  className={`h-7 w-7 rounded-full border transition-shadow ${
+                    selected
+                      ? "border-ink ring-2 ring-brass ring-offset-2 ring-offset-paper"
+                      : "border-black/10 hover:border-ink/30"
+                  }`}
+                  style={swatchStyle(c.id, c.hex)}
+                >
+                  <span className="sr-only">{c.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

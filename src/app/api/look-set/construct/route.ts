@@ -19,16 +19,19 @@ import {
   cacheBustAssetUrl,
   renderAndStoreThreeQuarterLook,
 } from "@/lib/data/look-three-quarter";
-import {
-  getCatalogTryOnPhoto,
-  signPhotoPath,
-} from "@/lib/photo-tryon";
+import { resolveLookSetReferencePhotos } from "@/lib/photo-tryon";
 import {
   coerceEyewearShape,
+  coerceHatType,
+  coerceLensColor,
+  coerceTieType,
   composeLookDescription,
   composeLookPalette,
   isAllowedConstructorSlot,
   isEyewear,
+  isHat,
+  isSunglasses,
+  isTie,
   isTuckable,
   type ConstructorSlot,
 } from "@/lib/look-constructor";
@@ -93,6 +96,12 @@ export async function POST(request: Request) {
     const rawShape =
       typeof slot.shape === "string" ? slot.shape.trim().toLowerCase() : "";
     const tuck = slot.tuck === "in" || slot.tuck === "out" ? slot.tuck : undefined;
+    const rawTie =
+      typeof slot.tieType === "string" ? slot.tieType.trim().toLowerCase() : "";
+    const rawLens =
+      typeof slot.lensColor === "string" ? slot.lensColor.trim().toLowerCase() : "";
+    const rawHat =
+      typeof slot.hatType === "string" ? slot.hatType.trim().toLowerCase() : "";
     slots.push({
       category: slot.category,
       garment,
@@ -102,19 +111,26 @@ export async function POST(request: Request) {
         ? { shape: coerceEyewearShape(garment, rawShape || undefined) }
         : {}),
       ...(isTuckable(garment) && tuck ? { tuck } : {}),
+      ...(isTie(garment) ? { tieType: coerceTieType(rawTie || undefined) } : {}),
+      ...(isSunglasses(garment)
+        ? { lensColor: coerceLensColor(rawLens || undefined) }
+        : {}),
+      ...(isHat(garment) ? { hatType: coerceHatType(rawHat || undefined) } : {}),
     });
   }
 
   const admin = createAdminSupabase();
   const { data: setRow } = await admin
     .from("look_sets")
-    .select("id")
+    .select("id, report_id, created_at")
     .eq("id", setId)
     .eq("user_id", user.id)
     .maybeSingle();
   if (!setRow) {
     return NextResponse.json({ error: "Set not found" }, { status: 404 });
   }
+  const reportId = (setRow.report_id as string | null) ?? null;
+  const setCreatedAt = (setRow.created_at as string | null) ?? null;
 
   // Prefer idx, but don't use maybeSingle — duplicate (set_id, idx) rows make
   // PostgREST return no data. Fall back to position in the set if idx misses
@@ -128,10 +144,12 @@ export async function POST(request: Request) {
     image_path: string | null;
     image_path_tq?: string | null;
     context: string | null;
+    report_id?: string | null;
   };
   const lookSelectTq =
-    "id, idx, title, description, palette, image_path, image_path_tq, context";
-  const lookSelect = "id, idx, title, description, palette, image_path, context";
+    "id, idx, title, description, palette, image_path, image_path_tq, context, report_id";
+  const lookSelect =
+    "id, idx, title, description, palette, image_path, context, report_id";
   async function selectLooks(columns: string) {
     return admin
       .from("looks")
@@ -229,12 +247,16 @@ export async function POST(request: Request) {
     }
   }
 
-  let faceRefUrl = facePath ? await signPhotoPath(admin, facePath) : null;
-  let fullRefUrl = fullPath ? await signPhotoPath(admin, fullPath) : null;
-  if (!fullRefUrl) {
-    const cat = await getCatalogTryOnPhoto(admin, user.id);
-    if (cat.ok) fullRefUrl = cat.signedUrl;
-  }
+  const refs = await resolveLookSetReferencePhotos(admin, {
+    userId: user.id,
+    setId,
+    facePath,
+    fullPath,
+    reportId: reportId ?? lookRow.report_id ?? null,
+    reportCreatedAt: setCreatedAt,
+  });
+  const faceRefUrl = refs.faceUrl;
+  const fullRefUrl = refs.fullUrl;
 
   const description = composeLookDescription(slots);
   const palette = composeLookPalette(slots);
@@ -250,6 +272,7 @@ export async function POST(request: Request) {
     look,
     referenceImageUrl: fullRefUrl ?? undefined,
     faceReferenceImageUrl: faceRefUrl ?? undefined,
+    profileReferenceImageUrl: refs.profileUrl ?? undefined,
   });
   if (!img) {
     return NextResponse.json({ error: "Generation failed" }, { status: 502 });

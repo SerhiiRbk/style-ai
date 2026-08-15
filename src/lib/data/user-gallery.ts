@@ -312,23 +312,26 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
   {
     const setFirst = await db
       .from("look_sets")
-      .select("id, occasion_id, created_at, archived_images")
+      .select("id, occasion_id, created_at, archived_images, report_id")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
     const setQuery =
       setFirst.error && /archived_images/.test(setFirst.error.message)
         ? await db
             .from("look_sets")
-            .select("id, occasion_id, created_at")
+            .select("id, occasion_id, created_at, report_id")
             .eq("user_id", user.id)
             .order("created_at", { ascending: false })
         : setFirst;
-    const setList = (setQuery.data ?? []) as {
-      id: string;
-      occasion_id: string | null;
-      created_at: string;
-      archived_images?: unknown;
-    }[];
+    const setList = (
+      (setQuery.data ?? []) as {
+        id: string;
+        occasion_id: string | null;
+        created_at: string;
+        archived_images?: unknown;
+        report_id?: string | null;
+      }[]
+    ).filter((s) => !s.report_id);
     if (setList.length) {
       const looksFirst = await db
         .from("looks")

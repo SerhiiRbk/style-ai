@@ -42,6 +42,17 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Report-mirrored looks keep `report_id`. Unlink them first so deleting the
+  // set does not cascade-delete the report's looks.
+  const { error: unlinkErr } = await admin
+    .from("looks")
+    .update({ set_id: null })
+    .eq("set_id", id)
+    .not("report_id", "is", null);
+  if (unlinkErr) {
+    console.error("[look-set] unlink report looks failed", id, unlinkErr.message);
+  }
+
   // Best-effort: remove the rendered images before the rows go away.
   const paths = await lookSetAssetPaths(admin, id);
   if (paths.length) {

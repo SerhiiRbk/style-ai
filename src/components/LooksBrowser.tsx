@@ -22,6 +22,8 @@ export type LooksBrowserItem = {
   thumbUrl: string | null;
   /** True while the set's looks are still being generated. */
   generating: boolean;
+  /** False for report-mirrored sets — deleting would only bounce back on refresh. */
+  canDelete?: boolean;
 };
 
 const STORAGE_KEY = "looks-view-mode";
@@ -76,14 +78,16 @@ export function LooksBrowser({ sets }: { sets: LooksBrowserItem[] }) {
               key={s.id}
               className="group relative overflow-hidden rounded-2xl border hairline bg-paper transition-colors hover:border-ink/30"
             >
-              <div className="absolute right-2 top-2 z-10 rounded-full bg-paper/85 opacity-100 shadow-sm backdrop-blur transition-opacity focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-                <DeleteSetButton
-                  setId={s.id}
-                  variant="compact"
-                  onDeleted={handleDeleted}
-                />
-              </div>
-              <Link href={`/looks/${s.id}`} className="block">
+              {s.canDelete !== false ? (
+                <div className="absolute right-2 top-2 z-10 rounded-full bg-paper/85 opacity-100 shadow-sm backdrop-blur transition-opacity focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                  <DeleteSetButton
+                    setId={s.id}
+                    variant="compact"
+                    onDeleted={handleDeleted}
+                  />
+                </div>
+              ) : null}
+              <Link href={`/looks/${s.id}`} prefetch={false} className="block">
                 <div className="aspect-[9/16] w-full bg-cream/40">
                   {s.thumbUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -117,6 +121,7 @@ export function LooksBrowser({ sets }: { sets: LooksBrowserItem[] }) {
             >
               <Link
                 href={`/looks/${s.id}`}
+                prefetch={false}
                 className="relative hidden h-16 w-12 shrink-0 overflow-hidden rounded-lg border hairline bg-cream/40 sm:block"
               >
                 {s.thumbUrl ? (
@@ -134,20 +139,25 @@ export function LooksBrowser({ sets }: { sets: LooksBrowserItem[] }) {
               <div className="min-w-0 flex-1">
                 <Link
                   href={`/looks/${s.id}`}
+                  prefetch={false}
                   className="block truncate font-display text-lg text-ink transition-colors hover:text-ink-soft"
                 >
                   {s.name}
                 </Link>
                 <div className="mt-1 flex items-center gap-2 text-sm text-stone">
                   <span>{s.date}</span>
-                  <span className="text-stone-soft/60" aria-hidden>
-                    ·
-                  </span>
-                  <DeleteSetButton
-                    setId={s.id}
-                    variant="compact"
-                    onDeleted={handleDeleted}
-                  />
+                  {s.canDelete !== false ? (
+                    <>
+                      <span className="text-stone-soft/60" aria-hidden>
+                        ·
+                      </span>
+                      <DeleteSetButton
+                        setId={s.id}
+                        variant="compact"
+                        onDeleted={handleDeleted}
+                      />
+                    </>
+                  ) : null}
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
@@ -156,6 +166,7 @@ export function LooksBrowser({ sets }: { sets: LooksBrowserItem[] }) {
                 </span>
                 <Link
                   href={`/looks/${s.id}`}
+                  prefetch={false}
                   className="group inline-flex items-center justify-center gap-1 rounded-full border border-brass/40 bg-brass/5 px-5 py-2 text-sm text-ink transition-colors hover:border-brass/60 hover:bg-brass/10"
                 >
                   <span className="transition-colors group-hover:text-brass">

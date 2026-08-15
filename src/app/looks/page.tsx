@@ -7,12 +7,13 @@ import {
   createAdminSupabase,
 } from "@/lib/supabase/server";
 import { listUserLookSets } from "@/lib/data/look-sets";
-import { lookContextById } from "@/lib/look-contexts";
+import { ensureUserReportLookSets } from "@/lib/data/report-look-sets";
+import { lookSetOccasionLabel } from "@/lib/look-contexts";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 
 export const metadata = {
   title: "Looks · Valetti",
-  description: "Every look you've created with Create a Look.",
+  description: "Every look you've created — reports and Create a Look.",
 };
 
 export default async function LooksPage() {
@@ -34,10 +35,11 @@ export default async function LooksPage() {
   if (!user) redirect("/login?next=/looks");
 
   const admin = createAdminSupabase();
+  await ensureUserReportLookSets(admin, user.id);
   const sets = await listUserLookSets(admin, user.id);
 
   const items: LooksBrowserItem[] = sets.map((s) => {
-    const occasion = lookContextById(s.occasionId)?.label ?? "Looks";
+    const occasion = lookSetOccasionLabel(s.occasionId);
     const date = new Date(s.createdAt).toLocaleDateString(undefined, {
       day: "numeric",
       month: "short",
@@ -47,6 +49,7 @@ export default async function LooksPage() {
       id: s.id,
       name: s.name || occasion,
       occasion,
+      canDelete: !s.reportId,
       date,
       thumbUrl: s.thumbPath ? signedAssetProxyUrl(s.thumbPath) : null,
       generating: s.generating,

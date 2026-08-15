@@ -13,10 +13,7 @@ import {
   cacheBustAssetUrl,
   renderAndStoreThreeQuarterLook,
 } from "@/lib/data/look-three-quarter";
-import {
-  getCatalogTryOnPhoto,
-  signPhotoPath,
-} from "@/lib/photo-tryon";
+import { resolveLookSetReferencePhotos } from "@/lib/photo-tryon";
 
 export const maxDuration = 300;
 export const runtime = "nodejs";
@@ -57,13 +54,15 @@ export async function POST(request: Request) {
   const admin = createAdminSupabase();
   const { data: setRow } = await admin
     .from("look_sets")
-    .select("id")
+    .select("id, report_id, created_at")
     .eq("id", setId)
     .eq("user_id", user.id)
     .maybeSingle();
   if (!setRow) {
     return NextResponse.json({ error: "Set not found" }, { status: 404 });
   }
+  const reportId = (setRow.report_id as string | null) ?? null;
+  const setCreatedAt = (setRow.created_at as string | null) ?? null;
 
   type TqLookRow = {
     id: string;
@@ -73,10 +72,12 @@ export async function POST(request: Request) {
     palette: string[] | null;
     image_path: string | null;
     image_path_tq?: string | null;
+    report_id?: string | null;
   };
   const lookSelectTq =
-    "id, idx, title, description, palette, image_path, image_path_tq";
-  const lookSelect = "id, idx, title, description, palette, image_path";
+    "id, idx, title, description, palette, image_path, image_path_tq, report_id";
+  const lookSelect =
+    "id, idx, title, description, palette, image_path, report_id";
   let byIdx: TqLookRow[] | null = null;
   let byIdxErr: { message: string } | null = null;
   {
@@ -193,12 +194,16 @@ export async function POST(request: Request) {
     }
   }
 
-  let faceRefUrl = facePath ? await signPhotoPath(admin, facePath) : null;
-  let fullRefUrl = fullPath ? await signPhotoPath(admin, fullPath) : null;
-  if (!fullRefUrl) {
-    const cat = await getCatalogTryOnPhoto(admin, user.id);
-    if (cat.ok) fullRefUrl = cat.signedUrl;
-  }
+  const refs = await resolveLookSetReferencePhotos(admin, {
+    userId: user.id,
+    setId,
+    facePath,
+    fullPath,
+    reportId: reportId ?? lookRow.report_id ?? null,
+    reportCreatedAt: setCreatedAt,
+  });
+  const faceRefUrl = refs.faceUrl;
+  const fullRefUrl = refs.fullUrl;
 
   const title = lookRow.title ?? "Look";
   const description = lookRow.description ?? "";

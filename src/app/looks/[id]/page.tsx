@@ -17,7 +17,7 @@ import {
   loadLookSetResult,
   loadPublicLookSet,
 } from "@/lib/data/look-sets";
-import { lookContextById } from "@/lib/look-contexts";
+import { lookSetOccasionLabel } from "@/lib/look-contexts";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
 import { LookGeneratingRefresh } from "@/components/LookGeneratingRefresh";
@@ -53,7 +53,8 @@ export default async function LookSetPage({
   const isOwner = owned !== null;
   const creditBalance = isOwner ? await getCreditBalance() : null;
 
-  const occasion = lookContextById(set.occasionId)?.label ?? "Looks";
+  const occasion = lookSetOccasionLabel(set.occasionId);
+  const title = set.name?.trim() || occasion;
   const date = new Date(set.createdAt).toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
@@ -106,7 +107,7 @@ export default async function LookSetPage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="eyebrow text-brass">{occasion}</p>
-            <h1 className="mt-1 font-display text-3xl text-ink">{occasion}</h1>
+            <h1 className="mt-1 font-display text-3xl text-ink">{title}</h1>
             <p className="mt-1 text-sm text-stone-soft">
               {date} ·{" "}
               {generating
@@ -122,7 +123,16 @@ export default async function LookSetPage({
                   setId={set.setId}
                   initialIsPublic={owned!.isPublic}
                 />
-                <DeleteSetButton setId={set.setId} redirectTo="/looks" />
+                {set.reportId ? (
+                  <Link
+                    href={`/report/${set.reportId}`}
+                    className="rounded-full border border-line px-4 py-2 text-sm text-stone transition-colors hover:border-ink/30 hover:text-ink"
+                  >
+                    Open report
+                  </Link>
+                ) : (
+                  <DeleteSetButton setId={set.setId} redirectTo="/looks" />
+                )}
                 <Link
                   href="/looks"
                   className="rounded-full border border-line px-4 py-2 text-sm text-stone transition-colors hover:border-ink/30 hover:text-ink"

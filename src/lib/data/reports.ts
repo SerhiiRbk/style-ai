@@ -87,6 +87,7 @@ import {
 } from "@/lib/colour-palette";
 import { translateReportParts } from "@/lib/ai/translate-report";
 import { getStoredReportPhotoPaths } from "@/lib/photo-tryon";
+import { ensureReportLookSet } from "@/lib/data/report-look-sets";
 import { normalizeLanguage } from "@/lib/languages";
 import {
   enrichLookItems,
@@ -1133,6 +1134,10 @@ async function generateReportImages(input: ImageJobInput) {
     );
   }
 
+  await ensureReportLookSet(admin, { reportId, userId }).catch((err) => {
+    console.error("[look-set] promote report looks after images failed", reportId, err);
+  });
+
   // Images are the last stage — this matches the "your report is ready" toast.
   await notifyReportReady(admin, reportId, userId);
 }
@@ -1482,6 +1487,10 @@ async function executeReportGeneration(
       image_path: null,
     })),
   );
+
+  await ensureReportLookSet(admin, { reportId, userId }).catch((err) => {
+    console.error("[look-set] promote report looks failed", reportId, err);
+  });
 
   const imageJob: ImageJobInput = {
     reportId,

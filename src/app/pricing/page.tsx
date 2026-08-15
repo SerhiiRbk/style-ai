@@ -584,7 +584,7 @@ export default function PricingPage() {
                     {[
                       `${b.looks} photorealistic looks on your photo`,
                       "Shop the look — catalogue matches per outfit",
-                      "Constructor: type, colour, eyewear, tucked / untucked",
+                      "Constructor: type, colour, eyewear frame / lenses, tie, tucked / untucked",
                       `Redraw a look · ${CREDIT_COSTS.look_regen} credit`,
                       `3/4 view · ${CREDIT_COSTS.look_three_quarter} credit`,
                       `Try-on · ${CREDIT_COSTS.tryon} credit`,

@@ -114,6 +114,15 @@ export function lookContextById(id: string | undefined | null): LookContext | un
   return LOOK_CONTEXTS.find((c) => c.id === id);
 }
 
+/** Reserved occasion for look sets mirrored from a Style Report. Not in the
+ *  Create-a-Look picker — reports already chose their own mix of contexts. */
+export const REPORT_LOOK_SET_OCCASION_ID = "style_report";
+
+export function lookSetOccasionLabel(id: string | undefined | null): string {
+  if (id === REPORT_LOOK_SET_OCCASION_ID) return "Style report";
+  return lookContextById(id)?.label ?? "Looks";
+}
+
 /** Occasions offered by the shipped single "extra look" add-on. Explicit so
  * that appending new Create-a-Look occasions to LOOK_CONTEXTS never silently
  * expands that live picker. */

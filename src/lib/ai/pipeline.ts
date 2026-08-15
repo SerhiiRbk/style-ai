@@ -38,7 +38,13 @@ import {
   resolveImagePromptVersion,
   type LookPromptParts,
 } from "@/lib/ai/look-prompt";
-import { eyewearPromptDirective, tuckPromptDirective } from "@/lib/look-constructor";
+import {
+  eyewearPromptDirective,
+  hatPromptDirective,
+  sneakerPromptDirective,
+  tiePromptDirective,
+  tuckPromptDirective,
+} from "@/lib/look-constructor";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -637,6 +643,9 @@ export async function generateLookImage(opts: {
     const personImageCount = faceImageCount + (hasFull ? 1 : 0);
     const eyewearBlock = eyewearPromptDirective(look.description);
     const tuckBlock = tuckPromptDirective(look.description);
+    const tieBlock = tiePromptDirective(look.description);
+    const hatBlock = hatPromptDirective(look.description);
+    const sneakerBlock = sneakerPromptDirective(look.description);
     const ordinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"];
     const ordinal = (n: number) => ordinals[n - 1] ?? `${n}TH`;
 
@@ -682,6 +691,8 @@ export async function generateLookImage(opts: {
       `optical glasses may be round, rectangular, oval, geometric, or rimless (lenses mounted directly to the bridge and temples, no surrounding frame). ` +
       `When sunglasses are described as mirrored, the lenses are a reflective mirror finish, not a flat dark tint. ` +
       `If a shirt, oxford, tee, polo or henley is tucked in, the hem sits inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
+      `A necktie is never worn on top of a jumper or knit — it sits on the shirt ` +
+      `under the knit (V-neck or open cardigan) or between jacket lapels. ` +
       `Trousers described as "suit", "tailored", "dress" trousers or chinos are ` +
       `smooth woven wool or cotton cloth — NEVER blue or washed denim / jeans, even ` +
       `if the item name contains the word "washed". `;
@@ -823,6 +834,9 @@ export async function generateLookImage(opts: {
       faceAnchor +
       eyewearBlock +
       tuckBlock +
+      tieBlock +
+      hatBlock +
+      sneakerBlock +
       NO_TEXT_RULE;
 
     // EXPERIMENTAL prompt versioning (see look-prompt.ts). v2+ pull the hard
@@ -836,7 +850,8 @@ export async function generateLookImage(opts: {
       `shirt — it replaces the shirt. A blazer, overshirt or coat is always the outermost ` +
       `layer. Sunglasses or glasses, when listed, sit on the face over the eyes ` +
       `in the named frame shape. Rimless glasses have no surrounding frame — the lenses attach directly to the bridge and temples. Mirrored sunglasses have reflective mirror lenses, not a flat dark tint. ` +
-      `A shirt, oxford, tee, polo or henley described as tucked in has its hem inside the trouser waistband; if worn untucked, the hem hangs over the trousers. `;
+      `A shirt, oxford, tee, polo or henley described as tucked in has its hem inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
+      `A necktie is never worn on top of a jumper — it sits on the shirt under a V-neck knit or open cardigan. `;
     const constraints = [
       `render EXACTLY the garments listed — do not add any layer that is not ` +
         `listed (no extra jumper, knit, waistcoat or shirt)`,
@@ -855,6 +870,15 @@ export async function generateLookImage(opts: {
     }
     if (tuckBlock) {
       constraints.push(tuckBlock.trim());
+    }
+    if (tieBlock) {
+      constraints.push(tieBlock.trim());
+    }
+    if (hatBlock) {
+      constraints.push(hatBlock.trim());
+    }
+    if (sneakerBlock) {
+      constraints.push(sneakerBlock.trim());
     }
     if (isThreeQuarter) {
       constraints.push(
@@ -1299,6 +1323,9 @@ export async function generateReportTryOnImage(opts: {
     );
     const eyewearBlock = eyewearPromptDirective(opts.garmentsText);
     const tuckBlock = tuckPromptDirective(opts.garmentsText);
+    const tieBlock = tiePromptDirective(opts.garmentsText);
+    const hatBlock = hatPromptDirective(opts.garmentsText);
+    const sneakerBlock = sneakerPromptDirective(opts.garmentsText);
 
     const prompt =
       `Photorealistic virtual try-on for a style report. ` +
@@ -1331,7 +1358,8 @@ export async function generateReportTryOnImage(opts: {
       `cardigans) is always worn OVER a base layer, never on bare skin. A knit may ` +
       `be worn on its own; only show a shirt under a knit if a shirt is listed, and ` +
       `then a long-sleeve knit goes OVER a long-sleeve shirt (collar and cuffs peek ` +
-      `out), never a shirt over a knit. A roll-neck or turtleneck is never worn with ` +
+      `out), never a shirt over a knit. A necktie is never worn on top of a jumper — ` +
+      `it sits on the shirt under a V-neck knit or open cardigan. A roll-neck or turtleneck is never worn with ` +
       `a collared shirt — no collar peeking out of or sitting on the roll-neck; the ` +
       `roll-neck replaces the shirt. If sunglasses or glasses are listed, they are ` +
       `worn ON the face over the eyes — never held in a hand, in a pocket, hanging ` +
@@ -1345,10 +1373,13 @@ export async function generateReportTryOnImage(opts: {
       `Reproduce each garment faithfully — exact colour, fabric texture, pattern, ` +
       `buttons, zips, stitching, fit and proportions — with natural drape and ` +
       `realistic shadows. The result must look like a real photograph of the SAME ` +
-      `person, same face, now wearing the new outfit against a clean studio ` +
+      `      person, same face, now wearing the new outfit against a clean studio ` +
       `backdrop.` +
       eyewearBlock +
       tuckBlock +
+      tieBlock +
+      hatBlock +
+      sneakerBlock +
       NO_TEXT_RULE;
 
     const content: (

@@ -1,7 +1,7 @@
 import "server-only";
 import { hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
-import { LOOK_CONTEXTS } from "@/lib/look-contexts";
+import { LOOK_CONTEXTS, lookSetOccasionLabel } from "@/lib/look-contexts";
 
 export type AdminLookSetSummary = {
   id: string;
@@ -33,7 +33,7 @@ function occasionIdsMatching(q: string): string[] {
 
 function occasionLabel(id: string | null): string | null {
   if (!id) return null;
-  return LOOK_CONTEXTS.find((c) => c.id === id)?.label ?? id;
+  return lookSetOccasionLabel(id);
 }
 
 export async function listAdminLookSets(opts?: {

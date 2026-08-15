@@ -13,12 +13,28 @@ export type FullPhotoResult =
     };
 
 export type ReportReferencePhotos =
-  | { ok: true; fullUrl: string; faceUrl?: string; profileUrl?: string }
+  | {
+      ok: true;
+      fullUrl: string;
+      faceUrl?: string;
+      profileUrl?: string;
+      fullPath: string;
+      facePath?: string;
+      profilePath?: string;
+    }
   | {
       ok: false;
       error: string;
       code: "no_photos" | "needs_full_photo";
     };
+
+export type LookSetReferencePhotos = {
+  faceUrl: string | null;
+  fullUrl: string | null;
+  profileUrl: string | null;
+  facePath: string | null;
+  fullPath: string | null;
+};
 
 /** Small slack so photos inserted just before the report row are still included. */
 const REPORT_PHOTO_CUTOFF_MS = 120_000;
@@ -79,6 +95,76 @@ export async function signPhotoPath(
   return data?.signedUrl ?? null;
 }
 
+async function resolveReportPhotoRoles(
+  admin: AdminClient,
+  userId: string,
+  reportCreatedAt: string,
+  reportId?: string,
+): Promise<Map<string, string>> {
+  if (reportId) {
+    const stored = await getStoredReportPhotoPaths(admin, reportId);
+    if (stored?.length) return byRoleFromStored(stored);
+  }
+
+  const cutoff = new Date(
+    new Date(reportCreatedAt).getTime() + REPORT_PHOTO_CUTOFF_MS,
+  ).toISOString();
+
+  const { data: photos } = await admin
+    .from("photos")
+    .select("storage_path, role, created_at")
+    .eq("user_id", userId)
+    .lte("created_at", cutoff)
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  return byRoleMap(
+    photos as { role: string | null; storage_path: string }[] | null,
+  );
+}
+
+/**
+ * Face + body paths the report's looks were rendered on. Same source as
+ * generateReportImages / look-extra — never the user's later catalog default.
+ */
+export async function reportLookSetPhotoPaths(
+  admin: AdminClient,
+  opts: {
+    userId: string;
+    reportId: string;
+    reportCreatedAt?: string | null;
+  },
+): Promise<{ faceRefPath: string | null; fullRefPath: string | null }> {
+  let createdAt = opts.reportCreatedAt ?? null;
+  if (!createdAt) {
+    const { data } = await admin
+      .from("reports")
+      .select("created_at")
+      .eq("id", opts.reportId)
+      .eq("user_id", opts.userId)
+      .maybeSingle();
+    createdAt = (data?.created_at as string | null) ?? null;
+  }
+
+  let byRole = new Map<string, string>();
+  if (createdAt) {
+    byRole = await resolveReportPhotoRoles(
+      admin,
+      opts.userId,
+      createdAt,
+      opts.reportId,
+    );
+  } else {
+    const stored = await getStoredReportPhotoPaths(admin, opts.reportId);
+    if (stored?.length) byRole = byRoleFromStored(stored);
+  }
+
+  return {
+    faceRefPath: byRole.get("face") ?? null,
+    fullRefPath: byRole.get("full") ?? byRole.get("face") ?? null,
+  };
+}
+
 /**
  * Reference photos tied to a specific report — prefer the paths persisted at
  * submit time; fall back to photos uploaded around creation (legacy heuristic).
@@ -89,30 +175,12 @@ export async function getReportReferencePhotos(
   reportCreatedAt: string,
   reportId?: string,
 ): Promise<ReportReferencePhotos> {
-  let byRole = new Map<string, string>();
-
-  if (reportId) {
-    const stored = await getStoredReportPhotoPaths(admin, reportId);
-    if (stored?.length) byRole = byRoleFromStored(stored);
-  }
-
-  if (!byRole.size) {
-    const cutoff = new Date(
-      new Date(reportCreatedAt).getTime() + REPORT_PHOTO_CUTOFF_MS,
-    ).toISOString();
-
-    const { data: photos } = await admin
-      .from("photos")
-      .select("storage_path, role, created_at")
-      .eq("user_id", userId)
-      .lte("created_at", cutoff)
-      .order("created_at", { ascending: false })
-      .limit(40);
-
-    byRole = byRoleMap(
-      photos as { role: string | null; storage_path: string }[] | null,
-    );
-  }
+  const byRole = await resolveReportPhotoRoles(
+    admin,
+    userId,
+    reportCreatedAt,
+    reportId,
+  );
 
   const fullPath = byRole.get("full");
   if (!fullPath) {
@@ -144,9 +212,90 @@ export async function getReportReferencePhotos(
   return {
     ok: true,
     fullUrl,
+    fullPath,
     ...(faceUrl ? { faceUrl } : {}),
+    ...(facePath ? { facePath } : {}),
     ...(profileUrl ? { profileUrl } : {}),
+    ...(profilePath ? { profilePath } : {}),
   };
+}
+
+/**
+ * Photos a look-set render must use. Stored set paths first; if the set was
+ * mirrored from a report and those paths are empty, the report's own photos
+ * (same as the original looks). Catalog default only for standalone sets.
+ */
+export async function resolveLookSetReferencePhotos(
+  admin: AdminClient,
+  opts: {
+    userId: string;
+    setId?: string;
+    facePath?: string | null;
+    fullPath?: string | null;
+    reportId?: string | null;
+    reportCreatedAt?: string | null;
+  },
+): Promise<LookSetReferencePhotos> {
+  let facePath = opts.facePath ?? null;
+  let fullPath = opts.fullPath ?? null;
+  let profileUrl: string | null = null;
+
+  let faceUrl = facePath ? await signPhotoPath(admin, facePath) : null;
+  let fullUrl = fullPath ? await signPhotoPath(admin, fullPath) : null;
+  if (!faceUrl) facePath = null;
+  if (!fullUrl) fullPath = null;
+
+  if (opts.reportId && (!fullPath || !facePath)) {
+    const fromReport = await reportLookSetPhotoPaths(admin, {
+      userId: opts.userId,
+      reportId: opts.reportId,
+      reportCreatedAt: opts.reportCreatedAt,
+    });
+    if (!facePath && fromReport.faceRefPath) {
+      facePath = fromReport.faceRefPath;
+      faceUrl = await signPhotoPath(admin, facePath);
+      if (!faceUrl) facePath = null;
+    }
+    if (!fullPath && fromReport.fullRefPath) {
+      fullPath = fromReport.fullRefPath;
+      fullUrl = await signPhotoPath(admin, fullPath);
+      if (!fullUrl) fullPath = null;
+    }
+  }
+
+  if (!fullUrl && !opts.reportId) {
+    const cat = await getCatalogTryOnPhoto(admin, opts.userId);
+    if (cat.ok) {
+      fullUrl = cat.signedUrl;
+      if (!fullPath) fullPath = cat.path;
+    }
+  }
+
+  if (opts.setId) {
+    const patch: Record<string, unknown> = {};
+    if (facePath && facePath !== (opts.facePath ?? null)) {
+      patch.face_ref_path = facePath;
+    }
+    if (fullPath && fullPath !== (opts.fullPath ?? null)) {
+      patch.full_ref_path = fullPath;
+    }
+    if (Object.keys(patch).length) {
+      const { error } = await admin
+        .from("look_set_profiles")
+        .update(patch)
+        .eq("set_id", opts.setId)
+        .eq("user_id", opts.userId);
+      if (error && !/face_ref_path|full_ref_path|column/i.test(error.message)) {
+        console.error(
+          "[look-set] persist ref paths failed",
+          opts.setId,
+          error.message,
+        );
+      }
+    }
+  }
+
+  return { faceUrl, fullUrl, profileUrl, facePath, fullPath };
 }
 
 export type GroomingPhotoResult =

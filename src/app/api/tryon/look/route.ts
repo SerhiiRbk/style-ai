@@ -30,8 +30,7 @@ import type { StyleProfile } from "@/lib/style-profile";
 import type { ShoppingItem } from "@/lib/report";
 import {
   getReportReferencePhotos,
-  getCatalogTryOnPhoto,
-  signPhotoPath,
+  resolveLookSetReferencePhotos,
 } from "@/lib/photo-tryon";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 
@@ -237,15 +236,16 @@ export async function POST(request: Request) {
   let storageId: string;
   let reportIdForRow: string | null;
   // For sets: the reference photo the set was rendered on (persisted on newer
-  // sets). Resolution falls back to the user's default photo — the SAME source
-  // the set generation used — not the latest report's photos.
+  // sets). Report-mirrored sets fall back to that report's photos; standalone
+  // sets fall back to the catalog default — never a later report's photo.
   let setFacePath: string | null = null;
   let setFullPath: string | null = null;
+  let setReportId: string | null = null;
 
   if (setId) {
     const { data: setRow } = await admin
       .from("look_sets")
-      .select("id, created_at, look_items")
+      .select("id, created_at, look_items, report_id")
       .eq("id", setId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -269,6 +269,7 @@ export async function POST(request: Request) {
     refCreatedAt = setRow.created_at as string;
     storageId = setId;
     reportIdForRow = null;
+    setReportId = (setRow.report_id as string | null) ?? null;
     // Best-effort (pre-0041-safe): the exact reference photo paths stored on the
     // set at generation, if the columns exist.
     const { data: rp, error: rpErr } = await admin
@@ -395,24 +396,24 @@ export async function POST(request: Request) {
     );
   }
 
-  // Reference photos. Report: its own stored photos. Set: the exact photo the
-  // set was rendered on — its stored ref paths when present, else the user's
-  // DEFAULT photo (getCatalogTryOnPhoto), the same source the set generation
-  // used. Never the latest report's photos.
+  // Reference photos. Report page: that report's stored photos. Set: stored
+  // ref paths, else the parent report's photos when mirrored, else catalog
+  // default for standalone Create-a-Look sets.
   let fullUrl: string | undefined;
   let faceUrl: string | undefined;
   let profileUrl: string | undefined;
   if (setId) {
-    faceUrl = setFacePath
-      ? ((await signPhotoPath(admin, setFacePath)) ?? undefined)
-      : undefined;
-    fullUrl = setFullPath
-      ? ((await signPhotoPath(admin, setFullPath)) ?? undefined)
-      : undefined;
-    if (!fullUrl) {
-      const cat = await getCatalogTryOnPhoto(admin, user.id);
-      if (cat.ok) fullUrl = cat.signedUrl;
-    }
+    const refs = await resolveLookSetReferencePhotos(admin, {
+      userId: user.id,
+      setId,
+      facePath: setFacePath,
+      fullPath: setFullPath,
+      reportId: setReportId,
+      reportCreatedAt: refCreatedAt,
+    });
+    faceUrl = refs.faceUrl ?? undefined;
+    fullUrl = refs.fullUrl ?? undefined;
+    profileUrl = refs.profileUrl ?? undefined;
   } else {
     const photo = await getReportReferencePhotos(
       admin,
