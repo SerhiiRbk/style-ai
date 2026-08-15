@@ -21,14 +21,20 @@ import {
 } from "@/lib/data/look-three-quarter";
 import { resolveLookSetReferencePhotos } from "@/lib/photo-tryon";
 import {
+  coerceBlazerType,
   coerceEyewearShape,
   coerceHatType,
   coerceLensColor,
+  coerceOuterwearFabric,
+  coerceShoeMaterial,
   coerceTieType,
   composeLookDescription,
   composeLookPalette,
   isAllowedConstructorSlot,
+  isBlazer,
   isEyewear,
+  isFabricOuterwear,
+  isFootwear,
   isHat,
   isSunglasses,
   isTie,
@@ -102,6 +108,12 @@ export async function POST(request: Request) {
       typeof slot.lensColor === "string" ? slot.lensColor.trim().toLowerCase() : "";
     const rawHat =
       typeof slot.hatType === "string" ? slot.hatType.trim().toLowerCase() : "";
+    const rawMaterial =
+      typeof slot.material === "string" ? slot.material.trim().toLowerCase() : "";
+    const rawBlazer =
+      typeof slot.blazerType === "string"
+        ? slot.blazerType.trim().toLowerCase()
+        : "";
     slots.push({
       category: slot.category,
       garment,
@@ -116,6 +128,15 @@ export async function POST(request: Request) {
         ? { lensColor: coerceLensColor(rawLens || undefined) }
         : {}),
       ...(isHat(garment) ? { hatType: coerceHatType(rawHat || undefined) } : {}),
+      ...(isFabricOuterwear(garment) && rawMaterial
+        ? { material: coerceOuterwearFabric(garment, rawMaterial) }
+        : {}),
+      ...(isFootwear(slot.category) && rawMaterial
+        ? { material: coerceShoeMaterial(rawMaterial) }
+        : {}),
+      ...(isBlazer(garment) && rawBlazer
+        ? { blazerType: coerceBlazerType(rawBlazer) }
+        : {}),
     });
   }
 

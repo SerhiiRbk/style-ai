@@ -17,6 +17,10 @@ export type ConstructorSlot = {
   tieType?: string;
   /** Headwear cut: baseball, fedora, beanie, … */
   hatType?: string;
+  /** Cloth / leather / wool on jacket, blazer, trench; leather / suede / nubuck on shoes. */
+  material?: string;
+  /** Blazer cut: single-breasted, double-breasted, unstructured. */
+  blazerType?: string;
 };
 
 export type ConstructorTypeOption = {
@@ -34,6 +38,7 @@ export type ConstructorColorOption = {
 export const CONSTRUCTOR_TYPES: Record<string, ConstructorTypeOption[]> = {
   Outerwear: [
     { id: "blazer", label: "Blazer" },
+    { id: "jacket", label: "Jacket" },
     { id: "coat", label: "Coat" },
     { id: "overshirt", label: "Overshirt" },
     { id: "bomber", label: "Bomber" },
@@ -180,7 +185,10 @@ function lastColorToken(color: string | null): string {
 
 /** Map parsed garment keywords onto the constructor's type ids. */
 const CANONICAL_GARMENT: Record<string, string> = {
-  jacket: "blazer",
+  jacket: "jacket",
+  "field jacket": "jacket",
+  "suit jacket": "blazer",
+  "sport coat": "blazer",
   overcoat: "coat",
   peacoat: "coat",
   parka: "coat",
@@ -368,6 +376,195 @@ export function isSneaker(garment: string): boolean {
   return garment === "sneakers";
 }
 
+export function isFootwear(category: string): boolean {
+  return category === "Footwear";
+}
+
+/** Jacket, blazer and trench can pick cloth / leather / wool. */
+export function isFabricOuterwear(garment: string): boolean {
+  return garment === "jacket" || garment === "blazer" || garment === "trench";
+}
+
+export function isBlazer(garment: string): boolean {
+  return garment === "blazer";
+}
+
+export const OUTERWEAR_FABRICS: ConstructorTypeOption[] = [
+  { id: "cloth", label: "Cloth" },
+  { id: "leather", label: "Leather" },
+  { id: "wool", label: "Wool" },
+];
+
+export const SHOE_MATERIALS: ConstructorTypeOption[] = [
+  { id: "leather", label: "Leather" },
+  { id: "suede", label: "Suede" },
+  { id: "nubuck", label: "Nubuck" },
+];
+
+export const BLAZER_TYPES: ConstructorTypeOption[] = [
+  { id: "single", label: "Single-breasted" },
+  { id: "double", label: "Double-breasted" },
+  { id: "unstructured", label: "Unstructured" },
+];
+
+export function defaultOuterwearFabric(garment: string): string {
+  return garment === "blazer" ? "wool" : "cloth";
+}
+
+export function defaultShoeMaterial(): string {
+  return "leather";
+}
+
+export function defaultBlazerType(): string {
+  return "single";
+}
+
+export function coerceOuterwearFabric(garment: string, material?: string): string {
+  if (material && OUTERWEAR_FABRICS.some((f) => f.id === material)) return material;
+  return defaultOuterwearFabric(garment);
+}
+
+export function coerceShoeMaterial(material?: string): string {
+  if (material && SHOE_MATERIALS.some((f) => f.id === material)) return material;
+  return defaultShoeMaterial();
+}
+
+export function coerceBlazerType(blazerType?: string): string {
+  if (blazerType && BLAZER_TYPES.some((t) => t.id === blazerType)) return blazerType;
+  return defaultBlazerType();
+}
+
+export function materialLabel(material?: string): string {
+  return (
+    OUTERWEAR_FABRICS.find((f) => f.id === material)?.label ??
+    SHOE_MATERIALS.find((f) => f.id === material)?.label ??
+    material ??
+    ""
+  );
+}
+
+export function blazerTypeLabel(blazerType?: string): string {
+  return BLAZER_TYPES.find((t) => t.id === blazerType)?.label ?? "";
+}
+
+export function canonicalOuterwearFabric(raw: string): string {
+  const t = raw.toLowerCase();
+  if (/\bleather\b|\blambskin\b|\bcalfskin\b/.test(t)) return "leather";
+  if (/\bwool\b|\bmerino\b|\bcashmere\b|\bflannel\b|\btweed\b|\bworse/.test(t)) {
+    return "wool";
+  }
+  if (/\bcloth\b|\bcotton\b|\bgabardine\b|\btwill\b|\bcanvas\b|\blinen\b/.test(t)) {
+    return "cloth";
+  }
+  return "";
+}
+
+export function canonicalShoeMaterial(raw: string): string {
+  const t = raw.toLowerCase();
+  if (/\bnubuck\b/.test(t)) return "nubuck";
+  if (/\bsuede\b/.test(t)) return "suede";
+  if (/\bleather\b|\bcalf(?:skin)?\b|\bcordovan\b/.test(t)) return "leather";
+  return "";
+}
+
+export function canonicalBlazerType(raw: string): string {
+  const t = raw.toLowerCase();
+  if (/\bdouble[\s-]?breasted\b|\b6\s*[x×]\s*[12]\b/.test(t)) return "double";
+  if (/\bunstructured\b|\bunlined\b|\bsoft[\s-]?shoulder/.test(t)) {
+    return "unstructured";
+  }
+  if (/\bsingle[\s-]?breasted\b|\btwo[\s-]?button\b|\b2[\s-]?button\b/.test(t)) {
+    return "single";
+  }
+  return "";
+}
+
+function blazerCutBrief(blazerType?: string): string {
+  switch (blazerType) {
+    case "double":
+      return "double-breasted ";
+    case "unstructured":
+      return "unstructured ";
+    case "single":
+      return "single-breasted ";
+    default:
+      return "";
+  }
+}
+
+function fabricWord(material?: string): string {
+  if (!material) return "";
+  return `${material} `;
+}
+
+function outerwearBrief(slot: ConstructorSlot): string {
+  const color = slot.color ? `${slot.color} ` : "";
+  const fabric = fabricWord(slot.material);
+  if (isBlazer(slot.garment)) {
+    return `${color}${fabric}${blazerCutBrief(slot.blazerType)}blazer`;
+  }
+  const type = typeLabel(slot.category, slot.garment).toLowerCase();
+  return `${color}${fabric}${type}`;
+}
+
+function footwearBrief(slot: ConstructorSlot): string {
+  if (isSneaker(slot.garment)) return sneakerBrief(slot);
+  const color = slot.color ? `${slot.color} ` : "";
+  const finish = fabricWord(slot.material);
+  const type = typeLabel(slot.category, slot.garment).toLowerCase();
+  return `${color}${finish}${type}`;
+}
+
+/** Prompt override so jacket / blazer / trench render as the named cloth. */
+export function fabricPromptDirective(description: string): string {
+  if (!/\b(?:jacket|blazer|trench)\b/i.test(description)) return "";
+  const named = description.match(
+    /\b(leather|lambskin|calfskin|wool|merino|cashmere|flannel|tweed|worsted|cloth|cotton|gabardine|twill|canvas|linen)\s+(?:(?:single|double)[\s-]?breasted\s+|unstructured\s+)?(?:jacket|blazer|trench)\b/i,
+  );
+  const fabric = named ? canonicalOuterwearFabric(named[1]) : "";
+  if (!fabric) return "";
+  const cloth =
+    fabric === "leather"
+      ? `smooth LEATHER with natural grain and a soft sheen — not woven cloth and not wool. `
+      : fabric === "wool"
+        ? `WOOL (worsted, flannel or tweed) with visible wool texture — not shiny leather and not cotton. `
+        : `woven CLOTH (cotton, gabardine or twill) — not leather and not a heavy wool coat. `;
+  return (
+    `CRITICAL outerwear fabric: the jacket, blazer or trench is ${fabric}. ` +
+    cloth
+  );
+}
+
+/** Prompt override so a listed blazer cut is not swapped for another. */
+export function blazerTypePromptDirective(description: string): string {
+  if (!/\bblazer\b|\bsport\s+coat\b/i.test(description)) return "";
+  const kind = canonicalBlazerType(description);
+  if (!kind) return "";
+  const cut =
+    kind === "double"
+      ? `It is DOUBLE-BREASTED — overlapping fronts and two columns of buttons, not a single-breasted jacket. `
+      : kind === "unstructured"
+        ? `It is UNSTRUCTURED — soft shoulders, no heavy padding or canvas, a relaxed casual blazer. `
+        : `It is SINGLE-BREASTED — one column of buttons, not double-breasted. `;
+  return `CRITICAL blazer: ${cut}`;
+}
+
+/** Prompt override so shoes keep the named leather / suede / nubuck finish. */
+export function shoeMaterialPromptDirective(description: string): string {
+  const named = description.match(
+    /\b(nubuck|suede|leather|calf(?:skin)?|cordovan)\s+(?:loafers?|sneakers?|trainers?|boots?|derbies?|sandals?|hiking|oxfords?|brogues?|shoes?)\b/i,
+  );
+  const finish = named ? canonicalShoeMaterial(named[1]) : "";
+  if (!finish) return "";
+  const note =
+    finish === "suede"
+      ? `matte SUEDE nap — not shiny smooth leather and not nubuck. `
+      : finish === "nubuck"
+        ? `matte NUBUCK (fine sanded grain) — not shiny leather and not long-nap suede. `
+        : `smooth LEATHER with a natural grain — not suede and not nubuck. `;
+  return `CRITICAL footwear finish: the shoes are ${finish}. The uppers are ${note}`;
+}
+
 const LIGHT_SNEAKER_UPPER = new Set([
   "white",
   "ivory",
@@ -397,22 +594,34 @@ export function sneakerSoleColor(upperColor?: string): "white" | "cream" {
 
 function sneakerBrief(slot: ConstructorSlot): string {
   const color = slot.color ? `${slot.color} ` : "";
+  const finish = slot.material || "leather";
   const sole = sneakerSoleColor(slot.color);
-  return `${color}leather sneakers with a ${sole} rubber sole`;
+  return `${color}${finish} sneakers with a ${sole} rubber sole`;
 }
 
 /** Prompt override so sneakers keep a contrasting light sole, not a monochrome shoe. */
 export function sneakerPromptDirective(description: string): string {
   if (!/\bsneakers?\b|\btrainers?\b/i.test(description)) return "";
   const named = description.match(
-    /\b(white|ivory|cream|dove|greige|camel|beige|sand|stone|khaki|brown|rust|burgundy|taupe|mushroom|navy|black|charcoal|grey|gray|olive|green|blue|teal)\s+(?:leather\s+)?(?:sneakers?|trainers?)\b/i,
+    /\b(white|ivory|cream|dove|greige|camel|beige|sand|stone|khaki|brown|rust|burgundy|taupe|mushroom|navy|black|charcoal|grey|gray|olive|green|blue|teal)\s+(?:(?:leather|suede|nubuck)\s+)?(?:sneakers?|trainers?)\b/i,
   );
   const sole = sneakerSoleColor(named?.[1]);
+  const finishMatch = description.match(
+    /\b(nubuck|suede|leather)\s+(?:sneakers?|trainers?)\b/i,
+  );
+  const finish = finishMatch?.[1]?.toLowerCase() || "leather";
+  const upper =
+    finish === "suede"
+      ? `The UPPER is SUEDE — a matte napped finish, not shiny smooth leather. `
+      : finish === "nubuck"
+        ? `The UPPER is NUBUCK — a fine matte sanded grain, not shiny leather. `
+        : `The UPPER is smooth LEATHER. `;
   return (
     `CRITICAL sneakers: the trainers have a coloured UPPER and a CONTRASTING ` +
     `${sole} rubber midsole and outsole — not a fully monochrome shoe where the ` +
     `sole matches the upper. A tonal sole is only acceptable if the whole trainer ` +
-    `is already white, ivory or cream. `
+    `is already white, ivory or cream. ` +
+    upper
   );
 }
 
@@ -882,7 +1091,26 @@ export function isAllowedConstructorSlot(slot: ConstructorSlot): boolean {
   const hatOk =
     !slot.hatType ||
     (isHat(slot.garment) && HAT_TYPES.some((t) => t.id === slot.hatType));
-  return typeOk && colorOk && shapeOk && tuckOk && tieOk && lensOk && hatOk;
+  const materialOk =
+    !slot.material ||
+    (isFabricOuterwear(slot.garment) &&
+      OUTERWEAR_FABRICS.some((f) => f.id === slot.material)) ||
+    (isFootwear(slot.category) &&
+      SHOE_MATERIALS.some((f) => f.id === slot.material));
+  const blazerOk =
+    !slot.blazerType ||
+    (isBlazer(slot.garment) && BLAZER_TYPES.some((t) => t.id === slot.blazerType));
+  return (
+    typeOk &&
+    colorOk &&
+    shapeOk &&
+    tuckOk &&
+    tieOk &&
+    lensOk &&
+    hatOk &&
+    materialOk &&
+    blazerOk
+  );
 }
 
 /** Build the look description the image model will render. */
@@ -900,8 +1128,11 @@ export function composeLookDescription(slots: ConstructorSlot[]): string {
       if (isHat(s.garment)) {
         return hatBrief(s);
       }
-      if (isSneaker(s.garment)) {
-        return sneakerBrief(s);
+      if (isFabricOuterwear(s.garment)) {
+        return outerwearBrief(s);
+      }
+      if (isFootwear(s.category)) {
+        return footwearBrief(s);
       }
       if (hasTie && (s.category === "Knitwear" || isClosedKnit(s.garment))) {
         return knitBriefWithTie(s);
@@ -937,7 +1168,13 @@ export function slotsFromLook(title: string, description: string): ConstructorSl
   const seen = new Set<string>();
   const slots: ConstructorSlot[] = [];
   for (const g of garments) {
-    const garment = canonicalGarment(g.garment, g.category);
+    let garment = canonicalGarment(g.garment, g.category);
+    if (
+      garment === "jacket" &&
+      /\b(blazer|sport\s+coat|suit\s+jacket)\b/i.test(g.clause)
+    ) {
+      garment = "blazer";
+    }
     const color = lastColorToken(g.color);
     const key = `${g.category}:${garment}`;
     if (seen.has(key)) continue;
@@ -949,6 +1186,12 @@ export function slotsFromLook(title: string, description: string): ConstructorSl
     const tuck = isTuckable(garment) ? canonicalTuck(g.clause) : "";
     const tieType = isTie(garment) ? canonicalTieType(g.clause) : "";
     const hatType = isHat(garment) ? canonicalHatType(g.clause) : "";
+    const material = isFabricOuterwear(garment)
+      ? canonicalOuterwearFabric(g.clause)
+      : isFootwear(g.category)
+        ? canonicalShoeMaterial(g.clause)
+        : "";
+    const blazerType = isBlazer(garment) ? canonicalBlazerType(g.clause) : "";
     let frameColor = color;
     let lensColor = "";
     if (isSunglasses(garment)) {
@@ -967,6 +1210,8 @@ export function slotsFromLook(title: string, description: string): ConstructorSl
       ...(tieType ? { tieType } : {}),
       ...(hatType ? { hatType } : {}),
       ...(lensColor ? { lensColor } : {}),
+      ...(material ? { material } : {}),
+      ...(blazerType ? { blazerType } : {}),
     });
   }
   // Every look needs a footwear slot so colour/style can be edited even when
@@ -1003,6 +1248,8 @@ export function slotsEqual(a: ConstructorSlot[], b: ConstructorSlot[]): boolean 
       (s.tieType || "") === (b[i]?.tieType || "") &&
       (s.lensColor || "") === (b[i]?.lensColor || "") &&
       (s.hatType || "") === (b[i]?.hatType || "") &&
+      (s.material || "") === (b[i]?.material || "") &&
+      (s.blazerType || "") === (b[i]?.blazerType || "") &&
       isSlotEnabled(s) === isSlotEnabled(b[i]!),
   );
 }

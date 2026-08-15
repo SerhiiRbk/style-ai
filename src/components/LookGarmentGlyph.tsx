@@ -238,14 +238,33 @@ function pathsFor(
   lensFill?: string,
   hatType?: string,
   soleFill?: string,
+  blazerType?: string,
 ): ReactNode {
   switch (garment) {
     case "blazer":
-      return (
+      return blazerType === "double" ? (
+        <>
+          <path d="M18 14 L32 18 L46 14 L50 22 L50 54 L14 54 L14 22 Z" />
+          <path d="M26 22 L26 54 M38 22 L38 54" fill="none" />
+          <path d="M18 14 L28 30 L32 18 L36 30 L46 14" fill="none" />
+          <circle cx="29" cy="34" r="1.1" />
+          <circle cx="35" cy="34" r="1.1" />
+          <circle cx="29" cy="42" r="1.1" />
+          <circle cx="35" cy="42" r="1.1" />
+        </>
+      ) : (
         <>
           <path d="M18 14 L32 18 L46 14 L50 22 L50 54 L14 54 L14 22 Z" />
           <path d="M32 18 L32 54" fill="none" />
           <path d="M18 14 L26 28 L32 18 L38 28 L46 14" fill="none" />
+        </>
+      );
+    case "jacket":
+      return (
+        <>
+          <path d="M16 16 L32 20 L48 16 L52 24 L50 50 C50 54 14 54 14 50 L12 24 Z" />
+          <path d="M32 20 L32 50" fill="none" />
+          <path d="M20 16 L24 26 M44 16 L40 26" fill="none" />
         </>
       );
     case "coat":
@@ -461,6 +480,7 @@ export function LookGarmentGlyph({
               ? "#E8DCC8"
               : "#F4F1EA"
             : undefined,
+          slot.blazerType,
         )}
       </GlyphFrame>
     </span>

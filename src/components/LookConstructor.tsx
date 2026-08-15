@@ -8,14 +8,22 @@ import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 import { WORKING } from "@/components/luxe/messages";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
 import {
+  BLAZER_TYPES,
+  blazerTypeLabel,
+  coerceBlazerType,
   coerceEyewearShape,
   coerceHatType,
   coerceLensColor,
+  coerceOuterwearFabric,
+  coerceShoeMaterial,
   coerceTieType,
   colorsForSlot,
   colorLabel,
   composeLookDescription,
+  isBlazer,
   isEyewear,
+  isFabricOuterwear,
+  isFootwear,
   isSlotEnabled,
   isHat,
   isSunglasses,
@@ -25,10 +33,13 @@ import {
   isTuckable,
   lensColorLabel,
   lensColorsForSlot,
+  materialLabel,
   MAX_ACCESSORY_SLOTS,
   nextAccessorySlot,
+  OUTERWEAR_FABRICS,
   shapeLabel,
   shapesForEyewear,
+  SHOE_MATERIALS,
   slotsEqual,
   slotsFromLook,
   TIE_TYPES,
@@ -183,7 +194,7 @@ export function LookConstructor({
               }}
               disabled={state === "loading" || disabled}
               aria-pressed={active}
-              title={`${enabled ? "" : "Off · "}${colorLabel(slot.color)} ${slot.lensColor ? `${lensColorLabel(slot.lensColor)} lens ` : ""}${slot.shape ? `${shapeLabel(slot.shape)} ` : ""}${slot.hatType ? `${hatTypeLabel(slot.hatType)} ` : ""}${slot.tieType ? `${tieTypeLabel(slot.tieType)} ` : ""}${slot.tuck ? `${tuckLabel(slot.tuck)} ` : ""}${typeLabel(slot.category, slot.garment)}`}
+              title={`${enabled ? "" : "Off · "}${colorLabel(slot.color)} ${slot.material ? `${materialLabel(slot.material)} ` : ""}${slot.blazerType ? `${blazerTypeLabel(slot.blazerType)} ` : ""}${slot.lensColor ? `${lensColorLabel(slot.lensColor)} lens ` : ""}${slot.shape ? `${shapeLabel(slot.shape)} ` : ""}${slot.hatType ? `${hatTypeLabel(slot.hatType)} ` : ""}${slot.tieType ? `${tieTypeLabel(slot.tieType)} ` : ""}${slot.tuck ? `${tuckLabel(slot.tuck)} ` : ""}${typeLabel(slot.category, slot.garment)}`}
               className={`flex w-[4.5rem] flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 active
                   ? "border-brass/50 bg-brass/10"
@@ -248,6 +259,14 @@ export function LookConstructor({
               ...(isHat(garment)
                 ? { hatType: coerceHatType(prev.hatType) }
                 : { hatType: undefined }),
+              ...(isFabricOuterwear(garment)
+                ? { material: coerceOuterwearFabric(garment, prev.material) }
+                : isFootwear(prev.category)
+                  ? { material: coerceShoeMaterial(prev.material) }
+                  : { material: undefined }),
+              ...(isBlazer(garment)
+                ? { blazerType: coerceBlazerType(prev.blazerType) }
+                : { blazerType: undefined }),
               lensColor,
             });
           }}
@@ -280,6 +299,17 @@ export function LookConstructor({
           onHatType={
             isHat(slots[open].garment)
               ? (hatType) => patch(open, { hatType, on: true })
+              : undefined
+          }
+          onMaterial={
+            isFabricOuterwear(slots[open].garment) ||
+            isFootwear(slots[open].category)
+              ? (material) => patch(open, { material })
+              : undefined
+          }
+          onBlazerType={
+            isBlazer(slots[open].garment)
+              ? (blazerType) => patch(open, { blazerType })
               : undefined
           }
           onEnabled={
@@ -392,6 +422,8 @@ function SlotEditor({
   onTuck,
   onTieType,
   onHatType,
+  onMaterial,
+  onBlazerType,
   onEnabled,
 }: {
   slot: ConstructorSlot;
@@ -402,6 +434,8 @@ function SlotEditor({
   onTuck?: (tuck: "in" | "out") => void;
   onTieType?: (tieType: string) => void;
   onHatType?: (hatType: string) => void;
+  onMaterial?: (material: string) => void;
+  onBlazerType?: (blazerType: string) => void;
   onEnabled?: (on: boolean) => void;
 }) {
   const types = typesForSlot(slot.category, slot.garment);
@@ -450,6 +484,62 @@ function SlotEditor({
           );
         })}
       </div>
+      {onBlazerType ? (
+        <div className="mt-3">
+          <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">
+            Cut
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {BLAZER_TYPES.map((t) => {
+              const selected = t.id === slot.blazerType;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onBlazerType(t.id)}
+                  aria-pressed={selected}
+                  className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                    selected
+                      ? "bg-ink text-paper"
+                      : "border border-line text-stone hover:border-ink/30 hover:text-ink"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      {onMaterial ? (
+        <div className="mt-3">
+          <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">
+            {isFootwear(slot.category) ? "Material" : "Fabric"}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {(isFootwear(slot.category) ? SHOE_MATERIALS : OUTERWEAR_FABRICS).map(
+              (t) => {
+                const selected = t.id === slot.material;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => onMaterial(t.id)}
+                    aria-pressed={selected}
+                    className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                      selected
+                        ? "bg-ink text-paper"
+                        : "border border-line text-stone hover:border-ink/30 hover:text-ink"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              },
+            )}
+          </div>
+        </div>
+      ) : null}
       {onTuck ? (
         <div className="mt-3">
           <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">

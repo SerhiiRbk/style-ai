@@ -39,8 +39,11 @@ import {
   type LookPromptParts,
 } from "@/lib/ai/look-prompt";
 import {
+  blazerTypePromptDirective,
   eyewearPromptDirective,
+  fabricPromptDirective,
   hatPromptDirective,
+  shoeMaterialPromptDirective,
   sneakerPromptDirective,
   tiePromptDirective,
   tuckPromptDirective,
@@ -646,6 +649,9 @@ export async function generateLookImage(opts: {
     const tieBlock = tiePromptDirective(look.description);
     const hatBlock = hatPromptDirective(look.description);
     const sneakerBlock = sneakerPromptDirective(look.description);
+    const fabricBlock = fabricPromptDirective(look.description);
+    const blazerTypeBlock = blazerTypePromptDirective(look.description);
+    const shoeMaterialBlock = shoeMaterialPromptDirective(look.description);
     const ordinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"];
     const ordinal = (n: number) => ordinals[n - 1] ?? `${n}TH`;
 
@@ -837,6 +843,9 @@ export async function generateLookImage(opts: {
       tieBlock +
       hatBlock +
       sneakerBlock +
+      fabricBlock +
+      blazerTypeBlock +
+      shoeMaterialBlock +
       NO_TEXT_RULE;
 
     // EXPERIMENTAL prompt versioning (see look-prompt.ts). v2+ pull the hard
@@ -879,6 +888,15 @@ export async function generateLookImage(opts: {
     }
     if (sneakerBlock) {
       constraints.push(sneakerBlock.trim());
+    }
+    if (fabricBlock) {
+      constraints.push(fabricBlock.trim());
+    }
+    if (blazerTypeBlock) {
+      constraints.push(blazerTypeBlock.trim());
+    }
+    if (shoeMaterialBlock) {
+      constraints.push(shoeMaterialBlock.trim());
     }
     if (isThreeQuarter) {
       constraints.push(
@@ -1326,6 +1344,9 @@ export async function generateReportTryOnImage(opts: {
     const tieBlock = tiePromptDirective(opts.garmentsText);
     const hatBlock = hatPromptDirective(opts.garmentsText);
     const sneakerBlock = sneakerPromptDirective(opts.garmentsText);
+    const fabricBlock = fabricPromptDirective(opts.garmentsText);
+    const blazerTypeBlock = blazerTypePromptDirective(opts.garmentsText);
+    const shoeMaterialBlock = shoeMaterialPromptDirective(opts.garmentsText);
 
     const prompt =
       `Photorealistic virtual try-on for a style report. ` +
@@ -1380,6 +1401,9 @@ export async function generateReportTryOnImage(opts: {
       tieBlock +
       hatBlock +
       sneakerBlock +
+      fabricBlock +
+      blazerTypeBlock +
+      shoeMaterialBlock +
       NO_TEXT_RULE;
 
     const content: (
