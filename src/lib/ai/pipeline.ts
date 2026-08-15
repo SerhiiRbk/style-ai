@@ -38,7 +38,7 @@ import {
   resolveImagePromptVersion,
   type LookPromptParts,
 } from "@/lib/ai/look-prompt";
-import { eyewearPromptDirective } from "@/lib/look-constructor";
+import { eyewearPromptDirective, tuckPromptDirective } from "@/lib/look-constructor";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -628,6 +628,7 @@ export async function generateLookImage(opts: {
     const faceImageCount = (hasFace ? 1 : 0) + (hasProfile ? 1 : 0);
     const personImageCount = faceImageCount + (hasFull ? 1 : 0);
     const eyewearBlock = eyewearPromptDirective(look.description);
+    const tuckBlock = tuckPromptDirective(look.description);
     const ordinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"];
     const ordinal = (n: number) => ordinals[n - 1] ?? `${n}TH`;
 
@@ -664,10 +665,12 @@ export async function generateLookImage(opts: {
       `on top of a knit — EXCEPT a roll-neck / turtleneck, which is never worn with ` +
       `a collared shirt (no collar peeking out of, or sitting on top of, the roll-neck; ` +
       `the roll-neck replaces the shirt). A blazer, overshirt or coat is always the outermost layer. ` +
-      `If sunglasses, glasses or ski goggles are listed, they are worn ON the face over the eyes — ` +
+      `If sunglasses or glasses are listed, they are worn ON the face over the eyes — ` +
       `never held in a hand, tucked in a pocket, hanging from a shirt, or pushed up on the forehead. Match the ` +
-      `named frame exactly: sunglasses may be round, wayfarer, aviator, rectangular, geometric, oval, wraparound sport, or ski goggles; ` +
+      `named frame exactly: sunglasses may be round, wayfarer, aviator, rectangular, geometric, oval, or wraparound sport; ` +
       `optical glasses may be round, rectangular, oval, geometric, or rimless (lenses mounted directly to the bridge and temples, no surrounding frame). ` +
+      `When sunglasses are described as mirrored, the lenses are a reflective mirror finish, not a flat dark tint. ` +
+      `If a shirt, oxford, tee, polo or henley is tucked in, the hem sits inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
       `Trousers described as "suit", "tailored", "dress" trousers or chinos are ` +
       `smooth woven wool or cotton cloth — NEVER blue or washed denim / jeans, even ` +
       `if the item name contains the word "washed". `;
@@ -807,6 +810,7 @@ export async function generateLookImage(opts: {
       imageRoles +
       faceAnchor +
       eyewearBlock +
+      tuckBlock +
       NO_TEXT_RULE;
 
     // EXPERIMENTAL prompt versioning (see look-prompt.ts). v2+ pull the hard
@@ -818,8 +822,9 @@ export async function generateLookImage(opts: {
       `a long-sleeve knit goes OVER a long-sleeve shirt (only the shirt's collar ` +
       `and cuffs peek out); a roll-neck or turtleneck is never worn with a collared ` +
       `shirt — it replaces the shirt. A blazer, overshirt or coat is always the outermost ` +
-      `layer. Sunglasses, glasses or ski goggles, when listed, sit on the face over the eyes ` +
-      `in the named frame shape. Rimless glasses have no surrounding frame — the lenses attach directly to the bridge and temples. Ski goggles cover both eyes as a visor, not on the forehead. `;
+      `layer. Sunglasses or glasses, when listed, sit on the face over the eyes ` +
+      `in the named frame shape. Rimless glasses have no surrounding frame — the lenses attach directly to the bridge and temples. Mirrored sunglasses have reflective mirror lenses, not a flat dark tint. ` +
+      `A shirt, oxford, tee, polo or henley described as tucked in has its hem inside the trouser waistband; if worn untucked, the hem hangs over the trousers. `;
     const constraints = [
       `render EXACTLY the garments listed — do not add any layer that is not ` +
         `listed (no extra jumper, knit, waistcoat or shirt)`,
@@ -828,13 +833,16 @@ export async function generateLookImage(opts: {
         `even if the item name contains the word "washed"`,
       `no text, letters, words, captions, labels, headings, watermarks, logos, ` +
         `numbers, arrows or graphic overlays anywhere in the frame`,
-      `sunglasses, glasses or ski goggles listed in the outfit are worn on the face over the ` +
+      `sunglasses or glasses listed in the outfit are worn on the face over the ` +
         `eyes in the named frame shape — not held, not in a pocket, not hanging from clothing, not on the forehead`,
     ];
     if (eyewearBlock) {
       constraints.push(
         `listed eyewear is mandatory on the face — never render a bare face if sunglasses, glasses or goggles appear in the outfit`,
       );
+    }
+    if (tuckBlock) {
+      constraints.push(tuckBlock.trim());
     }
     const promptParts: LookPromptParts = {
       legacyPrompt,
@@ -1273,6 +1281,7 @@ export async function generateReportTryOnImage(opts: {
       (u): u is string => Boolean(u && /^https?:\/\//i.test(u)),
     );
     const eyewearBlock = eyewearPromptDirective(opts.garmentsText);
+    const tuckBlock = tuckPromptDirective(opts.garmentsText);
 
     const prompt =
       `Photorealistic virtual try-on for a style report. ` +
@@ -1307,10 +1316,12 @@ export async function generateReportTryOnImage(opts: {
       `then a long-sleeve knit goes OVER a long-sleeve shirt (collar and cuffs peek ` +
       `out), never a shirt over a knit. A roll-neck or turtleneck is never worn with ` +
       `a collared shirt — no collar peeking out of or sitting on the roll-neck; the ` +
-      `roll-neck replaces the shirt. If sunglasses, glasses or ski goggles are listed, they are ` +
+      `roll-neck replaces the shirt. If sunglasses or glasses are listed, they are ` +
       `worn ON the face over the eyes — never held in a hand, in a pocket, hanging ` +
       `from a shirt, or pushed onto the forehead — in the named frame shape. Rimless glasses ` +
       `have lenses mounted directly to the bridge and temples with no surrounding frame. ` +
+      `Mirrored sunglasses have reflective mirror lenses, not a flat dark tint. ` +
+      `If a shirt, oxford, tee, polo or henley is tucked in, the hem sits inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
       `Trousers described as "suit", "tailored" or ` +
       `"dress" trousers or chinos are smooth woven wool or cotton — never blue or ` +
       `washed denim, even if the item name contains "washed". ` +
@@ -1320,6 +1331,7 @@ export async function generateReportTryOnImage(opts: {
       `person, same face, now wearing the new outfit against a clean studio ` +
       `backdrop.` +
       eyewearBlock +
+      tuckBlock +
       NO_TEXT_RULE;
 
     const content: (

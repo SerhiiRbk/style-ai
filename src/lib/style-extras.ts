@@ -2379,6 +2379,7 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   heather: { family: "grey", shade: "mid" },
   dove: { family: "grey", shade: "light" }, ash: { family: "grey", shade: "light" },
   silver: { family: "grey", shade: "light" }, pearl: { family: "grey", shade: "light" },
+  mirrored: { family: "grey", shade: "light" }, mirror: { family: "grey", shade: "light" },
   charcoal: { family: "grey", shade: "dark" }, slate: { family: "grey", shade: "dark" },
   graphite: { family: "grey", shade: "dark" }, anthracite: { family: "grey", shade: "dark" },
   asphalt: { family: "grey", shade: "dark" }, gunmetal: { family: "grey", shade: "dark" },

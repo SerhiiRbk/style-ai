@@ -17,9 +17,12 @@ import {
   signPhotoPath,
 } from "@/lib/photo-tryon";
 import {
+  coerceEyewearShape,
   composeLookDescription,
   composeLookPalette,
   isAllowedConstructorSlot,
+  isEyewear,
+  isTuckable,
   type ConstructorSlot,
 } from "@/lib/look-constructor";
 
@@ -78,14 +81,19 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({ error: "Invalid slot" }, { status: 400 });
     }
+    const garment = slot.garment.trim().toLowerCase();
+    const rawShape =
+      typeof slot.shape === "string" ? slot.shape.trim().toLowerCase() : "";
+    const tuck = slot.tuck === "in" || slot.tuck === "out" ? slot.tuck : undefined;
     slots.push({
       category: slot.category,
-      garment: slot.garment.trim().toLowerCase(),
+      garment,
       color: slot.color.trim().toLowerCase(),
       on: slot.on === false ? false : true,
-      ...(typeof slot.shape === "string" && slot.shape.trim()
-        ? { shape: slot.shape.trim().toLowerCase() }
+      ...(isEyewear(garment)
+        ? { shape: coerceEyewearShape(garment, rawShape || undefined) }
         : {}),
+      ...(isTuckable(garment) && tuck ? { tuck } : {}),
     });
   }
 

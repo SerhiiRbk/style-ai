@@ -14,12 +14,15 @@ import {
   composeLookDescription,
   isEyewear,
   isSlotEnabled,
+  isTuckable,
   MAX_ACCESSORY_SLOTS,
   nextAccessorySlot,
   shapeLabel,
   shapesForEyewear,
   slotsEqual,
   slotsFromLook,
+  tuckLabel,
+  TUCK_OPTIONS,
   typeLabel,
   typesForSlot,
   type ConstructorSlot,
@@ -153,7 +156,7 @@ export function LookConstructor({
               }}
               disabled={state === "loading" || disabled}
               aria-pressed={active}
-              title={`${enabled ? "" : "Off · "}${colorLabel(slot.color)} ${slot.shape ? `${shapeLabel(slot.shape)} ` : ""}${typeLabel(slot.category, slot.garment)}`}
+              title={`${enabled ? "" : "Off · "}${colorLabel(slot.color)} ${slot.shape ? `${shapeLabel(slot.shape)} ` : ""}${slot.tuck ? `${tuckLabel(slot.tuck)} ` : ""}${typeLabel(slot.category, slot.garment)}`}
               className={`flex w-[4.5rem] flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 active
                   ? "border-brass/50 bg-brass/10"
@@ -196,6 +199,9 @@ export function LookConstructor({
               ...(isEyewear(garment)
                 ? { shape: coerceEyewearShape(garment, slots[open].shape) }
                 : { shape: "" }),
+              ...(isTuckable(garment)
+                ? { tuck: slots[open].tuck }
+                : { tuck: undefined }),
             })
           }
           onColor={(color) =>
@@ -207,6 +213,11 @@ export function LookConstructor({
           onShape={
             isEyewear(slots[open].garment)
               ? (shape) => patch(open, { shape, on: true })
+              : undefined
+          }
+          onTuck={
+            isTuckable(slots[open].garment)
+              ? (tuck) => patch(open, { tuck })
               : undefined
           }
           onEnabled={
@@ -274,16 +285,18 @@ function SlotEditor({
   onType,
   onColor,
   onShape,
+  onTuck,
   onEnabled,
 }: {
   slot: ConstructorSlot;
   onType: (garment: string) => void;
   onColor: (color: string) => void;
   onShape?: (shape: string) => void;
+  onTuck?: (tuck: "in" | "out") => void;
   onEnabled?: (on: boolean) => void;
 }) {
   const types = typesForSlot(slot.category, slot.garment);
-  const colors = colorsForSlot(slot.color);
+  const colors = colorsForSlot(slot.color, slot.garment);
   const enabled = isSlotEnabled(slot);
 
   return (
@@ -327,6 +340,33 @@ function SlotEditor({
           );
         })}
       </div>
+      {onTuck ? (
+        <div className="mt-3">
+          <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">
+            Hem
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {TUCK_OPTIONS.map((t) => {
+              const selected = t.id === slot.tuck;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onTuck(t.id as "in" | "out")}
+                  aria-pressed={selected}
+                  className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                    selected
+                      ? "bg-ink text-paper"
+                      : "border border-line text-stone hover:border-ink/30 hover:text-ink"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       {onShape ? (
         <div className="mt-3">
           <p className="mb-1.5 text-[11px] uppercase tracking-wider text-stone-soft">
@@ -369,7 +409,14 @@ function SlotEditor({
                   ? "border-ink ring-2 ring-brass ring-offset-2 ring-offset-paper"
                   : "border-black/10 hover:border-ink/30"
               }`}
-              style={{ backgroundColor: c.hex }}
+              style={
+                c.id === "mirrored"
+                  ? {
+                      backgroundImage:
+                        "linear-gradient(135deg, #E8F2F6, #7EB8C9, #2A4A5C)",
+                    }
+                  : { backgroundColor: c.hex }
+              }
             >
               <span className="sr-only">{c.label}</span>
             </button>

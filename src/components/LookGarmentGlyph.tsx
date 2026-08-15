@@ -12,19 +12,31 @@ function isLight(hex: string): boolean {
 
 function GlyphFrame({
   fill,
+  mirrored,
   children,
 }: {
   fill: string;
+  mirrored?: boolean;
   children: ReactNode;
 }) {
   const stroke = isLight(fill) ? "rgba(26,26,26,0.35)" : "rgba(26,26,26,0.12)";
+  const paint = mirrored ? "url(#lens-mirror)" : fill;
   return (
     <svg
       viewBox="0 0 64 64"
       className="h-full w-full"
       aria-hidden
     >
-      <g fill={fill} stroke={stroke} strokeWidth="1.25" strokeLinejoin="round">
+      {mirrored ? (
+        <defs>
+          <linearGradient id="lens-mirror" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#E8F2F6" />
+            <stop offset="45%" stopColor="#7EB8C9" />
+            <stop offset="100%" stopColor="#2A4A5C" />
+          </linearGradient>
+        </defs>
+      ) : null}
+      <g fill={paint} stroke={stroke} strokeWidth="1.25" strokeLinejoin="round">
         {children}
       </g>
     </svg>
@@ -84,19 +96,11 @@ function eyewearLenses(shape: string | undefined, outlined: boolean): ReactNode 
         </>
       );
     case "sport":
+    case "ski":
       return (
         <>
           <path d="M6 30 C8 22 22 20 32 24 C42 20 56 22 58 30 C56 40 44 44 32 40 C20 44 8 40 6 30 Z" fill={fill} />
           <path d="M32 24 V40" fill="none" />
-        </>
-      );
-    case "ski":
-      return (
-        <>
-          <path d="M4 30 H10" fill="none" />
-          <path d="M54 30 H60" fill="none" />
-          <path d="M10 24 C18 18 46 18 54 24 C56 28 56 36 52 40 C42 46 22 46 12 40 C8 36 8 28 10 24 Z" />
-          <path d="M16 30 C24 26 40 26 48 30" fill="none" />
         </>
       );
     case "rimless":
@@ -310,7 +314,10 @@ export function LookGarmentGlyph({
   const fill = colorHex(slot.color);
   return (
     <span className={`block ${className}`}>
-      <GlyphFrame fill={fill}>
+      <GlyphFrame
+        fill={fill}
+        mirrored={slot.garment === "sunglasses" && slot.color === "mirrored"}
+      >
         {pathsFor(slot.garment, slot.category, slot.shape)}
       </GlyphFrame>
     </span>
