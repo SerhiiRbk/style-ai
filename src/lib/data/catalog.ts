@@ -37,6 +37,9 @@ import {
   isPriceInBudget,
   type BudgetPreference,
 } from "@/lib/budgets";
+import { attrFitScore, slotAttrs } from "./catalog-attrfit";
+
+export { attrFitScore } from "./catalog-attrfit";
 
 const CATEGORIES = [
   "Outerwear",
@@ -65,6 +68,11 @@ type MatchRow = {
   offer_country?: string | null;
   same_country?: boolean | null;
   similarity?: number;
+  garment_subtype?: string | null;
+  material_family?: string | null;
+  fit?: string | null;
+  pattern?: string | null;
+  season?: string | null;
 };
 
 const HEX_RE = /^#?[0-9a-f]{6}$/i;
@@ -528,7 +536,9 @@ function rankMatchRows(
   color: string | null,
   garment: string,
   boldness: string,
+  clause?: string | null,
 ): RankedMatch[] {
+  const slot = slotAttrs(garment, clause);
   const ranked = rows.map((row) => {
     const title = formatCatalogProductTitle(row.brand, row.title);
     const sim = row.similarity ?? 0;
@@ -539,6 +549,7 @@ function rankMatchRows(
     const localBoost = row.same_country ? 0.04 : 0;
     const styleFit = styleFitScore(title, boldness);
     const tagFit = tagFitScore(row, boldness);
+    const attrFit = attrFitScore(row, slot, garmentScore);
     return {
       row,
       colorScore,
@@ -550,17 +561,25 @@ function rankMatchRows(
         garmentScore * 0.26 +
         localBoost +
         styleFit +
-        tagFit,
+        tagFit +
+        attrFit,
     };
   });
 
   // Blazer slots: hard-drop knit/zip/sport shells when a tailored blazer exists
   // in the pool (soft garmentScore alone wasn't enough against high vector hits).
+  // Knit subtypes are dropped in addition to the title filter, not instead of it.
   if (isBlazerGarment(garment)) {
     const tailored = ranked.filter((r) =>
       isTailoredBlazerTitle(formatCatalogProductTitle(r.row.brand, r.row.title)),
     );
-    if (tailored.length) return tailored;
+    const pool = tailored.length ? tailored : ranked;
+    const KNIT_SUBTYPES = new Set(["hoodie", "sweatshirt", "cardigan", "sweater"]);
+    const withoutKnit = pool.filter(
+      (r) => !r.row.garment_subtype || !KNIT_SUBTYPES.has(r.row.garment_subtype),
+    );
+    if (withoutKnit.length) return withoutKnit;
+    return pool;
   }
   return ranked;
 }
@@ -570,9 +589,10 @@ function pickBestMatch(
   color: string | null,
   garment: string,
   boldness: string,
+  clause?: string | null,
 ): { row: MatchRow; similarPick: boolean } | null {
   if (!rows.length) return null;
-  const ranked = rankMatchRows(rows, color, garment, boldness).sort(
+  const ranked = rankMatchRows(rows, color, garment, boldness, clause).sort(
     (a, b) => b.score - a.score,
   );
   const best = ranked[0];
@@ -593,8 +613,9 @@ function topRankedCandidates(
   color: string | null,
   garment: string,
   boldness: string,
+  clause?: string | null,
 ): MatchRow[] {
-  return rankMatchRows(rows, color, garment, boldness)
+  return rankMatchRows(rows, color, garment, boldness, clause)
     .sort((a, b) => b.score - a.score)
     .slice(0, LOOK_RERANK_CANDIDATE_LIMIT)
     .map((r) => r.row);
@@ -698,6 +719,7 @@ function resolveShirtTrouserClash(
     trouserSlot.garment.color,
     trouserSlot.garment.garment,
     profile.boldness,
+    trouserSlot.garment.clause,
   )
     .sort((a, b) => b.score - a.score)
     .find((r) => {
@@ -791,6 +813,7 @@ async function matchItemsForLook(
       g.color,
       g.garment,
       profile.boldness,
+      g.clause,
     );
     if (!rows.length) continue;
     usedCategories.add(g.category);
@@ -858,6 +881,7 @@ async function matchItemsForLook(
       matchSlot.garment.color,
       matchSlot.garment.garment,
       profile.boldness,
+      matchSlot.garment.clause,
     );
     if (!picked || seen.has(picked.row.id)) continue;
     seen.add(picked.row.id);
@@ -1225,6 +1249,7 @@ export async function matchInspirationItems(
         g.color,
         g.garment,
         profile.boldness,
+        g.clause,
       ).sort((a, b) => b.score - a.score);
     }
 
@@ -1294,7 +1319,7 @@ export async function matchInspirationItems(
         if (isPriceInBudget(price, budget)) inBand.push(r);
         else outBand.push(r);
       }
-      let ordered = preferBudget ? [...inBand, ...outBand] : [...ranked];
+      const ordered = preferBudget ? [...inBand, ...outBand] : [...ranked];
       if (pickedRowId) {
         const pool = preferBudget && inBand.some((r) => r.row.id === pickedRowId)
           ? inBand

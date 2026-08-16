@@ -1,168 +1,107 @@
-// Import a scraper JSON file ({ products: [...] }) into the catalogue.
+// Import a scraper JSON into the catalog THROUGH the canonical import route
+// (/api/catalog/import) so it gets the full server-side normalization:
+// sanitizeScraperNulls → normalizeTitle → mapCategory (Spanish familyName →
+// canonical 14) → inferMarket → toEur (priceEur) → inferCountry → inferGender →
+// schema validation → embedAndUpsert (dedup-UPDATE on source/external_id/color_key
+// + A-lite typing in toRow). Do NOT call embedAndUpsert directly — that skips
+// mapCategory/priceEur and would store raw Spanish categories.
 //
-//   node --env-file=.env.local scripts/import-scraper-json.mjs --file /path/to/scrape.json
-//   node --env-file=.env.local scripts/import-scraper-json.mjs --file scrape.json --source scraper:marks-spencer-es --dry-run
+//   node --env-file=.env.local scripts/import-scraper-json.mjs <file.json> \
+//     --url https://valetti.fit [--dry-run] [--limit N] [--batch 1000]
 //
-// Requires: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, AI_GATEWAY_API_KEY
+// --dry-run  LOCAL preview (no network): shows the canonical categories +
+//            material_family/subtype coverage the route would produce.
+// Real run needs CATALOG_IMPORT_KEY in the env (sent as x-api-key).
 import { readFile } from "node:fs/promises";
-import { canonicalProductSchema, CATEGORIES } from "./feeds/schema.mjs";
-import {
-  mapCategory,
-  inferMarket,
-  inferGender,
-  inferCountry,
-  toEur,
-  dedupeProducts,
-  sanitizeScraperNulls,
-} from "./feeds/normalize.mjs";
+import { mapCategory } from "./feeds/normalize.mjs";
 import { normalizeTitle } from "./feeds/humanize.mjs";
-import { embedAndUpsert } from "./feeds/upsert.mjs";
+import { parseProductAttributes } from "./feeds/attributes.mjs";
 
-const args = process.argv.slice(2);
-const val = (f) => {
-  const i = args.indexOf(f);
-  return i >= 0 && args[i + 1] ? args[i + 1] : undefined;
+const argv = process.argv.slice(2);
+const file = argv.find((a) => !a.startsWith("--"));
+const flag = (name, d = null) => {
+  const i = argv.indexOf(name);
+  return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : d;
 };
-const file = val("--file");
-const dryRun = args.includes("--dry-run");
-const skipEmbed = args.includes("--skip-embed");
-const source = val("--source");
-const sourceType = val("--source-type") ?? "scraper";
-
-const SOURCE_DEFAULT_COUNTRY = [
-  { match: /zara/i, country: "ES" },
-  { match: /reserved/i, country: "LU" },
-  { match: /marks.?spencer-de|markspencer-de|m&s-de/i, country: "DE" },
-  { match: /marks.?spencer-fr|markspencer-fr|m&s-fr/i, country: "FR" },
-  { match: /marks.?spencer|markspencer|m&s/i, country: "ES" },
-];
-
-function defaultCountryForSource(s) {
-  return SOURCE_DEFAULT_COUNTRY.find((r) => r.match.test(s ?? ""))?.country;
-}
-
-function normalizeRaw(raw, defaultSource) {
-  const r = sanitizeScraperNulls(
-    raw && typeof raw === "object" ? { ...raw } : raw,
-  );
-  if (!r || typeof r !== "object") return r;
-  if (defaultSource) r.source = defaultSource;
-
-  // Humanize the title first so category/gender inference read real words and
-  // the stored title needs no display-time pass. Preserve the original.
-  if (typeof r.title === "string") {
-    const { title, titleRaw } = normalizeTitle(r.title);
-    r.title = title;
-    r.titleRaw = titleRaw;
-  }
-
-  if (typeof r.category !== "string" || !CATEGORIES.includes(r.category)) {
-    r.category = mapCategory(r.category, r.title ?? "");
-  }
-  const rawMarket =
-    typeof r.market === "string" ? r.market.trim().toUpperCase() : "";
-  const marketCountry =
-    /^[A-Z]{2}$/.test(rawMarket) && rawMarket !== "EU" && rawMarket !== "US"
-      ? rawMarket
-      : undefined;
-  if (r.market !== "EU" && r.market !== "US") {
-    r.market = inferMarket(r.currency);
-  }
-  if (
-    typeof r.gender === "string" &&
-    !["men", "women", "unisex", "kids"].includes(r.gender)
-  ) {
-    r.gender = inferGender(r.gender, r.title, r.description);
-  }
-  if (typeof r.priceEur !== "number" && typeof r.price === "number") {
-    r.priceEur = toEur(r.price, r.currency ?? "EUR");
-  }
-  r.country = inferCountry(
-    r.country ?? marketCountry,
-    r.currency,
-    defaultCountryForSource(r.source),
-  );
-  return r;
-}
+const dryRun = argv.includes("--dry-run");
+const baseUrl = (flag("--url") || process.env.IMPORT_BASE_URL || "").replace(/\/$/, "");
+const limit = flag("--limit") ? Number.parseInt(flag("--limit"), 10) : null;
+const batchSize = flag("--batch") ? Number.parseInt(flag("--batch"), 10) : 1000;
 
 if (!file) {
-  console.error("Usage: node scripts/import-scraper-json.mjs --file <path> [--source scraper:...] [--dry-run]");
+  console.error("usage: node --env-file=.env.local scripts/import-scraper-json.mjs <file.json> --url <base> [--dry-run] [--limit N] [--batch N]");
   process.exit(1);
 }
 
-const body = JSON.parse(await readFile(file, "utf8"));
-const rawItems = Array.isArray(body) ? body : body.products ?? body.items;
-if (!Array.isArray(rawItems) || rawItems.length === 0) {
-  console.error("No products array found in JSON.");
+const raw = JSON.parse(await readFile(file, "utf8"));
+let products = Array.isArray(raw) ? raw : (raw.products ?? raw.items ?? []);
+if (!Array.isArray(products) || products.length === 0) {
+  console.error("No products found (expected an array or { products: [...] }).");
   process.exit(1);
 }
-
-const metaSource = source ?? (typeof body.source === "string" ? body.source : undefined);
-
-const valid = [];
-const invalid = [];
-const skipped = [];
-for (let i = 0; i < rawItems.length; i++) {
-  const candidate = normalizeRaw(rawItems[i], metaSource);
-  if (typeof candidate?.price !== "number" || !Number.isFinite(candidate.price)) {
-    skipped.push({ index: i, externalId: candidate?.externalId, reason: "missing price" });
-    continue;
-  }
-  const result = canonicalProductSchema.safeParse(candidate);
-  if (result.success) valid.push(result.data);
-  else
-    invalid.push({
-      index: i,
-      externalId: candidate?.externalId,
-      issues: result.error.issues.map((x) => `${x.path.join(".")}: ${x.message}`),
-    });
-}
-
-console.log(
-  `Parsed ${rawItems.length} rows → ${valid.length} valid, ${skipped.length} skipped, ${invalid.length} invalid`,
-);
-if (skipped.length) {
-  console.log(`  (skipped ${skipped.length} without price — likely unavailable variants)`);
-}
-if (invalid.length) {
-  console.error("First invalid rows:");
-  for (const row of invalid.slice(0, 5)) console.error(" ", row);
-  process.exit(1);
-}
-if (valid.length === 0) {
-  console.error("Nothing to import.");
-  process.exit(1);
-}
-
-const { products: toIngest, duplicatesRemoved } = dedupeProducts(valid);
-console.log(`After dedupe: ${toIngest.length} products (${duplicatesRemoved} duplicates removed)`);
+if (limit) products = products.slice(0, limit);
+console.log(`Loaded ${products.length} products from ${file}`);
 
 if (dryRun) {
-  console.log("(dry-run — no DB writes)");
-  for (const p of toIngest.slice(0, 5)) {
-    console.log(` • [${p.category}] ${p.brand ?? ""} — ${p.title} · €${p.priceEur} · ${p.source}`);
+  const cats = {};
+  let mat = 0;
+  let sub = 0;
+  const sample = [];
+  for (const p of products) {
+    const { title } = normalizeTitle(String(p.title ?? ""));
+    const canonical = mapCategory(p.category, title); // Spanish familyName → canonical
+    cats[canonical] = (cats[canonical] ?? 0) + 1;
+    const a = parseProductAttributes(p);
+    if (a.material_family) mat++;
+    if (a.garment_subtype) sub++;
+    if (sample.length < 12) {
+      sample.push({ raw: p.category, canonical, title: title.slice(0, 34), fam: a.material_family, sub: a.garment_subtype });
+    }
+  }
+  console.log(`\nDry-run (LOCAL preview — no network, no writes):`);
+  console.log(`  material_family: ${mat}/${products.length} (${Math.round((100 * mat) / products.length)}%)`);
+  console.log(`  garment_subtype: ${sub}/${products.length} (${Math.round((100 * sub) / products.length)}%)`);
+  console.log(`  canonical categories: ${JSON.stringify(Object.fromEntries(Object.entries(cats).sort((a, b) => b[1] - a[1])))}`);
+  console.log(`  samples (raw category → canonical):`);
+  for (const s of sample) {
+    console.log(`    ${String(s.raw ?? "·").padEnd(16)} → ${String(s.canonical).padEnd(11)} | ${s.title.padEnd(34)} fam=${s.fam ?? "·"} sub=${s.sub ?? "·"}`);
   }
   process.exit(0);
 }
 
-if (!skipEmbed && !process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) {
-  console.error("Missing AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN (needed for embeddings). Use --skip-embed to load rows without vectors.");
+// ---- real import: POST batches to the route ----
+if (!baseUrl) {
+  console.error("Missing --url <base> (e.g. https://valetti.fit or http://localhost:3000).");
+  process.exit(1);
+}
+const key = process.env.CATALOG_IMPORT_KEY;
+if (!key) {
+  console.error("Missing CATALOG_IMPORT_KEY in env (run with --env-file=.env.local, and ensure the deployment has the same key).");
   process.exit(1);
 }
 
-const model = process.env.AI_EMBED_MODEL ?? "openai/text-embedding-3-small";
-let last = 0;
-const upserted = await embedAndUpsert(toIngest, {
-  model: skipEmbed ? null : model,
-  sourceType,
-  unhide: true,
-  skipEmbed,
-  onProgress: (done, total) => {
-    if (done - last >= 100 || done === total) {
-      console.log(`  … ${done}/${total}`);
-      last = done;
+const endpoint = `${baseUrl}/api/catalog/import`;
+let totalUpserted = 0;
+for (let i = 0; i < products.length; i += batchSize) {
+  const batch = products.slice(i, i + batchSize);
+  const label = `batch ${Math.floor(i / batchSize) + 1} (${batch.length} items)`;
+  const resp = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": key },
+    body: JSON.stringify({ products: batch, sourceType: "scraper" }),
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    console.error(`\n${label} FAILED — HTTP ${resp.status}: ${payload.error ?? ""}`);
+    if (Array.isArray(payload.items)) {
+      for (const it of payload.items.slice(0, 10)) {
+        console.error(`  #${it.index} ${it.externalId ?? ""}: ${(it.issues ?? []).map((x) => `${x.path} ${x.message}`).join("; ")}`);
+      }
     }
-  },
-});
-
-console.log(`✓ Upserted ${upserted} product rows (source: ${metaSource ?? toIngest[0]?.source ?? "?"})${skipEmbed ? " — without embeddings" : ""}`);
+    console.error("Stopping — no further batches sent.");
+    process.exit(1);
+  }
+  totalUpserted += payload.upserted ?? payload.count ?? 0;
+  console.log(`${label} → HTTP ${resp.status}  upserted=${payload.upserted ?? payload.count ?? "?"}`);
+}
+console.log(`\nDone. Upserted ~${totalUpserted} (existing rows updated in place, new es products inserted).`);

@@ -4,6 +4,19 @@ export function getSupabase(): unknown;
 
 export type SourceType = "feed" | "scraper" | "seed" | "manual";
 
+export function toRow(
+  p: CanonicalProduct,
+  embedding: number[] | undefined,
+  sourceType: SourceType | undefined,
+  unhide: boolean | undefined,
+): Record<string, unknown>;
+
+export function offerRow(
+  productId: string,
+  p: CanonicalProduct,
+  sourceType: SourceType | undefined,
+): Record<string, unknown>;
+
 export function embedAndUpsert(
   products: CanonicalProduct[],
   opts?: {
