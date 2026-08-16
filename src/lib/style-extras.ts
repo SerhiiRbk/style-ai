@@ -2348,6 +2348,7 @@ const GARMENT_CATEGORY: Record<string, string> = {
   shirt: "Shirts", oxford: "Shirts", tee: "Shirts", polo: "Shirts", henley: "Shirts",
   trousers: "Trousers", chinos: "Trousers", chino: "Trousers", jeans: "Trousers",
   denim: "Trousers", slacks: "Trousers", pants: "Trousers",
+  shorts: "Trousers", short: "Trousers", bermudas: "Trousers", bermuda: "Trousers",
   loafers: "Footwear", loafer: "Footwear", boots: "Footwear", boot: "Footwear", sneakers: "Footwear",
   sneaker: "Footwear", derbies: "Footwear", derby: "Footwear", oxfords: "Footwear", brogues: "Footwear",
   "oxford shoes": "Footwear", "oxford shoe": "Footwear",
@@ -2356,6 +2357,8 @@ const GARMENT_CATEGORY: Record<string, string> = {
   shoes: "Footwear", trainers: "Footwear", sandals: "Footwear", sandal: "Footwear",
   belt: "Accessories", watch: "Accessories", scarf: "Accessories", tie: "Accessories",
   necktie: "Accessories", bowtie: "Accessories", "bow tie": "Accessories",
+  tote: "Accessories", "tote bag": "Accessories",
+  "pocket square": "Accessories", pochette: "Accessories",
   sunglasses: "Accessories", glasses: "Accessories", eyeglasses: "Accessories",
   goggles: "Accessories", "ski goggles": "Accessories",
   hat: "Accessories", cap: "Accessories", beanie: "Accessories",
@@ -2452,6 +2455,8 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   chinos: ["chino", "chinos", "trouser", "trousers"],
   chino: ["chino", "chinos", "trouser", "trousers"],
   jeans: ["jean", "jeans", "denim"],
+  shorts: ["short", "shorts", "bermuda"],
+  bermuda: ["bermuda", "shorts"],
   loafers: ["loafer", "loafers"],
   loafer: ["loafer", "loafers"],
   sneakers: ["sneaker", "sneakers", "trainer", "trainers"],
@@ -2464,6 +2469,10 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   oxfords: ["oxford", "oxfords"],
   brogues: ["brogue", "brogues"],
   belt: ["belt"],
+  tote: ["tote", "tote bag"],
+  "tote bag": ["tote", "tote bag"],
+  "pocket square": ["pocket square", "pochette", "handkerchief"],
+  pochette: ["pochette", "pocket square"],
   watch: ["watch"],
   scarf: ["scarf"],
   tie: ["tie", "necktie", "bow tie", "bowtie"],
@@ -2584,6 +2593,47 @@ export function isTailoredBlazerTitle(title: string): boolean {
   const hay = title.toLowerCase();
   if (NON_BLAZER_OUTER_RE.test(hay)) return false;
   return /\b(blazer|sport\s*coat)\b/.test(hay);
+}
+
+const DRAWSTRING_CLAUSE_RE = /\b(drawstring|elasticated|elastic\s+waist)\b/i;
+const DRAWSTRING_TITLE_RE =
+  /\b(drawstring|elasticated|elastic(?:ated)?\s+waist)\b/i;
+const TAILORED_TROUSER_TITLE_RE =
+  /\b(suit\s+trousers|suit\s+pants|pressed\s+crease|dress\s+(?:pants|trousers)|tailored\s+trousers)\b/i;
+const DRAWSTRING_GARMENTS = new Set([
+  "trousers",
+  "chinos",
+  "chino",
+  "pants",
+  "slacks",
+  "shorts",
+]);
+
+/** True when the look clause asks for drawstring / elasticated trousers. */
+export function prefersDrawstringSilhouette(
+  garment: string,
+  clause?: string | null,
+): boolean {
+  if (!clause || !DRAWSTRING_CLAUSE_RE.test(clause)) return false;
+  return DRAWSTRING_GARMENTS.has(normalizeGarmentKey(garment));
+}
+
+export function isDrawstringTitle(title: string): boolean {
+  return DRAWSTRING_TITLE_RE.test(title);
+}
+
+/**
+ * Soft rank nudge when a trousers slot asked for drawstring/elasticated.
+ * Positive for matching titles, negative for suit/pressed-crease trousers.
+ */
+export function silhouetteFitScore(
+  clause: string | null | undefined,
+  title: string,
+): number {
+  if (!clause || !DRAWSTRING_CLAUSE_RE.test(clause)) return 0;
+  if (DRAWSTRING_TITLE_RE.test(title)) return 0.12;
+  if (TAILORED_TROUSER_TITLE_RE.test(title)) return -0.08;
+  return 0;
 }
 
 /** 0–1 whether a catalogue product title mentions the parsed garment type. */
@@ -2745,6 +2795,33 @@ export function decomposeLook(description: string): LookGarment[] {
   }
   if (out.length) return out;
   return decomposeFromWholeText(description);
+}
+
+/**
+ * One slot per clothing category, but several Accessories (belt + tote +
+ * pocket square) — collapsing those to a single category drops pieces.
+ */
+export function selectLookGarmentSlots(
+  garments: LookGarment[],
+  max = 6,
+): LookGarment[] {
+  const out: LookGarment[] = [];
+  const usedCategories = new Set<string>();
+  const usedAccessories = new Set<string>();
+  for (const g of garments) {
+    if (out.length >= max) break;
+    if (g.category === "Accessories") {
+      const key = g.garment.trim().toLowerCase();
+      if (!key || usedAccessories.has(key)) continue;
+      usedAccessories.add(key);
+    } else if (usedCategories.has(g.category)) {
+      continue;
+    } else {
+      usedCategories.add(g.category);
+    }
+    out.push(g);
+  }
+  return out;
 }
 
 /** Palette-aware wardrobe staples assumed already owned (clearly labelled in UI). */

@@ -60,6 +60,7 @@ export const CONSTRUCTOR_TYPES: Record<string, ConstructorTypeOption[]> = {
     { id: "trousers", label: "Trousers" },
     { id: "chinos", label: "Chinos" },
     { id: "jeans", label: "Jeans" },
+    { id: "shorts", label: "Shorts" },
   ],
   Footwear: [
     { id: "loafers", label: "Loafers" },
@@ -236,6 +237,10 @@ const CANONICAL_GARMENT: Record<string, string> = {
   chino: "chinos",
   pants: "trousers",
   slacks: "trousers",
+  shorts: "shorts",
+  short: "shorts",
+  bermuda: "shorts",
+  bermudas: "shorts",
   denim: "jeans",
   loafer: "loafers",
   sneaker: "sneakers",

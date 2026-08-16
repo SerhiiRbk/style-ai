@@ -27,6 +27,11 @@ import {
   type Boldness,
 } from "@/lib/style-profile";
 import { composeLookBrief, type LookBriefSeason } from "@/lib/ai/look-brief";
+import {
+  formatLookColorRecipePrompt,
+  recipePaletteHexes,
+  type LookColorRecipe,
+} from "@/lib/look-set-color-recipes";
 import { languageInstruction, type ReportLanguage } from "@/lib/languages";
 import {
   reportPalette,
@@ -480,8 +485,10 @@ export async function generateExtraLook(opts: {
   boldness?: Boldness;
   /** Per-request season override — shapes the TEXT brief only (never the image prompt). */
   season?: LookBriefSeason;
+  /** Set-slot colour recipe — pins this look's hero/bottom/neutrals. */
+  colorRecipe?: LookColorRecipe;
 }): Promise<{ context: string; title: string; description: string; palette: string[] }> {
-  const { intake, profile, context, brief, note, rules, existingTitles, boldness, season } =
+  const { intake, profile, context, brief, note, rules, existingTitles, boldness, season, colorRecipe } =
     opts;
 
   if (!hasAI) {
@@ -489,7 +496,11 @@ export async function generateExtraLook(opts: {
     const used = new Set((existingTitles ?? []).map((t) => t.toLowerCase()));
     const pick =
       mock.looks.find((l) => !used.has(l.title.toLowerCase())) ?? mock.looks[0]!;
-    return { ...pick, context };
+    return {
+      ...pick,
+      context,
+      ...(colorRecipe ? { palette: recipePaletteHexes(colorRecipe) } : {}),
+    };
   }
 
   // Weave season + strictness into the brief text only — the look IMAGE prompt
@@ -532,17 +543,23 @@ export async function generateExtraLook(opts: {
       `- title: a short evocative name (2–4 words).\n` +
       `- description: ONE line naming each garment with its colour, comma-separated ` +
         `— concrete catalogue words only.\n` +
-      `- CRITICAL — colours: the "palette" hex codes AND every garment colour in the ` +
-        `"description" MUST be drawn ONLY from the client's BEST colours: ${bestPaletteText}. ` +
-        `No black/charcoal and no warm tan/camel/brown/olive/rust unless it appears above. ` +
-        `Never use the AVOID colours (${avoidPaletteText}).\n` +
+      (colorRecipe
+        ? formatLookColorRecipePrompt(colorRecipe)
+        : `- CRITICAL — colours: the "palette" hex codes AND every garment colour in the ` +
+          `"description" MUST be drawn ONLY from the client's BEST colours: ${bestPaletteText}. ` +
+          `No black/charcoal and no warm tan/camel/brown/olive/rust unless it appears above. ` +
+          `Never use the AVOID colours (${avoidPaletteText}).\n`) +
       `Keep the tone refined and practical.` +
       languageInstruction(intake.language),
   });
 
   // Guarantee the returned palette is on-report even if the model drifted; the
-  // look image is prompted from this palette.
-  return { ...output, palette: snapPaletteToBest(output.palette ?? [], colors.best), context };
+  // look image is prompted from this palette. A set recipe wins over the model.
+  const palette = snapPaletteToBest(
+    colorRecipe ? recipePaletteHexes(colorRecipe) : (output.palette ?? []),
+    colors.best,
+  );
+  return { ...output, palette, context };
 }
 
 const carloNoteSchema = z.object({ note: z.string() });

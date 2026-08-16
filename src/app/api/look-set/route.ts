@@ -36,6 +36,10 @@ import {
   type PhotoInput,
 } from "@/lib/ai/pipeline";
 import { matchLookItems, type LookItems } from "@/lib/data/catalog";
+import {
+  bestSwatchesForProfile,
+  lookSetColorRecipes,
+} from "@/lib/look-set-color-recipes";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import {
   getCatalogTryOnPhoto,
@@ -537,6 +541,10 @@ export async function POST(request: Request) {
 
   const rendered: RenderedLook[] = [];
   const titlesSoFar: string[] = [];
+  const colorRecipes = lookSetColorRecipes(
+    bestSwatchesForProfile(profile),
+    looksCount,
+  );
 
   // Face-anchor the renders on the resolved photo paths above (selected or
   // catalog-default). Prefer the signed full-length URL; no photo → no-identity
@@ -563,6 +571,7 @@ export async function POST(request: Request) {
             boldness,
             season,
             existingTitles: titlesSoFar,
+            colorRecipe: colorRecipes[i],
           });
 
           const img = await generateLookImage({

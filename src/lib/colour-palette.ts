@@ -286,7 +286,7 @@ export type ColorRec = {
 export const VERSATILE_NEUTRAL_COUNT = 2;
 
 /** Minimal hex → HSL for classifying a swatch's role (neutral / accent / depth). */
-function hexToHsl(hex: string): { h: number; s: number; l: number } {
+export function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const m = hex.replace("#", "");
   const r = parseInt(m.slice(0, 2), 16) / 255;
   const g = parseInt(m.slice(2, 4), 16) / 255;

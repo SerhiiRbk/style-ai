@@ -19,8 +19,12 @@ import {
   colorFamilies,
   decomposeLook,
   garmentTitleMatchScore,
+  selectLookGarmentSlots,
   isBlazerGarment,
+  isDrawstringTitle,
   isTailoredBlazerTitle,
+  prefersDrawstringSilhouette,
+  silhouetteFitScore,
   paletteColorHints,
   styleFitScore,
   styleIntentPhrase,
@@ -550,6 +554,7 @@ function rankMatchRows(
     const styleFit = styleFitScore(title, boldness);
     const tagFit = tagFitScore(row, boldness);
     const attrFit = attrFitScore(row, slot, garmentScore);
+    const silhouetteFit = silhouetteFitScore(clause, title);
     return {
       row,
       colorScore,
@@ -562,9 +567,19 @@ function rankMatchRows(
         localBoost +
         styleFit +
         tagFit +
-        attrFit,
+        attrFit +
+        silhouetteFit,
     };
   });
+
+  // Drawstring/elasticated trousers: when the look asked for them and the
+  // pool has one, drop suit/pressed-crease alternatives (same pattern as blazers).
+  if (prefersDrawstringSilhouette(garment, clause)) {
+    const drawstring = ranked.filter((r) =>
+      isDrawstringTitle(formatCatalogProductTitle(r.row.brand, r.row.title)),
+    );
+    if (drawstring.length) return drawstring;
+  }
 
   // Blazer slots: hard-drop knit/zip/sport shells when a tailored blazer exists
   // in the pool (soft garmentScore alone wasn't enough against high vector hits).
@@ -791,12 +806,9 @@ async function matchItemsForLook(
   goal: string,
 ): Promise<ShoppingItem[]> {
   const matchSlots: GarmentMatchSlot[] = [];
-  const usedCategories = new Set<string>();
   let slot = 0;
 
-  for (const g of garments) {
-    if (matchSlots.length >= 6) break;
-    if (usedCategories.has(g.category)) continue;
+  for (const g of selectLookGarmentSlots(garments, 6)) {
     const matchKey = matchKeyFor(g);
     // Knitwear is a layering piece — drop short-sleeve knits/sweatshirts so a
     // short-sleeve knit never gets layered over a long-sleeve shirt (mirrors
@@ -816,7 +828,6 @@ async function matchItemsForLook(
       g.clause,
     );
     if (!rows.length) continue;
-    usedCategories.add(g.category);
     matchSlots.push({ slot, garment: g, matchKey, rows });
     slot += 1;
   }
@@ -1190,26 +1201,10 @@ export async function matchInspirationItems(
     const preferBudget = budget.mode === "range";
     const preferredMax = preferBudget ? budget.max : BUDGET_ANY_MAX;
 
-    // One slot per category (dedupe), bounded — mirrors matchItemsForLook.
-    // One slot per main clothing category (an outfit has a single top, bottom,
-    // etc.), but ACCESSORIES are deduped per garment — a look legitimately has
-    // several (belt, sunglasses, watch), all in the one "Accessories" category,
-    // and collapsing them to a single slot drops pieces at random between runs.
-    const slots: { slot: number; garment: LookGarment }[] = [];
-    const usedCategories = new Set<string>();
-    const usedAccessories = new Set<string>();
-    for (const g of garments) {
-      if (slots.length >= INSPIRATION_MAX_SLOTS) break;
-      if (g.category === "Accessories") {
-        const key = g.garment.trim().toLowerCase();
-        if (!key || usedAccessories.has(key)) continue;
-        usedAccessories.add(key);
-      } else {
-        if (usedCategories.has(g.category)) continue;
-        usedCategories.add(g.category);
-      }
-      slots.push({ slot: slots.length, garment: g });
-    }
+    // One slot per clothing category; several Accessories (belt + tote + square).
+    const slots = selectLookGarmentSlots(garments, INSPIRATION_MAX_SLOTS).map(
+      (garment, slot) => ({ slot, garment }),
+    );
     if (!slots.length) return [];
 
     const queries = slots.map(({ garment: g }) =>
