@@ -42,8 +42,19 @@ test("decomposeLook keeps belt and tote as separate accessory slots", () => {
 test("garmentTitleMatchScore recognises tote and pocket square titles", () => {
   assert.equal(garmentTitleMatchScore("tote", "Marks & Spencer Canvas Tote Bag"), 1);
   assert.equal(garmentTitleMatchScore("pocket square", "Pure Silk Pocket Square"), 1);
+  assert.equal(garmentTitleMatchScore("neckerchief", "Silk Neckerchief"), 1);
+  assert.equal(garmentTitleMatchScore("neck scarf", "Printed Silk Neck Scarf"), 1);
   assert.equal(garmentTitleMatchScore("tote", "Zara Leather Belt"), 0);
   assert.equal(garmentTitleMatchScore("pocket square", "Zara Braided Belt"), 0);
+});
+
+test("decomposeLook extracts a neckerchief separately from a winter scarf", () => {
+  const garments = decomposeLook(
+    "Ivory oxford shirt, stone chinos, brown loafers, sage silk neckerchief.",
+  );
+  const keys = garments.map((g) => g.garment);
+  assert.ok(keys.includes("neckerchief"), `missing neckerchief: ${keys.join(",")}`);
+  assert.ok(!keys.includes("scarf"), `winter scarf should not steal the neckerchief: ${keys.join(",")}`);
 });
 
 test("decomposeLook extracts tailored linen shorts as a Trousers slot", () => {

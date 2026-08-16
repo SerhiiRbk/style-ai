@@ -4,7 +4,7 @@ export type LookTryOnKind = "look" | "capsule";
 
 /** A neck accessory that cannot be worn without a shirt (tie / necktie / bow tie). */
 export function isTieTitle(title: string): boolean {
-  return /\b(?:bow\s+)?(?:neck)?ties?\b/i.test(title);
+  return /\b(?:bow\s+)?(?:neck)?ties?\b|\bbolo\b/i.test(title);
 }
 
 /** Sunglasses or optical glasses — must sit on the face, not in a hand/pocket. */
