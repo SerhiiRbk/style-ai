@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { CATALOG_CATEGORIES } from "@/lib/catalog-categories";
 
 const ADMIN_GENDERS = ["men", "women", "unisex", "kids"] as const;
@@ -61,6 +62,10 @@ export function draftFromProduct(p: {
   };
 }
 
+export function draftForColorClone(d: CatalogProductDraft): CatalogProductDraft {
+  return { ...d, color: "", imageUrl: "" };
+}
+
 export function payloadFromDraft(d: CatalogProductDraft) {
   return {
     title: d.title.trim(),
@@ -76,6 +81,57 @@ export function payloadFromDraft(d: CatalogProductDraft) {
   };
 }
 
+function CopyField({
+  label,
+  value,
+  onChange,
+  required,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  required?: boolean;
+  placeholder?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <label className="sm:col-span-2 text-sm">
+      <span className="text-stone-soft">{label}</span>
+      <div className="mt-1 flex gap-2">
+        <input
+          required={required}
+          type="url"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="min-w-0 flex-1 rounded-lg border hairline bg-cream/30 px-3 py-2"
+        />
+        <button
+          type="button"
+          onClick={() => void copy()}
+          disabled={!value}
+          className="shrink-0 rounded-lg border hairline px-3 py-2 text-xs text-stone hover:text-ink disabled:opacity-40"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+    </label>
+  );
+}
+
 export function CatalogProductEditor({
   mode,
   draft,
@@ -84,18 +140,27 @@ export function CatalogProductEditor({
   onChange,
   onClose,
   onSubmit,
+  onCloneColor,
 }: {
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "clone";
   draft: CatalogProductDraft;
   busy: boolean;
   error: string | null;
   onChange: (next: CatalogProductDraft) => void;
   onClose: () => void;
   onSubmit: () => void;
+  onCloneColor?: () => void;
 }) {
   function set<K extends keyof CatalogProductDraft>(key: K, value: CatalogProductDraft[K]) {
     onChange({ ...draft, [key]: value });
   }
+
+  const title =
+    mode === "edit" ? "Edit product" : mode === "clone" ? "Clone colour" : "Add product";
+  const hint =
+    mode === "clone"
+      ? "Colour, image URL and product page are required. Everything else is copied from the original."
+      : "Saved items are re-typed and re-embedded so looks and shop-a-look pick them up.";
 
   return (
     <div
@@ -112,11 +177,9 @@ export function CatalogProductEditor({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 id="catalog-product-editor-title" className="font-display text-2xl">
-              {mode === "create" ? "Add product" : "Edit product"}
+              {title}
             </h3>
-            <p className="mt-1 text-sm text-stone">
-              Saved items are re-typed and re-embedded so looks and shop-a-look pick them up.
-            </p>
+            <p className="mt-1 text-sm text-stone">{hint}</p>
           </div>
           <button
             type="button"
@@ -169,6 +232,7 @@ export function CatalogProductEditor({
           <label className="text-sm">
             <span className="text-stone-soft">Colour</span>
             <input
+              required={mode === "clone"}
               value={draft.color}
               onChange={(e) => set("color", e.target.value)}
               className="mt-1 w-full rounded-lg border hairline bg-cream/30 px-3 py-2"
@@ -215,27 +279,20 @@ export function CatalogProductEditor({
               ))}
             </select>
           </label>
-          <label className="sm:col-span-2 text-sm">
-            <span className="text-stone-soft">Product URL</span>
-            <input
-              required
-              type="url"
-              value={draft.deeplink}
-              onChange={(e) => set("deeplink", e.target.value)}
-              placeholder="https://"
-              className="mt-1 w-full rounded-lg border hairline bg-cream/30 px-3 py-2"
-            />
-          </label>
-          <label className="sm:col-span-2 text-sm">
-            <span className="text-stone-soft">Image URL</span>
-            <input
-              type="url"
-              value={draft.imageUrl}
-              onChange={(e) => set("imageUrl", e.target.value)}
-              placeholder="https://"
-              className="mt-1 w-full rounded-lg border hairline bg-cream/30 px-3 py-2"
-            />
-          </label>
+          <CopyField
+            label="Product URL"
+            required
+            value={draft.deeplink}
+            onChange={(v) => set("deeplink", v)}
+            placeholder="https://"
+          />
+          <CopyField
+            label="Image URL"
+            required={mode === "clone"}
+            value={draft.imageUrl}
+            onChange={(v) => set("imageUrl", v)}
+            placeholder="https://"
+          />
           <label className="sm:col-span-2 text-sm">
             <span className="text-stone-soft">Description</span>
             <textarea
@@ -248,7 +305,16 @@ export function CatalogProductEditor({
 
           {error ? <p className="sm:col-span-2 text-sm text-red-700">{error}</p> : null}
 
-          <div className="sm:col-span-2 mt-2 flex justify-end gap-2">
+          <div className="sm:col-span-2 mt-2 flex flex-wrap justify-end gap-2">
+            {mode === "edit" && onCloneColor ? (
+              <button
+                type="button"
+                onClick={onCloneColor}
+                className="mr-auto rounded-full border hairline px-4 py-2 text-sm"
+              >
+                Clone colour
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClose}

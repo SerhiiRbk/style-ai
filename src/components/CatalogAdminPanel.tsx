@@ -7,6 +7,7 @@ import { GARMENT_SUBTYPES } from "../../scripts/feeds/attributes.mjs";
 import {
   CatalogProductEditor,
   EMPTY_DRAFT,
+  draftForColorClone,
   draftFromProduct,
   payloadFromDraft,
   type CatalogProductDraft,
@@ -42,9 +43,9 @@ export function CatalogAdminPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const [editor, setEditor] = useState<null | { mode: "create" | "edit"; id?: string }>(
-    null,
-  );
+  const [editor, setEditor] = useState<
+    null | { mode: "create" | "edit" | "clone"; id?: string }
+  >(null);
   const [draft, setDraft] = useState<CatalogProductDraft>(EMPTY_DRAFT);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -109,18 +110,23 @@ export function CatalogAdminPanel() {
     setEditor({ mode: "edit", id: p.id });
   }
 
+  function openColorClone() {
+    setDraft(draftForColorClone(draft));
+    setEditorError(null);
+    setEditor({ mode: "clone" });
+  }
+
   async function saveEditor() {
     if (!editor) return;
     setSaving(true);
     setEditorError(null);
     try {
       const payload = payloadFromDraft(draft);
+      const creating = editor.mode !== "edit";
       const res = await fetch(
-        editor.mode === "create"
-          ? "/api/admin/products"
-          : `/api/admin/products/${editor.id}`,
+        creating ? "/api/admin/products" : `/api/admin/products/${editor.id}`,
         {
-          method: editor.mode === "create" ? "POST" : "PATCH",
+          method: creating ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         },
@@ -128,7 +134,7 @@ export function CatalogAdminPanel() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Could not save product");
       setEditor(null);
-      if (editor.mode === "create") setPage(1);
+      if (creating) setPage(1);
       void load();
     } catch (e) {
       setEditorError(e instanceof Error ? e.message : "Could not save product");
@@ -362,6 +368,7 @@ export function CatalogAdminPanel() {
           onChange={setDraft}
           onClose={() => setEditor(null)}
           onSubmit={() => void saveEditor()}
+          onCloneColor={editor.mode === "edit" ? openColorClone : undefined}
         />
       ) : null}
     </div>
