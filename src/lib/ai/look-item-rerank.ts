@@ -85,13 +85,18 @@ function buildRerankPrompt(
     `crewneck not blazer), COLOUR shade within the family (medium grey not light ` +
     `grey or charcoal), and formality of this look. Use -1 only when every ` +
     `candidate is clearly wrong (wrong category, clashing colour, or unrelated ` +
-    `item).\n` +
+    `item). Never substitute a different accessory type: a pocket square is not ` +
+    `a tie, a "tie with pocket square" set, a cap, a hat, or a belt. If no ` +
+    `candidate is the named accessory, use -1.\n` +
     `Outfit-level colour: do NOT pair a shirt and trousers in the same chromatic ` +
     `family (green, red, orange, yellow, pink, purple) unless the look description ` +
     `itself names that family on BOTH pieces. Sage + olive is a clash. Teal is ` +
     `blue, not green — a sage shirt wants teal, navy, stone, or cream trousers, ` +
     `not another green. Navy-on-navy and neutrals (grey, brown, black, white) are ` +
     `fine.\n` +
+    `A missing exact colour may be filled by a close neighbour (dusty rose → ` +
+    `muted pink or lilac; greige → beige/dove; sage → khaki; mushroom → taupe; ` +
+    `soft plum → mauve/lilac — never a neon or a navy stand-in). Mark those similarPick=true.\n` +
     `Set similarPick=true when the pick is the closest available option but not a ` +
     `strong colour or style match.\n` +
     `For every pick with candidateIndex >= 0 also write "why" — ONE calm sentence ` +

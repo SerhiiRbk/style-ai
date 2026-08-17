@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  colorMatchScore,
   decomposeLook,
   garmentTitleMatchScore,
   isDrawstringTitle,
@@ -46,6 +47,87 @@ test("garmentTitleMatchScore recognises tote and pocket square titles", () => {
   assert.equal(garmentTitleMatchScore("neck scarf", "Printed Silk Neck Scarf"), 1);
   assert.equal(garmentTitleMatchScore("tote", "Zara Leather Belt"), 0);
   assert.equal(garmentTitleMatchScore("pocket square", "Zara Braided Belt"), 0);
+  assert.equal(
+    garmentTitleMatchScore("pocket square", "Reserved Tie With Pocket Square"),
+    0,
+  );
+  assert.equal(
+    garmentTitleMatchScore("pocket square", "Reserved Baseball Cap With Embroidery"),
+    0,
+  );
+});
+
+test("decomposeLook reads dusty rose as a pink-family colour", () => {
+  const garments = decomposeLook(
+    "Dusty rose linen camp-collar shirt, muted navy cotton drawstring trousers.",
+  );
+  const shirt = garments.find((g) => g.garment === "shirt");
+  assert.ok(shirt, "expected a shirt");
+  assert.match(shirt?.color ?? "", /rose|pink/);
+});
+
+test("colorMatchScore treats dusty rose as a neighbour of pink and lavender", () => {
+  const roseVsPink = colorMatchScore("dusty rose", "pink", "Pink Linen Shirt");
+  const roseVsLavender = colorMatchScore(
+    "dusty rose",
+    "lavender",
+    "Lavender Linen Shirt",
+  );
+  const roseVsNavy = colorMatchScore("dusty rose", "navy", "Navy Linen Shirt");
+  const roseVsRose = colorMatchScore("dusty rose", "rose", "Dusty Rose Shirt");
+  assert.ok(roseVsRose >= 0.7, `exact rose should be strong, got ${roseVsRose}`);
+  assert.ok(roseVsPink >= 0.5, `pink should be a neighbour, got ${roseVsPink}`);
+  assert.ok(
+    roseVsLavender >= 0.5,
+    `lavender should be a neighbour, got ${roseVsLavender}`,
+  );
+  assert.ok(roseVsNavy < 0.2, `navy must stay rejected, got ${roseVsNavy}`);
+  assert.ok(roseVsPink < roseVsRose, "neighbour must score below exact family");
+});
+
+test("colorMatchScore finds neighbours for greige, sage, soft plum and mushroom", () => {
+  const greigeBeige = colorMatchScore("greige", "beige", "Beige Linen Trousers");
+  const greigeDove = colorMatchScore("greige", "dove", "Dove Grey Trousers");
+  const greigeNavy = colorMatchScore("greige", "navy", "Navy Trousers");
+  assert.ok(greigeBeige >= 0.7, `greige↔beige should be same circle, got ${greigeBeige}`);
+  assert.ok(greigeDove >= 0.5, `greige↔dove grey should be a neighbour, got ${greigeDove}`);
+  assert.ok(greigeNavy < 0.2, `greige must not match navy, got ${greigeNavy}`);
+
+  const sageKhaki = colorMatchScore("sage", "khaki", "Khaki Canvas Belt");
+  const sageOlive = colorMatchScore("sage", "olive", "Olive Belt");
+  const sageNavy = colorMatchScore("sage", "navy", "Navy Belt");
+  assert.ok(sageKhaki >= 0.5, `sage↔khaki should be a neighbour, got ${sageKhaki}`);
+  assert.ok(sageOlive >= 0.3, `sage↔olive is same family, got ${sageOlive}`);
+  assert.ok(sageNavy < 0.2, `sage must not match navy, got ${sageNavy}`);
+
+  const plumMauve = colorMatchScore("soft plum", "mauve", "Mauve Knit");
+  const plumLilac = colorMatchScore("soft plum", "lilac", "Lilac Knit");
+  const plumRose = colorMatchScore("soft plum", "rose", "Dusty Rose Knit");
+  const plumNavy = colorMatchScore("soft plum", "navy", "Navy Knit");
+  assert.ok(plumMauve >= 0.5, `soft plum↔mauve, got ${plumMauve}`);
+  assert.ok(plumLilac >= 0.5, `soft plum↔lilac, got ${plumLilac}`);
+  assert.ok(plumRose >= 0.5, `soft plum↔rose should be a neighbour, got ${plumRose}`);
+  assert.ok(plumNavy < 0.2, `soft plum must not match navy, got ${plumNavy}`);
+
+  const mushTaupe = colorMatchScore("mushroom", "taupe", "Taupe Suede Loafers");
+  const mushGreige = colorMatchScore("mushroom", "greige", "Greige Suede Loafers");
+  const mushCharcoal = colorMatchScore("mushroom", "charcoal", "Charcoal Loafers");
+  assert.ok(mushTaupe >= 0.7, `mushroom↔taupe should be same circle, got ${mushTaupe}`);
+  assert.ok(mushGreige >= 0.7, `mushroom↔greige should be same circle, got ${mushGreige}`);
+  assert.ok(mushCharcoal < 0.35, `mushroom must not jump to charcoal, got ${mushCharcoal}`);
+});
+
+test("colorMatchScore prefers muted pink hex over hot fuchsia for dusty rose", () => {
+  const muted = colorMatchScore("dusty rose", "pink", "Pink Shirt", {
+    queryHex: "#C29AA0",
+    productHex: "#D4A8B0",
+  });
+  const hot = colorMatchScore("dusty rose", "pink", "Fuchsia Shirt", {
+    queryHex: "#C29AA0",
+    productHex: "#D1006E",
+  });
+  assert.ok(muted > hot, `muted ${muted} should beat hot fuchsia ${hot}`);
+  assert.ok(hot < 0.5, `hot fuchsia should not count as close, got ${hot}`);
 });
 
 test("decomposeLook extracts a neckerchief separately from a winter scarf", () => {

@@ -382,7 +382,10 @@ export async function POST(request: Request) {
         ? paletteFromCapsulePieces(capsulePieces, shopping)
         : [];
 
-  const catalogContext = catalogPromptFromItems(catalogItems);
+  const catalogContext = catalogPromptFromItems(
+    catalogItems,
+    kind === "look" ? description : undefined,
+  );
   const catalogImageUrls = catalogImageUrlsFromItems(catalogItems);
 
   if (kind === "look" && !catalogItems.length) {

@@ -193,10 +193,25 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const l = (max + min) / 2;
-  let s = 0;
   const d = max - min;
-  if (d !== 0) s = d / (1 - Math.abs(2 * l - 1));
-  return { h: 0, s, l };
+  let s = 0;
+  let h = 0;
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    switch (max) {
+      case r:
+        h = ((g - b) / d) % 6;
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      default:
+        h = (r - g) / d + 4;
+    }
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s, l };
 }
 
 const lc = (s: string) => (s || "").toLowerCase();
@@ -2310,9 +2325,9 @@ export function itemsForLook(look: Look, shopping: ShoppingItem[]): ShoppingItem
       const score = colorMatchScore(g.color, best.color, best.title);
       items.push({
         ...best,
-        similarPick: score < 0.45,
+        similarPick: score < 0.7,
         why:
-          score >= 0.45
+          score >= 0.7
             ? best.why
             : `A similar ${g.garment} from your capsule — close in category and tone.`,
       });
@@ -2413,7 +2428,8 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   ivory: { family: "white", shade: "light" }, ecru: { family: "white", shade: "light" },
   bone: { family: "white", shade: "light" },
   // brown / neutral warm
-  brown: { family: "brown" }, khaki: { family: "brown" }, taupe: { family: "brown" },
+  brown: { family: "brown" }, khaki: { family: "brown", shade: "light" },
+  taupe: { family: "brown", shade: "light" },
   cognac: { family: "brown" }, mocha: { family: "brown" },
   tan: { family: "brown", shade: "light" }, camel: { family: "brown", shade: "light" },
   beige: { family: "brown", shade: "light" }, sand: { family: "brown", shade: "light" },
@@ -2429,14 +2445,67 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   // red / warm
   red: { family: "red" },   rust: { family: "red" }, terracotta: { family: "red" }, copper: { family: "red" },
   burgundy: { family: "red", shade: "dark" }, maroon: { family: "red", shade: "dark" },
+  // pink / rose — dusty rose must land here, not as a bare shade word
+  pink: { family: "pink" }, rose: { family: "pink", shade: "light" },
+  blush: { family: "pink", shade: "light" }, dustyrose: { family: "pink", shade: "light" },
+  oldrose: { family: "pink", shade: "light" }, berry: { family: "pink" },
+  fuchsia: { family: "pink" }, magenta: { family: "pink" },
   // other hues
-  pink: { family: "pink" }, purple: { family: "purple" }, plum: { family: "purple" },
-  mauve: { family: "purple" }, aubergine: { family: "purple" },
+  purple: { family: "purple" }, plum: { family: "purple" },
+  softplum: { family: "purple", shade: "light" },
+  mauve: { family: "purple", shade: "light" }, aubergine: { family: "purple", shade: "dark" },
+  lilac: { family: "purple", shade: "light" }, lavender: { family: "purple", shade: "light" },
   orange: { family: "orange" },
   amber: { family: "orange" }, ochre: { family: "yellow" },
   yellow: { family: "yellow" }, mustard: { family: "yellow" },
   gold: { family: "yellow" }, golden: { family: "yellow" },
   tortoise: { family: "brown" }, havana: { family: "brown" },
+};
+
+/** Adjacent hue families used only when the exact family is missing. */
+const COLOR_NEIGHBORS: Record<string, readonly string[]> = {
+  pink: ["purple"],
+  purple: ["pink"],
+  white: ["brown"],
+  brown: ["white", "grey", "green"],
+  grey: ["brown"],
+  green: ["brown"],
+  orange: ["yellow"],
+  yellow: ["orange"],
+};
+
+/** Pairs that may neighbour only as light/mid — never chocolate or charcoal. */
+const LIGHT_NEIGHBOR_PAIRS = new Set([
+  "white-brown",
+  "brown-white",
+  "brown-grey",
+  "grey-brown",
+  "brown-green",
+  "green-brown",
+]);
+
+/** Representative hex for a named token — used when the look has no palette swatch. */
+const NAMED_COLOR_HEX: Record<string, string> = {
+  rose: "#C29AA0",
+  dustyrose: "#C29AA0",
+  blush: "#D4A8B0",
+  pink: "#D4A0AE",
+  lilac: "#B7A4C4",
+  lavender: "#B8A4C8",
+  mauve: "#9A7A8C",
+  plum: "#7A6577",
+  softplum: "#7A6577",
+  berry: "#8E4A5C",
+  greige: "#DAD3C6",
+  mushroom: "#A99C8C",
+  taupe: "#B49C7E",
+  sage: "#9AA588",
+  khaki: "#9A8B5C",
+  stone: "#C2B8A8",
+  beige: "#D4C4A8",
+  sand: "#D9C7A3",
+  dove: "#C5C1B8",
+  olive: "#6B6B47",
 };
 
 /** Synonyms used to verify a catalogue title matches the parsed garment. */
@@ -2523,6 +2592,9 @@ function normalizeCompoundColors(text: string): string {
     .replace(/powder\s+blue/g, "powderblue")
     .replace(/ice\s+blue/g, "iceblue")
     .replace(/steel\s+blue/g, "steelblue")
+    .replace(/dusty\s+rose/g, "dustyrose")
+    .replace(/old\s+rose/g, "oldrose")
+    .replace(/soft\s+plum/g, "softplum")
     .replace(/tortoise\s*shell/g, "tortoise")
     .replace(/yellow\s+gold/g, "gold");
 }
@@ -2663,6 +2735,17 @@ export function garmentTitleMatchScore(garment: string, title: string): number {
     }
     return 0;
   }
+  // A "Tie With Pocket Square" set is a necktie, not a square. Same for a
+  // cap/hat/belt that happens to mention a square in the title.
+  if (key === "pocket square" || key === "pochette" || key === "handkerchief") {
+    if (
+      /\b(?:neck)?ties?\b|\bbow\s*tie\b|\bbolo\b|\bcaps?\b|\bhats?\b|\bbelts?\b/.test(
+        hay,
+      )
+    ) {
+      return 0;
+    }
+  }
   const terms = GARMENT_TITLE_SYNONYMS[key] ?? [key];
   return terms.some((t) => hay.includes(t)) ? 1 : 0;
 }
@@ -2672,6 +2755,13 @@ function shadeAffinity(a: Shade, b: Shade): number {
   if (a === b) return 1;
   const order: Record<Shade, number> = { light: 0, mid: 1, dark: 2 };
   return Math.abs(order[a] - order[b]) === 1 ? 0.35 : 0.3;
+}
+
+/** Neighbour families keep a usable score across light↔mid (greige↔dove grey). */
+function neighborShadeScore(a?: Shade, b?: Shade): number {
+  if (!a || !b || a === b) return 0.55;
+  const order: Record<Shade, number> = { light: 0, mid: 1, dark: 2 };
+  return Math.abs(order[a] - order[b]) === 1 ? 0.52 : 0.15;
 }
 
 /** Parse free-text colour into the set of hue families + an implied lightness. */
@@ -2700,34 +2790,123 @@ export function colorFamilies(text: string): Set<string> {
   return parseColorTokens(text).families;
 }
 
+export type ColorMatchOpts = {
+  queryHex?: string | null;
+  productHex?: string | null;
+};
+
+function hueDist(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+function parseHexColor(raw?: string | null): string | null {
+  const m = (raw ?? "").trim().match(/^#?([0-9a-f]{6})$/i);
+  return m ? `#${m[1]!.toLowerCase()}` : null;
+}
+
+function namedColorHex(text: string | null): string | null {
+  if (!text) return null;
+  const hex = parseHexColor(text);
+  if (hex) return hex;
+  const words = normalizeCompoundColors(text.toLowerCase()).split(/\s+/).filter(Boolean);
+  for (let i = words.length - 1; i >= 0; i--) {
+    const hit = NAMED_COLOR_HEX[words[i]!];
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function familiesNeighbor(
+  query: Set<string>,
+  product: Set<string>,
+  qShade?: Shade,
+  pShade?: Shade,
+): boolean {
+  for (const qf of query) {
+    const next = COLOR_NEIGHBORS[qf];
+    if (!next) continue;
+    for (const pf of product) {
+      if (!next.includes(pf)) continue;
+      // Cream ↔ beige, greige ↔ dove, sage ↔ khaki — never chocolate or charcoal.
+      if (LIGHT_NEIGHBOR_PAIRS.has(`${qf}-${pf}`)) {
+        if (qShade === "dark" || pShade === "dark") continue;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Hex proximity for a named look colour vs a catalogue swatch.
+ * Rejects far hues and neon jumps (dusty rose must not land on fuchsia).
+ */
+function hexProximityScore(queryHex: string, productHex: string): number | null {
+  const q = hexToHsl(queryHex);
+  const p = hexToHsl(productHex);
+  const dh = hueDist(q.h, p.h);
+  const dl = Math.abs(q.l - p.l);
+  if (dh > 32 || dl > 0.2) return null;
+  if (p.s > q.s + 0.28) return null;
+  const huePart = 1 - dh / 32;
+  const lightPart = 1 - dl / 0.2;
+  const satPart = 1 - Math.min(Math.abs(q.s - p.s), 0.35) / 0.35;
+  return 0.45 + 0.45 * (0.5 * huePart + 0.3 * lightPart + 0.2 * satPart);
+}
+
 /**
  * 0–1 colour fit between a look garment colour and a catalogue product. Matches
  * on hue family first, then on lightness: same hue + same lightness scores high,
  * adjacent mid↔light/dark scores soft, opposite lightness (dove vs asphalt)
  * scores low so the picker prefers a true shade match and flags the rest.
+ * Neighbouring families (rose↔pink/lilac) score ~0.55 so a missing exact
+ * colour can still fill the slot — marked similarPick by the caller.
  */
 export function colorMatchScore(
   queryColor: string | null,
   productColor: string | null,
   title: string,
+  opts?: ColorMatchOpts,
 ): number {
   const q = parseColorTokens(queryColor ?? "");
   if (!q.families.size && !q.shade) return 0.5; // no colour cue → neutral
   const p = parseColorTokens(`${productColor ?? ""} ${title}`);
-  if (!p.families.size) return 0.5; // product colour unknown → neutral
+  const queryHex = parseHexColor(opts?.queryHex) ?? namedColorHex(queryColor);
+  const productHex =
+    parseHexColor(opts?.productHex) ??
+    parseHexColor(productColor) ??
+    namedColorHex(productColor);
+  const hexScore =
+    queryHex && productHex ? hexProximityScore(queryHex, productHex) : null;
 
-  let hueMatch = false;
-  for (const f of q.families) {
-    if (p.families.has(f)) {
-      hueMatch = true;
-      break;
+  let word = 0.1;
+  if (!p.families.size) {
+    word = 0.5;
+  } else {
+    let same = false;
+    for (const f of q.families) {
+      if (p.families.has(f)) {
+        same = true;
+        break;
+      }
+    }
+    if (same) {
+      word = q.shade && p.shade ? shadeAffinity(q.shade, p.shade) : 0.8;
+    } else if (familiesNeighbor(q.families, p.families, q.shade, p.shade)) {
+      word = neighborShadeScore(q.shade, p.shade);
     }
   }
-  if (!hueMatch) return 0.1; // wrong hue family
 
-  // Same hue family — discriminate by lightness when both sides express it.
-  if (q.shade && p.shade) return shadeAffinity(q.shade, p.shade);
-  return 0.8; // hue matches; lightness unknown on one side
+  if (queryHex && productHex) {
+    if (hexScore != null) return Math.max(word, hexScore);
+    // Only crush a strong same-family word when the swatch is a neon jump
+    // (catalogue "pink" that is fuchsia). Soft plum ↔ lilac stays.
+    const qH = hexToHsl(queryHex);
+    const pH = hexToHsl(productHex);
+    if (word >= 0.7 && pH.s > qH.s + 0.28) return 0.35;
+  }
+  return word;
 }
 
 function extractGarmentFromClause(clause: string): LookGarment | null {

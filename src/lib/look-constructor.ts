@@ -143,6 +143,12 @@ const LENS_BY_ID = new Map(LENS_COLORS.map((c) => [c.id, c]));
 
 /** Tokens from look briefs that map onto a constructor colour id. */
 const COLOR_ALIASES: Record<string, string> = {
+  dustyrose: "rose",
+  oldrose: "rose",
+  blush: "rose",
+  softplum: "plum",
+  lilac: "plum",
+  lavender: "plum",
   slateblue: "sky",
   powderblue: "sky",
   iceblue: "sky",

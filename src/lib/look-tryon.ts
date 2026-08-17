@@ -50,7 +50,10 @@ export const MAX_CATALOG_REFERENCE_IMAGES = 4;
  * instruction so the model dresses the person in these exact pieces rather than
  * re-rendering the look's free-text description.
  */
-export function catalogPromptFromItems(items: ShoppingItem[]): string | undefined {
+export function catalogPromptFromItems(
+  items: ShoppingItem[],
+  lookDescription?: string,
+): string | undefined {
   if (!items.length) return undefined;
   const lines = items.map((i) => {
     const colour = i.color && i.color !== "#CCCCCC" ? `${i.color} ` : "";
@@ -75,14 +78,25 @@ export function catalogPromptFromItems(items: ShoppingItem[]): string | undefine
     (i) => i.category === "Accessories" && isEyewearTitle(i.title),
   );
   const hasShirt = items.some((i) => i.category === "Shirts");
+  const describedShirt = lookDescription
+    ? lookDescription.match(
+        /([^,]*\b(?:camp-?collar\s+)?(?:linen\s+)?(?:oxford|shirt|polo|tee|henley)\b[^,]*)/i,
+      )?.[1]?.trim()
+    : "";
   const baseLayerRule =
     hasTie && !hasShirt
-      ? `\nThis list has a tie but no shirt — add the one shirt the tie needs as ` +
-        `the base layer, in a mid-tone colour that clearly contrasts with the ` +
-        `tie. NEVER a white or pale shirt under a light, beige or greige tie ` +
-        `(a light tie on a light shirt looks washed out). A mid or deep blue ` +
-        `shirt is a safe default. `
-      : "";
+      ? describedShirt
+        ? `\nThis list has a tie but no shirt — wear this shirt from the look: ` +
+          `${describedShirt}. Do not invent a different shirt colour. `
+        : `\nThis list has a tie but no shirt — add the one shirt the tie needs as ` +
+          `the base layer, in a mid-tone colour that clearly contrasts with the ` +
+          `tie. NEVER a white or pale shirt under a light, beige or greige tie ` +
+          `(a light tie on a light shirt looks washed out). A mid or deep blue ` +
+          `shirt is a safe default. `
+      : !hasShirt && describedShirt
+        ? `\nThis catalogue list is missing the shirt. Wear the look's own shirt: ` +
+          `${describedShirt}. Do not invent a different shirt colour. `
+        : "";
   const eyewearRule = hasEyewear
     ? `\nSunglasses or glasses from this list are already on the person's face, ` +
       `resting on the nose over the eyes. Do not hold them, fold them, put them ` +
@@ -90,10 +104,10 @@ export function catalogPromptFromItems(items: ShoppingItem[]): string | undefine
     : "";
 
   return (
-    `Construct the entire outfit from these exact catalogue garments and nothing else:\n` +
+    `Construct the outfit from these catalogue garments:\n` +
     lines.join("\n") +
-    `\nEvery piece worn by the person must come from this list — reproduce each ` +
-    `garment's type, colour and material faithfully. ` +
+    `\nReproduce each listed garment's type, colour and material faithfully. ` +
+    `Do not add extra accessories that are not in this list or the look description. ` +
     baseLayerRule +
     eyewearRule
   );

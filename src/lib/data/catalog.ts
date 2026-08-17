@@ -175,7 +175,8 @@ function tagFitScore(row: MatchRow, boldness: string): number {
 }
 
 const MIN_VECTOR_SIMILARITY = 0.68;
-const MIN_COLOR_MATCH = 0.4;
+/** Same-family matches sit at 0.8+; neighbours (rose↔pink) are ~0.55. */
+const STRONG_COLOR_MATCH = 0.7;
 const MIN_LOOK_PICK_SCORE = 0.42;
 /** Bumped when look-matching heuristics change — triggers background refresh.
  *  v7: re-derive look_items after looks gained a stable `idx` ordering, so
@@ -184,8 +185,12 @@ const MIN_LOOK_PICK_SCORE = 0.42;
  *  v9: drop short-sleeve knits/sweatshirts from the Knitwear slot (they layer as a
  *  tee over a long-sleeve shirt) — mirrors the matchShopping knit filter.
  *  v10: reject shirt+trousers in the same chromatic family (sage shirt + olive
- *  trousers) unless the look itself asked for that monochrome. */
-export const LOOK_MATCH_VERSION = 10;
+ *  trousers) unless the look itself asked for that monochrome.
+ *  v11: never substitute a different accessory type (tie-set / cap for a
+ *  pocket square) just because the colour is close.
+ *  v12: neighbour-family + hex proximity so dusty rose can land on pink/lilac.
+ *  v13: same neighbour circle for greige, sage, soft plum, mushroom. */
+export const LOOK_MATCH_VERSION = 13;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
@@ -535,6 +540,28 @@ type RankedMatch = {
   score: number;
 };
 
+/** Accessories share one catalogue category — type must match the slot. */
+const STRICT_ACCESSORY_TYPES = new Set([
+  "pocket square",
+  "pochette",
+  "handkerchief",
+  "belt",
+  "watch",
+  "tie",
+  "necktie",
+  "bowtie",
+  "bow tie",
+  "scarf",
+  "neckerchief",
+  "neck scarf",
+  "hat",
+  "cap",
+  "sunglasses",
+  "glasses",
+  "tote",
+  "tote bag",
+]);
+
 function rankMatchRows(
   rows: MatchRow[],
   color: string | null,
@@ -546,10 +573,12 @@ function rankMatchRows(
   const ranked = rows.map((row) => {
     const title = formatCatalogProductTitle(row.brand, row.title);
     const sim = row.similarity ?? 0;
-    const colorScore = colorMatchScore(color, row.color, title);
+    const colorScore = colorMatchScore(color, row.color, title, {
+      productHex: row.color_hex,
+    });
     const garmentScore = garmentTitleMatchScore(garment, title);
     const similarPick =
-      sim < MIN_VECTOR_SIMILARITY || colorScore < MIN_COLOR_MATCH;
+      sim < MIN_VECTOR_SIMILARITY || colorScore < STRONG_COLOR_MATCH;
     const localBoost = row.same_country ? 0.04 : 0;
     const styleFit = styleFitScore(title, boldness);
     const tagFit = tagFitScore(row, boldness);
@@ -595,6 +624,12 @@ function rankMatchRows(
     );
     if (withoutKnit.length) return withoutKnit;
     return pool;
+  }
+
+  // Accessories share one catalogue category, so a pocket-square query also
+  // returns ties, caps and belts. Colour-only hits must not fill the slot.
+  if (STRICT_ACCESSORY_TYPES.has(garment.trim().toLowerCase())) {
+    return ranked.filter((r) => r.garmentScore >= 0.5);
   }
   return ranked;
 }
@@ -1122,7 +1157,7 @@ const INSPIRATION_SOFT_ALT_COLOR = 0.3;
  * never resurface the "brown trousers for a cream look" problem.
  */
 const LIGHT_NEUTRAL_RE =
-  /\b(cream|ivory|ecru|bone|oyster|off[-\s]?white|offwhite|natural|tan|camel|beige|sand|stone|oat|oatmeal|khaki|buff|biscuit|linen|greige)\b/i;
+  /\b(cream|ivory|ecru|bone|oyster|off[-\s]?white|offwhite|natural|tan|camel|beige|sand|stone|oat|oatmeal|khaki|buff|biscuit|linen|greige|mushroom|taupe)\b/i;
 
 function isLightNeutral(text: string | null | undefined): boolean {
   return Boolean(text) && LIGHT_NEUTRAL_RE.test(text as string);
