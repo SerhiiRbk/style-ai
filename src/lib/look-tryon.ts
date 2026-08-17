@@ -41,8 +41,63 @@ export function tryonStoragePath(
   return `${userId}/tryon/look-${reportId}-${lookKey}.${ext}`;
 }
 
-/** Max catalogue product images fed to the image model as garment references. */
-export const MAX_CATALOG_REFERENCE_IMAGES = 4;
+/**
+ * Max catalogue product images fed to the image model as garment references.
+ * Sized for a full shop-the-look row (shirt + bottoms + shoes + 2–3 extras)
+ * so a 5-item list is not silently truncated to 4.
+ */
+export const MAX_CATALOG_REFERENCE_IMAGES = 6;
+/**
+ * Editorial try-on also attaches the person's portrait. More than a few
+ * on-model product shots and the image model blends those faces over the
+ * customer. Keep shirt / bottoms / shoes as photos; accessories stay text.
+ */
+export const MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT = 3;
+
+export type CatalogImageRef = {
+  url: string;
+  title: string;
+  category: string;
+};
+
+/** Lower is kept first when the image-ref budget is exceeded. */
+function catalogRefPriority(item: ShoppingItem): number {
+  if (item.category === "Shirts") return 0;
+  if (item.category === "Knitwear") return 1;
+  if (item.category === "Outerwear") return 2;
+  if (item.category === "Trousers") return 3;
+  if (item.category === "Footwear") return 4;
+  if (item.category === "Accessories") {
+    if (isTieTitle(item.title) || isEyewearTitle(item.title)) return 5;
+    return 6;
+  }
+  return 5;
+}
+
+type ShoppingItemWithImage = ShoppingItem & { image: string };
+
+function itemsWithCatalogImages(items: ShoppingItem[]): ShoppingItemWithImage[] {
+  return items.filter(
+    (i): i is ShoppingItemWithImage =>
+      Boolean(i.image && /^https?:\/\//i.test(i.image)),
+  );
+}
+
+/** Keep list order, drop lowest-priority extras once the image budget is full. */
+function pickCatalogImageItems(
+  items: ShoppingItemWithImage[],
+  max: number,
+): ShoppingItemWithImage[] {
+  if (items.length <= max) return items;
+  const keep = new Set(
+    items
+      .map((item, index) => ({ item, index, rank: catalogRefPriority(item) }))
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .slice(0, max)
+      .map((r) => r.item),
+  );
+  return items.filter((i) => keep.has(i));
+}
 
 /**
  * Prompt fragment from “Shop a look like this” catalogue picks. Written to
@@ -106,21 +161,34 @@ export function catalogPromptFromItems(
   return (
     `Construct the outfit from these catalogue garments:\n` +
     lines.join("\n") +
-    `\nReproduce each listed garment's type, colour and material faithfully. ` +
+    `\nWear EVERY listed garment — do not drop the shirt, top, trousers or shoes ` +
+    `to make room for an accessory. ` +
+    `Reproduce each listed garment's type, colour and material faithfully. ` +
     `Do not add extra accessories that are not in this list or the look description. ` +
     baseLayerRule +
     eyewearRule
   );
 }
 
+/** Catalogue product photos to feed the image model, labelled for the prompt. */
+export function catalogImageRefsFromItems(
+  items: ShoppingItem[],
+  opts?: { max?: number },
+): CatalogImageRef[] {
+  const selected = pickCatalogImageItems(
+    itemsWithCatalogImages(items),
+    opts?.max ?? MAX_CATALOG_REFERENCE_IMAGES,
+  );
+  return selected.map((i) => ({
+    url: i.image,
+    title: i.title,
+    category: i.category,
+  }));
+}
+
 /** Public product image URLs to feed the image model as garment references. */
 export function catalogImageUrlsFromItems(items: ShoppingItem[]): string[] {
-  const urls: string[] = [];
-  for (const i of items) {
-    if (i.image && /^https?:\/\//i.test(i.image)) urls.push(i.image);
-    if (urls.length >= MAX_CATALOG_REFERENCE_IMAGES) break;
-  }
-  return urls;
+  return catalogImageRefsFromItems(items).map((r) => r.url);
 }
 
 export function resolveLookCatalogItems(

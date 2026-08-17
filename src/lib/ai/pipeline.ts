@@ -619,6 +619,8 @@ export async function generateLookImage(opts: {
     catalogContext?: string;
     /** Public product image URLs rendered as garment references. */
     catalogImageUrls?: string[];
+    /** Same photos with titles so each input image can be bound to a garment. */
+    catalogImages?: { url: string; title: string; category: string }[];
     /** Explicit footwear directive (e.g. dress shoes only, no sandals). */
     footwearRule?: string;
   };
@@ -653,7 +655,14 @@ export async function generateLookImage(opts: {
     } = opts;
     const view = opts.view ?? "front";
     const isThreeQuarter = view === "three_quarter";
-    const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
+    const catalogImages = (
+      look.catalogImages?.length
+        ? look.catalogImages.filter((i) => i.url)
+        : (look.catalogImageUrls ?? [])
+            .filter(Boolean)
+            .map((url) => ({ url, title: "", category: "" }))
+    ).filter((i) => i.url);
+    const catalogImageUrls = catalogImages.map((i) => i.url);
     const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
     const hasOutfitRef = Boolean(outfitReferenceImageUrl);
     const hasFace = Boolean(faceReferenceImageUrl);
@@ -669,7 +678,20 @@ export async function generateLookImage(opts: {
     const fabricBlock = fabricPromptDirective(look.description);
     const blazerTypeBlock = blazerTypePromptDirective(look.description);
     const shoeMaterialBlock = shoeMaterialPromptDirective(look.description);
-    const ordinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"];
+    const ordinals = [
+      "FIRST",
+      "SECOND",
+      "THIRD",
+      "FOURTH",
+      "FIFTH",
+      "SIXTH",
+      "SEVENTH",
+      "EIGHTH",
+      "NINTH",
+      "TENTH",
+      "ELEVENTH",
+      "TWELFTH",
+    ];
     const ordinal = (n: number) => ordinals[n - 1] ?? `${n}TH`;
 
     const subject =
@@ -759,17 +781,22 @@ export async function generateLookImage(opts: {
         : `The ${ordinal(imgIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
           `colours and proportions; do not copy the model's face or body. `;
     }
-    if (catalogImageUrls.length) {
+    if (catalogImages.length) {
       const catalogStart = imgIdx + 1;
-      imgIdx += catalogImageUrls.length;
-      if (catalogImageUrls.length === 1) {
-        imageRoles +=
-          `The ${ordinal(catalogStart)} image is the actual catalogue garment to dress them in — ` +
-          `reproduce that exact garment on the person. `;
+      imgIdx += catalogImages.length;
+      if (catalogImages.length === 1) {
+        const only = catalogImages[0];
+        imageRoles += only.title
+          ? `The ${ordinal(catalogStart)} image is the ${only.category.toLowerCase()} to wear: ${only.title} — reproduce this exact piece. `
+          : `The ${ordinal(catalogStart)} image is the actual catalogue garment to dress them in — ` +
+            `reproduce that exact garment on the person. `;
       } else {
-        imageRoles +=
-          `Images ${ordinal(catalogStart)} through ${ordinal(imgIdx)} are catalogue garment references — ` +
-          `reproduce those exact garments on the person. `;
+        catalogImages.forEach((g, i) => {
+          const n = catalogStart + i;
+          imageRoles += g.title
+            ? `The ${ordinal(n)} image is the ${g.category.toLowerCase()} to wear: ${g.title} — reproduce this exact piece. `
+            : `The ${ordinal(n)} image is a catalogue garment reference — reproduce that exact garment on the person. `;
+        });
       }
       // When garment product photos share the prompt with the person's photos,
       // the model tends to blend faces from the product shots and lose likeness.
@@ -783,6 +810,15 @@ export async function generateLookImage(opts: {
           `reproduce them at maximum fidelity. The catalogue images are clothing swatches ` +
           `only: copy the garments, and take NOTHING facial, body or pose-related from them. `;
       }
+    }
+    // Product shots drown the portrait when they come last. Re-attach the face
+    // after the swatches so identity is the final visual token.
+    if (hasFace && catalogImages.length) {
+      imgIdx += 1;
+      imageRoles +=
+        `The ${ordinal(imgIdx)} image is the SAME close-up front portrait again — ` +
+        `after the garment swatches, lock the face, bone structure, skin tone, hairline ` +
+        `and hairstyle to this photo. This is the person, not a fashion model. `;
     }
 
     // Text anchor for the face. The model regenerates the whole scene, so a
@@ -810,9 +846,12 @@ export async function generateLookImage(opts: {
         `do not idealise, slim or restyle the face. ` +
         skinRule +
         `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
-        `Do NOT change the hair colour. ` +
+        `Keep the EXACT hairstyle from the portrait — same colour, length, texture, ` +
+        `volume, parting and hairline. Do not slick, wave, or restyle the hair into a ` +
+        `fashion-model cut. ` +
         `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
         `what the reference photo shows. ` +
+        `The result must be recognisably this same person, not a similar-looking model. ` +
         eyewearBlock;
     }
     if (!personImageCount && !catalogImageUrls.length) {
@@ -969,6 +1008,9 @@ export async function generateLookImage(opts: {
       } catch {
         // Skip malformed product URLs rather than failing the whole render.
       }
+    }
+    if (faceReferenceImageUrl && catalogImages.length) {
+      content.push({ type: "image", image: new URL(faceReferenceImageUrl) });
     }
 
     return await renderImage(content);
@@ -1350,12 +1392,21 @@ export async function generateReportTryOnImage(opts: {
   garmentsText: string;
   /** Optional catalogue product image URLs to reproduce exact garments. */
   garmentImageUrls?: string[];
+  /** Same photos with titles so each input image can be bound to a garment. */
+  garmentImages?: { url: string; title: string; category: string }[];
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
-    const garmentImageUrls = (opts.garmentImageUrls ?? []).filter(
-      (u): u is string => Boolean(u && /^https?:\/\//i.test(u)),
-    );
+    const garmentImages = (
+      opts.garmentImages?.length
+        ? opts.garmentImages.filter((i) => i.url)
+        : (opts.garmentImageUrls ?? []).map((url) => ({
+            url,
+            title: "",
+            category: "",
+          }))
+    ).filter((i) => i.url && /^https?:\/\//i.test(i.url));
+    const garmentImageUrls = garmentImages.map((i) => i.url);
     const eyewearBlock = eyewearPromptDirective(opts.garmentsText);
     const tuckBlock = tuckPromptDirective(opts.garmentsText);
     const tieBlock = tiePromptDirective(opts.garmentsText);
@@ -1387,9 +1438,15 @@ export async function generateReportTryOnImage(opts: {
       `fills 9:16 — continue the same backdrop with natural light falloff and ` +
       `subtle wall texture. Do NOT letterbox, pillarbox, or pad the image with ` +
       `flat solid-colour bars. ` +
-      (garmentImageUrls.length
-        ? `The remaining ${garmentImageUrls.length} image(s) show the actual ` +
-          `catalogue garment(s) — reproduce these exact products, not similar ones. `
+      (garmentImages.length
+        ? garmentImages
+            .map((g, i) => {
+              const n = i + 2;
+              return g.title
+                ? `Image ${n} is the ${g.category.toLowerCase()} to wear: ${g.title} — reproduce this exact piece. `
+                : `Image ${n} is a catalogue garment — reproduce this exact product. `;
+            })
+            .join("")
         : ``) +
       opts.garmentsText +
       `Layering — follow strictly: outerwear (jackets, blazers, coats, overshirts, ` +
