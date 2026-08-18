@@ -81,6 +81,120 @@ export function payloadFromDraft(d: CatalogProductDraft) {
   };
 }
 
+function ProductUrlField({
+  value,
+  onChange,
+  onApplied,
+  required,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onApplied: (meta: {
+    title?: string | null;
+    description?: string | null;
+    imageUrl?: string | null;
+    brand?: string | null;
+    price?: string | null;
+    currency?: string | null;
+  }) => void;
+  required?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function copy() {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  async function apply() {
+    const url = value.trim();
+    if (!url || busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/admin/products/og", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(
+          typeof data.error === "string"
+            ? data.error
+            : "Could not read the product page",
+        );
+        return;
+      }
+      onApplied({
+        title: data.title,
+        description: data.description,
+        imageUrl: data.imageUrl,
+        brand: data.brand,
+        price: data.price,
+        currency: data.currency,
+      });
+      const filled = [
+        data.title ? "title" : null,
+        data.description ? "description" : null,
+        data.imageUrl ? "image" : null,
+        data.brand ? "brand" : null,
+        data.price ? "price" : null,
+      ].filter(Boolean);
+      setMsg(
+        filled.length
+          ? `Filled ${filled.join(", ")} from the page`
+          : "No product fields on that page",
+      );
+    } catch {
+      setMsg("Could not read the product page");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <label className="sm:col-span-2 text-sm">
+      <span className="text-stone-soft">Product URL</span>
+      <div className="mt-1 flex flex-wrap gap-2">
+        <input
+          required={required}
+          type="url"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://"
+          className="min-w-0 flex-1 rounded-lg border hairline bg-cream/30 px-3 py-2"
+        />
+        <button
+          type="button"
+          onClick={() => void apply()}
+          disabled={!value.trim() || busy}
+          className="shrink-0 rounded-lg border hairline px-3 py-2 text-xs text-stone hover:text-ink disabled:opacity-40"
+        >
+          {busy ? "Reading…" : "Apply"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          disabled={!value}
+          className="shrink-0 rounded-lg border hairline px-3 py-2 text-xs text-stone hover:text-ink disabled:opacity-40"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      {msg ? <p className="mt-1 text-xs text-stone-soft">{msg}</p> : null}
+    </label>
+  );
+}
+
 function CopyField({
   label,
   value,
@@ -279,12 +393,22 @@ export function CatalogProductEditor({
               ))}
             </select>
           </label>
-          <CopyField
-            label="Product URL"
+          <ProductUrlField
             required
             value={draft.deeplink}
             onChange={(v) => set("deeplink", v)}
-            placeholder="https://"
+            onApplied={(meta) =>
+              onChange({
+                ...draft,
+                deeplink: draft.deeplink.trim(),
+                ...(meta.title ? { title: meta.title } : {}),
+                ...(meta.description ? { description: meta.description } : {}),
+                ...(meta.imageUrl ? { imageUrl: meta.imageUrl } : {}),
+                ...(meta.brand ? { brand: meta.brand } : {}),
+                ...(meta.price ? { price: meta.price } : {}),
+                ...(meta.currency ? { currency: meta.currency } : {}),
+              })
+            }
           />
           <CopyField
             label="Image URL"

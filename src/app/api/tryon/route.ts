@@ -4,6 +4,7 @@ import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server
 import { runTryOn } from "@/lib/ai/tryon";
 import {
   generateCatalogTryOnImage,
+  generateReportTryOnImage,
   type CatalogTryOnGarment,
 } from "@/lib/ai/pipeline";
 import {
@@ -35,6 +36,19 @@ function normalizeGarmentUrl(raw: string | null | undefined): string | null {
   if (trimmed.startsWith("/")) return absoluteUrl(trimmed);
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return null;
+}
+
+function catalogStudioGarmentsText(garments: CatalogTryOnGarment[]): string {
+  const lines = garments.map((g, i) => {
+    const colour =
+      g.color && g.color !== "#CCCCCC" ? `, colour ${g.color}` : "";
+    return `${i + 1}. ${g.title} (${g.category.toLowerCase()}${colour})`;
+  });
+  return (
+    `Dress the person in these catalogue pieces:\n${lines.join("\n")}\n` +
+    `Wear every listed garment. Reproduce each catalogue garment faithfully — ` +
+    `exact colour, fabric, pattern and fit. `
+  );
 }
 
 /** Delete a catalogue try-on (report_id null) — storage object + row, owner only. */
@@ -142,6 +156,10 @@ export async function POST(request: Request) {
   // anything else (incl. report-linked renders) falls back to "catalog".
   const origin: "shop_a_look" | "catalog" =
     body?.origin === "shop_a_look" ? "shop_a_look" : "catalog";
+  // "photo" (default) = swap clothes on the source shot. "studio" = same
+  // identity lock as look try-on, moved onto a clean studio backdrop.
+  const tryOnStyle: "photo" | "studio" =
+    body?.style === "studio" ? "studio" : "photo";
 
   const admin = createAdminSupabase();
 
@@ -192,7 +210,12 @@ export async function POST(request: Request) {
   // layering + multi-garment) | fal (FASHN single-garment VTON). Fall back to
   // whichever engine is actually configured / capable.
   let mode: "image" | "fal";
-  if (env.tryonEngine === "fal" && garments.length === 1 && hasVTON) {
+  if (
+    tryOnStyle !== "studio" &&
+    env.tryonEngine === "fal" &&
+    garments.length === 1 &&
+    hasVTON
+  ) {
     mode = "fal";
   } else if (hasAI) {
     mode = "image";
@@ -260,6 +283,24 @@ export async function POST(request: Request) {
     });
     if (r.ok) render = { bytes: r.bytes, mediaType: r.mediaType };
     else renderError = r.error;
+  } else if (tryOnStyle === "studio") {
+    const garmentImages = garments
+      .filter(
+        (g): g is CatalogTryOnGarment & { imageUrl: string } =>
+          Boolean(g.imageUrl && /^https?:\/\//i.test(g.imageUrl)),
+      )
+      .map((g) => ({
+        url: g.imageUrl,
+        title: g.title,
+        category: g.category,
+      }));
+    render = await generateReportTryOnImage({
+      personImageUrl: photo.signedUrl,
+      garmentsText: catalogStudioGarmentsText(garments),
+      garmentImageUrls: garmentImages.map((g) => g.url),
+      garmentImages,
+    });
+    if (!render) renderError = "Try-on failed — please try again";
   } else {
     render = await generateCatalogTryOnImage({
       personImageUrl: photo.signedUrl,

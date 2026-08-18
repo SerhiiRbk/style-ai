@@ -7,6 +7,10 @@ import { formatOfferPrice } from "@/lib/currency";
 import { LuxeSpinner } from "@/components/luxe/LuxeSpinner";
 import { useNavSession } from "@/components/NavSession";
 import { MAX_TRYON_ITEMS } from "@/components/TryOnContext";
+import {
+  TryOnStyleToggle,
+  type CatalogTryOnStyle,
+} from "@/components/TryOnStyleToggle";
 import type { TryOnOpinion, TryOnVerdict } from "@/lib/ai/tryon-opinion";
 
 const TRYON_COST = 1;
@@ -158,6 +162,7 @@ export function ShopALookExperience() {
     "idle",
   );
   const [opinionNoProfile, setOpinionNoProfile] = useState(false);
+  const [tryOnStyle, setTryOnStyle] = useState<CatalogTryOnStyle>("photo");
 
   /** Restore a persisted session so a page refresh shows the same result. */
   function applySession(s: ShopSession) {
@@ -239,7 +244,11 @@ export function ShopALookExperience() {
       const res = await fetch("/api/tryon", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productIds: selectedIds, origin: "shop_a_look" }),
+        body: JSON.stringify({
+          productIds: selectedIds,
+          origin: "shop_a_look",
+          style: tryOnStyle,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (typeof data.balance === "number") setBalance(data.balance);
@@ -599,6 +608,12 @@ export function ShopALookExperience() {
                       : "Tap the circle on the pieces you want, then render them on your photo."}
                   </p>
                 </div>
+                <div className="flex shrink-0 flex-col items-stretch gap-3 sm:items-end">
+                <TryOnStyleToggle
+                  value={tryOnStyle}
+                  onChange={setTryOnStyle}
+                  disabled={tryState === "loading"}
+                />
                 <button
                   onClick={runTryOn}
                   disabled={selectedCount === 0 || tryState === "loading"}
@@ -616,6 +631,7 @@ export function ShopALookExperience() {
                     </>
                   )}
                 </button>
+                </div>
               </div>
 
               {balance !== null ? (

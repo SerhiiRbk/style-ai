@@ -12,6 +12,10 @@ import { OUTFIT_TRYON_SAVED_EVENT } from "./SavedOutfitTryOns";
 import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 import { WORKING } from "@/components/luxe/messages";
 import { checkPhotoGateClient } from "@/lib/client/photo-gate";
+import {
+  TryOnStyleToggle,
+  type CatalogTryOnStyle,
+} from "./TryOnStyleToggle";
 
 const LIVE = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -45,6 +49,7 @@ export function TryOnButton({
   const [hasFull, setHasFull] = useState<boolean | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [tryOnStyle, setTryOnStyle] = useState<CatalogTryOnStyle>("photo");
 
   const creditsApply = balance !== null;
   const insufficient = creditsApply && (balance ?? 0) < cost;
@@ -124,7 +129,7 @@ export function TryOnButton({
       const res = await fetch("/api/tryon", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId, reportId, imageUrl }),
+        body: JSON.stringify({ productId, reportId, imageUrl, style: tryOnStyle }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -156,6 +161,14 @@ export function TryOnButton({
 
   return (
     <div className="mt-3 border-t border-paper/10 pt-3">
+      <div className="mb-2">
+        <TryOnStyleToggle
+          value={tryOnStyle}
+          onChange={setTryOnStyle}
+          disabled={state === "loading" || uploading}
+          tone="dark"
+        />
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={run}
