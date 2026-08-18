@@ -16,12 +16,12 @@ import { BRAND } from "@/lib/brand";
 export const metadata: Metadata = {
   title: "Catalog — shoppable menswear picks · Valetti",
   description:
-    "Browse the Valetti catalogue — curated menswear matched to quiet-luxury, European style. Real products with disclosed affiliate links.",
+    "Browse the Valetti catalogue — curated menswear matched to quiet-luxury style. Real products with disclosed affiliate links.",
   alternates: { canonical: "/catalog" },
   openGraph: {
     title: "Valetti catalogue — shoppable menswear picks",
     description:
-      "Browse curated menswear matched to quiet-luxury, European style. Real products with disclosed affiliate links.",
+      "Browse curated menswear matched to quiet-luxury style. Real products with disclosed affiliate links.",
     url: "/catalog",
     type: "website",
     images: [
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Valetti catalogue — shoppable menswear picks",
     description:
-      "Browse curated menswear matched to quiet-luxury, European style.",
+      "Browse curated menswear matched to quiet-luxury style.",
     images: [BRAND.ogImage],
   },
 };

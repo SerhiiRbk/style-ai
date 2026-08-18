@@ -100,7 +100,7 @@ function JsonLd() {
         name: "Personal style report",
         serviceType: "Personal styling",
         provider: { "@id": `${site}#organization` },
-        areaServed: "Europe",
+        areaServed: ["European Union", "United States", "Worldwide"],
         description:
           "A structured, explainable personal style report: colour analysis, hair and grooming, photorealistic looks, a capsule wardrobe and a shopping list.",
       },
@@ -800,7 +800,7 @@ function Audience() {
       <div className="mt-14 grid gap-6 lg:grid-cols-3">
         <Card
           tag="Valetti focus"
-          title="Men 25–55+ in Europe"
+          title="Men 25–55+"
           body="IT, consulting, business, freelance. Want to look modern, sharp and professional — without spending time on fashion. Often newly relocated and unsure where to even shop."
         />
         <Card

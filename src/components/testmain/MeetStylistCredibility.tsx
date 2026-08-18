@@ -58,7 +58,7 @@ export function MeetStylistCredibility() {
               trust a{" "}
               <span className="text-ink">method for men&apos;s wardrobes</span>:
               structured analysis, explainable calls, real menswear products —
-              presented in a calm European voice.
+              presented in a calm voice.
             </p>
             <p>
               Share photos and honest answers; the engine builds your Style
