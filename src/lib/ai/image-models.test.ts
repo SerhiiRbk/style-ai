@@ -8,13 +8,13 @@ import {
   parseImageModelList,
 } from "./image-models";
 
-test("primary is the GA flash image model, not the deprecated preview", () => {
-  assert.equal(DEFAULT_IMAGE_MODEL, "google/gemini-3.1-flash-image");
-  assert.ok(!DEFAULT_IMAGE_MODEL.endsWith("-preview"));
+test("primary stays on the preview checkpoint for identity", () => {
+  assert.equal(DEFAULT_IMAGE_MODEL, "google/gemini-3.1-flash-image-preview");
 });
 
-test("default fallbacks are pro, gpt-image-2, then kontext-max", () => {
+test("GA flash is the first fallback, then pro / gpt / kontext", () => {
   assert.deepEqual([...DEFAULT_IMAGE_MODEL_FALLBACKS], [
+    "google/gemini-3.1-flash-image",
     "google/gemini-3-pro-image",
     "openai/gpt-image-2",
     "bfl/flux-kontext-max",
@@ -39,6 +39,7 @@ test("imageModelChain puts primary first and drops duplicates", () => {
   assert.deepEqual(
     imageModelChain(DEFAULT_IMAGE_MODEL, DEFAULT_IMAGE_MODEL_FALLBACKS),
     [
+      "google/gemini-3.1-flash-image-preview",
       "google/gemini-3.1-flash-image",
       "google/gemini-3-pro-image",
       "openai/gpt-image-2",
@@ -49,6 +50,7 @@ test("imageModelChain puts primary first and drops duplicates", () => {
     imageModelChain("openai/gpt-image-2", DEFAULT_IMAGE_MODEL_FALLBACKS),
     [
       "openai/gpt-image-2",
+      "google/gemini-3.1-flash-image",
       "google/gemini-3-pro-image",
       "bfl/flux-kontext-max",
     ],

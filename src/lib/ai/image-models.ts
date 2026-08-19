@@ -1,11 +1,16 @@
 /**
  * Image-model ids for look/try-on renders. Gemini Nano Banana family uses
  * generateText (chat + image files). GPT Image / Flux Kontext use generateImage.
+ *
+ * Primary stays on the preview checkpoint: the GA flash-image id is more
+ * available under 503s but drifts identity (smoother, less stubble / hair).
+ * GA is the first fallback so a preview outage still renders.
  */
 
-export const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-image";
+export const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-image-preview";
 
 export const DEFAULT_IMAGE_MODEL_FALLBACKS = [
+  "google/gemini-3.1-flash-image",
   "google/gemini-3-pro-image",
   "openai/gpt-image-2",
   "bfl/flux-kontext-max",

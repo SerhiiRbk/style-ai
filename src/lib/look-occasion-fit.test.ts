@@ -3,6 +3,8 @@ import test from "node:test";
 import { lookOccasionIdFromContext } from "./look-contexts";
 import {
   isOccasionCasualTrouserTitle,
+  isOccasionTravelBagTitle,
+  lookOccasionAppliesToBag,
   lookOccasionAppliesToGarment,
   lookOccasionIsTailored,
   lookOccasionQueryHint,
@@ -19,7 +21,10 @@ test("work and formal are tailored occasions", () => {
   assert.equal(lookOccasionIsTailored("formal"), true);
   assert.equal(lookOccasionIsTailored("weekend"), false);
   assert.equal(lookOccasionAppliesToGarment("work", "chinos"), true);
+  assert.equal(lookOccasionAppliesToGarment("work", "messenger bag"), true);
   assert.equal(lookOccasionAppliesToGarment("work", "knit"), false);
+  assert.equal(lookOccasionAppliesToBag("messenger bag"), true);
+  assert.equal(lookOccasionAppliesToBag("chinos"), false);
 });
 
 test("linen relaxed trousers are casual unless the look asked for them", () => {
@@ -49,5 +54,27 @@ test("linen relaxed trousers are casual unless the look asked for them", () => {
 
 test("work query hint steers away from linen relaxed", () => {
   assert.match(lookOccasionQueryHint("work") ?? "", /not linen/i);
+  assert.match(
+    lookOccasionQueryHint("work", "messenger bag") ?? "",
+    /not travel bag/i,
+  );
   assert.equal(lookOccasionQueryHint("weekend"), null);
+});
+
+test("travel bags are casual unless the look asked for them", () => {
+  assert.equal(
+    isOccasionTravelBagTitle(
+      "Nappa Leather Detail Travel Bag",
+      "greige leather messenger bag",
+    ),
+    true,
+  );
+  assert.equal(
+    isOccasionTravelBagTitle("Leather Messenger Bag", "greige leather messenger bag"),
+    false,
+  );
+  assert.equal(
+    isOccasionTravelBagTitle("Canvas Weekender", "olive travel bag"),
+    false,
+  );
 });

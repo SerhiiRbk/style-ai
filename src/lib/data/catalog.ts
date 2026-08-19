@@ -22,6 +22,8 @@ import {
 } from "@/lib/look-style-fit";
 import {
   isOccasionCasualTrouserTitle,
+  isOccasionTravelBagTitle,
+  lookOccasionAppliesToBag,
   lookOccasionAppliesToGarment,
   lookOccasionQueryHint,
 } from "@/lib/look-occasion-fit";
@@ -217,8 +219,9 @@ const MIN_LOOK_PICK_SCORE = 0.42;
  *  v15: named-style recipes (Breton, Rive Gauche, Heritage knit, City formal,
  *  Open knit) boost / soft-veto catalogue picks.
  *  v16: Work / Formal trousers drop linen, relaxed and drawstring unless the
- *  look named them. */
-export const LOOK_MATCH_VERSION = 16;
+ *  look named them.
+ *  v17: messenger / tote slots reject travel bags, weekenders and duffels. */
+export const LOOK_MATCH_VERSION = 17;
 const LOOK_STYLE_FIT_WEIGHT = 0.1;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
@@ -626,7 +629,7 @@ function garmentQueryText(
     `Look: ${opts.lookTitle}`,
     opts.paletteHints ? `Palette: ${opts.paletteHints}` : null,
     lookStyleQueryHint(opts.styleId),
-    lookOccasionQueryHint(opts.occasionId),
+    lookOccasionQueryHint(opts.occasionId, garment),
     `${opts.colorSeason} personal style`,
   ]
     .filter(Boolean)
@@ -662,6 +665,12 @@ const STRICT_ACCESSORY_TYPES = new Set([
   "glasses",
   "tote",
   "tote bag",
+  "messenger",
+  "messenger bag",
+  "briefcase",
+  "satchel",
+  "backpack",
+  "bag",
 ]);
 
 function styleFitInput(row: MatchRow, title: string): LookStyleFitInput {
@@ -748,11 +757,14 @@ function rankMatchRows(
     return ranked.filter((r) => r.garmentScore >= 0.5);
   }
 
-  // Work / Formal: drop linen, relaxed and drawstring trousers when a
-  // meeting-appropriate option exists (unless the look itself named them).
+  // Work / Formal: drop linen, relaxed and drawstring trousers — and travel
+  // bags in a messenger/tote slot — when a meeting-appropriate option exists.
   if (lookOccasionAppliesToGarment(occasionId, garment)) {
     const office = ranked.filter((r) => {
       const title = formatCatalogProductTitle(r.row.brand, r.row.title);
+      if (lookOccasionAppliesToBag(garment)) {
+        return !isOccasionTravelBagTitle(title, clause);
+      }
       return !isOccasionCasualTrouserTitle(title, clause);
     });
     if (office.length) ranked = office;

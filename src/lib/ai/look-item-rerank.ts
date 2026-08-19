@@ -94,8 +94,9 @@ function buildRerankPrompt(
     `grey or charcoal), and formality of this look. Use -1 only when every ` +
     `candidate is clearly wrong (wrong category, clashing colour, or unrelated ` +
     `item). Never substitute a different accessory type: a pocket square is not ` +
-    `a tie, a "tie with pocket square" set, a cap, a hat, or a belt. If no ` +
-    `candidate is the named accessory, use -1.\n` +
+    `a tie, a "tie with pocket square" set, a cap, a hat, or a belt. A ` +
+    `travel bag, weekender or duffel is not a messenger, tote or briefcase. ` +
+    `If no candidate is the named accessory, use -1.\n` +
     `Outfit-level colour: do NOT pair a shirt and trousers in the same chromatic ` +
     `family (green, red, orange, yellow, pink, purple) unless the look description ` +
     `itself names that family on BOTH pieces. Sage + olive is a clash. Teal is ` +

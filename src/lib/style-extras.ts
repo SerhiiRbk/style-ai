@@ -2374,6 +2374,9 @@ const GARMENT_CATEGORY: Record<string, string> = {
   necktie: "Accessories", bowtie: "Accessories", "bow tie": "Accessories",
   bolo: "Accessories", "bolo tie": "Accessories",
   tote: "Accessories", "tote bag": "Accessories",
+  messenger: "Accessories", "messenger bag": "Accessories",
+  briefcase: "Accessories", satchel: "Accessories",
+  backpack: "Accessories", "travel bag": "Accessories",
   "pocket square": "Accessories", pochette: "Accessories", handkerchief: "Accessories",
   neckerchief: "Accessories", "neck scarf": "Accessories", bandana: "Accessories",
   foulard: "Accessories",
@@ -2548,6 +2551,12 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   belt: ["belt"],
   tote: ["tote", "tote bag"],
   "tote bag": ["tote", "tote bag"],
+  messenger: ["messenger", "satchel", "crossbody"],
+  "messenger bag": ["messenger", "satchel", "crossbody"],
+  briefcase: ["briefcase"],
+  satchel: ["satchel", "messenger"],
+  backpack: ["backpack", "rucksack"],
+  "travel bag": ["travel bag", "weekender", "duffel", "duffle", "holdall"],
   "pocket square": ["pocket square", "pochette", "handkerchief"],
   pochette: ["pochette", "pocket square"],
   handkerchief: ["handkerchief", "pocket square"],
@@ -2739,6 +2748,24 @@ export function garmentTitleMatchScore(garment: string, title: string): number {
       return 0.7;
     }
     return 0;
+  }
+  // Travel / weekender / duffel is not a messenger, tote or office bag.
+  if (
+    key === "messenger" ||
+    key === "messenger bag" ||
+    key === "briefcase" ||
+    key === "satchel" ||
+    key === "tote" ||
+    key === "tote bag" ||
+    key === "bag"
+  ) {
+    if (
+      /\b(travel\s+bags?|weekenders?|duffels?|duffles?|holdalls?|cabin\s+bags?|overnight\s+bags?|trolley|suitcase)\b/.test(
+        hay,
+      )
+    ) {
+      return 0;
+    }
   }
   // A "Tie With Pocket Square" set is a necktie, not a square. Same for a
   // cap/hat/belt that happens to mention a square in the title.

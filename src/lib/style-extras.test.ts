@@ -41,6 +41,29 @@ test("decomposeLook keeps belt and tote as separate accessory slots", () => {
   assert.ok(accessories.some((g) => g.garment === "tote"));
 });
 
+test("decomposeLook keeps a messenger bag as its own accessory slot", () => {
+  const garments = decomposeLook(
+    "Slate blue linen blazer, sage suede loafers, greige leather messenger bag.",
+  );
+  const bag = garments.find((g) => g.garment.includes("messenger"));
+  assert.ok(bag, `missing messenger: ${garments.map((g) => g.garment).join(",")}`);
+  assert.equal(bag?.garment, "messenger bag");
+  assert.equal(bag?.category, "Accessories");
+});
+
+test("garmentTitleMatchScore rejects a travel bag for a messenger slot", () => {
+  assert.equal(
+    garmentTitleMatchScore("messenger", "Leather Messenger Bag"),
+    1,
+  );
+  assert.equal(
+    garmentTitleMatchScore("messenger bag", "Nappa Leather Detail Travel Bag"),
+    0,
+  );
+  assert.equal(garmentTitleMatchScore("tote", "Weekender Holdall"), 0);
+  assert.equal(garmentTitleMatchScore("bag", "Cabin Travel Bag"), 0);
+});
+
 test("garmentTitleMatchScore recognises tote and pocket square titles", () => {
   assert.equal(garmentTitleMatchScore("tote", "Marks & Spencer Canvas Tote Bag"), 1);
   assert.equal(garmentTitleMatchScore("pocket square", "Pure Silk Pocket Square"), 1);
