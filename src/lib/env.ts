@@ -5,6 +5,11 @@
  * This lets the project build and run locally without any credentials.
  */
 
+import {
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_IMAGE_MODEL_FALLBACKS,
+  parseImageModelList,
+} from "@/lib/ai/image-models";
 import { resolvePhotoGateFlags } from "@/lib/photo-gate-flags";
 
 function envFlag(raw: string | undefined): boolean {
@@ -37,8 +42,11 @@ export const env = {
     process.env.AI_MODEL_VISION_GATE ?? "google/gemini-2.5-flash-lite",
   modelReasoning:
     process.env.AI_MODEL_REASONING ?? "anthropic/claude-sonnet-4.5",
-  modelImage:
-    process.env.AI_MODEL_IMAGE ?? "google/gemini-3.1-flash-image-preview",
+  modelImage: process.env.AI_MODEL_IMAGE ?? DEFAULT_IMAGE_MODEL,
+  modelImageFallbacks: parseImageModelList(
+    process.env.AI_MODEL_IMAGE_FALLBACKS,
+    DEFAULT_IMAGE_MODEL_FALLBACKS,
+  ),
   embedModel: process.env.AI_EMBED_MODEL ?? "openai/text-embedding-3-small",
 
   falKey: process.env.FAL_KEY,

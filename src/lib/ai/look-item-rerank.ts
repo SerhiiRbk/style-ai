@@ -2,6 +2,8 @@ import "server-only";
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { env, hasAI } from "@/lib/env";
+import { lookStyleRerankHint } from "@/lib/look-style-fit";
+import { lookOccasionRerankHint } from "@/lib/look-occasion-fit";
 
 /** Max vector candidates passed to the reranker per garment slot. */
 export const LOOK_RERANK_CANDIDATE_LIMIT = 8;
@@ -58,6 +60,8 @@ function buildRerankPrompt(
   lookDescription: string,
   paletteHints: string,
   slots: RerankGarmentSlot[],
+  styleId?: string | null,
+  occasionId?: string | null,
 ): string {
   const slotBlocks = slots
     .map((s) => {
@@ -75,11 +79,15 @@ function buildRerankPrompt(
     })
     .join("\n\n");
 
+  const styleHint = lookStyleRerankHint(styleId);
+  const occasionHint = lookOccasionRerankHint(occasionId);
   return (
     `You are a menswear stylist picking real catalogue products for ONE outfit look.\n\n` +
     `Look title: ${lookTitle}\n` +
     `Look description: ${lookDescription}\n` +
     (paletteHints ? `Palette hints: ${paletteHints}\n` : "") +
+    (styleHint ? `${styleHint}\n` : "") +
+    (occasionHint ? `${occasionHint}\n` : "") +
     `\nFor each slot, choose the single best candidate index that matches the ` +
     `garment TYPE (e.g. chinos not jeans, blazer not knit/zip sport jacket, ` +
     `crewneck not blazer), COLOUR shade within the family (medium grey not light ` +
@@ -97,6 +105,8 @@ function buildRerankPrompt(
     `A missing exact colour may be filled by a close neighbour (dusty rose → ` +
     `muted pink or lilac; greige → beige/dove; sage → khaki; mushroom → taupe; ` +
     `soft plum → mauve/lilac — never a neon or a navy stand-in). Mark those similarPick=true.\n` +
+    `Nude, champagne, camel and sand are warm beige — never a dusty-rose or ` +
+    `pink stand-in. If a pink or rose candidate exists, pick it over beige.\n` +
     `Set similarPick=true when the pick is the closest available option but not a ` +
     `strong colour or style match.\n` +
     `For every pick with candidateIndex >= 0 also write "why" — ONE calm sentence ` +
@@ -117,6 +127,8 @@ export async function rerankLookItemSlots(
   lookDescription: string,
   paletteHints: string,
   slots: RerankGarmentSlot[],
+  styleId?: string | null,
+  occasionId?: string | null,
 ): Promise<RerankPick[] | null> {
   if (!hasAI || !slots.length) return null;
 
@@ -132,6 +144,8 @@ export async function rerankLookItemSlots(
         lookDescription,
         paletteHints,
         withCandidates,
+        styleId,
+        occasionId,
       ),
     });
 

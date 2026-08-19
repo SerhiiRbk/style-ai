@@ -18,7 +18,7 @@ import { generateText } from "ai";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const modelImage =
-  process.env.AI_MODEL_IMAGE ?? "google/gemini-3.1-flash-image-preview";
+  process.env.AI_MODEL_IMAGE ?? "google/gemini-3.1-flash-image";
 
 if (!url || !serviceKey) {
   console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");

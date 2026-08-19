@@ -2435,6 +2435,8 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   beige: { family: "brown", shade: "light" }, sand: { family: "brown", shade: "light" },
   stone: { family: "brown", shade: "light" }, oat: { family: "brown", shade: "light" },
   oatmeal: { family: "brown", shade: "light" },
+  nude: { family: "brown", shade: "light" }, champagne: { family: "brown", shade: "light" },
+  fawn: { family: "brown", shade: "light" },
   greige: { family: "brown", shade: "light" }, mushroom: { family: "brown", shade: "light" },
   chocolate: { family: "brown", shade: "dark" }, chestnut: { family: "brown", shade: "dark" },
   espresso: { family: "brown", shade: "dark" },
@@ -2504,6 +2506,9 @@ const NAMED_COLOR_HEX: Record<string, string> = {
   stone: "#C2B8A8",
   beige: "#D4C4A8",
   sand: "#D9C7A3",
+  nude: "#D8C4A0",
+  champagne: "#E3C6A8",
+  fawn: "#C9A57A",
   dove: "#C5C1B8",
   olive: "#6B6B47",
 };
@@ -2788,6 +2793,34 @@ function parseColorTokens(text: string): { families: Set<string>; shade?: Shade 
 /** Hue families named in free text (product colour, title, or look clause). */
 export function colorFamilies(text: string): Set<string> {
   return parseColorTokens(text).families;
+}
+
+/**
+ * Catalogue search tokens that share a look colour's hue family.
+ * Used to pull same-family products into the match pool when vector neighbours
+ * crowd them out (dusty rose must still see "pink" / "rose" knits).
+ * Skips fused compound keys ("dustyrose") that never appear in feeds.
+ */
+export function colorFamilyNeedles(queryColor: string | null): string[] {
+  const families = parseColorTokens(queryColor ?? "").families;
+  if (!families.size) return [];
+  const needles = new Set<string>();
+  for (const [token, meta] of Object.entries(COLOR_FAMILY)) {
+    if (!families.has(meta.family)) continue;
+    if (!isSearchableColorToken(token)) continue;
+    needles.add(token);
+  }
+  return [...needles];
+}
+
+/** Natural colour words safe for `ilike` — skip fused compounds like dustyrose. */
+function isSearchableColorToken(token: string): boolean {
+  if (token.length < 3 || token.length > 14) return false;
+  if (!/^[a-z]+$/.test(token)) return false;
+  if (token !== "blue" && token.endsWith("blue")) return false;
+  if (token !== "rose" && token.endsWith("rose")) return false;
+  if (token !== "plum" && token.endsWith("plum")) return false;
+  return true;
 }
 
 export type ColorMatchOpts = {

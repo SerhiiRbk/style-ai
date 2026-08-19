@@ -80,8 +80,10 @@ export const LOOK_CONTEXTS: LookContext[] = [
     label: "Party / night out",
     context: "Party",
     brief:
-      "Evening energy — a confident, considered going-out look with one standout element. " +
-      "Bolder at higher strictness; keep it wearable, not costume.",
+      "Evening / night-out energy. Dress for after dark, not the office: one standout garment " +
+      "and a vivid colour story from the palette. Conservative stays sharp; Statement goes bold — " +
+      "richer colour, unexpected pairings, evening fabrics. Wearable, never costume, never a " +
+      "daytime jumper-and-tote.",
   },
   {
     id: "cultural",
@@ -112,6 +114,23 @@ export const LOOK_CONTEXTS: LookContext[] = [
 export function lookContextById(id: string | undefined | null): LookContext | undefined {
   if (!id) return undefined;
   return LOOK_CONTEXTS.find((c) => c.id === id);
+}
+
+/** Resolve a stored look `context` string (or an occasion id) to LOOK_CONTEXTS id. */
+export function lookOccasionIdFromContext(
+  context: string | null | undefined,
+): string | null {
+  if (!context?.trim()) return null;
+  const raw = context.trim();
+  if (lookContextById(raw)) return raw;
+  const exact = LOOK_CONTEXTS.find(
+    (c) => c.context === raw || c.label === raw,
+  );
+  if (exact) return exact.id;
+  const lower = raw.toLowerCase();
+  if (/\bwork\b|\bmeeting/.test(lower)) return "work";
+  if (/\bformal\b/.test(lower)) return "formal";
+  return null;
 }
 
 /** Reserved occasion for look sets mirrored from a Style Report. Not in the

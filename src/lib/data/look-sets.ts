@@ -71,6 +71,7 @@ export async function createLookSet(
     occasionId: string;
     season: LookBriefSeason;
     boldness: Boldness;
+    styleId?: string | null;
     name: string;
     carloNote?: string | null;
     profile: StyleProfile;
@@ -98,6 +99,7 @@ export async function createLookSet(
     occasionId,
     season,
     boldness,
+    styleId,
     name,
     carloNote,
     profile,
@@ -117,6 +119,7 @@ export async function createLookSet(
     occasion_id: occasionId,
     season,
     boldness,
+    ...(styleId ? { style_id: styleId } : {}),
     carlo_note: carloNote ?? null,
     name,
     is_public: isPublic,
@@ -135,6 +138,24 @@ export async function createLookSet(
       .insert(baseRow)
       .select("id")
       .single());
+  }
+  if (error && /style_id/.test(error.message)) {
+    const { style_id: _drop, ...withoutStyle } = baseRow as typeof baseRow & {
+      style_id?: string;
+    };
+    void _drop;
+    ({ data, error } = await admin
+      .from("look_sets")
+      .insert({ ...withoutStyle, looks_count: looksCount, status })
+      .select("id")
+      .single());
+    if (error && /looks_count|status/.test(error.message)) {
+      ({ data, error } = await admin
+        .from("look_sets")
+        .insert(withoutStyle)
+        .select("id")
+        .single());
+    }
   }
   if (error) throw new Error(error.message);
   if (!data) throw new Error("look_sets insert returned no row");
@@ -535,12 +556,13 @@ async function assembleLookSetResult(
   );
   const looks = looksFromRows(rows ?? [], looksCount, generating);
 
-  // Fill shop items only when the set has none. A stale matchVersion used to
-  // block the page on embedMany + catalogue RPCs — and Next.js prefetch from
-  // /looks fired that for every card in view. Try-on still rematches via
-  // ensureSetLookItems when the user actually shops.
-  const hasItems = Boolean(lookItems && Object.keys(lookItems).length);
-  if (!hasItems && looks.some((l) => l.imagePath)) {
+  // Rematch when shop items are missing or a stale matchVersion (colour /
+  // gender / style recipes). The /looks index uses prefetch={false} so this
+  // only runs on the set page, not on every card in view.
+  if (
+    looks.some((l) => l.imagePath) &&
+    lookItemsNeedRefresh(lookItems ?? undefined)
+  ) {
     lookItems = await ensureSetLookItems(
       admin,
       set.user_id,
@@ -734,7 +756,14 @@ async function backfillSetLookItems(
     // matchLookItems keys results by position in content.looks; re-key by each
     // look's stable `idx` so the persisted map lines up with how the set view
     // and try-on look items up (by idx, not array position).
-    const byPos = await matchLookItems(parsed.data, content);
+    const { data: setMeta } = await admin
+      .from("look_sets")
+      .select("style_id")
+      .eq("id", setId)
+      .maybeSingle();
+    const styleId =
+      typeof setMeta?.style_id === "string" ? setMeta.style_id : null;
+    const byPos = await matchLookItems(parsed.data, content, { styleId });
     const items: Record<number, ShoppingItem[]> = {};
     looks.forEach((l, p) => {
       const matched = byPos[p];

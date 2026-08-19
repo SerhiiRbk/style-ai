@@ -7,6 +7,7 @@ import { LEGAL } from "@/lib/legal";
 import { checkLimit } from "@/lib/rate-limit";
 import { logEvent } from "@/lib/events";
 import { lookContextById } from "@/lib/look-contexts";
+import { lookStyleById, lookStyleHasBrief } from "@/lib/look-styles";
 import { assertPhotoUsable } from "@/lib/ai/photo-gate";
 import {
   creditsPurchased,
@@ -186,6 +187,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const styleIdRaw = typeof body.styleId === "string" ? body.styleId : "atelier";
+  const style = lookStyleById(styleIdRaw);
+  if (!style) {
+    return NextResponse.json(
+      { error: "Invalid style", code: "invalid" },
+      { status: 400 },
+    );
+  }
+  const styleId = style.id;
+
   const intakeParsed = intakeBodySchema.safeParse(body.intake);
   if (!intakeParsed.success) {
     return NextResponse.json(
@@ -193,7 +204,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const intake = buildLookIntake(intakeParsed.data);
+  const intake = { ...buildLookIntake(intakeParsed.data), boldness };
 
   // Format-validated only — NOT yet a requiredness decision. Whether a photo
   // is actually required (and, if so, consent + the photo gate) depends on
@@ -467,6 +478,9 @@ export async function POST(request: Request) {
     profile = existing!.profile;
     source = existing!.source;
   }
+  // Create-a-Look strictness is per-request — don't let a reused report
+  // profile stay "moderate" while the set is Statement.
+  profile = { ...profile, boldness };
 
   // 7) name — collision time (HH:MM) only if a same-occasion set already
   // exists today for this user.
@@ -520,6 +534,7 @@ export async function POST(request: Request) {
     occasionId: ctx.id,
     season,
     boldness,
+    styleId: lookStyleHasBrief(styleId) ? styleId : null,
     name,
     carloNote: null,
     profile,
@@ -544,6 +559,7 @@ export async function POST(request: Request) {
   const colorRecipes = lookSetColorRecipes(
     bestSwatchesForProfile(profile),
     looksCount,
+    { boldness, occasionId: ctx.id },
   );
 
   // Face-anchor the renders on the resolved photo paths above (selected or
@@ -570,6 +586,9 @@ export async function POST(request: Request) {
             brief: ctx.brief,
             boldness,
             season,
+            occasionId: ctx.id,
+            lookIndex: i,
+            styleId,
             existingTitles: titlesSoFar,
             colorRecipe: colorRecipes[i],
           });
@@ -688,7 +707,7 @@ export async function POST(request: Request) {
     // with the looks as read back (ordered by idx), not by the concurrent
     // insert order. A render that failed leaves a gap in idx — which is exactly
     // why position-keying was unsafe.
-    const byPos = await matchLookItems(profile, content);
+    const byPos = await matchLookItems(profile, content, { styleId });
     matched = {};
     rendered.forEach((r, p) => {
       const items = byPos[p];

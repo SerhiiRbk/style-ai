@@ -10,6 +10,10 @@ import {
 import { isDemoReportId } from "./demo-report";
 import { humanizeProductTitle } from "./product-title";
 import { resolveHairImage } from "./hair-images";
+import {
+  annotateNearFaceGuidance,
+  reportPalette,
+} from "./colour-palette";
 import type { SavedOutfitTryOn } from "./outfit-tryon";
 import type { StyleExtras } from "./style-extras";
 import type { ReportLanguage } from "./languages";
@@ -334,20 +338,28 @@ export function mockStyleProfile(intake: Intake): StyleProfile {
 
 /** Deterministic mock report content — used in demo mode and as AI fallback. */
 export function mockReportContent(intake: Intake): ReportContent {
-  const colors = {
-    best: [
-      { name: "Olive", hex: "#6B6B47", why: "Echoes your warm undertone and keeps focus on your face without harsh contrast." },
-      { name: "Rust", hex: "#9E5C3C", why: "A warm earth tone that adds healthy depth to medium skin." },
-      { name: "Cream", hex: "#EFE6D3", why: "Softer than pure white — flatters low-contrast colouring up close." },
-      { name: "Deep navy", hex: "#27324A", why: "A reliable neutral that reads modern and professional." },
-      { name: "Camel", hex: "#B08A5B", why: "Refined warmth that pairs effortlessly across the wardrobe." },
-    ],
-    avoid: [
-      { name: "Icy pastel", hex: "#CFE3EE", why: "Cool and washed-out against a warm complexion — drains the face." },
-      { name: "Pure white", hex: "#FFFFFF", why: "Too stark for low contrast; creates an unflattering hard edge." },
-      { name: "Cool magenta", hex: "#B83280", why: "Fights your undertone and pulls attention away from you." },
-    ],
-  };
+  // Same 10-swatch BEST + office-ready neutrals as a live premium report.
+  const undertone = "warm" as const;
+  const contrast = "low" as const;
+  const subseason = classifySubseason({
+    season: "autumn",
+    undertone,
+    contrast,
+    hairColor: intake.hairColor
+      ? HAIR_COLOR_LABELS[intake.hairColor]
+      : undefined,
+    eyeColor: intake.eyeColor
+      ? EYE_COLOR_LABELS[intake.eyeColor]
+      : undefined,
+  });
+  const colors = annotateNearFaceGuidance(
+    reportPalette({ subseason, undertone, contrast }),
+    {
+      boldness: intake.boldness,
+      goals: intake.goals,
+      lifestyle: intake.lifestyle,
+    },
+  );
 
   const hair = {
     recommend: [
@@ -745,6 +757,7 @@ export function generateReport(
   id?: string,
 ): StyleReport {
   const isDemo = id != null && isDemoReportId(id);
+  const finishingKit = isDemo && (tier === "premium" || tier === "lookbook");
   return assembleReport({
     id,
     intake,
@@ -755,6 +768,8 @@ export function generateReport(
     facialHair: isDemo && tier === "premium" ? DEMO_FACIAL_HAIR : undefined,
     eyewear: isDemo && tier === "premium" ? DEMO_EYEWEAR : undefined,
     accessories: isDemo && tier === "premium" ? DEMO_ACCESSORIES : undefined,
+    shoeImage: finishingKit ? "/images/demo/shoe-board.png" : undefined,
+    watchImage: finishingKit ? "/images/demo/watch-board.png" : undefined,
   });
 }
 

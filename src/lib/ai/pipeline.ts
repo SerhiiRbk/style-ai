@@ -1,5 +1,5 @@
 import "server-only";
-import { generateText, Output, embed } from "ai";
+import { generateImage, generateText, Output, embed } from "ai";
 import { z } from "zod";
 import { env, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
@@ -26,7 +26,19 @@ import {
   type ReportContent,
   type Boldness,
 } from "@/lib/style-profile";
-import { composeLookBrief, type LookBriefSeason } from "@/lib/ai/look-brief";
+import {
+  imageModelChain,
+  imageModelUsesChat,
+} from "@/lib/ai/image-models";
+import {
+  composeLookBrief,
+  LOOK_WEARABLE_RULE,
+  partyJacketMatchesSlot,
+  sanitizeLookDescription,
+  withWearableLookRule,
+  type LookBriefSeason,
+} from "@/lib/ai/look-brief";
+import { lookStyleHasBrief } from "@/lib/look-styles";
 import {
   formatLookColorRecipePrompt,
   recipePaletteHexes,
@@ -56,34 +68,106 @@ import {
 
 export type PhotoInput = { role: string; url: string };
 
-/**
- * Run an image-generation request with bounded retries. The image model
- * intermittently returns a response with no image file (or a transient gateway
- * error); without a retry that surfaces to users as a failed "Render again" or a
- * partially-filled capsule. Retries a few times with light backoff before
- * giving up (returns null so callers can handle the miss).
- */
-async function renderImage(
-  content: ({ type: "text"; text: string } | { type: "image"; image: URL })[],
-  attempts = 3,
+type ImagePromptPart =
+  | { type: "text"; text: string }
+  | { type: "image"; image: URL };
+
+function imagePromptText(content: ImagePromptPart[]): string {
+  return content
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text)
+    .join("\n");
+}
+
+function imagePromptUrls(content: ImagePromptPart[]): URL[] {
+  return content
+    .filter((p): p is { type: "image"; image: URL } => p.type === "image")
+    .map((p) => p.image);
+}
+
+async function fetchImageBytes(url: URL): Promise<Uint8Array | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+async function renderViaChat(
+  model: string,
+  content: ImagePromptPart[],
+  attempts: number,
 ): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const result = await generateText({
-        model: env.modelImage,
+        model,
         messages: [{ role: "user", content }],
       });
       const file = result.files.find((f) => f.mediaType.startsWith("image/"));
       if (file) return { bytes: file.uint8Array, mediaType: file.mediaType };
     } catch (err) {
       if (attempt === attempts - 1) {
-        console.error("[image] generation failed after retries", err);
+        console.error("[image] chat model failed", model, err);
       }
     }
     if (attempt < attempts - 1) {
       await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
     }
   }
+  return null;
+}
+
+async function renderViaImageModel(
+  model: string,
+  content: ImagePromptPart[],
+): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  const text = imagePromptText(content);
+  const urls = imagePromptUrls(content).slice(0, 8);
+  const images = (
+    await Promise.all(urls.map((url) => fetchImageBytes(url)))
+  ).filter((b): b is Uint8Array => Boolean(b));
+  try {
+    const result = await generateImage({
+      model,
+      prompt: images.length ? { images, text } : text,
+      maxRetries: 1,
+      ...(model.startsWith("openai/")
+        ? { size: "1024x1536" as const }
+        : { aspectRatio: "9:16" as const }),
+    });
+    const image = result.image;
+    if (!image) return null;
+    return { bytes: image.uint8Array, mediaType: image.mediaType };
+  } catch (err) {
+    console.error("[image] image-only model failed", model, err);
+    return null;
+  }
+}
+
+/**
+ * Run an image-generation request with bounded retries, then the configured
+ * fallback models (Gemini Pro chat, then GPT Image / Flux Kontext). Returns
+ * null so callers can handle a total miss.
+ */
+async function renderImage(
+  content: ImagePromptPart[],
+  attempts = 3,
+): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  const models = imageModelChain(env.modelImage, env.modelImageFallbacks);
+  for (const [i, model] of models.entries()) {
+    const tries = i === 0 ? attempts : Math.min(2, attempts);
+    const rendered = imageModelUsesChat(model)
+      ? await renderViaChat(model, content, tries)
+      : await renderViaImageModel(model, content);
+    if (rendered) {
+      if (i > 0) console.warn("[image] rendered with fallback", model);
+      return rendered;
+    }
+  }
+  console.error("[image] generation failed on every model", models);
   return null;
 }
 
@@ -413,7 +497,7 @@ export async function recommend(
         `- Each look description MUST list every garment with its colour, comma-separated ` +
         `(e.g. "Powder-blue crewneck knit, grey-blue chinos, soft-denim loafers"). Use concrete catalogue words ` +
         `(blazer, overshirt, crewneck, chinos, trousers, loafers, sneakers) — not vague phrases like ` +
-        `"textured layers" or "warm accents".\n`;
+        `"textured layers" or "warm accents". ${LOOK_WEARABLE_RULE}\n`;
 
   const grounding = rules.length
     ? `Ground every recommendation in these established style rules:\n- ${rules.join("\n- ")}\n`
@@ -461,6 +545,7 @@ export async function recommend(
   // model ignored the colour instruction above.
   output.looks = (output.looks ?? []).map((l) => ({
     ...l,
+    description: sanitizeLookDescription(l.description ?? ""),
     palette: snapPaletteToBest(l.palette ?? [], colors.best),
   }));
   return output;
@@ -485,11 +570,30 @@ export async function generateExtraLook(opts: {
   boldness?: Boldness;
   /** Per-request season override — shapes the TEXT brief only (never the image prompt). */
   season?: LookBriefSeason;
+  /** Occasion id — party × statement gets a stronger after-dark brief. */
+  occasionId?: string;
+  /** Slot in the set (0-based) — rotates party jacket fabric so looks don't clone. */
+  lookIndex?: number;
+  /** Aesthetic preset (Riviera, Nordic, …) — shapes the TEXT brief only. */
+  styleId?: string;
   /** Set-slot colour recipe — pins this look's hero/bottom/neutrals. */
   colorRecipe?: LookColorRecipe;
 }): Promise<{ context: string; title: string; description: string; palette: string[] }> {
-  const { intake, profile, context, brief, note, rules, existingTitles, boldness, season, colorRecipe } =
-    opts;
+  const {
+    intake,
+    profile,
+    context,
+    brief,
+    note,
+    rules,
+    existingTitles,
+    boldness,
+    season,
+    occasionId,
+    lookIndex,
+    styleId,
+    colorRecipe,
+  } = opts;
 
   if (!hasAI) {
     const mock = mockReportContent(intake);
@@ -505,7 +609,9 @@ export async function generateExtraLook(opts: {
 
   // Weave season + strictness into the brief text only — the look IMAGE prompt
   // (generateLookImage) is untouched by design; see look-brief.ts.
-  const effectiveBrief = composeLookBrief(brief, { boldness, season });
+  const effectiveBrief = withWearableLookRule(
+    composeLookBrief(brief, { boldness, season, occasionId, lookIndex, styleId }),
+  );
 
   const grounding = rules?.length
     ? `Ground the look in these established style rules:\n- ${rules.join("\n- ")}\n`
@@ -521,37 +627,56 @@ export async function generateExtraLook(opts: {
   const bestPaletteText = colors.best.map((c) => `${c.name} ${c.hex}`).join(", ");
   const avoidPaletteText = colors.avoid.map((c) => c.name).join(", ");
 
-  const { output } = await generateText({
-    model: env.modelReasoning,
-    output: Output.object({ schema: lookContentSchema }),
-    prompt:
-      `You are a thoughtful personal stylist creating ONE additional outfit for an existing client report.\n\n` +
-      `Style Profile (JSON):\n${JSON.stringify(profile)}\n\n` +
-      `Occupation: ${intake.occupation}. Goals: ${intake.goals.join(", ")}. ` +
-      (intake.lifestyle?.length
-        ? `Lifestyle: ${intake.lifestyle.join(", ")}. `
-        : "") +
-      `Boldness: ${intake.boldness}. Budget: €${intake.budgetEur.min}–${intake.budgetEur.max}. ` +
-      `City climate: ${profile.demographics.climate}.\n` +
-      `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
-      `Occasion: ${context}. Styling brief: ${effectiveBrief}\n` +
-      noteLine +
-      avoid +
-      grounding +
-      `Produce exactly ONE look:\n` +
-      `- context: "${context}".\n` +
-      `- title: a short evocative name (2–4 words).\n` +
-      `- description: ONE line naming each garment with its colour, comma-separated ` +
-        `— concrete catalogue words only.\n` +
-      (colorRecipe
-        ? formatLookColorRecipePrompt(colorRecipe)
-        : `- CRITICAL — colours: the "palette" hex codes AND every garment colour in the ` +
-          `"description" MUST be drawn ONLY from the client's BEST colours: ${bestPaletteText}. ` +
-          `No black/charcoal and no warm tan/camel/brown/olive/rust unless it appears above. ` +
-          `Never use the AVOID colours (${avoidPaletteText}).\n`) +
-      `Keep the tone refined and practical.` +
-      languageInstruction(intake.language),
-  });
+  const lookPrompt = (extra = "") =>
+    `You are a thoughtful personal stylist creating ONE additional outfit for an existing client report.\n\n` +
+    `Style Profile (JSON):\n${JSON.stringify(profile)}\n\n` +
+    `Occupation: ${intake.occupation}. Goals: ${intake.goals.join(", ")}. ` +
+    (intake.lifestyle?.length
+      ? `Lifestyle: ${intake.lifestyle.join(", ")}. `
+      : "") +
+    `Boldness: ${intake.boldness}. Budget: €${intake.budgetEur.min}–${intake.budgetEur.max}. ` +
+    `City climate: ${profile.demographics.climate}.\n` +
+    `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
+    `Occasion: ${context}. Styling brief: ${effectiveBrief}\n` +
+    noteLine +
+    extra +
+    avoid +
+    grounding +
+    `Produce exactly ONE look:\n` +
+    `- context: "${context}".\n` +
+    `- title: a short evocative name (2–4 words).\n` +
+    `- description: ONE line naming each garment with its colour, comma-separated ` +
+      `— concrete catalogue words only. ${LOOK_WEARABLE_RULE}\n` +
+    (colorRecipe
+      ? formatLookColorRecipePrompt(colorRecipe, { boldness, occasionId })
+      : `- CRITICAL — colours: the "palette" hex codes AND every garment colour in the ` +
+        `"description" MUST be drawn ONLY from the client's BEST colours: ${bestPaletteText}. ` +
+        `No black/charcoal and no warm tan/camel/brown/olive/rust unless it appears above. ` +
+        `Never use the AVOID colours (${avoidPaletteText}).\n`) +
+    `Keep the tone refined and practical.` +
+    languageInstruction(intake.language);
+
+  const runLook = (prompt: string) =>
+    generateText({
+      model: env.modelReasoning,
+      output: Output.object({ schema: lookContentSchema }),
+      prompt,
+    });
+
+  let { output } = await runLook(lookPrompt());
+  if (
+    occasionId === "party" &&
+    boldness === "statement" &&
+    lookIndex != null &&
+    !lookStyleHasBrief(styleId) &&
+    !partyJacketMatchesSlot(output.description ?? "", lookIndex)
+  ) {
+    ({ output } = await runLook(
+      lookPrompt(
+        "RETRY: this look MUST include a blazer or sport coat in the jacket fabric specified above — not a shirt-only silhouette.\n",
+      ),
+    ));
+  }
 
   // Guarantee the returned palette is on-report even if the model drifted; the
   // look image is prompted from this palette. A set recipe wins over the model.
@@ -559,7 +684,12 @@ export async function generateExtraLook(opts: {
     colorRecipe ? recipePaletteHexes(colorRecipe) : (output.palette ?? []),
     colors.best,
   );
-  return { ...output, palette, context };
+  return {
+    ...output,
+    description: sanitizeLookDescription(output.description ?? ""),
+    palette,
+    context,
+  };
 }
 
 const carloNoteSchema = z.object({ note: z.string() });
@@ -670,7 +800,8 @@ export async function generateLookImage(opts: {
     const hasFull = Boolean(referenceImageUrl);
     const faceImageCount = (hasFace ? 1 : 0) + (hasProfile ? 1 : 0);
     const personImageCount = faceImageCount + (hasFull ? 1 : 0);
-    const eyewearBlock = eyewearPromptDirective(look.description);
+    const wearableDescription = sanitizeLookDescription(look.description);
+    const eyewearBlock = eyewearPromptDirective(wearableDescription);
     const tuckBlock = tuckPromptDirective(look.description);
     const tieBlock = tiePromptDirective(look.description);
     const hatBlock = hatPromptDirective(look.description);
@@ -708,8 +839,8 @@ export async function generateLookImage(opts: {
     // re-creating the report's original look.
     const outfitBlock = hasCatalog
       ? `${look.catalogContext ?? ""}` +
-        `Styling note (mood and proportions only — do NOT substitute different clothes): ${look.description}. `
-      : `Outfit: ${look.description}. `;
+        `Styling note (mood and proportions only — do NOT substitute different clothes): ${wearableDescription}. `
+      : `Outfit: ${wearableDescription}. `;
 
     // The image model tends to default to sandals for warm palettes; an explicit
     // footwear directive with a hard negative keeps formal looks in dress shoes.
@@ -735,6 +866,8 @@ export async function generateLookImage(opts: {
       `named frame exactly: sunglasses may be round, wayfarer, aviator, rectangular, geometric, oval, or wraparound sport; ` +
       `optical glasses may be round, rectangular, oval, geometric, or rimless (lenses mounted directly to the bridge and temples, no surrounding frame). ` +
       `When sunglasses are described as mirrored, the lenses are a reflective mirror finish, not a flat dark tint. ` +
+      `Hands stay empty unless a tote, backpack, briefcase or messenger bag is listed — ` +
+      `never hold a wallet, cardholder, phone, keys or any other small prop. ` +
       `If a shirt, oxford, tee, polo or henley is tucked in, the hem sits inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
       `A necktie is never worn on top of a jumper or knit — it sits on the shirt ` +
       `under the knit (V-neck or open cardigan) or between jacket lapels. ` +
@@ -927,6 +1060,7 @@ export async function generateLookImage(opts: {
         `numbers, arrows or graphic overlays anywhere in the frame`,
       `sunglasses or glasses listed in the outfit are worn on the face over the ` +
         `eyes in the named frame shape — not held, not in a pocket, not hanging from clothing, not on the forehead`,
+      `hands stay empty unless a listed tote, backpack, briefcase or messenger is carried — no wallet, cardholder, phone or other handheld prop`,
     ];
     if (eyewearBlock) {
       constraints.push(

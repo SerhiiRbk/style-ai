@@ -27,6 +27,7 @@ export function Footer() {
           title="Product"
           items={[
             ["How it works", "/how-it-works"],
+            ["Create a look", "/create-look"],
             ["Sample", "/report/valetti-style-prospect-demo"],
             ["Catalog", "/catalog"],
             ["Shop a Look", "/shop-a-look"],

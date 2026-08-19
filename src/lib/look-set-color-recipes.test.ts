@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { reportPalette, type ColorRec } from "./colour-palette";
 import {
+  contrastSwatch,
   formatLookColorRecipePrompt,
   lookSetColorRecipes,
   type LookColorRecipe,
@@ -82,6 +83,33 @@ test("recipes work across subseasons at 3/6/9", () => {
       );
     }
   }
+});
+
+test("contrastSwatch does not pair mushroom trousers with greige shoes", () => {
+  const mushroom = { name: "mushroom", hex: "#A99C8C", why: "" };
+  const greige = { name: "greige", hex: "#DAD3C6", why: "" };
+  const sage = { name: "sage", hex: "#8A9A78", why: "" };
+  const slate = { name: "slate", hex: "#647A93", why: "" };
+  const shoe = contrastSwatch(mushroom, [greige, sage, slate]);
+  assert.ok(shoe);
+  assert.notEqual(shoe.name, "greige");
+  assert.ok(["sage", "slate"].includes(shoe.name));
+});
+
+test("party × statement prompt forbids a tote and office crewneck", () => {
+  const [recipe] = lookSetColorRecipes(best("soft-summer"), 3, {
+    boldness: "statement",
+    occasionId: "party",
+  });
+  assert.ok(recipe);
+  const text = formatLookColorRecipePrompt(recipe, {
+    boldness: "statement",
+    occasionId: "party",
+  });
+  assert.match(text, /No tote/i);
+  assert.match(text, /office crewneck/i);
+  assert.match(text, /evening statement/i);
+  assert.match(text, /MUST contrast the trousers/i);
 });
 
 test("prompt lists hero, bottom and shared neutrals", () => {

@@ -13,6 +13,7 @@ import {
 import { MyStyleMenu } from "./MyStyleMenu";
 
 const primaryLinks: NavLink[] = [
+  { href: "/create-look", label: "Create a look" },
   { href: "/shop-a-look", label: "Shop a look" },
   { href: "/catalog", label: "Catalog" },
   { href: "/pricing", label: "Pricing" },

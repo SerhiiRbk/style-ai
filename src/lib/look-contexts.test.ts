@@ -18,6 +18,13 @@ test("new Create-a-Look occasions are present", () => {
   for (const id of ADDED) assert.ok(ids.has(id), `missing ${id}`);
 });
 
+test("party brief is after-dark and not office jumper-and-tote", () => {
+  const brief = lookContextById("party")!.brief;
+  assert.match(brief, /after dark|night-out|evening/i);
+  assert.match(brief, /statement/i);
+  assert.match(brief, /tote|jumper/i);
+});
+
 test("every occasion has a non-trivial brief", () => {
   for (const c of LOOK_CONTEXTS)
     assert.ok(c.brief.length > 20, `thin brief: ${c.id}`);

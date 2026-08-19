@@ -13,8 +13,17 @@ import {
   SIGNUP_BONUS,
 } from "@/lib/credit-costs";
 import { lookCountForTier } from "@/lib/report";
+import { LOOK_SET_BUNDLES } from "@/lib/look-sets";
 import { BRAND } from "@/lib/brand";
 import { absoluteUrl } from "@/lib/site-url";
+
+const CONSTRUCTOR_ASSETS = [
+  { src: "/images/products/olive-overshirt.png", label: "Jacket" },
+  { src: "/images/products/charcoal-trousers.png", label: "Trousers" },
+  { src: "/images/products/chelsea-boots.png", label: "Shoes" },
+  { src: "/images/demo/accessory-tie.png", label: "Tie" },
+  { src: "/images/products/field-watch.png", label: "Watch" },
+] as const;
 
 const FAQS: { q: string; a: string }[] = [
   {
@@ -45,6 +54,14 @@ const FAQS: { q: string; a: string }[] = [
     q: "Can I actually buy the looks?",
     a: "Yes. Each report includes a shopping list matched to your palette from our catalogue, with real product links and a Good · Better · Best buying plan that tells you where to spend.",
   },
+  {
+    q: "Can I generate looks without a full report?",
+    a: "Yes. Create a Look builds a set of 3, 6 or 9 photorealistic outfits on your photo for an occasion. Open any look and use the constructor to change a jacket, colour, sunglasses, tie or whether a shirt is tucked in — then redraw just that look.",
+  },
+  {
+    q: "Can I try catalogue pieces on myself?",
+    a: "Yes. Sign in, add a full-length photo, then pick up to four items in the catalogue and render them together on your photo — on the original scene or in a clean studio. One credit per try-on.",
+  },
 ];
 
 export default function Home() {
@@ -62,6 +79,7 @@ export default function Home() {
         <ImpactOfColour />
         <HowItWorks />
         <SampleReport />
+        <LooksStudio />
         <CapsulePreview />
         <Audience />
         <Pricing />
@@ -176,18 +194,26 @@ function Hero() {
             photos, answer honest questions, and receive a calm, practical plan:
             hair, colours, tailoring, silhouettes, and a precise shopping list —
             each with the reason{" "}
-            <span className="text-ink">why it works for you.</span>
+            <span className="text-ink">why it works for you.</span> Or generate
+            occasion looks and rebuild every piece in the constructor — then try
+            catalogue items on your photo.
           </p>
-          <div className="mt-9 flex flex-wrap items-center gap-4">
-            <ButtonLink href="/start">Create my style report</ButtonLink>
-            <ButtonLink href="/report/valetti-style-prospect-demo" variant="outline">
-              See an example
+          <div className="mt-9 flex flex-wrap items-center gap-3">
+            <ButtonLink href="/create-look">Create a look</ButtonLink>
+            <ButtonLink href="/start" variant="outline">
+              Create my style report
             </ButtonLink>
           </div>
           <p className="mt-5 text-sm text-stone-soft">
-            Sign up for {SIGNUP_BONUS} free credits — Starter Report{" "}
-            {REPORT_COST.free} credits, try-on {CREDIT_COSTS.tryon} credit · No
-            subscription
+            Sign up for {SIGNUP_BONUS} free credits — looks from{" "}
+            {LOOK_SET_BUNDLES[0].credits} credits, try-on {CREDIT_COSTS.tryon}{" "}
+            credit ·{" "}
+            <Link
+              href="/report/valetti-style-prospect-demo"
+              className="text-brass transition-colors hover:text-ink"
+            >
+              See an example report →
+            </Link>
           </p>
         </div>
 
@@ -258,11 +284,10 @@ function Mini({ label, value }: { label: string; value: string }) {
 function Marquee() {
   const items = [
     "Men's personal styling",
-    "Explainable recommendations",
     "Photorealistic looks",
+    "Look constructor",
+    "Catalogue try-on",
     "Real shopping links",
-    "Virtual try-on",
-
   ];
   return (
     <div className="border-y hairline bg-ink text-paper">
@@ -584,9 +609,12 @@ function HowItWorks() {
             From a few questions to a finished plan in minutes.
           </h2>
         </div>
-        <ButtonLink href="/start" variant="outline">
-          Start now
-        </ButtonLink>
+        <div className="flex flex-wrap gap-3">
+          <ButtonLink href="/create-look">Create a look</ButtonLink>
+          <ButtonLink href="/start" variant="outline">
+            Start a report
+          </ButtonLink>
+        </div>
       </div>
 
       <div className="mt-16 grid gap-10 md:grid-cols-4">
@@ -602,6 +630,176 @@ function HowItWorks() {
             )}
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function LooksStudio() {
+  const photoAssets = [
+    {
+      title: "Face portrait",
+      body: "Natural daylight, face and hair clear — used for identity and colouring.",
+      src: "/images/photo-example-good.png",
+      alt: "Clear daylight portrait used as a face reference",
+    },
+    {
+      title: "Full-length photo",
+      body: "Head to toe, shot from chest height — looks and try-ons are rendered on you.",
+      src: "/images/look-weekend.png",
+      alt: "Full-length outfit reference for look generation",
+    },
+  ];
+  const constructorMoves = [
+    "Jacket, knit or shirt type",
+    "Colour of each piece",
+    "Sunglasses frame and lenses",
+    "Tie, hat, belt or watch",
+    "Shirt tucked in or untucked",
+  ];
+
+  return (
+    <section id="create-look" className="border-y hairline bg-cream/40">
+      <div className="container-luxe py-24">
+        <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
+          <div className="max-w-2xl">
+            <p className="eyebrow">Looks &amp; try-on</p>
+            <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">
+              Generate looks on your photo — then rebuild every piece.
+            </h2>
+            <p className="mt-5 max-w-xl text-lg leading-relaxed text-stone">
+              Create a Look builds a set of photorealistic outfits for an
+              occasion. Open any look in the constructor and change a garment,
+              colour or finishing detail without starting over. Or skip the set
+              and try real catalogue pieces on yourself.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <ButtonLink href="/create-look">Create a look</ButtonLink>
+            <ButtonLink href="/catalog" variant="outline">
+              Try the catalog
+            </ButtonLink>
+          </div>
+        </div>
+
+        <div className="mt-14 grid gap-6 lg:grid-cols-2">
+          <article className="flex flex-col rounded-2xl border hairline bg-paper p-7 sm:p-8">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-brass">
+              Look constructor
+            </p>
+            <h3 className="mt-3 font-display text-2xl leading-snug">
+              Rebuild a look piece by piece
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-stone">
+              Sets of {LOOK_SET_BUNDLES.map((b) => b.looks).join(", ")} looks —
+              from {LOOK_SET_BUNDLES[0].credits} credits. Apply a constructor
+              redraw for {CREDIT_COSTS.look_regen} credit.
+            </p>
+
+            <div className="mt-6 flex gap-2">
+              {CONSTRUCTOR_ASSETS.map((piece) => (
+                <div
+                  key={piece.label}
+                  className="relative aspect-square min-w-0 flex-1 overflow-hidden rounded-xl border hairline bg-cream/40"
+                >
+                  <Image
+                    src={piece.src}
+                    alt={piece.label}
+                    fill
+                    sizes="80px"
+                    className="object-contain p-1.5"
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] uppercase tracking-[0.16em] text-stone-soft">
+              Jacket · trousers · shoes · tie · watch
+            </p>
+
+            <p className="mt-6 text-xs font-medium uppercase tracking-[0.16em] text-stone-soft">
+              Photos you need
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {photoAssets.map((asset) => (
+                <div
+                  key={asset.title}
+                  className="flex gap-3 rounded-xl border hairline bg-cream/30 p-3"
+                >
+                  <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-lg border hairline">
+                    <Image
+                      src={asset.src}
+                      alt={asset.alt}
+                      fill
+                      sizes="48px"
+                      className="object-cover object-top"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm text-ink">{asset.title}</div>
+                    <p className="mt-1 text-xs leading-relaxed text-stone">
+                      {asset.body}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-stone-soft">
+              Already have a report? Reuse that profile — no new upload needed.
+            </p>
+
+            <ul className="mt-6 space-y-2 text-sm text-stone">
+              {constructorMoves.map((item) => (
+                <li key={item} className="flex items-start gap-2.5">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brass" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </article>
+
+          <article className="flex flex-col rounded-2xl border hairline bg-paper p-7 sm:p-8">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-brass">
+              Catalogue try-on
+            </p>
+            <h3 className="mt-3 font-display text-2xl leading-snug">
+              Try real pieces on your photo
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-stone">
+              Browse the menswear catalogue, add up to four items to an outfit,
+              and render them together on your default full-length photo — on
+              the original scene or in a clean studio. {CREDIT_COSTS.tryon}{" "}
+              credit per try-on.
+            </p>
+
+            <div className="relative mt-6 aspect-[4/3] overflow-hidden rounded-xl border hairline">
+              <Image
+                src="/images/flatlay-essentials.png"
+                alt="Warm-toned menswear essentials from the Valetti catalogue"
+                fill
+                sizes="(max-width: 1024px) 100vw, 520px"
+                className="object-cover"
+              />
+            </div>
+
+            <ol className="mt-6 space-y-3 text-sm text-ink">
+              {[
+                "Open Catalog and sign in.",
+                "Add a full-length photo if you do not have one yet.",
+                "Tap + Add to outfit on up to four pieces.",
+                "Render on your photo — then read Carlo's verdict.",
+              ].map((step, i) => (
+                <li key={step} className="flex gap-3">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border hairline bg-cream/60 font-display text-xs text-brass">
+                    {i + 1}
+                  </span>
+                  <span className="pt-0.5 leading-relaxed text-stone">
+                    {step}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </article>
+        </div>
       </div>
     </section>
   );
@@ -1058,10 +1256,17 @@ function FinalCTA() {
           Sign up for {SIGNUP_BONUS} free credits — Starter Report costs{" "}
           {REPORT_COST.free}, try-on {CREDIT_COSTS.tryon} credit. No subscription.
         </p>
-        <div className="mt-9 flex justify-center">
+        <div className="mt-9 flex flex-wrap justify-center gap-3">
+          <ButtonLink
+            href="/create-look"
+            className="!bg-paper !text-ink hover:!bg-cream"
+          >
+            Create a look
+          </ButtonLink>
           <ButtonLink
             href="/start"
-            className="!bg-paper !text-ink hover:!bg-cream"
+            variant="outline"
+            className="!border-paper/35 !text-paper hover:!border-paper hover:!bg-paper hover:!text-ink"
           >
             Create my style report
           </ButtonLink>

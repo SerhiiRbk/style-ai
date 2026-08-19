@@ -5,7 +5,7 @@ import { generateText } from "ai";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const modelImage =
-  process.env.AI_MODEL_IMAGE ?? "google/gemini-3.1-flash-image-preview";
+  process.env.AI_MODEL_IMAGE ?? "google/gemini-3.1-flash-image";
 const reportId = process.argv[2];
 if (!url || !serviceKey || !process.env.AI_GATEWAY_API_KEY || !reportId) {
   console.error("Need env + reportId", {

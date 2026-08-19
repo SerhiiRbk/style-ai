@@ -1,5 +1,14 @@
 import { hexToHsl, reportPalette, type ColorRec } from "./colour-palette";
-import { classifySubseason, type StyleProfile } from "./style-profile";
+import {
+  classifySubseason,
+  type Boldness,
+  type StyleProfile,
+} from "./style-profile";
+
+export type LookColorRecipeMood = {
+  boldness?: Boldness;
+  occasionId?: string;
+};
 
 export type LookValueScheme = "light-over-deep" | "deep-over-light";
 
@@ -98,10 +107,15 @@ function bottomsPool(
   lights: ColorRec[],
   mids: ColorRec[],
   shared: [ColorRec, ColorRec],
+  preferChroma = false,
 ): ColorRec[] {
   const out: ColorRec[] = [];
   const seen = new Set<string>();
-  for (const sw of [...anchors, shared[0], ...lights.slice(0, 2), shared[1], ...mids.slice(0, 1)]) {
+  const chromatic = [...mids, ...lights].filter((sw) => hexToHsl(sw.hex).s >= 0.14);
+  const order = preferChroma
+    ? [...chromatic, ...anchors, shared[0], shared[1]]
+    : [...anchors, shared[0], ...lights.slice(0, 2), shared[1], ...mids.slice(0, 1)];
+  for (const sw of order) {
     const key = sw.hex.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -113,13 +127,16 @@ function bottomsPool(
 export function lookSetColorRecipes(
   best: ColorRec[],
   count: number,
+  mood?: LookColorRecipeMood,
 ): LookColorRecipe[] {
   if (count <= 0 || !best.length) return [];
+  const preferChroma =
+    mood?.boldness === "statement" || mood?.boldness === "experimental";
   const { heroes, anchors, lights, mids } = classify(best);
   const heroPool = spreadHeroes(heroes.length ? heroes : [...anchors, ...mids, ...lights].filter(Boolean));
   if (!heroPool.length) return [];
   const shared = pickShared(lights, mids, anchors, heroPool);
-  const preferredBottoms = bottomsPool(anchors, lights, mids, shared);
+  const preferredBottoms = bottomsPool(anchors, lights, mids, shared, preferChroma);
   const extraBottoms = best.filter(
     (sw) =>
       !preferredBottoms.some((b) => b.hex.toLowerCase() === sw.hex.toLowerCase()),
@@ -175,16 +192,75 @@ export function lookSetColorRecipes(
   return recipes;
 }
 
-export function formatLookColorRecipePrompt(recipe: LookColorRecipe): string {
+const WARM_NEUTRAL_RE =
+  /\b(mushroom|greige|taupe|beige|sand|stone|khaki|camel|tan|oat|putty)\b/i;
+
+function isWarmNeutral(c: ColorRec): boolean {
+  return WARM_NEUTRAL_RE.test(c.name);
+}
+
+/** Pick a shoe/contrast colour that won't melt into the trousers. */
+export function contrastSwatch(
+  from: ColorRec,
+  candidates: (ColorRec | null | undefined)[],
+): ColorRec | null {
+  const fromHsl = hexToHsl(from.hex);
+  let best: ColorRec | null = null;
+  let bestScore = -Infinity;
+  for (const c of candidates) {
+    if (!c?.hex) continue;
+    if (c.hex.toLowerCase() === from.hex.toLowerCase()) continue;
+    const hsl = hexToHsl(c.hex);
+    let score = Math.abs(hsl.l - fromHsl.l) + hueDist(fromHsl.h, hsl.h) / 360;
+    if (isWarmNeutral(from) && isWarmNeutral(c)) score -= 0.45;
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  return best;
+}
+
+export function formatLookColorRecipePrompt(
+  recipe: LookColorRecipe,
+  mood?: LookColorRecipeMood,
+): string {
   const swatch = (c: ColorRec) => `${c.name} ${c.hex}`;
+  const isParty = mood?.occasionId === "party";
+  const isStatement =
+    mood?.boldness === "statement" || mood?.boldness === "experimental";
   const accent = recipe.accent
-    ? `- Accent only (pocket square / knit / small layer — not a second main garment): ${swatch(recipe.accent)}\n`
+    ? isParty
+      ? `- Accent (pocket square only with a blazer or collared shirt, scarf, or jewellery — never a tote): ${swatch(recipe.accent)}\n`
+      : `- Accent only (belt, scarf, bag or a small layer — not a second main garment). ` +
+        `Name a pocket square only if this look also has a blazer or a collared shirt ` +
+        `as the chest layer — never on a jumper: ${swatch(recipe.accent)}\n`
     : "";
+  const heroLine = isParty && isStatement
+    ? `- Hero (nearest the face): ${swatch(recipe.hero)} — an evening statement piece ` +
+      `(velvet jacket, silk shirt or rich colour), not a standalone office crewneck.\n`
+    : `- Hero (nearest the face / main top): ${swatch(recipe.hero)}\n`;
+  const shoe =
+    contrastSwatch(recipe.bottom, [
+      ...recipe.neutrals,
+      recipe.accent,
+      recipe.hero,
+    ]) ?? recipe.neutrals[0];
+  const belt =
+    recipe.neutrals.find(
+      (n) => n.hex.toLowerCase() !== shoe.hex.toLowerCase(),
+    ) ?? recipe.neutrals[0];
+  const neutralsLine = isParty
+    ? `- Shoes: ${swatch(shoe)} — MUST contrast the trousers (different lightness or family; ` +
+      `never greige/mushroom/taupe shoes with greige/mushroom/taupe trousers). No tote.\n` +
+      `- Belt: ${swatch(belt)}\n`
+    : `- Shared neutrals (shoes, belt, bag): ${recipe.neutrals.map(swatch).join(", ")}\n` +
+      `- Shoes must contrast the trousers — not the same greige/mushroom/taupe family.\n`;
   return (
     `Colour recipe for THIS look (mandatory — do not substitute):\n` +
-    `- Hero (nearest the face / main top): ${swatch(recipe.hero)}\n` +
+    heroLine +
     `- Bottom: ${swatch(recipe.bottom)}\n` +
-    `- Shared neutrals (shoes, belt, bag): ${recipe.neutrals.map(swatch).join(", ")}\n` +
+    neutralsLine +
     accent +
     `Use ONLY these colours in "palette" and in every garment colour word in the description.\n`
   );

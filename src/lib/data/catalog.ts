@@ -13,8 +13,22 @@ import {
 } from "@/lib/ai/shopping-reasons";
 import { mockShopping, type ShoppingItem } from "@/lib/report";
 import { marketForCurrency } from "@/lib/currency";
+import { catalogGenderAllowed } from "@/lib/catalog-gender";
+import {
+  lookStyleFitScore,
+  lookStyleIsVeto,
+  lookStyleQueryHint,
+  type LookStyleFitInput,
+} from "@/lib/look-style-fit";
+import {
+  isOccasionCasualTrouserTitle,
+  lookOccasionAppliesToGarment,
+  lookOccasionQueryHint,
+} from "@/lib/look-occasion-fit";
+import { lookOccasionIdFromContext } from "@/lib/look-contexts";
 import {
   CASUAL_FOOTWEAR_RE,
+  colorFamilyNeedles,
   colorMatchScore,
   colorFamilies,
   decomposeLook,
@@ -77,6 +91,7 @@ type MatchRow = {
   fit?: string | null;
   pattern?: string | null;
   season?: string | null;
+  gender?: string | null;
 };
 
 const HEX_RE = /^#?[0-9a-f]{6}$/i;
@@ -130,8 +145,15 @@ function isUsableDeeplink(url: string | null | undefined): boolean {
 }
 
 /** Drop catalogue rows we can't actually link to (fake/sample deeplinks). */
-function shoppableRows(rows: MatchRow[]): MatchRow[] {
-  return rows.filter((r) => isUsableDeeplink(r.deeplink));
+function shoppableRows(
+  rows: MatchRow[],
+  genderFilter?: string | null,
+): MatchRow[] {
+  return rows.filter(
+    (r) =>
+      isUsableDeeplink(r.deeplink) &&
+      catalogGenderAllowed(r.gender, genderFilter),
+  );
 }
 
 /** Trend-forward wardrobes (statement/experimental) tolerate directional/casual pieces. */
@@ -189,14 +211,25 @@ const MIN_LOOK_PICK_SCORE = 0.42;
  *  v11: never substitute a different accessory type (tie-set / cap for a
  *  pocket square) just because the colour is close.
  *  v12: neighbour-family + hex proximity so dusty rose can land on pink/lilac.
- *  v13: same neighbour circle for greige, sage, soft plum, mushroom. */
-export const LOOK_MATCH_VERSION = 13;
+ *  v13: same neighbour circle for greige, sage, soft plum, mushroom.
+ *  v14: pull same-hue catalogue rows into the pool; drop beige/nude when a
+ *  strong pink/rose match exists; men search also keeps Any / unstated.
+ *  v15: named-style recipes (Breton, Rive Gauche, Heritage knit, City formal,
+ *  Open knit) boost / soft-veto catalogue picks.
+ *  v16: Work / Formal trousers drop linen, relaxed and drawstring unless the
+ *  look named them. */
+export const LOOK_MATCH_VERSION = 16;
+const LOOK_STYLE_FIT_WEIGHT = 0.1;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
 // closest vector hit.
 const LOOK_MATCH_COUNT = 14;
 /** Wider pool for Shop a Look so tailored-blazer + shade filters still leave alts. */
 const INSPIRATION_MATCH_COUNT = 28;
+/** Floor so a same-family colour pull can beat a high-sim beige neighbour. */
+const COLOR_SUPPLEMENT_SIMILARITY = 0.58;
+const COLOR_SUPPLEMENT_LIMIT = 10;
+const MIN_COLOR_WHEN_STRONG = 0.45;
 
 type MatchProductsArgs = {
   query_embedding: number[];
@@ -272,6 +305,73 @@ async function rpcMatchProducts(
   }
   if (error) throw error;
   return (data ?? []) as MatchRow[];
+}
+
+const PRODUCT_MATCH_COLS =
+  "id,source,brand,title,color,color_hex,price_eur,deeplink,image_url,gender,formality,trend_level,versatility,garment_subtype,material_family,fit,pattern,season";
+
+/**
+ * Vector search often returns merino/roll-neck neighbours in beige while a
+ * same-hue pink knit never enters the 14-row pool. Pull those in by colour
+ * word so rank/rerank can actually see them.
+ */
+async function supplementColorFamilyRows(
+  sb: ReturnType<typeof createAdminSupabase>,
+  opts: {
+    category: string;
+    color: string | null;
+    maxPrice: number;
+    gender: string | null;
+  },
+  existingIds: Set<string>,
+): Promise<MatchRow[]> {
+  const needles = colorFamilyNeedles(opts.color)
+    .filter((n) => /^[a-z]{3,14}$/.test(n))
+    .slice(0, 8);
+  if (!needles.length) return [];
+
+  const or = needles
+    .map((n) => `color.ilike.%${n}%,title.ilike.%${n}%`)
+    .join(",");
+
+  const { data, error } = await sb
+    .from("products")
+    .select(PRODUCT_MATCH_COLS)
+    .eq("category", opts.category)
+    .or("hidden.eq.false,hidden.is.null")
+    .or("in_stock.eq.true,in_stock.is.null")
+    .or(or)
+    .limit(COLOR_SUPPLEMENT_LIMIT * 3);
+  if (error || !data) return [];
+
+  const extra: MatchRow[] = [];
+  for (const raw of data as MatchRow[]) {
+    if (existingIds.has(raw.id)) continue;
+    if (!catalogGenderAllowed(raw.gender, opts.gender)) continue;
+    const price = raw.price_eur != null ? Number(raw.price_eur) : null;
+    if (opts.maxPrice && price != null && price > opts.maxPrice) continue;
+    extra.push({ ...raw, similarity: COLOR_SUPPLEMENT_SIMILARITY });
+    if (extra.length >= COLOR_SUPPLEMENT_LIMIT) break;
+  }
+  return extra;
+}
+
+async function loadMatchPool(
+  sb: ReturnType<typeof createAdminSupabase>,
+  args: MatchProductsArgs & { color?: string | null },
+): Promise<MatchRow[]> {
+  const rows = await rpcMatchProducts(sb, args);
+  const extra = await supplementColorFamilyRows(
+    sb,
+    {
+      category: args.filter_category,
+      color: args.color ?? null,
+      maxPrice: args.max_price,
+      gender: args.gender_filter ?? null,
+    },
+    new Set(rows.map((r) => r.id)),
+  );
+  return shoppableRows([...rows, ...extra], args.gender_filter);
 }
 
 /**
@@ -380,7 +480,7 @@ export async function matchShopping(
         shirtBias +
         knitBias;
       const { embedding } = await embed({ model: env.embedModel, value: query });
-      const data = await rpcMatchProducts(sb, {
+      const pool = await loadMatchPool(sb, {
         query_embedding: embedding,
         // Wider pool so archetype re-ranking (and the footwear hard-filter) has
         // room to demote trend/casual pieces; footwear needs extra headroom.
@@ -392,9 +492,6 @@ export async function matchShopping(
         market,
         gender_filter: gender,
       });
-      // Re-rank by vector similarity plus how well the piece suits the user's
-      // boldness, so a conservative profile isn't handed a trend-forward hero.
-      const pool = shoppableRows((data ?? []) as MatchRow[]);
       // Gentle budget nudge for investment categories: when the pool has price
       // spread, edge the pricier (more investment-grade) options ahead so a
       // €1000+ budget isn't only shown €25 fast-fashion. Small magnitude — never
@@ -503,6 +600,8 @@ type GarmentQueryOpts = {
   paletteHints: string;
   colorSeason: string;
   gender: string | null;
+  styleId?: string | null;
+  occasionId?: string | null;
 };
 
 /** Mirror scripts/feeds/normalize.mjs embedText so vectors align with the catalogue. */
@@ -526,6 +625,8 @@ function garmentQueryText(
     opts.clause,
     `Look: ${opts.lookTitle}`,
     opts.paletteHints ? `Palette: ${opts.paletteHints}` : null,
+    lookStyleQueryHint(opts.styleId),
+    lookOccasionQueryHint(opts.occasionId),
     `${opts.colorSeason} personal style`,
   ]
     .filter(Boolean)
@@ -537,6 +638,7 @@ type RankedMatch = {
   colorScore: number;
   garmentScore: number;
   similarPick: boolean;
+  lookStyleFit: number;
   score: number;
 };
 
@@ -562,15 +664,26 @@ const STRICT_ACCESSORY_TYPES = new Set([
   "tote bag",
 ]);
 
+function styleFitInput(row: MatchRow, title: string): LookStyleFitInput {
+  return {
+    title,
+    garmentSubtype: row.garment_subtype,
+    pattern: row.pattern,
+    materialFamily: row.material_family,
+  };
+}
+
 function rankMatchRows(
   rows: MatchRow[],
   color: string | null,
   garment: string,
   boldness: string,
   clause?: string | null,
+  styleId?: string | null,
+  occasionId?: string | null,
 ): RankedMatch[] {
   const slot = slotAttrs(garment, clause);
-  const ranked = rows.map((row) => {
+  let ranked = rows.map((row) => {
     const title = formatCatalogProductTitle(row.brand, row.title);
     const sim = row.similarity ?? 0;
     const colorScore = colorMatchScore(color, row.color, title, {
@@ -581,6 +694,7 @@ function rankMatchRows(
       sim < MIN_VECTOR_SIMILARITY || colorScore < STRONG_COLOR_MATCH;
     const localBoost = row.same_country ? 0.04 : 0;
     const styleFit = styleFitScore(title, boldness);
+    const lookStyleFit = lookStyleFitScore(styleId, styleFitInput(row, title));
     const tagFit = tagFitScore(row, boldness);
     const attrFit = attrFitScore(row, slot, garmentScore);
     const silhouetteFit = silhouetteFitScore(clause, title);
@@ -589,12 +703,14 @@ function rankMatchRows(
       colorScore,
       garmentScore,
       similarPick,
+      lookStyleFit,
       score:
         sim * 0.38 +
         colorScore * 0.32 +
         garmentScore * 0.26 +
         localBoost +
         styleFit +
+        lookStyleFit * LOOK_STYLE_FIT_WEIGHT +
         tagFit +
         attrFit +
         silhouetteFit,
@@ -631,6 +747,36 @@ function rankMatchRows(
   if (STRICT_ACCESSORY_TYPES.has(garment.trim().toLowerCase())) {
     return ranked.filter((r) => r.garmentScore >= 0.5);
   }
+
+  // Work / Formal: drop linen, relaxed and drawstring trousers when a
+  // meeting-appropriate option exists (unless the look itself named them).
+  if (lookOccasionAppliesToGarment(occasionId, garment)) {
+    const office = ranked.filter((r) => {
+      const title = formatCatalogProductTitle(r.row.brand, r.row.title);
+      return !isOccasionCasualTrouserTitle(title, clause);
+    });
+    if (office.length) ranked = office;
+  }
+
+  // When a true same-family colour exists (dusty rose → dusty pink), drop
+  // beige/nude neighbours that only scored because the vector pool was beige.
+  if (
+    color &&
+    ranked.some((r) => r.colorScore >= STRONG_COLOR_MATCH)
+  ) {
+    const close = ranked.filter((r) => r.colorScore >= MIN_COLOR_WHEN_STRONG);
+    if (close.length) ranked = close;
+  }
+
+  // Named style: if the pool has a recipe hit, drop veto titles (safari on
+  // Breton, sneakers on Rive Gauche) so they cannot outrank the hit.
+  if (styleId && ranked.some((r) => r.lookStyleFit >= 1)) {
+    const kept = ranked.filter((r) => {
+      const title = formatCatalogProductTitle(r.row.brand, r.row.title);
+      return !lookStyleIsVeto(styleId, styleFitInput(r.row, title));
+    });
+    if (kept.length) return kept;
+  }
   return ranked;
 }
 
@@ -640,9 +786,19 @@ function pickBestMatch(
   garment: string,
   boldness: string,
   clause?: string | null,
+  styleId?: string | null,
+  occasionId?: string | null,
 ): { row: MatchRow; similarPick: boolean } | null {
   if (!rows.length) return null;
-  const ranked = rankMatchRows(rows, color, garment, boldness, clause).sort(
+  const ranked = rankMatchRows(
+    rows,
+    color,
+    garment,
+    boldness,
+    clause,
+    styleId,
+    occasionId,
+  ).sort(
     (a, b) => b.score - a.score,
   );
   const best = ranked[0];
@@ -664,8 +820,10 @@ function topRankedCandidates(
   garment: string,
   boldness: string,
   clause?: string | null,
+  styleId?: string | null,
+  occasionId?: string | null,
 ): MatchRow[] {
-  return rankMatchRows(rows, color, garment, boldness, clause)
+  return rankMatchRows(rows, color, garment, boldness, clause, styleId, occasionId)
     .sort((a, b) => b.score - a.score)
     .slice(0, LOOK_RERANK_CANDIDATE_LIMIT)
     .map((r) => r.row);
@@ -738,6 +896,8 @@ function resolveShirtTrouserClash(
   matchByKey: Map<string, MatchRow[]>,
   profile: StyleProfile,
   goal: string,
+  styleId?: string | null,
+  occasionId?: string | null,
 ): ShoppingItem[] {
   const shirtIdx = items.findIndex((i) => i.category === "Shirts");
   const trouserIdx = items.findIndex((i) => i.category === "Trousers");
@@ -770,6 +930,8 @@ function resolveShirtTrouserClash(
     trouserSlot.garment.garment,
     profile.boldness,
     trouserSlot.garment.clause,
+    styleId,
+    occasionId,
   )
     .sort((a, b) => b.score - a.score)
     .find((r) => {
@@ -839,6 +1001,8 @@ async function matchItemsForLook(
   matchKeyFor: (g: LookGarment) => string,
   profile: StyleProfile,
   goal: string,
+  styleId?: string | null,
+  occasionId?: string | null,
 ): Promise<ShoppingItem[]> {
   const matchSlots: GarmentMatchSlot[] = [];
   let slot = 0;
@@ -861,6 +1025,8 @@ async function matchItemsForLook(
       g.garment,
       profile.boldness,
       g.clause,
+      styleId,
+      occasionId,
     );
     if (!rows.length) continue;
     matchSlots.push({ slot, garment: g, matchKey, rows });
@@ -883,6 +1049,8 @@ async function matchItemsForLook(
     lookDescription,
     paletteHints,
     rerankSlots,
+    styleId,
+    occasionId,
   );
 
   const items: ShoppingItem[] = [];
@@ -916,6 +1084,8 @@ async function matchItemsForLook(
         matchByKey,
         profile,
         goal,
+        styleId,
+        occasionId,
       );
     }
   }
@@ -928,6 +1098,8 @@ async function matchItemsForLook(
       matchSlot.garment.garment,
       profile.boldness,
       matchSlot.garment.clause,
+      styleId,
+      occasionId,
     );
     if (!picked || seen.has(picked.row.id)) continue;
     seen.add(picked.row.id);
@@ -948,6 +1120,8 @@ async function matchItemsForLook(
     matchByKey,
     profile,
     goal,
+    styleId,
+    occasionId,
   );
 }
 
@@ -985,6 +1159,7 @@ export function lookItemsNeedRefresh(items: LookItems | undefined): boolean {
 export async function matchLookItems(
   profile: StyleProfile,
   content: ReportContent,
+  opts?: { styleId?: string | null },
 ): Promise<LookItems> {
   if (!hasAI || !hasSupabaseAdmin) return {};
 
@@ -995,6 +1170,7 @@ export async function matchLookItems(
     const country = profile.demographics.country;
     const currency = profile.currency;
     const gender = genderFilterFor(profile.demographics.genderPresentation);
+    const styleId = opts?.styleId ?? null;
 
     const perLook = content.looks.map((l) => {
       const paletteHints = paletteColorHints(
@@ -1002,11 +1178,13 @@ export async function matchLookItems(
         content.colors.best,
       );
       const description = [l.title, l.description].filter(Boolean).join(", ");
+      const occasionId = lookOccasionIdFromContext(l.context);
       return {
         title: l.title,
         description: l.description ?? "",
         garments: decomposeLook(description),
         paletteHints,
+        occasionId,
       };
     });
 
@@ -1015,7 +1193,9 @@ export async function matchLookItems(
       garment: string,
       color: string | null,
       lookTitle: string,
-    ) => `${lookTitle}::${category}::${garment}::${color ?? ""}`;
+      occasionId?: string | null,
+    ) =>
+      `${lookTitle}::${category}::${garment}::${color ?? ""}::${styleId ?? ""}::${occasionId ?? ""}`;
 
     type Query = {
       key: string;
@@ -1025,7 +1205,7 @@ export async function matchLookItems(
       text: string;
     };
     const queryByKey = new Map<string, Query>();
-    for (const { title, garments, paletteHints } of perLook) {
+    for (const { title, garments, paletteHints, occasionId } of perLook) {
       for (const g of garments) {
         const text = garmentQueryText(g.garment, g.color, g.category, {
           lookTitle: title,
@@ -1033,8 +1213,10 @@ export async function matchLookItems(
           paletteHints,
           colorSeason: profile.colorSeason,
           gender,
+          styleId,
+          occasionId,
         });
-        const key = keyFor(g.category, g.garment, g.color, title);
+        const key = keyFor(g.category, g.garment, g.color, title, occasionId);
         if (!queryByKey.has(key))
           queryByKey.set(key, {
             key,
@@ -1056,7 +1238,7 @@ export async function matchLookItems(
     const matchByKey = new Map<string, MatchRow[]>();
     await Promise.all(
       queries.map(async (q, i) => {
-        const data = await rpcMatchProducts(sb, {
+        const data = await loadMatchPool(sb, {
           query_embedding: embeddings[i],
           match_count: LOOK_MATCH_COUNT,
           filter_category: q.category,
@@ -1065,23 +1247,26 @@ export async function matchLookItems(
           currency,
           market,
           gender_filter: gender,
+          color: q.color,
         });
-        matchByKey.set(q.key, shoppableRows((data ?? []) as MatchRow[]));
+        matchByKey.set(q.key, data);
       }),
     );
 
     const result: LookItems = {};
     const lookEntries = await Promise.all(
-      perLook.map(async ({ title, description, garments, paletteHints }, idx) => {
+      perLook.map(async ({ title, description, garments, paletteHints, occasionId }, idx) => {
         const items = await matchItemsForLook(
           title,
           description,
           paletteHints,
           garments,
           matchByKey,
-          (g) => keyFor(g.category, g.garment, g.color, title),
+          (g) => keyFor(g.category, g.garment, g.color, title, occasionId),
           profile,
           goal,
+          styleId,
+          occasionId,
         );
         return { idx, items };
       }),
@@ -1264,7 +1449,7 @@ export async function matchInspirationItems(
       embedding: number[],
       maxPrice: number,
     ): Promise<Ranked[]> {
-      const rows = await rpcMatchProducts(sb, {
+      const rows = await loadMatchPool(sb, {
         query_embedding: embedding,
         match_count: INSPIRATION_MATCH_COUNT,
         filter_category: g.category,
@@ -1273,9 +1458,10 @@ export async function matchInspirationItems(
         currency,
         market,
         gender_filter: gender,
+        color: g.color,
       });
       return rankMatchRows(
-        shoppableRows(rows),
+        rows,
         g.color,
         g.garment,
         profile.boldness,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  colorFamilyNeedles,
   colorMatchScore,
   decomposeLook,
   garmentTitleMatchScore,
@@ -115,6 +116,30 @@ test("colorMatchScore finds neighbours for greige, sage, soft plum and mushroom"
   assert.ok(mushTaupe >= 0.7, `mushroom↔taupe should be same circle, got ${mushTaupe}`);
   assert.ok(mushGreige >= 0.7, `mushroom↔greige should be same circle, got ${mushGreige}`);
   assert.ok(mushCharcoal < 0.35, `mushroom must not jump to charcoal, got ${mushCharcoal}`);
+});
+
+test("colorMatchScore rejects nude / beige as a dusty-rose stand-in", () => {
+  const nude = colorMatchScore("dusty rose", "nude", "Structural Cotton Jumper", {
+    productHex: "#D8C4A0",
+  });
+  const beige = colorMatchScore("dusty rose", "beige", "Beige Cotton Jumper");
+  const pink = colorMatchScore("dusty rose", "dusty pink", "Ribbed Textured Jumper", {
+    productHex: "#C99BA0",
+  });
+  assert.ok(nude < 0.2, `nude is warm beige, not dusty rose, got ${nude}`);
+  assert.ok(beige < 0.2, `beige must stay rejected, got ${beige}`);
+  assert.ok(pink >= 0.7, `dusty pink should be same family, got ${pink}`);
+  assert.ok(pink > nude, "a pink knit must beat a nude jumper");
+});
+
+test("colorFamilyNeedles pulls pink-family catalogue words for dusty rose", () => {
+  const needles = colorFamilyNeedles("dusty rose");
+  assert.ok(needles.includes("pink"), `missing pink: ${needles.join(",")}`);
+  assert.ok(needles.includes("rose"), `missing rose: ${needles.join(",")}`);
+  assert.ok(needles.includes("blush"), `missing blush: ${needles.join(",")}`);
+  assert.ok(!needles.includes("dustyrose"), "fused tokens must not be search needles");
+  assert.ok(!needles.includes("beige"));
+  assert.ok(!needles.includes("nude"));
 });
 
 test("colorMatchScore prefers muted pink hex over hot fuchsia for dusty rose", () => {
