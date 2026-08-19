@@ -2420,7 +2420,7 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   // blue
   blue: { family: "blue" }, sky: { family: "blue", shade: "light" },
   navy: { family: "blue", shade: "dark" }, indigo: { family: "blue", shade: "dark" },
-  midnight: { family: "blue", shade: "dark" }, teal: { family: "blue" },
+  midnight: { family: "blue", shade: "dark" },
   // compound blues (normalised from "slate blue" etc. before tokenising) — these
   // read as their own muted/light blue, NOT as the dark-grey "slate".
   slateblue: { family: "blue" }, powderblue: { family: "blue", shade: "light" },
@@ -2443,10 +2443,14 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   greige: { family: "brown", shade: "light" }, mushroom: { family: "brown", shade: "light" },
   chocolate: { family: "brown", shade: "dark" }, chestnut: { family: "brown", shade: "dark" },
   espresso: { family: "brown", shade: "dark" },
-  // green
+  // green — teal is blue-green; catalog teal is rare, so it lives here so
+  // dark/bottle green fills the slot instead of navy. "soft teal" still
+  // prefers sage via the light shade modifier.
   green: { family: "green" }, sage: { family: "green", shade: "light" },
   olive: { family: "green", shade: "dark" }, forest: { family: "green", shade: "dark" },
   emerald: { family: "green", shade: "dark" },
+  bottle: { family: "green", shade: "dark" },
+  teal: { family: "green", shade: "dark" },
   // red / warm
   red: { family: "red" },   rust: { family: "red" }, terracotta: { family: "red" }, copper: { family: "red" },
   burgundy: { family: "red", shade: "dark" }, maroon: { family: "red", shade: "dark" },
@@ -2505,6 +2509,7 @@ const NAMED_COLOR_HEX: Record<string, string> = {
   mushroom: "#A99C8C",
   taupe: "#B49C7E",
   sage: "#9AA588",
+  teal: "#2A6B73",
   khaki: "#9A8B5C",
   stone: "#C2B8A8",
   beige: "#D4C4A8",
@@ -2766,6 +2771,16 @@ export function garmentTitleMatchScore(garment: string, title: string): number {
     ) {
       return 0;
     }
+  }
+  // Shorts are not trousers / chinos / slacks.
+  if (
+    key === "trousers" ||
+    key === "chinos" ||
+    key === "chino" ||
+    key === "pants" ||
+    key === "slacks"
+  ) {
+    if (/\bshorts?\b|\bbermuda\b/.test(hay)) return 0;
   }
   // A "Tie With Pocket Square" set is a necktie, not a square. Same for a
   // cap/hat/belt that happens to mention a square in the title.

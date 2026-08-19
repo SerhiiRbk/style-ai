@@ -59,6 +59,7 @@ import {
   blazerTypePromptDirective,
   eyewearPromptDirective,
   fabricPromptDirective,
+  backpackPromptDirective,
   hatPromptDirective,
   shoeMaterialPromptDirective,
   sneakerPromptDirective,
@@ -806,6 +807,7 @@ export async function generateLookImage(opts: {
     const tieBlock = tiePromptDirective(look.description);
     const hatBlock = hatPromptDirective(look.description);
     const sneakerBlock = sneakerPromptDirective(look.description);
+    const backpackBlock = backpackPromptDirective(look.description);
     const fabricBlock = fabricPromptDirective(look.description);
     const blazerTypeBlock = blazerTypePromptDirective(look.description);
     const shoeMaterialBlock = shoeMaterialPromptDirective(look.description);
@@ -868,6 +870,8 @@ export async function generateLookImage(opts: {
       `When sunglasses are described as mirrored, the lenses are a reflective mirror finish, not a flat dark tint. ` +
       `Hands stay empty unless a tote, backpack, briefcase or messenger bag is listed — ` +
       `never hold a wallet, cardholder, phone, keys or any other small prop. ` +
+      `A listed backpack is held in one hand or slung on one shoulder — never worn ` +
+      `on both shoulders. ` +
       `If a shirt, oxford, tee, polo or henley is tucked in, the hem sits inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
       `A necktie is never worn on top of a jumper or knit — it sits on the shirt ` +
       `under the knit (V-neck or open cardigan) or between jacket lapels. ` +
@@ -1032,6 +1036,7 @@ export async function generateLookImage(opts: {
       tieBlock +
       hatBlock +
       sneakerBlock +
+      backpackBlock +
       fabricBlock +
       blazerTypeBlock +
       shoeMaterialBlock +
@@ -1061,6 +1066,7 @@ export async function generateLookImage(opts: {
       `sunglasses or glasses listed in the outfit are worn on the face over the ` +
         `eyes in the named frame shape — not held, not in a pocket, not hanging from clothing, not on the forehead`,
       `hands stay empty unless a listed tote, backpack, briefcase or messenger is carried — no wallet, cardholder, phone or other handheld prop`,
+      `a listed backpack is held in one hand or slung on one shoulder — never worn on both shoulders`,
     ];
     if (eyewearBlock) {
       constraints.push(
@@ -1078,6 +1084,9 @@ export async function generateLookImage(opts: {
     }
     if (sneakerBlock) {
       constraints.push(sneakerBlock.trim());
+    }
+    if (backpackBlock) {
+      constraints.push(backpackBlock.trim());
     }
     if (fabricBlock) {
       constraints.push(fabricBlock.trim());
@@ -1546,6 +1555,7 @@ export async function generateReportTryOnImage(opts: {
     const tieBlock = tiePromptDirective(opts.garmentsText);
     const hatBlock = hatPromptDirective(opts.garmentsText);
     const sneakerBlock = sneakerPromptDirective(opts.garmentsText);
+    const backpackBlock = backpackPromptDirective(opts.garmentsText);
     const fabricBlock = fabricPromptDirective(opts.garmentsText);
     const blazerTypeBlock = blazerTypePromptDirective(opts.garmentsText);
     const shoeMaterialBlock = shoeMaterialPromptDirective(opts.garmentsText);
@@ -1609,6 +1619,7 @@ export async function generateReportTryOnImage(opts: {
       tieBlock +
       hatBlock +
       sneakerBlock +
+      backpackBlock +
       fabricBlock +
       blazerTypeBlock +
       shoeMaterialBlock +

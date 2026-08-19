@@ -220,8 +220,11 @@ const MIN_LOOK_PICK_SCORE = 0.42;
  *  Open knit) boost / soft-veto catalogue picks.
  *  v16: Work / Formal trousers drop linen, relaxed and drawstring unless the
  *  look named them.
- *  v17: messenger / tote slots reject travel bags, weekenders and duffels. */
-export const LOOK_MATCH_VERSION = 17;
+ *  v17: messenger / tote slots reject travel bags, weekenders and duffels.
+ *  v18: navy wool trousers are not evicted by navy shorts/jeans; Work drops
+ *  shorts and jeans unless the look named them; a rerank skip still fills
+ *  the slot from the ranked pool. */
+export const LOOK_MATCH_VERSION = 19;
 const LOOK_STYLE_FIT_WEIGHT = 0.1;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
@@ -772,12 +775,18 @@ function rankMatchRows(
 
   // When a true same-family colour exists (dusty rose → dusty pink), drop
   // beige/nude neighbours that only scored because the vector pool was beige.
+  // Do not let a navy short/jean evict a real trouser that is only a weaker
+  // colour neighbour — type wins, then colour within type.
   if (
     color &&
     ranked.some((r) => r.colorScore >= STRONG_COLOR_MATCH)
   ) {
     const close = ranked.filter((r) => r.colorScore >= MIN_COLOR_WHEN_STRONG);
-    if (close.length) ranked = close;
+    const typed = ranked.filter((r) => r.garmentScore >= 0.5);
+    const typedClose = typed.filter((r) => r.colorScore >= MIN_COLOR_WHEN_STRONG);
+    if (typedClose.length) ranked = typedClose;
+    else if (typed.length) ranked = typed;
+    else if (close.length) ranked = close;
   }
 
   // Named style: if the pool has a recipe hit, drop veto titles (safari on
@@ -1070,6 +1079,7 @@ async function matchItemsForLook(
 
   if (rerankPicks?.length) {
     const slotByIndex = new Map(matchSlots.map((s) => [s.slot, s]));
+    const filled = new Set<number>();
     for (const pick of rerankPicks) {
       if (items.length >= 6) break;
       if (pick.candidateIndex < 0) continue;
@@ -1078,6 +1088,7 @@ async function matchItemsForLook(
       const row = matchSlot.rows[pick.candidateIndex];
       if (!row || seen.has(row.id)) continue;
       seen.add(row.id);
+      filled.add(pick.slot);
       items.push(
         shoppingItemFromMatch(
           row,
@@ -1086,6 +1097,30 @@ async function matchItemsForLook(
           goal,
           pick.similarPick,
           pick.why,
+        ),
+      );
+    }
+    for (const matchSlot of matchSlots) {
+      if (items.length >= 6) break;
+      if (filled.has(matchSlot.slot)) continue;
+      const picked = pickBestMatch(
+        matchByKey.get(matchSlot.matchKey) ?? [],
+        matchSlot.garment.color,
+        matchSlot.garment.garment,
+        profile.boldness,
+        matchSlot.garment.clause,
+        styleId,
+        occasionId,
+      );
+      if (!picked || seen.has(picked.row.id)) continue;
+      seen.add(picked.row.id);
+      items.push(
+        shoppingItemFromMatch(
+          picked.row,
+          matchSlot.garment,
+          profile,
+          goal,
+          picked.similarPick,
         ),
       );
     }

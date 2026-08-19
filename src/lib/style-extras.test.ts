@@ -51,6 +51,17 @@ test("decomposeLook keeps a messenger bag as its own accessory slot", () => {
   assert.equal(bag?.category, "Accessories");
 });
 
+test("garmentTitleMatchScore rejects shorts for a trousers slot", () => {
+  assert.equal(
+    garmentTitleMatchScore("trousers", "Regular Fit Wool Blend Trousers"),
+    1,
+  );
+  assert.equal(
+    garmentTitleMatchScore("trousers", "Denim Chino Bermuda Shorts"),
+    0,
+  );
+});
+
 test("garmentTitleMatchScore rejects a travel bag for a messenger slot", () => {
   assert.equal(
     garmentTitleMatchScore("messenger", "Leather Messenger Bag"),
@@ -163,6 +174,30 @@ test("colorFamilyNeedles pulls pink-family catalogue words for dusty rose", () =
   assert.ok(!needles.includes("dustyrose"), "fused tokens must not be search needles");
   assert.ok(!needles.includes("beige"));
   assert.ok(!needles.includes("nude"));
+});
+
+test("colorMatchScore falls teal back to dark/bottle green, not navy", () => {
+  const tealDark = colorMatchScore("teal", "dark green", "Dark Green Jumper");
+  const tealBottle = colorMatchScore("teal", "bottle green", "Bottle Green Jumper");
+  const tealNavy = colorMatchScore("teal", "navy", "Navy Jumper");
+  const tealSage = colorMatchScore("teal", "sage", "Sage Jumper");
+  assert.ok(tealDark >= 0.7, `teal↔dark green should be strong, got ${tealDark}`);
+  assert.ok(tealBottle >= 0.7, `teal↔bottle green should be strong, got ${tealBottle}`);
+  assert.ok(tealNavy < 0.2, `teal must not fall back to navy, got ${tealNavy}`);
+  assert.ok(tealSage < tealDark, `bare teal should prefer dark green over sage, ${tealSage} vs ${tealDark}`);
+
+  const softSage = colorMatchScore("soft teal", "sage", "Sage Jumper");
+  const softDark = colorMatchScore("soft teal", "dark green", "Dark Green Jumper");
+  const softNavy = colorMatchScore("soft teal", "navy", "Navy Jumper");
+  assert.ok(softSage >= 0.7, `soft teal↔sage should be strong, got ${softSage}`);
+  assert.ok(softSage > softDark, `soft teal should prefer sage over dark green, ${softSage} vs ${softDark}`);
+  assert.ok(softNavy < 0.2, `soft teal must not fall back to navy, got ${softNavy}`);
+
+  const needles = colorFamilyNeedles("teal");
+  assert.ok(needles.includes("green"), `missing green: ${needles.join(",")}`);
+  assert.ok(needles.includes("teal"), `missing teal: ${needles.join(",")}`);
+  assert.ok(!needles.includes("navy"), "teal must not pull navy into the pool");
+  assert.ok(!needles.includes("blue"), "teal must not pull blue into the pool");
 });
 
 test("colorMatchScore prefers muted pink hex over hot fuchsia for dusty rose", () => {

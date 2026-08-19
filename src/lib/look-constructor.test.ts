@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   CONSTRUCTOR_TYPES,
   TIE_TYPES,
+  backpackPromptDirective,
   canonicalTieType,
   composeLookDescription,
   slotsFromLook,
@@ -69,6 +70,15 @@ test("composeLookDescription names bolo and neckerchief", () => {
   assert.match(text, /bolo/);
   assert.match(text, /neckerchief/);
   assert.match(text, /pocket square/);
+});
+
+test("backpackPromptDirective forbids a two-strap pack", () => {
+  assert.equal(backpackPromptDirective("sage canvas tote"), "");
+  const text = backpackPromptDirective(
+    "Sage cotton-linen blazer, greige canvas backpack",
+  );
+  assert.match(text, /one hand|ONE shoulder/i);
+  assert.match(text, /Never wear it on both shoulders/i);
 });
 
 test("slotsFromLook keeps charcoal shorts as the bottoms type", () => {

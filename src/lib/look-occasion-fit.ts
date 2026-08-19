@@ -29,6 +29,8 @@ const LINEN_RE = /\blinen\b/i;
 const RELAXED_RE = /\brelaxed\b/i;
 const DRAWSTRING_RE = /\b(drawstring|elasticated|elastic(?:ated)?\s+waist)\b/i;
 const CARGO_RE = /\b(cargo|joggers?|sweat\s?pants?)\b/i;
+const SHORTS_RE = /\bshorts?\b|\bbermuda\b/i;
+const JEANS_RE = /\bjeans?\b/i;
 const TRAVEL_BAG_RE =
   /\b(travel\s+bags?|weekenders?|duffels?|duffles?|holdalls?|cabin\s+bags?|overnight\s+bags?|trolley|suitcase)\b/i;
 
@@ -61,6 +63,8 @@ export function isOccasionCasualTrouserTitle(
   if (RELAXED_RE.test(title) && !RELAXED_RE.test(asked)) return true;
   if (DRAWSTRING_RE.test(title) && !DRAWSTRING_RE.test(asked)) return true;
   if (CARGO_RE.test(title)) return true;
+  if (SHORTS_RE.test(title) && !SHORTS_RE.test(asked)) return true;
+  if (JEANS_RE.test(title) && !JEANS_RE.test(asked)) return true;
   return false;
 }
 

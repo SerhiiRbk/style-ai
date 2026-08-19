@@ -50,6 +50,20 @@ test("linen relaxed trousers are casual unless the look asked for them", () => {
     isOccasionCasualTrouserTitle("Relaxed Fit Chinos", "sage cotton chinos"),
     true,
   );
+  assert.equal(
+    isOccasionCasualTrouserTitle(
+      "Denim Chino Bermuda Shorts",
+      "muted navy high-waist pleated wool trousers",
+    ),
+    true,
+  );
+  assert.equal(
+    isOccasionCasualTrouserTitle(
+      "Ripped Loose Fit Jeans",
+      "muted navy high-waist pleated wool trousers",
+    ),
+    true,
+  );
 });
 
 test("work query hint steers away from linen relaxed", () => {

@@ -83,3 +83,24 @@ test("catalog prompt requires every listed garment including the shirt", () => {
   assert.match(prompt ?? "", /Dusty rose shirt/);
   assert.match(prompt ?? "", /Wear EVERY listed garment/);
 });
+
+test("catalog prompt fills missing trousers from the look and forbids shorts", () => {
+  const prompt = catalogPromptFromItems(
+    [
+      item({ category: "Knitwear", title: "Fair Isle Sweater" }),
+      item({ category: "Footwear", title: "Leather Brogues" }),
+    ],
+    "Dusty rose Fair Isle crew-neck jumper, muted navy high-waist pleated wool trousers, greige leather brogues",
+  );
+  assert.match(prompt ?? "", /muted navy high-waist pleated wool trousers/i);
+  assert.match(prompt ?? "", /never shorts/i);
+});
+
+test("catalog prompt does not invent trousers when the look named shorts", () => {
+  const prompt = catalogPromptFromItems(
+    [item({ category: "Shirts", title: "Linen camp-collar shirt" })],
+    "Soft teal linen camp-collar shirt, charcoal tailored linen shorts",
+  );
+  assert.match(prompt ?? "", /charcoal tailored linen shorts/i);
+  assert.doesNotMatch(prompt ?? "", /never shorts/i);
+});

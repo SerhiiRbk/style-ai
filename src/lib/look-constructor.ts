@@ -710,6 +710,17 @@ export function sneakerPromptDirective(description: string): string {
   );
 }
 
+/** Prompt override so a listed backpack is carried, not worn as a two-strap pack. */
+export function backpackPromptDirective(description: string): string {
+  if (!/\bbackpacks?\b|\brucksacks?\b/i.test(description)) return "";
+  return (
+    `CRITICAL backpack: the backpack is carried — held in one hand by the top ` +
+    `handle or a strap, OR slung on ONE shoulder only (one strap on, the other ` +
+    `hanging loose). Never wear it on both shoulders, never as a hiking pack ` +
+    `strapped across the back over a blazer or shirt. `
+  );
+}
+
 export const HAT_TYPES: ConstructorTypeOption[] = [
   { id: "cap", label: "Cap" },
   { id: "baseball", label: "Baseball" },

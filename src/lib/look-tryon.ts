@@ -133,11 +133,22 @@ export function catalogPromptFromItems(
     (i) => i.category === "Accessories" && isEyewearTitle(i.title),
   );
   const hasShirt = items.some((i) => i.category === "Shirts");
+  const hasTrousers = items.some((i) => i.category === "Trousers");
   const describedShirt = lookDescription
     ? lookDescription.match(
         /([^,]*\b(?:camp-?collar\s+)?(?:linen\s+)?(?:oxford|shirt|polo|tee|henley)\b[^,]*)/i,
       )?.[1]?.trim()
     : "";
+  const describedTrousers = lookDescription
+    ? lookDescription.match(
+        /([^,]*\b(?:trousers?|chinos?|pants?|slacks?|shorts?)\b[^,]*)/i,
+      )?.[1]?.trim()
+    : "";
+  const lookNamedFullTrousers = Boolean(
+    describedTrousers &&
+      /\b(?:trousers?|chinos?|pants?|slacks?)\b/i.test(describedTrousers) &&
+      !/\bshorts?\b/i.test(describedTrousers),
+  );
   const baseLayerRule =
     hasTie && !hasShirt
       ? describedShirt
@@ -157,6 +168,15 @@ export function catalogPromptFromItems(
       `resting on the nose over the eyes. Do not hold them, fold them, put them ` +
       `in a pocket, or hang them from a shirt. `
     : "";
+  const bottomsRule = !hasTrousers && describedTrousers
+    ? `\nThis catalogue list is missing the trousers. Wear the look's own bottoms: ` +
+      `${describedTrousers}. ` +
+      (lookNamedFullTrousers
+        ? `Full-length trousers only — never shorts, never cropped, never invent a different silhouette. `
+        : "")
+    : lookNamedFullTrousers
+      ? `\nBottoms stay full-length as named in the look — never substitute shorts. `
+      : "";
 
   return (
     `Construct the outfit from these catalogue garments:\n` +
@@ -166,6 +186,7 @@ export function catalogPromptFromItems(
     `Reproduce each listed garment's type, colour and material faithfully. ` +
     `Do not add extra accessories that are not in this list or the look description. ` +
     baseLayerRule +
+    bottomsRule +
     eyewearRule
   );
 }
