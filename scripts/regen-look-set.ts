@@ -327,9 +327,12 @@ async function main() {
   }
 
   if (ITEMS_ONLY) {
+    const rematchRows = onlyIndexes
+      ? rows.filter((row) => onlyIndexes.includes(row.idx as number))
+      : rows;
     const content = {
       colors: { best: [], avoid: [] },
-      looks: rows.map((row) => ({
+      looks: rematchRows.map((row) => ({
         context: (row.context as string) ?? "",
         title: (row.title as string) ?? "Look",
         description: sanitizeLookDescription(String(row.description ?? "")),
@@ -339,11 +342,11 @@ async function main() {
     const byPos = await matchLookItems(profile, content, {
       styleId: setStyleId,
     });
-    rows.forEach((row, p) => {
+    rematchRows.forEach((row, p) => {
       const matched = byPos[p];
       if (matched?.length) lookItems[row.idx as number] = matched;
     });
-    regenerated = Object.keys(byPos).length;
+    regenerated = rematchRows.length;
     console.log(`  rematched ${regenerated} looks`);
   }
 
