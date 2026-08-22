@@ -49,6 +49,17 @@ const CATEGORY_OVERRIDE = arg("--category") || null;
 // store returns English titles/types (meta.json stays at the root).
 const LOCALE = (arg("--locale") || "").replace(/^\/|\/$/g, "");
 const LOC = LOCALE ? `/${LOCALE}` : "";
+// Optional exclusion by keyword (comma-separated), matched against
+// title/product_type/tags — e.g. --exclude "perfume,cologne,fragrance".
+const EXCLUDE = (arg("--exclude") || "")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+const isExcluded = (p) => {
+  if (!EXCLUDE.length) return false;
+  const hay = `${p.title || ""} ${p.product_type || ""} ${(p.tags || []).join(" ")}`.toLowerCase();
+  return EXCLUDE.some((k) => hay.includes(k));
+};
 
 const stripHtml = (s) => (s || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 const colorOptIdx = (p) => {
@@ -124,9 +135,12 @@ function toRows(product) {
 
 let products;
 let rows;
+let excludedCount = 0;
 for (let attempt = 1; attempt <= 5; attempt++) {
   products = await fetchAll();
-  rows = products.flatMap(toRows);
+  const kept = products.filter((p) => !isExcluded(p));
+  excludedCount = products.length - kept.length;
+  rows = kept.flatMap(toRows);
   const prices = rows.map((r) => r.price).filter(Number.isFinite).sort((a, b) => a - b);
   const median = prices[Math.floor(prices.length / 2)] ?? 0;
   if (median <= maxMedian) break;
@@ -138,6 +152,6 @@ for (let attempt = 1; attempt <= 5; attempt++) {
 }
 await writeFile(out, JSON.stringify({ products: rows }, null, 2));
 console.log(
-  `${BASE}/collections/${collection} | brand=${BRAND} currency=${CURRENCY} market=${MARKET} source=${SOURCE}\n` +
-    `products=${products.length} → colour-rows=${rows.length} → ${out}`,
+  `${BASE}${LOC}/collections/${collection} | brand=${BRAND} currency=${CURRENCY} market=${MARKET} source=${SOURCE}\n` +
+    `products=${products.length}${EXCLUDE.length ? ` (excluded ${excludedCount} by: ${EXCLUDE.join(", ")})` : ""} → colour-rows=${rows.length} → ${out}`,
 );

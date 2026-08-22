@@ -76,29 +76,38 @@ function first(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : v) ?? "";
 }
 
-async function listCatalogBrands(
+/** Distinct filter options in one scan: every non-hidden brand (all sources)
+ * and every populated garment sub-category (from the typed `garment_subtype`). */
+async function listFilterOptions(
   admin: ReturnType<typeof createAdminSupabase>,
-): Promise<string[]> {
+): Promise<{ brands: string[]; subcategories: string[] }> {
   const brands = new Set<string>();
+  const subcategories = new Set<string>();
   const size = 1000;
   for (let from = 0; ; from += size) {
     const { data, error } = await admin
       .from("products")
-      .select("brand")
-      .eq("source_type", "scraper")
+      .select("brand,garment_subtype")
       .eq("hidden", false)
-      .not("brand", "is", null)
       .order("id", { ascending: true })
       .range(from, from + size - 1);
     if (error) throw error;
     if (!data?.length) break;
     for (const row of data) {
       if (typeof row.brand === "string" && row.brand) brands.add(row.brand);
+      if (typeof row.garment_subtype === "string" && row.garment_subtype)
+        subcategories.add(row.garment_subtype);
     }
     if (data.length < size) break;
   }
-  return [...brands].sort((a, b) => a.localeCompare(b));
+  return {
+    brands: [...brands].sort((a, b) => a.localeCompare(b)),
+    subcategories: [...subcategories].sort((a, b) => a.localeCompare(b)),
+  };
 }
+
+const titleCase = (s: string) =>
+  s.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 function buildHref(base: SP, patch: Record<string, string | number | null>) {
   const params = new URLSearchParams();
@@ -133,9 +142,9 @@ export default async function CatalogPage({
   const q = first(sp.q).trim();
   const category = first(sp.category);
   const brand = first(sp.brand);
+  const subcategory = first(sp.subcategory);
   const market = first(sp.market);
   const gender = first(sp.gender);
-  const inStockOnly = first(sp.instock) === "1";
   const page = Math.max(1, parseInt(first(sp.page) || "1", 10) || 1);
 
   if (!hasSupabaseAdmin) {
@@ -164,7 +173,7 @@ export default async function CatalogPage({
 
   const admin = createAdminSupabase();
 
-  const brands = await listCatalogBrands(admin);
+  const { brands, subcategories } = await listFilterOptions(admin);
 
   let query = admin
     .from("products")
@@ -175,9 +184,9 @@ export default async function CatalogPage({
 
   if (category) query = query.eq("category", category);
   if (brand) query = query.eq("brand", brand);
+  if (subcategory) query = query.eq("garment_subtype", subcategory);
   if (market) query = query.eq("market", market);
   if (gender) query = query.eq("gender", gender);
-  if (inStockOnly) query = query.eq("in_stock", true);
   if (q) query = query.or(`title.ilike.%${q}%,brand.ilike.%${q}%`);
 
   const from = (page - 1) * PAGE_SIZE;
@@ -234,6 +243,18 @@ export default async function CatalogPage({
             ))}
           </select>
           <select
+            name="subcategory"
+            defaultValue={subcategory}
+            className="rounded-lg border hairline bg-cream/30 px-3 py-2 text-sm"
+          >
+            <option value="">All sub-categories</option>
+            {subcategories.map((s) => (
+              <option key={s} value={s}>
+                {titleCase(s)}
+              </option>
+            ))}
+          </select>
+          <select
             name="brand"
             defaultValue={brand}
             className="rounded-lg border hairline bg-cream/30 px-3 py-2 text-sm"
@@ -269,24 +290,12 @@ export default async function CatalogPage({
               </option>
             ))}
           </select>
-          <div className="flex items-center justify-between gap-3 sm:col-span-2 xl:col-span-2">
-            <label className="flex items-center gap-2 text-sm text-stone">
-              <input
-                type="checkbox"
-                name="instock"
-                value="1"
-                defaultChecked={inStockOnly}
-                className="h-4 w-4 accent-ink"
-              />
-              In stock
-            </label>
-            <button
-              type="submit"
-              className="rounded-full bg-ink px-4 py-2 text-sm text-paper transition-colors hover:bg-ink-soft"
-            >
-              Apply
-            </button>
-          </div>
+          <button
+            type="submit"
+            className="rounded-full bg-ink px-4 py-2 text-sm text-paper transition-colors hover:bg-ink-soft"
+          >
+            Apply
+          </button>
         </form>
 
         <CatalogTryOnHint cost={CREDIT_COSTS.tryon} />
@@ -300,7 +309,7 @@ export default async function CatalogPage({
                 ? "No products match your filters yet."
                 : `${total.toLocaleString("en-US")} product${total === 1 ? "" : "s"}`}
           </span>
-          {(q || category || brand || market || gender || inStockOnly) && (
+          {(q || category || subcategory || brand || market || gender) && (
             <Link href="/catalog" className="text-brass hover:text-ink">
               Clear filters
             </Link>
