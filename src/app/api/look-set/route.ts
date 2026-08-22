@@ -20,6 +20,7 @@ import {
   isLoyalty,
   bundleFor,
   setName,
+  lookSetProfileSource,
 } from "@/lib/look-sets";
 import {
   resolveExistingProfile,
@@ -113,14 +114,14 @@ type RenderedLook = {
  * Batch "Create a Look" endpoint. Charges real credits and enforces the A0
  * cost fuse + biometric-photo consent/gate before generating anything.
  *
- * Standalone-first reuse rule: a photo (+ consent + the photo gate) is only
- * required when the user has NO existing StyleProfile to reuse (no Style
- * Report, no prior look set) — see `resolveExistingProfile`. A returning
- * user picks up their existing profile with no new upload.
+ * Photo rule: a face photo is required only when the user has no stored
+ * StyleProfile (`resolveExistingProfile`). A returning user may skip the
+ * photo and reuse that palette. If they *do* send a face (path or data URL),
+ * colouring is re-read from that photo — not copied from the last report.
  *
  * Ordered flow: auth → validate body → resolve existing profile / decide if
- * a photo is required → cost fuse → pricing/balance → profile (reuse, or
- * consent + photo gate + fresh vision analysis) → createLookSet → generate
+ * a photo is required → cost fuse → pricing/balance → profile (fresh
+ * analysis when a face is sent, else reuse) → createLookSet → generate
  * + bill per look → Carlo note → shop-the-look → events → response.
  */
 export async function POST(request: Request) {
@@ -206,11 +207,8 @@ export async function POST(request: Request) {
   }
   const intake = { ...buildLookIntake(intakeParsed.data), boldness };
 
-  // Format-validated only — NOT yet a requiredness decision. Whether a photo
-  // is actually required (and, if so, consent + the photo gate) depends on
-  // whether the user already has a reusable profile (see step 3 below). A
-  // returning user's submitted image, if any, is deliberately ignored: it is
-  // only read (and only after consent + gate) inside the `needsPhoto` branch.
+  // Format-validated only — requiredness is decided in step 3. A submitted
+  // face is used for a fresh colour read even when a stored profile exists.
   const rawFaceImage: string | undefined = isDataUrl(body.faceImage)
     ? body.faceImage
     : undefined;
@@ -283,12 +281,15 @@ export async function POST(request: Request) {
     }
   }
 
-  // 3) does this user need to submit a photo at all? Standalone-first reuse:
-  // a Style Report profile or a prior look-set snapshot means no new upload
-  // is required. Only new users (or users with neither) must supply one.
+  // 3) photo requiredness vs colour re-read. A stored profile lets the user
+  // skip the upload; a selected face still triggers a fresh vision pass.
   const existing = await resolveExistingProfile(admin, user.id);
-  const needsPhoto = !existing;
-  if (needsPhoto && !signedFace && !rawFaceImage) {
+  const hasFacePhoto = Boolean(signedFace || rawFaceImage);
+  const profileMode = lookSetProfileSource({
+    hasExistingProfile: Boolean(existing),
+    hasFacePhoto,
+  });
+  if (profileMode === "photo_required") {
     return NextResponse.json(
       { error: "A face photo is required", code: "photo_required" },
       { status: 400 },
@@ -364,32 +365,33 @@ export async function POST(request: Request) {
     );
   }
 
-  // 6) profile: reuse (no fresh analysis) when `existing` is set, else consent
-  // + a fresh vision analysis over THIS request's photo(s). The reference URLs
-  // used to face/full-anchor the renders are resolved from the selected photo
-  // PATHS (signed above) for BOTH fresh and returning users — a returning user
-  // may still choose which photo the looks render on — or from legacy data-URL
-  // uploads on the fresh path.
+  // 6) profile: fresh vision analysis whenever this request includes a face
+  // photo; otherwise reuse the stored report / prior-set snapshot. Render
+  // anchors still come from the selected paths (or the later default fallback).
   let profile: StyleProfile;
   let source: "report" | "prior_set" | "fresh";
   let faceRefUrl: string | undefined = signedFace;
   let fullRefUrl: string | undefined = signedFull;
 
-  if (needsPhoto) {
-    // consent — mirrors /api/reports' biometric consent gate exactly. A photo
-    // is required to reach this branch, so consent is always required here.
-    const biometricConsent = body.biometricConsent === true;
-    const consentVersion =
-      typeof body.consentVersion === "string" ? body.consentVersion : "";
-    if (!biometricConsent || consentVersion !== LEGAL.consentVersion) {
-      return NextResponse.json(
-        {
-          error:
-            "Explicit consent for photo processing is required. Please accept on the photo step.",
-          code: "consent_required",
-        },
-        { status: 422 },
-      );
+  if (profileMode === "fresh") {
+    // First-time users, or a returning user sending a raw data-URL upload,
+    // must consent. A returning user pointing at a photo already in their
+    // bucket consented at upload; don't block the re-read on a second tick.
+    const needsConsent = !existing || !signedFace;
+    if (needsConsent) {
+      const biometricConsent = body.biometricConsent === true;
+      const consentVersion =
+        typeof body.consentVersion === "string" ? body.consentVersion : "";
+      if (!biometricConsent || consentVersion !== LEGAL.consentVersion) {
+        return NextResponse.json(
+          {
+            error:
+              "Explicit consent for photo processing is required. Please accept on the photo step.",
+            code: "consent_required",
+          },
+          { status: 422 },
+        );
+      }
     }
 
     if (!signedFace) {
@@ -471,10 +473,8 @@ export async function POST(request: Request) {
       props: { occasion: ctx.id },
     });
   } else {
-    // REUSE: report/prior_set — no fresh analysis. `faceRefUrl`/`fullRefUrl`
-    // keep any signed selection above (optional for returning users); when both
-    // stay undefined the render falls back below (full: getCatalogTryOnPhoto;
-    // face: the no-identity-reference path).
+    // REUSE: no face on this request — keep the stored palette. Render
+    // anchors fall back below to the default stored photos.
     profile = existing!.profile;
     source = existing!.source;
   }

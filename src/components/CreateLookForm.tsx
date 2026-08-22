@@ -115,9 +115,8 @@ export function CreateLookForm({
   // so a lost-response retry can't mint/charge a second set; cleared on success.
   const pendingKeyRef = useRef<string | null>(null);
 
-  // Photo SELECTION (all users) + upload. Fresh users must pick/upload a face
-  // (drives analysis) and consent; returning users may optionally pick which
-  // photo the looks render on (server falls back to their default otherwise).
+  // Photo SELECTION (all users) + upload. A selected face is analysed for
+  // colouring. Returning users may skip the photo and keep their saved palette.
   const [facePhotos, setFacePhotos] = useState<ReusePhoto[]>([]);
   const [fullPhotos, setFullPhotos] = useState<ReusePhoto[]>([]);
   const [facePath, setFacePath] = useState<string>("");
@@ -170,8 +169,8 @@ export function CreateLookForm({
   const ageNum = Number(age);
   const ageValid = Number.isInteger(ageNum) && ageNum >= 16 && ageNum <= 99;
   const canAfford = creditBalance >= price;
-  // Returning users reuse their profile (photo optional). New users must select
-  // or upload a face photo (that passed the gate) and give consent.
+  // Returning users may skip the photo and keep the saved palette. New users
+  // must select or upload a face (that passed the gate) and give consent.
   const photosReady = hasReusableProfile || (!!facePath && consent);
   const canSubmit = ageValid && !submitting && canAfford && photosReady;
 
@@ -197,7 +196,7 @@ export function CreateLookForm({
           intake: { age: ageNum, bodyType: bodyType || undefined },
           faceRefPath: facePath || undefined,
           fullRefPath: fullPath || undefined,
-          // Fresh path only: returning users reuse their stored profile.
+          // Consent only when this request will run a first-time analysis.
           ...(hasReusableProfile
             ? {}
             : {
@@ -435,7 +434,7 @@ export function CreateLookForm({
             title={hasReusableProfile ? "Choose your photo" : "Your photos"}
             subtitle={
               hasReusableProfile
-                ? "Optional — pick which photo your looks are rendered on, or add a new one. If you skip this, we'll use your default."
+                ? "Optional — pick a photo to re-read your colours and render the looks on you. If you skip this, we'll keep your saved palette and default photo."
                 : "We read your colouring from a clear, front-facing photo and render the looks on you. A face photo is required; a full-length adds better full-body renders."
             }
           >

@@ -231,10 +231,10 @@ export function formatLookColorRecipePrompt(
     mood?.boldness === "statement" || mood?.boldness === "experimental";
   const accent = recipe.accent
     ? isParty
-      ? `- Accent (pocket square only with a blazer or collared shirt, scarf, or jewellery — never a tote): ${swatch(recipe.accent)}\n`
+      ? `- Accent (pocket square only with a blazer, scarf, or jewellery — never a tote): ${swatch(recipe.accent)}\n`
       : `- Accent only (belt, scarf, bag or a small layer — not a second main garment). ` +
-        `Name a pocket square only if this look also has a blazer or a collared shirt ` +
-        `as the chest layer — never on a jumper: ${swatch(recipe.accent)}\n`
+        `Name a pocket square only if this look also has a blazer — never on a ` +
+        `shirt-only look or a jumper: ${swatch(recipe.accent)}\n`
     : "";
   const heroLine = isParty && isStatement
     ? `- Hero (nearest the face): ${swatch(recipe.hero)} — an evening statement piece ` +
@@ -291,5 +291,15 @@ export function bestSwatchesForProfile(profile: StyleProfile): ColorRec[] {
       hairColor: profile.physical.hairColor,
       eyeColor: profile.physical.eyeColor,
     });
-  return reportPalette({ subseason, undertone, contrast }).best;
+  return reportPalette({
+    subseason,
+    undertone,
+    contrast,
+    hairColor: profile.physical.hairColor,
+    eyeColor: profile.physical.eyeColor,
+    skinTone: profile.physical.skinTone,
+    skinHex: profile.physical.skinHex,
+    hairHex: profile.physical.hairHex,
+    eyeHex: profile.physical.eyeHex,
+  }).best;
 }

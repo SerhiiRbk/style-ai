@@ -48,6 +48,8 @@ import { languageInstruction, type ReportLanguage } from "@/lib/languages";
 import {
   reportPalette,
   annotateNearFaceGuidance,
+  parseSwatchHex,
+  refineSeasonFromSkinHex,
 } from "@/lib/colour-palette";
 // EXPERIMENTAL prompt versioning — see look-prompt.ts for how to remove.
 import {
@@ -223,6 +225,17 @@ const visionSchema = z.object({
     .string()
     .describe("natural hair colour, e.g. 'dark brown', 'blonde', 'gray'"),
   eyeColor: z.string().describe("eye colour, e.g. 'brown', 'blue', 'green'"),
+  skinHex: z
+    .string()
+    .optional()
+    .describe(
+      "hex of mid-cheek skin in THIS photo (#rrggbb), no clothing or background",
+    ),
+  hairHex: z
+    .string()
+    .optional()
+    .describe("hex of the natural hair mass (#rrggbb), not a hat or dye patch"),
+  eyeHex: z.string().optional().describe("hex of the iris (#rrggbb)"),
   colorSeason: z.enum(["winter", "spring", "summer", "autumn"]),
   clarity: z
     .enum(["muted", "clear"])
@@ -258,7 +271,8 @@ export async function analyzeProfile(
             text:
               `Analyse these photos of a person for a professional, respectful style consultation. ` +
               `Determine skin tone, undertone, facial contrast, face shape, body type, natural hair colour ` +
-              `and eye colour, and assign a seasonal colour analysis. Be objective and tactful — never judgmental. ` +
+              `and eye colour, read the actual mid-cheek, hair-mass and iris hex (#rrggbb) from the photos, ` +
+              `and assign a seasonal colour analysis. Be objective and tactful — never judgmental. ` +
               `Also judge overall colouring CLARITY by chroma/saturation ('muted' vs 'clear'): ` +
               `muted = soft, greyed, dusty; clear = bright, vivid. Do NOT confuse high light/dark ` +
               `(value) contrast — e.g. fair skin with dark hair — for 'clear'; such colouring is ` +
@@ -287,10 +301,18 @@ export async function analyzeProfile(
 
   // Correct the base season using the chroma signal: a muted cool/neutral person
   // read as "winter" from value-contrast alone is really a Summer.
-  const colorSeason = refineSeasonForClarity({
-    season: output.colorSeason,
+  const skinHex = parseSwatchHex(output.skinHex) ?? undefined;
+  const hairHex = parseSwatchHex(output.hairHex) ?? undefined;
+  const eyeHex = parseSwatchHex(output.eyeHex) ?? undefined;
+
+  const colorSeason = refineSeasonFromSkinHex({
+    season: refineSeasonForClarity({
+      season: output.colorSeason,
+      undertone: output.undertone,
+      clarity: output.clarity,
+    }),
     undertone: output.undertone,
-    clarity: output.clarity,
+    skinHex,
   });
 
   return {
@@ -320,6 +342,9 @@ export async function analyzeProfile(
       measurements: intake.measurements,
       hairColor,
       eyeColor,
+      skinHex,
+      hairHex,
+      eyeHex,
     },
     colorSeason,
     colorSubseason: classifySubseason({
@@ -400,7 +425,17 @@ function deterministicColors(profile: StyleProfile): ReportContent["colors"] {
   // for bold-leaning clients) so the palette copy tells the client what to wear
   // closest to the face — the axis that drives face-to-garment contrast.
   return annotateNearFaceGuidance(
-    reportPalette({ subseason, undertone, contrast }),
+    reportPalette({
+      subseason,
+      undertone,
+      contrast,
+      hairColor: profile.physical.hairColor,
+      eyeColor: profile.physical.eyeColor,
+      skinTone: profile.physical.skinTone,
+      skinHex: profile.physical.skinHex,
+      hairHex: profile.physical.hairHex,
+      eyeHex: profile.physical.eyeHex,
+    }),
     {
       boldness: profile.boldness,
       goals: profile.goals,
@@ -802,15 +837,22 @@ export async function generateLookImage(opts: {
     const faceImageCount = (hasFace ? 1 : 0) + (hasProfile ? 1 : 0);
     const personImageCount = faceImageCount + (hasFull ? 1 : 0);
     const wearableDescription = sanitizeLookDescription(look.description);
-    const eyewearBlock = eyewearPromptDirective(wearableDescription);
-    const tuckBlock = tuckPromptDirective(look.description);
-    const tieBlock = tiePromptDirective(look.description);
-    const hatBlock = hatPromptDirective(look.description);
-    const sneakerBlock = sneakerPromptDirective(look.description);
-    const backpackBlock = backpackPromptDirective(look.description);
-    const fabricBlock = fabricPromptDirective(look.description);
-    const blazerTypeBlock = blazerTypePromptDirective(look.description);
-    const shoeMaterialBlock = shoeMaterialPromptDirective(look.description);
+    // Catalogue SKUs own materials and colours. The look caption used to leak
+    // "suede derbies" / "teal poplin" into these directives and beat the shop.
+    const directiveSource = hasCatalog
+      ? [look.catalogContext, catalogImages.map((i) => i.title).join(", ")]
+          .filter(Boolean)
+          .join(" ")
+      : look.description;
+    const eyewearBlock = eyewearPromptDirective(directiveSource);
+    const tuckBlock = tuckPromptDirective(directiveSource);
+    const tieBlock = tiePromptDirective(directiveSource);
+    const hatBlock = hatPromptDirective(directiveSource);
+    const sneakerBlock = sneakerPromptDirective(directiveSource);
+    const backpackBlock = backpackPromptDirective(directiveSource);
+    const fabricBlock = fabricPromptDirective(directiveSource);
+    const blazerTypeBlock = blazerTypePromptDirective(directiveSource);
+    const shoeMaterialBlock = shoeMaterialPromptDirective(directiveSource);
     const ordinals = [
       "FIRST",
       "SECOND",
@@ -839,10 +881,22 @@ export async function generateLookImage(opts: {
     // When catalogue picks exist, THEY define the outfit. The free-text look
     // description is demoted to a styling/mood hint so it stops dominating and
     // re-creating the report's original look.
+    const namesSquare = /\b(pocket[\s-]?squares?|pochettes?|handkerchiefs?)\b/i.test(
+      `${wearableDescription} ${look.catalogContext ?? ""}`,
+    );
+    const emptyTrouserPockets =
+      `Trouser pockets stay empty and lie flat — no cloth peeking out. `;
+    const squarePlacement = namesSquare
+      ? `The pocket square sits in the jacket breast pocket only. `
+      : "";
     const outfitBlock = hasCatalog
       ? `${look.catalogContext ?? ""}` +
-        `Styling note (mood and proportions only — do NOT substitute different clothes): ${wearableDescription}. `
-      : `Outfit: ${wearableDescription}. `;
+        `Styling note: keep city-work formality and proportions. Do not add garments ` +
+        `or swap the catalogue shirt, trousers, shoes or bag for pieces named only ` +
+        `in a look caption. ` +
+        squarePlacement +
+        emptyTrouserPockets
+      : `Outfit: ${wearableDescription}. ` + squarePlacement + emptyTrouserPockets;
 
     // The image model tends to default to sandals for warm palettes; an explicit
     // footwear directive with a hard negative keeps formal looks in dress shoes.
@@ -870,6 +924,7 @@ export async function generateLookImage(opts: {
       `When sunglasses are described as mirrored, the lenses are a reflective mirror finish, not a flat dark tint. ` +
       `Hands stay empty unless a tote, backpack, briefcase or messenger bag is listed — ` +
       `never hold a wallet, cardholder, phone, keys or any other small prop. ` +
+      `Trouser pockets stay empty and lie flat. ` +
       `A listed backpack is held in one hand or slung on one shoulder — never worn ` +
       `on both shoulders. ` +
       `If a shirt, oxford, tee, polo or henley is tucked in, the hem sits inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
@@ -1009,16 +1064,22 @@ export async function generateLookImage(opts: {
           `pale or mid-value top that matches the skin's own lightness directly under ` +
           `the chin — use either a deeper or a distinctly crisper palette tone there. `
         : "";
-    const nearFaceBlock = nearFaceHex
-      ? `Near-face colour: the garment closest to the face (the top layer — knit, ` +
-        `shirt, jacket or its collar) MUST be ${nearFaceHex} — a deliberate tone from ` +
-        `the palette. If the outfit text names a lighter or mid-value top, deepen it to ` +
-        `this tone; other garments keep their described colours. `
-      : nearFacePrinciple;
+    const nearFaceBlock = hasCatalog
+      ? `Keep each catalogue garment's colour exactly as listed and shown in its ` +
+        `product photo — do not deepen, teal-shift or recolour the shirt or shoes ` +
+        `for face contrast or palette harmony. `
+      : nearFaceHex
+        ? `Near-face colour: the garment closest to the face (the top layer — knit, ` +
+          `shirt, jacket or its collar) MUST be ${nearFaceHex} — a deliberate tone from ` +
+          `the palette. If the outfit text names a lighter or mid-value top, deepen it to ` +
+          `this tone; other garments keep their described colours. `
+        : nearFacePrinciple;
 
     const preamble =
       `Editorial, full-length fashion photograph for a premium style report. `;
-    const paletteLine = `Colour palette: ${look.palette.join(", ")}. `;
+    const paletteLine = hasCatalog
+      ? ""
+      : `Colour palette: ${look.palette.join(", ")}. `;
 
     // v1 baseline — kept byte-identical so version 1 == the historical prompt.
     const legacyPrompt =
@@ -1066,6 +1127,7 @@ export async function generateLookImage(opts: {
       `sunglasses or glasses listed in the outfit are worn on the face over the ` +
         `eyes in the named frame shape — not held, not in a pocket, not hanging from clothing, not on the forehead`,
       `hands stay empty unless a listed tote, backpack, briefcase or messenger is carried — no wallet, cardholder, phone or other handheld prop`,
+      `trouser pockets stay empty and lie flat — no cloth peeking out`,
       `a listed backpack is held in one hand or slung on one shoulder — never worn on both shoulders`,
     ];
     if (eyewearBlock) {
@@ -1096,6 +1158,11 @@ export async function generateLookImage(opts: {
     }
     if (shoeMaterialBlock) {
       constraints.push(shoeMaterialBlock.trim());
+    }
+    if (hasCatalog) {
+      constraints.push(
+        `catalogue titles and photos win — do not use a look-caption shirt colour or shoe finish`,
+      );
     }
     if (isThreeQuarter) {
       constraints.push(

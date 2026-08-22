@@ -51,6 +51,28 @@ test("decomposeLook keeps a messenger bag as its own accessory slot", () => {
   assert.equal(bag?.category, "Accessories");
 });
 
+test("decomposeLook reads a knitted tie as a necktie, not knitwear", () => {
+  const garments = decomposeLook(
+    "Slate blue poplin shirt, soft charcoal worsted trousers, soft teal knitted tie, greige leather briefcase",
+  );
+  assert.ok(
+    garments.some((g) => g.garment === "tie" && g.category === "Accessories"),
+    `expected a tie: ${garments.map((g) => `${g.category}:${g.garment}`).join(", ")}`,
+  );
+  assert.ok(
+    !garments.some((g) => g.category === "Knitwear"),
+    `knitted tie must not open a Knitwear slot: ${garments.map((g) => g.garment).join(", ")}`,
+  );
+});
+
+test("garmentTitleMatchScore rejects tea towels for a knit slot", () => {
+  assert.equal(
+    garmentTitleMatchScore("knit", "Zara Pack Of Waffle-Knit Tea Towels (pack Of 2)"),
+    0,
+  );
+  assert.equal(garmentTitleMatchScore("sweater", "Merino Crewneck Sweater"), 1);
+});
+
 test("garmentTitleMatchScore rejects shorts for a trousers slot", () => {
   assert.equal(
     garmentTitleMatchScore("trousers", "Regular Fit Wool Blend Trousers"),
@@ -88,6 +110,13 @@ test("garmentTitleMatchScore recognises tote and pocket square titles", () => {
   );
   assert.equal(
     garmentTitleMatchScore("pocket square", "Reserved Baseball Cap With Embroidery"),
+    0,
+  );
+  assert.equal(
+    garmentTitleMatchScore(
+      "pocket square",
+      "Marks & Spencer 7pk Antibacterial Pure Cotton Handkerchiefs With Sanitized Finish®",
+    ),
     0,
   );
 });
@@ -238,7 +267,7 @@ test("selectLookGarmentSlots keeps multiple accessories", () => {
   );
   const slots = selectLookGarmentSlots(garments, 6);
   const accessories = slots.filter((g) => g.category === "Accessories").map((g) => g.garment);
-  assert.deepEqual(accessories.sort(), ["pocket square", "tote"].sort());
+  assert.deepEqual(accessories.sort(), ["tote"].sort());
   assert.equal(slots.filter((g) => g.category === "Shirts").length, 1);
 });
 

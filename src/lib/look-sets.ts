@@ -15,6 +15,26 @@ export function bundleFor(looks: number) {
 export function isLoyalty(purchasedCredits: number): boolean {
   return purchasedCredits >= LOYALTY_PURCHASE_THRESHOLD;
 }
+/**
+ * Decide whether Create-a-Look re-reads colouring from this request's face
+ * photo or reuses a stored Style Report / prior-set profile.
+ *
+ * A selected face always wins: otherwise a returning user who swaps photos
+ * keeps the previous Soft Summer (etc.) while the looks render on a new face.
+ * Skip-photo returning users keep the saved palette. First-time users must
+ * send a face.
+ */
+export type LookSetProfileMode = "fresh" | "reuse" | "photo_required";
+
+export function lookSetProfileSource(opts: {
+  hasExistingProfile: boolean;
+  hasFacePhoto: boolean;
+}): LookSetProfileMode {
+  if (opts.hasFacePhoto) return "fresh";
+  if (opts.hasExistingProfile) return "reuse";
+  return "photo_required";
+}
+
 export function priceForBundle(looks: number, loyalty: boolean): number | null {
   const b = bundleFor(looks);
   if (!b) return null;

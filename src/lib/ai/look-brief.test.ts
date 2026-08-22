@@ -170,10 +170,10 @@ test("hasJacketHost recognises blazers and ignores shirt-only looks", () => {
   assert.equal(hasJacketHost("Soft teal silk shirt, greige trousers, dusty rose pocket square"), false);
 });
 
-test("pocket square has a host on a blazer or a shirt worn as the chest layer", () => {
+test("pocket square has a host only on a blazer, not a shirt-only look", () => {
   assert.equal(pocketSquareHasHost("Soft teal velvet blazer, dusty rose knit, teal pocket square"), true);
-  assert.equal(pocketSquareHasHost("Sage linen shirt, navy trousers, teal linen pocket square"), true);
-  assert.equal(pocketSquareHasHost("Oxford button-down, charcoal trousers, ivory pocket square"), true);
+  assert.equal(pocketSquareHasHost("Sage linen shirt, navy trousers, teal linen pocket square"), false);
+  assert.equal(pocketSquareHasHost("Oxford button-down, charcoal trousers, ivory pocket square"), false);
   assert.equal(pocketSquareHasHost(JUMPER_LOOK), false);
   assert.equal(
     pocketSquareHasHost("Linen shirt, merino jumper, navy trousers, teal pocket square"),
@@ -190,6 +190,12 @@ test("stripMisplacedPocketSquare drops a square on a jumper-only look", () => {
   assert.equal(
     stripMisplacedPocketSquare("Soft teal velvet blazer, charcoal trousers, teal silk pocket square"),
     "Soft teal velvet blazer, charcoal trousers, teal silk pocket square",
+  );
+  assert.equal(
+    stripMisplacedPocketSquare(
+      "Soft teal poplin shirt, muted navy trousers, slate blue linen pocket square, greige briefcase",
+    ),
+    "Soft teal poplin shirt, muted navy trousers, greige briefcase",
   );
 });
 

@@ -1,4 +1,5 @@
 import "server-only";
+import { after } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getLatestReportProfile } from "@/lib/data/match-profile";
 import {
@@ -24,12 +25,9 @@ type AdminClient = ReturnType<typeof createAdminSupabase>;
  *      personalised one (getLatestReportProfile's `personalised` flag —
  *      not its neutral fallback).
  *   2. The most recent snapshot from a prior look set.
- * Returns `null` when neither exists, so the caller knows a fresh photo +
- * vision analysis is required. Never touches photos/intake — this is the
- * "does the user need to upload anything" check, used by the route to decide
- * whether to require a photo/consent/photo-gate at all (standalone-first
- * reuse rule: returning users pick an existing profile, only new users
- * upload).
+ * Returns `null` when neither exists, so the caller knows a face photo is
+ * required. A stored profile only covers the skip-photo path — if the
+ * request includes a face, the route re-reads colouring from that photo.
  */
 export async function resolveExistingProfile(
   admin: AdminClient,
@@ -556,20 +554,25 @@ async function assembleLookSetResult(
   );
   const looks = looksFromRows(rows ?? [], looksCount, generating);
 
-  // Rematch when shop items are missing or a stale matchVersion (colour /
-  // gender / style recipes). The /looks index uses prefetch={false} so this
-  // only runs on the set page, not on every card in view.
+  // Rematch when shop items are missing or a stale matchVersion. If we already
+  // have a list, keep it on this request — a failed rematch used to wipe the
+  // shop block. Stale versions refresh after the response, like reports.
   if (
     looks.some((l) => l.imagePath) &&
     lookItemsNeedRefresh(lookItems ?? undefined)
   ) {
-    lookItems = await ensureSetLookItems(
-      admin,
-      set.user_id,
-      setId,
-      lookItems,
-      looks,
-    );
+    if (lookItems && Object.keys(lookItems).length) {
+      scheduleSetLookItemsRefresh(set.user_id, setId, lookItems, looks);
+    } else {
+      lookItems =
+        (await ensureSetLookItems(
+          admin,
+          set.user_id,
+          setId,
+          lookItems,
+          looks,
+        )) ?? lookItems;
+    }
   }
 
   return {
@@ -687,6 +690,27 @@ export async function loadPublicLookSet(
   };
 }
 
+function scheduleSetLookItemsRefresh(
+  userId: string,
+  setId: string,
+  lookItems: Record<number, ShoppingItem[]> | null,
+  looks: LoadedSetLook[],
+): void {
+  after(async () => {
+    try {
+      await ensureSetLookItems(
+        createAdminSupabase(),
+        userId,
+        setId,
+        lookItems,
+        looks,
+      );
+    } catch (err) {
+      console.error("[look-set] match refresh", setId, err);
+    }
+  });
+}
+
 /**
  * Recompute and persist look_items when they are missing or a stale match
  * version. Used on set load and on try-on so a version bump (e.g. the
@@ -718,7 +742,8 @@ export async function ensureSetLookItems(
     (l): l is LoadedSetLook & { imagePath: string } => Boolean(l.imagePath),
   );
   if (!withImages.length) return lookItems ?? null;
-  return backfillSetLookItems(admin, userId, setId, withImages);
+  const next = await backfillSetLookItems(admin, userId, setId, withImages);
+  return next && Object.keys(next).length ? next : lookItems ?? null;
 }
 
 /**

@@ -18,6 +18,11 @@ export type ColourAnalysisResult = {
   undertone: Undertone;
   contrast: Contrast;
   skinTone: string;
+  hairColor?: string;
+  eyeColor?: string;
+  skinHex?: string;
+  hairHex?: string;
+  eyeHex?: string;
   palette: PaletteSwatch[];
   carloNote: string;
 };
@@ -457,13 +462,292 @@ const SEASON_AVOID: Record<Season, ColorRec[]> = {
   ],
 };
 
+export type PalettePerson = {
+  undertone: Undertone;
+  contrast: Contrast;
+  hairColor?: string | null;
+  eyeColor?: string | null;
+  skinTone?: string | null;
+  skinHex?: string | null;
+  hairHex?: string | null;
+  eyeHex?: string | null;
+};
+
+/** Accept #rgb / #rrggbb from vision; null when the model skipped or invented junk. */
+export function parseSwatchHex(raw?: string | null): string | null {
+  const t = (raw ?? "").trim();
+  const m6 = t.match(/^#?([0-9a-f]{6})$/i);
+  if (m6) return `#${m6[1]!.toLowerCase()}`;
+  const m3 = t.match(/^#?([0-9a-f]{3})$/i);
+  if (!m3) return null;
+  const [r, g, b] = m3[1]!;
+  return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/** -1 light / 0 mid / 1 deep — from free-text hair. */
+function hairDepth(hair?: string | null): -1 | 0 | 1 {
+  const h = (hair ?? "").toLowerCase();
+  if (/\b(black|dark[\s-]*brown|espresso|jet|raven)\b/.test(h)) return 1;
+  if (/\b(blond|blonde|platinum|white|silver|gray|grey|light[\s-]*brown|strawberry)\b/.test(h))
+    return -1;
+  return 0;
+}
+
+function skinDepth(skin?: string | null): -1 | 0 | 1 {
+  const s = (skin ?? "").toLowerCase();
+  if (/\b(fair|pale|porcelain|light|ivory)\b/.test(s)) return -1;
+  if (/\b(deep|dark|olive|tan|ebony|bronze)\b/.test(s)) return 1;
+  return 0;
+}
+
+type EyeFamily = "blue" | "green" | "brown" | "grey";
+
+function eyeFamily(eye?: string | null): EyeFamily | null {
+  const e = (eye ?? "").toLowerCase();
+  if (!e) return null;
+  if (/blue/.test(e)) return "blue";
+  if (/green|hazel/.test(e)) return "green";
+  if (/grey|gray/.test(e)) return "grey";
+  if (/brown|amber|black/.test(e)) return "brown";
+  return null;
+}
+
+function eyeHueMatch(family: EyeFamily, h: number, s: number): boolean {
+  if (family === "grey") return s < 0.22;
+  if (family === "blue") return h >= 185 && h <= 260;
+  if (family === "green") return h >= 70 && h <= 175;
+  return (h >= 15 && h <= 55) || (h >= 330 || h <= 20);
+}
+
+/**
+ * Nudge a curated subseason palette toward this person's colouring.
+ * Neutral + medium + no hair/eyes/skin is a no-op so the published swatches
+ * stay the type's reference. Any other signal shifts HSL inside a tight band
+ * so Soft Summer stays Soft Summer, but two faces no longer share hexes.
+ */
+export function personalizeSwatches(
+  swatches: PaletteSwatch[],
+  person: PalettePerson,
+): PaletteSwatch[] {
+  const hueDelta =
+    person.undertone === "cool" ? 8 : person.undertone === "warm" ? -8 : 0;
+  const contrastL =
+    person.contrast === "high" ? -0.07 : person.contrast === "low" ? 0.06 : 0;
+  const contrastS =
+    person.contrast === "high" ? 0.05 : person.contrast === "low" ? -0.05 : 0;
+  const lightDelta = contrastL + hairDepth(person.hairColor) * -0.04 +
+    skinDepth(person.skinTone) * -0.03;
+  const satDelta = contrastS;
+  const eyes = eyeFamily(person.eyeColor);
+
+  if (hueDelta === 0 && lightDelta === 0 && satDelta === 0 && !eyes) {
+    return swatches.map((s) => ({ ...s }));
+  }
+
+  return swatches.map((sw) => {
+    const { h, s, l } = hexToHsl(sw.hex);
+    const eyeBoost = eyes && eyeHueMatch(eyes, h, s) ? 0.07 : 0;
+    const dS = satDelta + eyeBoost;
+    const dL = lightDelta + (eyeBoost ? -0.02 : 0);
+    if (hueDelta === 0 && dS === 0 && dL === 0) return { ...sw };
+    const ns = clamp(s + dS, Math.max(0, s - 0.1), Math.min(0.72, s + 0.1));
+    const nl = clamp(l + dL, Math.max(0.08, l - 0.12), Math.min(0.92, l + 0.12));
+    return {
+      name: sw.name,
+      hex: hslToHex((h + hueDelta + 360) % 360, ns, nl),
+    };
+  });
+}
+
+function hueDist(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+function mixHsl(
+  a: { h: number; s: number; l: number },
+  b: { h: number; s: number; l: number },
+  t: number,
+  maxHue = 28,
+): { h: number; s: number; l: number } {
+  let dh = b.h - a.h;
+  if (dh > 180) dh -= 360;
+  if (dh < -180) dh += 360;
+  // Only move hue when the target is already in the same family. A 28° cap
+  // still walked dusty blue toward brown (through green) and olive toward
+  // coffee; far-apart hues keep the named colour and only share sat/light.
+  const sameFamily = Math.abs(dh) <= maxHue;
+  return {
+    h: sameFamily ? (a.h + dh * t + 360) % 360 : a.h,
+    s: a.s + (b.s - a.s) * t,
+    l: a.l + (b.l - a.l) * t,
+  };
+}
+
+function swatchRole(hex: string): "light" | "anchor" | "accent" | "mid" {
+  const { s, l } = hexToHsl(hex);
+  if (l >= 0.68 && s < 0.28) return "light";
+  if (l <= 0.34 && s < 0.38) return "anchor";
+  if (s >= 0.16 && l >= 0.22 && l <= 0.68) return "accent";
+  return "mid";
+}
+
+/** Skin as cloth: lift and mute so a cheek hex becomes a wearable shirt/neutral. */
+function wearableFromSkin(hex: string): { h: number; s: number; l: number } {
+  const c = hexToHsl(hex);
+  return {
+    h: c.h,
+    s: clamp(c.s * 0.42, 0.07, 0.26),
+    l: clamp(c.l + 0.14, 0.52, 0.88),
+  };
+}
+
+/** Hair as a depth anchor: keep the hue, park it in the deep-neutral band. */
+function wearableFromHair(hex: string): { h: number; s: number; l: number } {
+  const c = hexToHsl(hex);
+  return {
+    h: c.h,
+    s: clamp(c.s * 0.5, 0.06, 0.34),
+    l: clamp(c.l, 0.1, 0.36),
+  };
+}
+
+/** Iris as a near-face accent: keep hue, wearable chroma. */
+function wearableFromEye(hex: string): { h: number; s: number; l: number } {
+  const c = hexToHsl(hex);
+  return {
+    h: c.h,
+    s: clamp(c.s * 0.72, 0.16, 0.48),
+    l: clamp(c.l, 0.28, 0.58),
+  };
+}
+
+type SeasonGamut = { sMax: number; denyWarmGold: boolean };
+
+const SEASON_GAMUT: Record<Season, SeasonGamut> = {
+  summer: { sMax: 0.42, denyWarmGold: true },
+  winter: { sMax: 0.7, denyWarmGold: true },
+  spring: { sMax: 0.68, denyWarmGold: false },
+  autumn: { sMax: 0.62, denyWarmGold: false },
+};
+
+function snapToSeasonGamut(
+  hex: string,
+  season: Season,
+  from?: { h: number; s: number; l: number },
+): string {
+  const g = SEASON_GAMUT[season];
+  const { h, s, l } = hexToHsl(hex);
+  let nh = h;
+  let ns = clamp(s, 0.05, g.sMax);
+  const nl = clamp(l, 0.08, 0.92);
+  if (g.denyWarmGold && s > 0.16 && h >= 18 && h <= 52) {
+    const origin = from?.h ?? h;
+    const wasMuted =
+      (from?.s ?? s) < 0.18 || (from?.l ?? l) >= 0.68 || l >= 0.75;
+    if (wasMuted) {
+      // Mute the gold — do not remap Greige / Mushroom / Cool white onto sage.
+      ns = Math.min(ns, 0.12);
+    } else {
+      nh = origin >= 160 ? 205 : origin <= 25 || origin >= 320 ? 8 : 165;
+    }
+  }
+  return hslToHex(nh, ns, nl);
+}
+
+/**
+ * When undertone is undecided, a clearly warm or cool cheek hex can correct
+ * the base season. Cool/warm labels from vision stay untouched.
+ */
+export function refineSeasonFromSkinHex(opts: {
+  season: Season;
+  undertone: Undertone;
+  skinHex?: string | null;
+}): Season {
+  if (opts.undertone !== "neutral") return opts.season;
+  const hex = parseSwatchHex(opts.skinHex);
+  if (!hex) return opts.season;
+  const { h, s } = hexToHsl(hex);
+  if (s < 0.12) return opts.season;
+  if (opts.season === "summer" && h >= 20 && h <= 50) return "autumn";
+  if (opts.season === "autumn" && (h >= 200 || h <= 16)) return "summer";
+  return opts.season;
+}
+
+/**
+ * Build the 10-swatch set from this face: curated roles stay (names + structure),
+ * hexes are pulled toward skin / hair / iris and snapped into the season's
+ * wearable range. Two different faces no longer share a Soft Summer chip set.
+ */
+export function buildPaletteFromColouring(
+  swatches: PaletteSwatch[],
+  subseason: SubseasonId,
+  person: PalettePerson,
+): PaletteSwatch[] {
+  const season = seasonForSubseason(subseason);
+  const skin = parseSwatchHex(person.skinHex);
+  const hair = parseSwatchHex(person.hairHex);
+  const eye = parseSwatchHex(person.eyeHex);
+  const skinHsl = skin ? wearableFromSkin(skin) : null;
+  const hairHsl = hair ? wearableFromHair(hair) : null;
+  const eyeHsl = eye ? wearableFromEye(eye) : null;
+  const eyeAccentIndex =
+    eyeHsl == null
+      ? -1
+      : swatches.reduce((best, sw, i) => {
+          if (swatchRole(sw.hex) !== "accent") return best;
+          const d = hueDist(hexToHsl(sw.hex).h, eyeHsl.h);
+          if (d > 50) return best;
+          if (best < 0) return i;
+          return d < hueDist(hexToHsl(swatches[best]!.hex).h, eyeHsl.h) ? i : best;
+        }, -1);
+
+  return swatches.map((sw, i) => {
+    const role = swatchRole(sw.hex);
+    const base = hexToHsl(sw.hex);
+    let mixed = base;
+    if (role === "light" && skinHsl) mixed = mixHsl(base, skinHsl, 0.55);
+    else if (role === "mid" && skinHsl) mixed = mixHsl(base, skinHsl, 0.28);
+    else if (role === "anchor" && hairHsl) mixed = mixHsl(base, hairHsl, 0.5);
+    else if (i === eyeAccentIndex && eyeHsl) {
+      // Iris shifts chroma only — hue stays on the named chip (Golden ≠ olive).
+      mixed = mixHsl(base, eyeHsl, 0.55, 0);
+    }
+    const hex = snapToSeasonGamut(
+      hslToHex(mixed.h, mixed.s, mixed.l),
+      season,
+      base,
+    );
+    return { name: sw.name, hex };
+  });
+}
+
+export function paletteForPerson(
+  subseason: SubseasonId,
+  person: PalettePerson,
+): PaletteSwatch[] {
+  const curated = SUBSEASON_PALETTES[subseason];
+  if (
+    parseSwatchHex(person.skinHex) ||
+    parseSwatchHex(person.hairHex) ||
+    parseSwatchHex(person.eyeHex)
+  ) {
+    return buildPaletteFromColouring(curated, subseason, person);
+  }
+  return personalizeSwatches(curated, person);
+}
+
 /** Deterministic "best" colours for a subseason (curated hexes + names + why). */
 export function bestColorsForSubseason(
   subseason: SubseasonId,
-  opts: { undertone: Undertone; contrast: Contrast },
+  opts: PalettePerson,
 ): ColorRec[] {
   const label = SUBSEASON_LABELS[subseason];
-  const swatches = SUBSEASON_PALETTES[subseason];
+  const swatches = paletteForPerson(subseason, opts);
   // The palette closes with VERSATILE_NEUTRAL_COUNT office-ready anchors; tag
   // them so the report can present them as their own explained group.
   const firstVersatile = swatches.length - VERSATILE_NEUTRAL_COUNT;
@@ -488,10 +772,8 @@ export function avoidColorsForSubseason(subseason: SubseasonId): ColorRec[] {
  * Same subseason + undertone + contrast always produce identical output, so two
  * reports from the same photo can never show different palettes.
  */
-export function reportPalette(opts: {
+export function reportPalette(opts: PalettePerson & {
   subseason: SubseasonId;
-  undertone: Undertone;
-  contrast: Contrast;
 }): { best: ColorRec[]; avoid: ColorRec[] } {
   return {
     best: bestColorsForSubseason(opts.subseason, opts),

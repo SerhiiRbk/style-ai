@@ -15,7 +15,9 @@ import {
 } from "@/lib/style-profile";
 import {
   carloNoteFor,
-  paletteForSubseason,
+  paletteForPerson,
+  parseSwatchHex,
+  refineSeasonFromSkinHex,
   subseasonLabel,
   type ColourAnalysisResult,
 } from "@/lib/colour-palette";
@@ -49,6 +51,20 @@ export const colourVisionSchema = z.object({
     .string()
     .describe("natural hair colour, e.g. 'dark brown', 'blonde', 'gray'"),
   eyeColor: z.string().describe("eye colour, e.g. 'brown', 'blue', 'green'"),
+  skinHex: z
+    .string()
+    .optional()
+    .describe(
+      "hex of mid-cheek skin in THIS photo (#rrggbb), no clothing or background",
+    ),
+  hairHex: z
+    .string()
+    .optional()
+    .describe("hex of the natural hair mass (#rrggbb), not a hat or dye patch"),
+  eyeHex: z
+    .string()
+    .optional()
+    .describe("hex of the iris (#rrggbb)"),
 });
 
 export const COLOUR_VISION_PROMPT =
@@ -57,7 +73,8 @@ export const COLOUR_VISION_PROMPT =
   "readable — set usable=false for a landscape, an object, no face, or a face too small, " +
   "obscured, dark, or heavily filtered to read colouring from, with a short usableReason. " +
   "If usable, determine skin tone, undertone, facial contrast, natural hair colour and eye " +
-  "colour, and assign a seasonal colour analysis (winter, spring, summer or autumn). " +
+  "colour, and read the actual mid-cheek, hair-mass and iris hex (#rrggbb) from this photo. " +
+  "Assign a seasonal colour analysis (winter, spring, summer or autumn). " +
   "Also judge overall colouring CLARITY by chroma/saturation ('muted' vs 'clear'): " +
   "muted = soft, greyed, dusty; clear = bright, vivid. Do NOT confuse high light/dark " +
   "(value) contrast — e.g. fair skin with dark hair — for 'clear'; such colouring is " +
@@ -99,10 +116,18 @@ export async function analyzeColoursWith(
   // Correct the base season using the chroma signal (same as the report
   // pipeline): a muted cool/neutral person read as "winter" from value-contrast
   // alone is really a Summer. Keeps `/colours` and the report in lockstep.
-  const season = refineSeasonForClarity({
-    season: output.colorSeason,
+  const skinHex = parseSwatchHex(output.skinHex) ?? undefined;
+  const hairHex = parseSwatchHex(output.hairHex) ?? undefined;
+  const eyeHex = parseSwatchHex(output.eyeHex) ?? undefined;
+
+  const season = refineSeasonFromSkinHex({
+    season: refineSeasonForClarity({
+      season: output.colorSeason,
+      undertone: output.undertone,
+      clarity: output.clarity,
+    }),
     undertone: output.undertone,
-    clarity: output.clarity,
+    skinHex,
   });
 
   const subseason = classifySubseason({
@@ -124,7 +149,21 @@ export async function analyzeColoursWith(
       undertone: output.undertone,
       contrast: output.contrast,
       skinTone: output.skinTone,
-      palette: paletteForSubseason(subseason),
+      hairColor: output.hairColor,
+      eyeColor: output.eyeColor,
+      skinHex,
+      hairHex,
+      eyeHex,
+      palette: paletteForPerson(subseason, {
+        undertone: output.undertone,
+        contrast: output.contrast,
+        hairColor: output.hairColor,
+        eyeColor: output.eyeColor,
+        skinTone: output.skinTone,
+        skinHex,
+        hairHex,
+        eyeHex,
+      }),
       carloNote: carloNoteFor({
         season,
         subseasonLabel: label,

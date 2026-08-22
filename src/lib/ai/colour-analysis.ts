@@ -3,7 +3,7 @@ import { env, hasAI } from "@/lib/env";
 import {
   subseasonLabel,
   carloNoteFor,
-  paletteForSubseason,
+  paletteForPerson,
   type ColourAnalysisResult,
 } from "@/lib/colour-palette";
 import { analyzeColoursWith, type ColoursAnalysis } from "./colour-analysis-core";
@@ -20,7 +20,10 @@ function mockResult(): ColourAnalysisResult {
     undertone: "warm",
     contrast: "medium",
     skinTone: "warm medium",
-    palette: paletteForSubseason(subseason),
+    palette: paletteForPerson(subseason, {
+      undertone: "warm",
+      contrast: "medium",
+    }),
     carloNote: carloNoteFor({
       season: "autumn",
       subseasonLabel: subseasonLabel(subseason),

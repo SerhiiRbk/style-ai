@@ -11,6 +11,8 @@ export type LookStyleFitInput = {
   garmentSubtype?: string | null;
   pattern?: string | null;
   materialFamily?: string | null;
+  fit?: string | null;
+  description?: string | null;
 };
 
 type StyleRecipe = {
@@ -37,6 +39,8 @@ const RE = {
   poplin: /\bpoplin\b/i,
   worsted: /\bworsted\b/i,
   derby: /\bderb(?:y|ies)\b/i,
+  casualShirt:
+    /\b(relaxed|oversized|oversize|comfort(?:\s+fit)?|boxy|flowing|loose|viscose|cupro|camp[-\s]?collars?|short[- ]?sleeves?|stand[-\s]?up\s+collars?|mandarin|grandad|band\s+collars?|checks?|checked|plaid|gingham)\b/i,
   camp: /\bcamp[-\s]?collars?\b/i,
   belgian: /\bbelgian\s+loafers?\b/i,
   mesh: /\b(mesh|eyelet|open[-\s]?knit|openwork|crochet)\b/i,
@@ -79,12 +83,22 @@ const RECIPES: Record<string, StyleRecipe> = {
     veto: (h) => RE.crochetHeritage.test(h) || RE.safari.test(h),
   },
   city_formal: {
-    queryHint: "oxford poplin worsted derby",
+    queryHint: "oxford poplin worsted derby regular slim tailored",
     rerankHint:
-      "Aesthetic City formal — prefer oxford, poplin, worsted or derbies; avoid camp-collar, safari, Belgian loafers.",
+      "Aesthetic City formal — prefer oxford, poplin, worsted or derbies in a regular or slim fit; avoid relaxed, viscose, camp-collar, safari, Belgian loafers.",
     boost: (h) =>
-      RE.oxford.test(h) || RE.poplin.test(h) || RE.worsted.test(h) || RE.derby.test(h),
-    veto: (h) => RE.camp.test(h) || RE.safari.test(h) || RE.belgian.test(h) || RE.seersucker.test(h),
+      !RE.casualShirt.test(h) &&
+      (RE.oxford.test(h) ||
+        RE.poplin.test(h) ||
+        RE.worsted.test(h) ||
+        RE.derby.test(h) ||
+        /\b(twill|non[-\s]?iron)\b/i.test(h)),
+    veto: (h) =>
+      RE.casualShirt.test(h) ||
+      RE.camp.test(h) ||
+      RE.safari.test(h) ||
+      RE.belgian.test(h) ||
+      RE.seersucker.test(h),
   },
   open_knit: {
     queryHint: "open-knit crochet mesh eyelet",
@@ -101,6 +115,8 @@ function haystack(input: LookStyleFitInput): string {
     input.garmentSubtype,
     input.pattern,
     input.materialFamily,
+    input.fit,
+    input.description,
   ]
     .filter(Boolean)
     .join(" ")

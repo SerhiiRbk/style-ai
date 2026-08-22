@@ -108,7 +108,16 @@ async function main() {
     .eq("user_id", userId)
     .maybeSingle();
   if (profErr) throw new Error(profErr.message);
-  const parsed = styleProfileSchema.safeParse(profRow?.profile);
+  const rawProfile = profRow?.profile as Record<string, unknown> | undefined;
+  if (rawProfile && typeof rawProfile.demographics === "object" && rawProfile.demographics) {
+    rawProfile.demographics = {
+      city: "",
+      country: "",
+      climate: "",
+      ...(rawProfile.demographics as Record<string, unknown>),
+    };
+  }
+  const parsed = styleProfileSchema.safeParse(rawProfile);
   if (!parsed.success) {
     throw new Error("Look set has no valid style profile");
   }

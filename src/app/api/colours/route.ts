@@ -17,7 +17,11 @@ const MAX_DATA_URL_CHARS = 6_000_000;
 // v2: palettes grew from 8 → 10 swatches — invalidate pre-change cached results.
 // v3: added `clarity` (chroma) to the vision call + refineSeasonForClarity, so
 //     `/colours` matches the report pipeline (muted cool → soft, not cool/winter).
-const COLOURS_CACHE_VERSION = "3";
+// v4: palettes are personalised from undertone/contrast/hair/eyes/skin.
+// v5: palettes built from mid-cheek / hair / iris hexes; Cool Summer split.
+// v6: stop dragging named blues through green toward brown eyes.
+// v7: same-family hue mix only; lights mute gold instead of snapping to sage.
+const COLOURS_CACHE_VERSION = "7";
 
 /** Anonymous, deduplicated cache namespace in the `assets` bucket. */
 function cachePath(hash: string): string {

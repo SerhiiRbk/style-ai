@@ -14,6 +14,7 @@
 // Real run needs CATALOG_IMPORT_KEY in the env (sent as x-api-key).
 import { readFile } from "node:fs/promises";
 import { mapCategory } from "./feeds/normalize.mjs";
+import { CATEGORIES } from "./feeds/schema.mjs";
 import { normalizeTitle } from "./feeds/humanize.mjs";
 import { parseProductAttributes } from "./feeds/attributes.mjs";
 
@@ -49,7 +50,12 @@ if (dryRun) {
   const sample = [];
   for (const p of products) {
     const { title } = normalizeTitle(String(p.title ?? ""));
-    const canonical = mapCategory(p.category, title); // Spanish familyName → canonical
+    // Mirror the route: a category that's already canonical is kept as-is;
+    // otherwise mapCategory infers it from the title.
+    const canonical =
+      typeof p.category === "string" && CATEGORIES.includes(p.category)
+        ? p.category
+        : mapCategory(p.category, title);
     cats[canonical] = (cats[canonical] ?? 0) + 1;
     const a = parseProductAttributes(p);
     if (a.material_family) mat++;

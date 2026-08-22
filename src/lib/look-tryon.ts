@@ -1,4 +1,6 @@
 import type { ShoppingItem } from "@/lib/report";
+import { HOUSEHOLD_TEXTILE_RE } from "@/lib/style-extras";
+import { hasJacketHost } from "@/lib/ai/look-brief";
 
 export type LookTryOnKind = "look" | "capsule";
 
@@ -60,6 +62,17 @@ export type CatalogImageRef = {
   category: string;
 };
 
+const HEX_COLOR_RE = /^#?[0-9a-f]{6}$/i;
+
+/** Named colour for the image prompt — never a raw swatch hex. */
+function promptColourLabel(item: ShoppingItem): string {
+  const named = item.colorName?.trim();
+  if (named && !HEX_COLOR_RE.test(named)) return `${named} `;
+  const c = item.color?.trim() ?? "";
+  if (!c || c === "#CCCCCC" || HEX_COLOR_RE.test(c)) return "";
+  return `${c} `;
+}
+
 /** Lower is kept first when the image-ref budget is exceeded. */
 function catalogRefPriority(item: ShoppingItem): number {
   if (item.category === "Shirts") return 0;
@@ -79,7 +92,8 @@ type ShoppingItemWithImage = ShoppingItem & { image: string };
 function itemsWithCatalogImages(items: ShoppingItem[]): ShoppingItemWithImage[] {
   return items.filter(
     (i): i is ShoppingItemWithImage =>
-      Boolean(i.image && /^https?:\/\//i.test(i.image)),
+      Boolean(i.image && /^https?:\/\//i.test(i.image)) &&
+      !HOUSEHOLD_TEXTILE_RE.test(i.title),
   );
 }
 
@@ -109,14 +123,33 @@ export function catalogPromptFromItems(
   items: ShoppingItem[],
   lookDescription?: string,
 ): string | undefined {
+  items = items.filter((i) => !HOUSEHOLD_TEXTILE_RE.test(i.title));
+  const jacketHost =
+    hasJacketHost(lookDescription ?? "") ||
+    items.some((i) => i.category === "Outerwear");
+  items = items.filter((i) => {
+    if (
+      i.category === "Accessories" &&
+      /\b(pocket[\s-]?squares?|pochettes?|handkerchiefs?)\b/i.test(i.title)
+    ) {
+      return jacketHost;
+    }
+    return true;
+  });
   if (!items.length) return undefined;
   const lines = items.map((i) => {
-    const colour = i.color && i.color !== "#CCCCCC" ? `${i.color} ` : "";
+    const colour = promptColourLabel(i);
     const note = i.similarPick
       ? " (match the garment type and tone closely)"
       : "";
     if (i.category === "Accessories" && isEyewearTitle(i.title)) {
       return `- wearing on the face over the eyes (never held, never in a pocket): ${colour}${i.title}${note}`;
+    }
+    if (
+      i.category === "Accessories" &&
+      /\b(pocket[\s-]?squares?|pochettes?)\b/i.test(i.title)
+    ) {
+      return `- folded in the jacket breast pocket (never a trouser pocket): ${colour}${i.title}${note}`;
     }
     return `- wearing a ${colour}${i.category.toLowerCase()}: ${i.title}${note}`;
   });
@@ -184,7 +217,12 @@ export function catalogPromptFromItems(
     `\nWear EVERY listed garment — do not drop the shirt, top, trousers or shoes ` +
     `to make room for an accessory. ` +
     `Reproduce each listed garment's type, colour and material faithfully. ` +
-    `Do not add extra accessories that are not in this list or the look description. ` +
+    `Colours and materials come only from these catalogue titles and photos. ` +
+    `Do not add extra accessories that are not in this list. ` +
+    `Wear the catalogue pieces above — do not substitute a different shirt, ` +
+    `trouser, shoe or bag named only in a styling note, and do not swap the ` +
+    `shirt colour or shoe finish for one named only in a look caption. ` +
+    `Trouser pockets stay empty and lie flat — no cloth peeking out. ` +
     baseLayerRule +
     bottomsRule +
     eyewearRule

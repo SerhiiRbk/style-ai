@@ -124,9 +124,9 @@ export const LOOK_WEARABLE_RULE =
   "Wear only garments that sit on the body, plus at most one normal bag " +
   "(tote, backpack, briefcase or messenger). Never name handheld props: " +
   "no wallet, cardholder, billfold, phone, keys, cup or anything held in a hand. " +
-  "Name a pocket square only when the look also has a blazer / sport coat " +
-  "or a collared shirt (oxford, dress or casual button-down) as the chest layer. " +
-  "Never put a pocket square on a jumper, sweater or crewneck, and never in a trouser pocket. " +
+  "Name a pocket square only when the look also has a blazer or sport coat " +
+  "with a breast pocket. Never put a pocket square on a shirt-only look, " +
+  "a jumper, sweater or crewneck, and never in a trouser pocket. " +
   "Shoes must clearly contrast the trousers — different lightness or colour family. " +
   "Never pair mushroom, greige, taupe or beige trousers with matching greige/beige shoes.";
 
@@ -157,19 +157,14 @@ export function stripHandheldProps(description: string): string {
 const POCKET_SQUARE_RE = /\b(pocket[\s-]?squares?|pochettes?)\b/i;
 const JACKET_HOST_RE =
   /\b(blazers?|sport\s*coats?|sportcoats?|suit\s+jackets?|dinner\s+jackets?|tuxedo\s+jackets?|tailored\s+jackets?)\b/i;
-const COLLARED_SHIRT_RE =
-  /\b(oxfords?|button[- ]?downs?|button[- ]?ups?)\b|(?<!t-)(?<!sweat)\bshirts?\b/i;
-const COVERING_KNIT_RE =
-  /\b(jumpers?|sweaters?|crewnecks?|crew[- ]necks?|roll[- ]?necks?|turtlenecks?|cardigans?)\b/i;
 
 export function hasJacketHost(description: string): boolean {
   return JACKET_HOST_RE.test(description);
 }
 
-/** True when the brief has a real breast-pocket host for a pocket square. */
+/** True when the brief has a jacket breast pocket for a pocket square. */
 export function pocketSquareHasHost(description: string): boolean {
-  if (hasJacketHost(description)) return true;
-  return COLLARED_SHIRT_RE.test(description) && !COVERING_KNIT_RE.test(description);
+  return hasJacketHost(description);
 }
 
 /**
@@ -187,7 +182,7 @@ export function stripMisplacedPocketSquare(description: string): string {
     .join(", ");
 }
 
-/** Strip handheld props and pocket squares that have no jacket/shirt host. */
+/** Strip handheld props and pocket squares that have no jacket host. */
 export function sanitizeLookDescription(description: string): string {
   return stripMisplacedPocketSquare(stripHandheldProps(description));
 }

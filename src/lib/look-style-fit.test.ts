@@ -91,6 +91,44 @@ test("City formal boosts oxford / derby, vetoes camp-collar and Belgian loafers"
   );
 });
 
+test("City formal does not boost a relaxed or viscose shirt just because it says poplin", () => {
+  assert.equal(
+    lookStyleFitScore("city_formal", { title: "Zara Relaxed Fit Poplin Shirt" }),
+    0,
+  );
+  assert.equal(
+    lookStyleIsVeto("city_formal", { title: "Zara Relaxed Fit Poplin Shirt" }),
+    true,
+  );
+  assert.equal(
+    lookStyleIsVeto("city_formal", {
+      title: "Reserved Comfort Fit Shirt",
+      materialFamily: "viscose",
+      fit: "relaxed",
+    }),
+    true,
+  );
+  assert.equal(
+    lookStyleFitScore("city_formal", { title: "Regular Fit Poplin Shirt" }),
+    1,
+  );
+  assert.equal(
+    lookStyleIsVeto("city_formal", {
+      title: "Reserved Regular Fit Cotton Shirt",
+      description: "low stand up collar, short sleeves, patch chest pocket",
+    }),
+    true,
+  );
+  assert.equal(
+    lookStyleFitScore("city_formal", { title: "Zara Poplin Check Shirt" }),
+    0,
+  );
+  assert.equal(
+    lookStyleIsVeto("city_formal", { title: "Zara Poplin Check Shirt" }),
+    true,
+  );
+});
+
 test("Open knit boosts mesh / crochet and vetoes Shetland", () => {
   assert.equal(lookStyleFitScore("open_knit", { title: "Crochet Camp Shirt" }), 1);
   assert.equal(lookStyleFitScore("open_knit", { title: "Open-Knit Polo" }), 1);

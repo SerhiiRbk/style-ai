@@ -7,6 +7,7 @@ import {
 } from "@/lib/ai/pipeline";
 import { getReportById } from "@/lib/data/reports";
 import { lookItemsNeedRefresh, SHORT_SLEEVE_KNIT_RE, TURTLENECK_KNIT_RE } from "@/lib/data/catalog";
+import { HOUSEHOLD_TEXTILE_RE } from "@/lib/style-extras";
 import { ensureSetLookItems } from "@/lib/data/look-sets";
 import { isDemoReportId } from "@/lib/demo-report";
 import {
@@ -362,12 +363,13 @@ export async function POST(request: Request) {
   // knit (stale look_items from before the knit filter can still carry one). A
   // short-sleeve knit worn on its own (no shirt in the set) is left untouched.
   const hasShirt = resolvedItems.some((i) => i.category === "Shirts");
-  let catalogItems = hasShirt
+  let catalogItems = (hasShirt
     ? resolvedItems.filter(
         (i) =>
           !(i.category === "Knitwear" && SHORT_SLEEVE_KNIT_RE.test(i.title)),
       )
-    : resolvedItems;
+    : resolvedItems
+  ).filter((i) => !HOUSEHOLD_TEXTILE_RE.test(i.title));
   // A roll-neck / turtleneck replaces the shirt. Keeping both makes the model
   // paint a collar ON TOP of the roll-neck and the jumper body over the shirt.
   const hasTurtleneck = catalogItems.some(

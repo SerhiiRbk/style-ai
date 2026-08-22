@@ -2549,9 +2549,9 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   boots: ["boot", "boots"],
   boot: ["boot", "boots"],
   chelsea: ["chelsea", "boot", "boots"],
-  derbies: ["derby", "derbies"],
-  derby: ["derby", "derbies"],
-  oxfords: ["oxford", "oxfords"],
+  derbies: ["derby", "derbies", "oxford", "oxfords"],
+  derby: ["derby", "derbies", "oxford", "oxfords"],
+  oxfords: ["oxford", "oxfords", "derby", "derbies"],
   brogues: ["brogue", "brogues"],
   belt: ["belt"],
   tote: ["tote", "tote bag"],
@@ -2602,6 +2602,28 @@ const COLOR_WORDS = new Set<string>([
 const GARMENT_KEYS = Object.keys(GARMENT_CATEGORY).sort(
   (a, b) => b.length - a.length,
 );
+
+/** Kitchen / bath textiles that leak into Knitwear via "waffle-knit tea towels". */
+export const HOUSEHOLD_TEXTILE_RE =
+  /\b(?:tea[\s-]?towels?|dish[\s-]?towels?|bath[\s-]?towels?|hand[\s-]?towels?|beach[\s-]?towels?|kitchen[\s-]?towels?|face[\s-]?towels?|wash[\s-]?cloths?|flannels?|bedding|duvets?|pillowcases?|napkins?|table[\s-]?cloths?|placemats?)\b/i;
+
+function garmentKeyPattern(key: string): RegExp {
+  const escaped = key
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  return new RegExp(`\\b${escaped}s?\\b`);
+}
+
+function clauseMentionsGarmentKey(normalized: string, key: string): boolean {
+  return garmentKeyPattern(key).test(normalized);
+}
+
+function findGarmentKeyIndex(text: string, key: string, from = 0): number {
+  const slice = text.slice(from);
+  const match = slice.match(garmentKeyPattern(key));
+  if (!match || match.index == null) return -1;
+  return from + match.index;
+}
 
 /** Collapse known two-word colours into a single token before parsing. */
 function normalizeCompoundColors(text: string): string {
@@ -2754,6 +2776,15 @@ export function garmentTitleMatchScore(garment: string, title: string): number {
     }
     return 0;
   }
+  // Home textiles are not apparel — "waffle-knit tea towels" is not knitwear.
+  if (
+    HOUSEHOLD_TEXTILE_RE.test(hay) &&
+    key !== "handkerchief" &&
+    key !== "pocket square" &&
+    key !== "pochette"
+  ) {
+    return 0;
+  }
   // Travel / weekender / duffel is not a messenger, tote or office bag.
   if (
     key === "messenger" ||
@@ -2789,6 +2820,12 @@ export function garmentTitleMatchScore(garment: string, title: string): number {
       /\b(?:neck)?ties?\b|\bbow\s*tie\b|\bbolo\b|\bcaps?\b|\bhats?\b|\bbelts?\b/.test(
         hay,
       )
+    ) {
+      return 0;
+    }
+    // A supermarket pack of cotton handkerchiefs is not a linen pocket square.
+    if (
+      /\b(?:\d+\s*pks?|packs?\s+of|antibacterial|sanitized)\b/i.test(hay)
     ) {
       return 0;
     }
@@ -2993,8 +3030,11 @@ function extractGarmentFromClause(clause: string): LookGarment | null {
   const words = normalized.split(/\s+/).filter(Boolean);
   let garment: string | null = null;
   let category: string | null = null;
+  // "knitted tie" contains "knit" as a substring — it is a necktie, not a jumper.
+  const skipKnitForTie = /\bties?\b/.test(normalized);
   for (const key of GARMENT_KEYS) {
-    if (normalized.includes(key)) {
+    if (skipKnitForTie && (key === "knit" || key === "knitted")) continue;
+    if (clauseMentionsGarmentKey(normalized, key)) {
       garment = key;
       category = GARMENT_CATEGORY[key];
       break;
@@ -3016,7 +3056,7 @@ function decomposeFromWholeText(description: string): LookGarment[] {
   for (const key of GARMENT_KEYS) {
     let from = 0;
     while (from < lower.length) {
-      const index = lower.indexOf(key, from);
+      const index = findGarmentKeyIndex(lower, key, from);
       if (index === -1) break;
       const before = lower.slice(Math.max(0, index - 48), index);
       const clause = `${before} ${key}`.trim();
@@ -3068,11 +3108,24 @@ export function selectLookGarmentSlots(
   garments: LookGarment[],
   max = 6,
 ): LookGarment[] {
+  const hasJacket = garments.some(
+    (g) =>
+      g.category === "Outerwear" ||
+      /\b(blazers?|sport\s*coats?|jackets?|coats?)\b/.test(g.garment),
+  );
   const out: LookGarment[] = [];
   const usedCategories = new Set<string>();
   const usedAccessories = new Set<string>();
   for (const g of garments) {
     if (out.length >= max) break;
+    if (
+      !hasJacket &&
+      (g.garment === "pocket square" ||
+        g.garment === "pochette" ||
+        g.garment === "handkerchief")
+    ) {
+      continue;
+    }
     if (g.category === "Accessories") {
       const key = g.garment.trim().toLowerCase();
       if (!key || usedAccessories.has(key)) continue;

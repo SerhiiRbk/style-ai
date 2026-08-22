@@ -353,7 +353,17 @@ export function mockReportContent(intake: Intake): ReportContent {
       : undefined,
   });
   const colors = annotateNearFaceGuidance(
-    reportPalette({ subseason, undertone, contrast }),
+    reportPalette({
+      subseason,
+      undertone,
+      contrast,
+      hairColor: intake.hairColor
+        ? HAIR_COLOR_LABELS[intake.hairColor]
+        : undefined,
+      eyeColor: intake.eyeColor
+        ? EYE_COLOR_LABELS[intake.eyeColor]
+        : undefined,
+    }),
     {
       boldness: intake.boldness,
       goals: intake.goals,
