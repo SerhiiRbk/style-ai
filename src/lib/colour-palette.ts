@@ -10,6 +10,9 @@ export type Season = "winter" | "spring" | "summer" | "autumn";
 
 export type PaletteSwatch = { hex: string; name: string };
 
+/** Colour cast of the light on the face, judged by the vision model. */
+export type LightingCast = "neutral" | "warm-tint" | "cool-tint" | "mixed";
+
 /** Result of the free colour analysis — shared between the API and the UI. */
 export type ColourAnalysisResult = {
   season: Season;
@@ -23,6 +26,10 @@ export type ColourAnalysisResult = {
   skinHex?: string;
   hairHex?: string;
   eyeHex?: string;
+  /** Light cast on the face; tinted light weakens hex mix, never flips season. */
+  lighting?: LightingCast;
+  /** User-facing note when the light is tinted or mixed. */
+  lightingWarning?: string;
   palette: PaletteSwatch[];
   carloNote: string;
 };
@@ -471,6 +478,10 @@ export type PalettePerson = {
   skinHex?: string | null;
   hairHex?: string | null;
   eyeHex?: string | null;
+  /** 0–1 blend of face hexes into curated chips. Tinted light uses ~0.5. */
+  hexMixScale?: number;
+  /** Contrast↔hex-spread fight: keep face hue, discard untrusted lightness. */
+  dropLightness?: boolean;
 };
 
 /** Accept #rgb / #rrggbb from vision; null when the model skipped or invented junk. */
@@ -678,6 +689,145 @@ export function refineSeasonFromSkinHex(opts: {
   return opts.season;
 }
 
+const LIGHTING_CAST_DESC: Record<Exclude<LightingCast, "neutral">, string> = {
+  "warm-tint": "a warm (orange/yellow) tint",
+  "cool-tint": "a cool (blue) tint",
+  mixed: "mixed light sources",
+};
+
+function skinHexContradictsUndertone(
+  skinHex: string | null | undefined,
+  undertone: Undertone | null | undefined,
+): boolean {
+  if (!undertone || undertone === "neutral") return false;
+  const hex = parseSwatchHex(skinHex);
+  if (!hex) return false;
+  const { h, s } = hexToHsl(hex);
+  if (s < 0.12) return false;
+  const warmCheek = h >= 20 && h <= 50;
+  const coolCheek = h >= 200 || h <= 16;
+  if (undertone === "cool" && warmCheek) return true;
+  if (undertone === "warm" && coolCheek) return true;
+  return false;
+}
+
+export type HexTrust = {
+  /** Alias of useForSeason — season flip only, not palette mix. */
+  trustHexes: boolean;
+  useForSeason: boolean;
+  useForPalette: boolean;
+  mixScale: number;
+  dropLightness: boolean;
+  lightingWarning?: string;
+};
+
+const TRUSTED: HexTrust = {
+  trustHexes: true,
+  useForSeason: true,
+  useForPalette: true,
+  mixScale: 1,
+  dropLightness: false,
+};
+
+/**
+ * Decide how far the model-read hexes may steer the result. NEVER rejects a
+ * photo. Season (summer↔autumn) stays on categorical undertone/contrast/
+ * clarity unless light is neutral and the cheek hex agrees. Palette mix keeps
+ * the hexes under ordinary warm/cool indoor lamps — only mixed light that
+ * contradicts undertone drops them. Contrast↔spread fights discard lightness
+ * only (hue still tints the chips).
+ */
+export function assessHexTrust(opts: {
+  lighting?: LightingCast | null;
+  contrast?: Contrast | null;
+  undertone?: Undertone | null;
+  skinHex?: string | null;
+  hairHex?: string | null;
+}): HexTrust {
+  const cast = opts.lighting ?? "neutral";
+  if (
+    cast === "mixed" &&
+    skinHexContradictsUndertone(opts.skinHex, opts.undertone)
+  ) {
+    return {
+      trustHexes: false,
+      useForSeason: false,
+      useForPalette: false,
+      mixScale: 0,
+      dropLightness: false,
+      lightingWarning:
+        `The light in this photo has ${LIGHTING_CAST_DESC.mixed} that fights ` +
+        `the colouring we read from your features, so swatches follow the ` +
+        `season rather than the photo's exact pixels. For the sharpest match, ` +
+        `retake in soft natural daylight.`,
+    };
+  }
+  if (cast !== "neutral") {
+    return {
+      trustHexes: false,
+      useForSeason: false,
+      useForPalette: true,
+      mixScale: 0.5,
+      dropLightness: false,
+      lightingWarning:
+        `The light in this photo has ${LIGHTING_CAST_DESC[cast]}, so swatches ` +
+        `are blended more gently from your features. For the sharpest match, ` +
+        `retake in soft natural daylight.`,
+    };
+  }
+  const skin = parseSwatchHex(opts.skinHex);
+  const hair = parseSwatchHex(opts.hairHex);
+  if (skin && hair && opts.contrast) {
+    const spread = Math.abs(hexToHsl(skin).l - hexToHsl(hair).l);
+    // Fair skin + dark hair ≈ 0.5+; blonde-on-fair ≈ 0.1–0.2. Wide grey zone
+    // between the two bounds so only a clear contradiction drops lightness.
+    if (opts.contrast === "high" && spread < 0.18) {
+      return {
+        trustHexes: false,
+        useForSeason: false,
+        useForPalette: true,
+        mixScale: 1,
+        dropLightness: true,
+      };
+    }
+    if (opts.contrast === "low" && spread > 0.5) {
+      return {
+        trustHexes: false,
+        useForSeason: false,
+        useForPalette: true,
+        mixScale: 1,
+        dropLightness: true,
+      };
+    }
+  }
+  return TRUSTED;
+}
+
+/** Apply {@link assessHexTrust} so report rebuild and `/colours` share one mix. */
+export function palettePersonWithTrust(
+  person: PalettePerson & { lighting?: LightingCast | null },
+): PalettePerson {
+  const trust = assessHexTrust({
+    lighting: person.lighting,
+    contrast: person.contrast,
+    undertone: person.undertone,
+    skinHex: person.skinHex,
+    hairHex: person.hairHex,
+  });
+  return {
+    undertone: person.undertone,
+    contrast: person.contrast,
+    hairColor: person.hairColor,
+    eyeColor: person.eyeColor,
+    skinTone: person.skinTone,
+    skinHex: trust.useForPalette ? person.skinHex : undefined,
+    hairHex: trust.useForPalette ? person.hairHex : undefined,
+    eyeHex: trust.useForPalette ? person.eyeHex : undefined,
+    hexMixScale: trust.mixScale,
+    dropLightness: trust.dropLightness,
+  };
+}
+
 /**
  * Build the 10-swatch set from this face: curated roles stay (names + structure),
  * hexes are pulled toward skin / hair / iris and snapped into the season's
@@ -689,6 +839,8 @@ export function buildPaletteFromColouring(
   person: PalettePerson,
 ): PaletteSwatch[] {
   const season = seasonForSubseason(subseason);
+  const scale = person.hexMixScale ?? 1;
+  const keepL = Boolean(person.dropLightness);
   const skin = parseSwatchHex(person.skinHex);
   const hair = parseSwatchHex(person.hairHex);
   const eye = parseSwatchHex(person.eyeHex);
@@ -710,13 +862,14 @@ export function buildPaletteFromColouring(
     const role = swatchRole(sw.hex);
     const base = hexToHsl(sw.hex);
     let mixed = base;
-    if (role === "light" && skinHsl) mixed = mixHsl(base, skinHsl, 0.55);
-    else if (role === "mid" && skinHsl) mixed = mixHsl(base, skinHsl, 0.28);
-    else if (role === "anchor" && hairHsl) mixed = mixHsl(base, hairHsl, 0.5);
+    if (role === "light" && skinHsl) mixed = mixHsl(base, skinHsl, 0.55 * scale);
+    else if (role === "mid" && skinHsl) mixed = mixHsl(base, skinHsl, 0.28 * scale);
+    else if (role === "anchor" && hairHsl) mixed = mixHsl(base, hairHsl, 0.5 * scale);
     else if (i === eyeAccentIndex && eyeHsl) {
       // Iris shifts chroma only — hue stays on the named chip (Golden ≠ olive).
-      mixed = mixHsl(base, eyeHsl, 0.55, 0);
+      mixed = mixHsl(base, eyeHsl, 0.55 * scale, 0);
     }
+    if (keepL) mixed = { ...mixed, l: base.l };
     const hex = snapToSeasonGamut(
       hslToHex(mixed.h, mixed.s, mixed.l),
       season,

@@ -2439,19 +2439,22 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   beige: { family: "brown", shade: "light" }, sand: { family: "brown", shade: "light" },
   stone: { family: "brown", shade: "light" }, oat: { family: "brown", shade: "light" },
   oatmeal: { family: "brown", shade: "light" },
+  buff: { family: "brown", shade: "light" },
+  putty: { family: "brown", shade: "light" },
   nude: { family: "brown", shade: "light" }, champagne: { family: "brown", shade: "light" },
   fawn: { family: "brown", shade: "light" },
   greige: { family: "brown", shade: "light" }, mushroom: { family: "brown", shade: "light" },
   chocolate: { family: "brown", shade: "dark" }, chestnut: { family: "brown", shade: "dark" },
   espresso: { family: "brown", shade: "dark" }, coffee: { family: "brown", shade: "dark" },
-  // green — teal is blue-green; catalog teal is rare, so it lives here so
-  // dark/bottle green fills the slot instead of navy. "soft teal" still
-  // prefers sage via the light shade modifier.
   green: { family: "green" }, sage: { family: "green", shade: "light" },
   olive: { family: "green", shade: "dark" }, forest: { family: "green", shade: "dark" },
   emerald: { family: "green", shade: "dark" },
   bottle: { family: "green", shade: "dark" },
-  teal: { family: "green", shade: "dark" },
+  // Teal is blue-green. Catalogue teal is rare — fall back to blue / grey
+  // (chambray, slate, light blue), not sage or bottle green. No implied
+  // shade so muted/soft teal still prefers голубой over navy.
+  teal: { family: "blue" },
+  chambray: { family: "blue", shade: "light" },
   // red / warm
   red: { family: "red" },   rust: { family: "red" }, terracotta: { family: "red" }, copper: { family: "red" },
   burgundy: { family: "red", shade: "dark" }, maroon: { family: "red", shade: "dark" },
@@ -2478,8 +2481,9 @@ const COLOR_NEIGHBORS: Record<string, readonly string[]> = {
   purple: ["pink"],
   white: ["brown"],
   brown: ["white", "grey", "green"],
-  grey: ["brown"],
+  grey: ["brown", "blue"],
   green: ["brown"],
+  blue: ["grey"],
   orange: ["yellow"],
   yellow: ["orange"],
 };
@@ -2492,6 +2496,8 @@ const LIGHT_NEIGHBOR_PAIRS = new Set([
   "grey-brown",
   "brown-green",
   "green-brown",
+  "blue-grey",
+  "grey-blue",
 ]);
 
 /** Representative hex for a named token — used when the look has no palette swatch. */
@@ -2511,11 +2517,14 @@ const NAMED_COLOR_HEX: Record<string, string> = {
   mushroom: "#A99C8C",
   taupe: "#B49C7E",
   sage: "#9AA588",
-  teal: "#2A6B73",
+  teal: "#4E8C92",
   khaki: "#9A8B5C",
   stone: "#C2B8A8",
   beige: "#D4C4A8",
   sand: "#D9C7A3",
+  oatmeal: "#D8CFB8",
+  buff: "#D9C7A3",
+  putty: "#C9B8A0",
   nude: "#D8C4A0",
   champagne: "#E3C6A8",
   fawn: "#C9A57A",
@@ -2743,8 +2752,11 @@ export function prefersDrawstringSilhouette(
   return DRAWSTRING_GARMENTS.has(normalizeGarmentKey(garment));
 }
 
-export function isDrawstringTitle(title: string): boolean {
-  return DRAWSTRING_TITLE_RE.test(title);
+export function isDrawstringTitle(
+  title: string,
+  meta?: { description?: string | null },
+): boolean {
+  return DRAWSTRING_TITLE_RE.test(`${title} ${meta?.description ?? ""}`);
 }
 
 /**
@@ -2754,9 +2766,10 @@ export function isDrawstringTitle(title: string): boolean {
 export function silhouetteFitScore(
   clause: string | null | undefined,
   title: string,
+  meta?: { description?: string | null },
 ): number {
   if (!clause || !DRAWSTRING_CLAUSE_RE.test(clause)) return 0;
-  if (DRAWSTRING_TITLE_RE.test(title)) return 0.12;
+  if (isDrawstringTitle(title, meta)) return 0.12;
   if (TAILORED_TROUSER_TITLE_RE.test(title)) return -0.08;
   return 0;
 }
@@ -2874,6 +2887,27 @@ function parseColorTokens(text: string): { families: Set<string>; shade?: Shade 
     const mod = SHADE_WORDS[w];
     if (mod) modShade = mod;
   }
+  // Catalogue often stores only a hex ("#FFFFFF") — infer a family so white
+  // does not score as a neutral 0.5 against teal / sage.
+  if (!families.size) {
+    const hexHit = text.match(/#?[0-9a-f]{6}/i);
+    if (hexHit) {
+      const hex = parseHexColor(hexHit[0]);
+      if (hex) {
+        const { s, l } = hexToHsl(hex);
+        if (s < 0.08 && l >= 0.88) {
+          families.add("white");
+          hueShade = "light";
+        } else if (s < 0.08 && l <= 0.14) {
+          families.add("black");
+          hueShade = "dark";
+        } else if (s < 0.1) {
+          families.add("grey");
+          hueShade = l >= 0.6 ? "light" : l <= 0.35 ? "dark" : "mid";
+        }
+      }
+    }
+  }
   // An explicit lightness word always wins, regardless of token order, so
   // "soft slate blue" reads light even though "slate" alone implies dark.
   return { families, shade: modShade ?? hueShade };
@@ -2884,7 +2918,18 @@ export function colorFamilies(text: string): Set<string> {
   return parseColorTokens(text).families;
 }
 
-/** Colour string to score against the catalogue — clause fills in missing tokens. */
+/** Light / mid / dark token from a look cue or product colour string. */
+export function colorShade(
+  text: string,
+): "light" | "mid" | "dark" | null {
+  return parseColorTokens(text).shade ?? null;
+}
+
+/** True when the look named teal — fallback is blue/grey, not sage. */
+export function lookAsksTeal(text?: string | null): boolean {
+  return /\bteal\b/i.test(text ?? "");
+}
+
 export function lookColorCue(
   color?: string | null,
   clause?: string | null,
@@ -3042,12 +3087,36 @@ export function colorMatchScore(
   }
 
   if (queryHex && productHex) {
-    if (hexScore != null) return Math.max(word, hexScore);
+    if (hexScore != null) {
+      // Empty-family 0.5 must not rescue a far / opposite hex (white vs teal).
+      if (!p.families.size) return hexScore;
+      return Math.max(word, hexScore);
+    }
+    if (!p.families.size) return 0.12;
     // Only crush a strong same-family word when the swatch is a neon jump
     // (catalogue "pink" that is fuchsia). Soft plum ↔ lilac stays.
     const qH = hexToHsl(queryHex);
     const pH = hexToHsl(productHex);
     if (word >= 0.7 && pH.s > qH.s + 0.28) return 0.35;
+    // Same-family "sea green" that is actually pale grey must not beat teal.
+    // Teal itself falls back to light blue / grey — do not crush those.
+    if (word >= 0.7 && pH.l > qH.l + 0.3) {
+      const tealToCool =
+        lookAsksTeal(queryColor) &&
+        (p.families.has("blue") || p.families.has("grey"));
+      if (!tealToCool) return 0.38;
+    }
+    if (
+      pH.s < 0.18 &&
+      pH.l > 0.82 &&
+      [...q.families].some((f) =>
+        ["green", "blue", "red", "pink", "purple", "orange", "yellow"].includes(
+          f,
+        ),
+      )
+    ) {
+      return Math.min(word, 0.2);
+    }
   }
   return word;
 }
@@ -3129,6 +3198,72 @@ export function decomposeLook(description: string): LookGarment[] {
   }
   if (out.length) return out;
   return decomposeFromWholeText(description);
+}
+
+/** One structured garment slot from the reasoning model (lookContentSchema.items). */
+export type LookItemSlot = { garment: string; color?: string | null };
+
+/**
+ * Convert the reasoning model's structured `items` into LookGarments. Skips the
+ * fragile clause-splitting of `decomposeLook` (each item IS one clause) but runs
+ * every item through the same keyword vocabulary, so garment/category values
+ * stay identical for all downstream filters (isBlazerGarment, accessory types,
+ * occasion rules). Items whose garment word is outside the vocabulary are
+ * dropped. {@link resolveLookGarments} falls back to decomposeLook when the
+ * mapped list is thinner than the prose, so a drifting noun cannot drop a slot.
+ */
+export function lookGarmentsFromItems(
+  items: LookItemSlot[] | null | undefined,
+): LookGarment[] {
+  if (!items?.length) return [];
+  const out: LookGarment[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const garment = (item.garment ?? "").trim();
+    if (!garment) continue;
+    const color = (item.color ?? "").trim();
+    const clause = [color, garment].filter(Boolean).join(" ").toLowerCase();
+    const parsed = extractGarmentFromClause(normalizeCompoundColors(clause));
+    if (!parsed) continue;
+    const dedupeKey = `${parsed.category}:${parsed.color ?? ""}:${parsed.garment}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push(parsed);
+  }
+  return out;
+}
+
+/**
+ * Prefer structured slots when they cover at least as many garments as the
+ * prose parser. A partial list (unknown noun dropped a shoe, etc.) falls back
+ * to {@link decomposeLook} so matching is never thinner than today's regex.
+ */
+export function resolveLookGarments(
+  items: LookItemSlot[] | null | undefined,
+  description: string,
+): LookGarment[] {
+  const fromProse = decomposeLook(description);
+  const structured = lookGarmentsFromItems(items);
+  return structured.length >= fromProse.length && structured.length
+    ? structured
+    : fromProse;
+}
+
+/** Parse a `looks.items` jsonb cell into structured slots (null when absent). */
+export function lookItemsFromCell(cell: unknown): LookItemSlot[] | null {
+  if (!Array.isArray(cell)) return null;
+  const items = cell
+    .filter(
+      (it): it is { garment: string; color?: string | null } =>
+        Boolean(it) &&
+        typeof it === "object" &&
+        typeof (it as { garment?: unknown }).garment === "string",
+    )
+    .map((it) => ({
+      garment: it.garment,
+      color: typeof it.color === "string" ? it.color : null,
+    }));
+  return items.length ? items : null;
 }
 
 /**

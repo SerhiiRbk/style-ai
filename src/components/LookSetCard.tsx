@@ -19,6 +19,7 @@ import type { Currency } from "@/lib/currency";
 export function LookSetCard({
   setId,
   lookIndex,
+  occasionId,
   title: initialTitle,
   description: initialDescription,
   palette: initialPalette,
@@ -30,6 +31,7 @@ export function LookSetCard({
 }: {
   setId: string;
   lookIndex: number;
+  occasionId?: string | null;
   title: string;
   description: string;
   palette: string[];
@@ -182,6 +184,7 @@ export function LookSetCard({
           key={description}
           setId={setId}
           lookIndex={lookIndex}
+          occasionId={occasionId}
           title={title}
           description={description}
           disabled={busy}

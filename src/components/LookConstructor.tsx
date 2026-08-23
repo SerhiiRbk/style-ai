@@ -72,6 +72,7 @@ export function LookConstructor({
   lookIndex,
   title,
   description,
+  occasionId,
   disabled,
   onApplied,
   onApplyingChange,
@@ -80,6 +81,7 @@ export function LookConstructor({
   lookIndex: number;
   title: string;
   description: string;
+  occasionId?: string | null;
   disabled?: boolean;
   onApplied: (look: ConstructedLook) => void;
   onApplyingChange?: (busy: boolean) => void;
@@ -90,7 +92,7 @@ export function LookConstructor({
     (includeThreeQuarter ? CREDIT_COSTS.look_three_quarter : 0);
   const { balance, setBalance } = useCredits();
   const initial = useMemo(
-    () => slotsFromLook(title, description),
+    () => slotsFromLook(title, description, occasionId),
     [title, description],
   );
   const [slots, setSlots] = useState<ConstructorSlot[]>(initial);

@@ -112,7 +112,14 @@ export function composeLookBrief(
     !lookStyleHasBrief(styleId)
       ? `${partyJacketFabricDirective(lookIndex)} `
       : "";
-  return `${seasonNote}${strictnessNote}${occasionNote}${styleNote}${fabricNote}${brief}`;
+  const workShirtNote =
+    occasionId === "work" || occasionId === "formal"
+      ? "Work shirt: light-blue oxford if the trousers are light (oatmeal, cream, stone, light grey); " +
+        "white oxford if the trousers are dark or brown (coffee, chocolate, navy, charcoal). " +
+        "Always tuck the shirt into the trousers. " +
+        "Do not put a chromatic hero colour on the shirt. "
+      : "";
+  return `${seasonNote}${strictnessNote}${occasionNote}${styleNote}${fabricNote}${workShirtNote}${brief}`;
 }
 
 /**
@@ -185,4 +192,26 @@ export function stripMisplacedPocketSquare(description: string): string {
 /** Strip handheld props and pocket squares that have no jacket host. */
 export function sanitizeLookDescription(description: string): string {
   return stripMisplacedPocketSquare(stripHandheldProps(description));
+}
+
+/**
+ * Mirror of {@link sanitizeLookDescription} for the structured `items` slots:
+ * drop handheld props and a pocket square with no jacket in the (already
+ * sanitised) description, so items never resurrect a piece the prose dropped.
+ * Returns undefined when nothing survives, signalling "no structured slots".
+ */
+export function sanitizeLookItems<T extends { garment: string }>(
+  items: T[] | null | undefined,
+  sanitizedDescription: string,
+): T[] | undefined {
+  if (!items?.length) return undefined;
+  const kept = items.filter((item) => {
+    const garment = item.garment ?? "";
+    if (HANDHELD_PROP_RE.test(garment)) return false;
+    if (POCKET_SQUARE_RE.test(garment) && !hasJacketHost(sanitizedDescription)) {
+      return false;
+    }
+    return true;
+  });
+  return kept.length ? kept : undefined;
 }

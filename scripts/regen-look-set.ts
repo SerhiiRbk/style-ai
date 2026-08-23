@@ -128,14 +128,14 @@ async function main() {
 
   const looksQuery = await admin
     .from("looks")
-    .select("id, idx, context, title, description, palette, image_path, image_path_tq")
+    .select("id, idx, context, title, description, palette, items, image_path, image_path_tq")
     .eq("set_id", SET_ID)
     .order("idx", { ascending: true });
   const looks =
     looksQuery.error && /image_path_tq/.test(looksQuery.error.message)
       ? await admin
           .from("looks")
-          .select("id, idx, context, title, description, palette, image_path")
+          .select("id, idx, context, title, description, palette, items, image_path")
           .eq("set_id", SET_ID)
           .order("idx", { ascending: true })
       : looksQuery;
@@ -264,6 +264,7 @@ async function main() {
       look,
       referenceImageUrl: fullUrl,
       faceReferenceImageUrl: faceUrl,
+      occasionId: ctx?.id,
     });
     if (!img) {
       console.error(`    generateLookImage returned null`);
@@ -346,6 +347,9 @@ async function main() {
         title: (row.title as string) ?? "Look",
         description: sanitizeLookDescription(String(row.description ?? "")),
         palette: (row.palette as string[]) ?? [],
+        items: Array.isArray((row as { items?: unknown }).items)
+          ? (row as { items: unknown }).items
+          : undefined,
       })),
     } as unknown as ReportContent;
     const byPos = await matchLookItems(profile, content, {

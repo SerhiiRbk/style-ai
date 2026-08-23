@@ -11,6 +11,7 @@ import {
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import type { ShoppingItem } from "@/lib/report";
 import { lookItemsNeedRefresh, matchLookItems } from "@/lib/data/catalog";
+import { lookItemsFromCell } from "@/lib/style-extras";
 import {
   parseArchivedLookImages,
   type ArchivedLookImage,
@@ -211,7 +212,15 @@ export async function saveSetLook(
     setId: string;
     userId: string;
     idx: number;
-    look: { context: string; title: string; description: string; palette: string[] };
+    look: {
+      context: string;
+      title: string;
+      description: string;
+      palette: string[];
+      /** Structured garment slots (lookContentSchema.items) — persisted so the
+       * background re-match keeps using them instead of prose decomposition. */
+      items?: { garment: string; color?: string | null }[];
+    };
     imagePath: string;
   },
 ): Promise<void> {
@@ -220,7 +229,18 @@ export async function saveSetLook(
   // aligned with `look_sets.look_items` (also keyed by idx) and with the
   // `{idx}.ext` storage path — set looks are inserted concurrently in chunks, so
   // created_at order is non-deterministic and must not be relied on for pairing.
-  const { error } = await admin.from("looks").insert({
+  const row: {
+    report_id: null;
+    set_id: string;
+    user_id: string;
+    idx: number;
+    context: string;
+    title: string;
+    description: string;
+    palette: string[];
+    image_path: string;
+    items?: { garment: string; color?: string | null }[];
+  } = {
     report_id: null,
     set_id: setId,
     user_id: userId,
@@ -230,7 +250,17 @@ export async function saveSetLook(
     description: look.description,
     palette: look.palette,
     image_path: imagePath,
-  });
+  };
+  if (look.items?.length) row.items = look.items;
+  const { error } = await admin.from("looks").insert(row);
+  // Pre-0048 DB has no `items` column — retry without it rather than failing
+  // the whole set render (same degrade-gracefully pattern as image_path_tq).
+  if (error && row.items && /items/.test(error.message)) {
+    delete row.items;
+    const retry = await admin.from("looks").insert(row);
+    if (retry.error) throw new Error(retry.error.message);
+    return;
+  }
   if (error) throw new Error(error.message);
 }
 
@@ -274,10 +304,11 @@ type SetLookRow = {
   palette: unknown;
   image_path: unknown;
   image_path_tq?: unknown;
+  items?: unknown;
 };
 
 const LOOK_ROW_SELECT =
-  "idx, context, title, description, palette, image_path, image_path_tq";
+  "idx, context, title, description, palette, image_path, image_path_tq, items";
 const LOOK_ROW_SELECT_BASE =
   "idx, context, title, description, palette, image_path";
 
@@ -291,7 +322,9 @@ async function selectSetLookRows(
     .eq("set_id", setId)
     .order("idx", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
-  if (first.error && /image_path_tq/.test(first.error.message)) {
+  // Pre-0044 / pre-0048 DBs lack image_path_tq / items — degrade to the base
+  // column set rather than failing the whole set view.
+  if (first.error && /image_path_tq|items/.test(first.error.message)) {
     return admin
       .from("looks")
       .select(LOOK_ROW_SELECT_BASE)
@@ -315,6 +348,7 @@ function looksFromRows(
       title: (r.title as string | null) ?? "",
       description: (r.description as string | null) ?? "",
       palette: (r.palette as string[] | null) ?? [],
+      items: lookItemsFromCell(r.items),
       imagePath: r.image_path as string,
       imagePathTq:
         typeof r.image_path_tq === "string" && r.image_path_tq
@@ -332,6 +366,7 @@ function looksFromRows(
         title: "",
         description: "",
         palette: [],
+        items: null,
         imagePath: null,
         imagePathTq: null,
       }
@@ -386,6 +421,8 @@ export type LoadedSetLook = {
   title: string;
   description: string;
   palette: string[];
+  /** Structured garment slots (0048); null on legacy rows → prose fallback. */
+  items: { garment: string; color?: string | null }[] | null;
   /** Null while this slot is still rendering (set status = generating). */
   imagePath: string | null;
   /** Optional 3/4 companion; null until the owner generates it. */
@@ -775,6 +812,7 @@ async function backfillSetLookItems(
         title: l.title,
         description: l.description,
         palette: l.palette,
+        items: l.items ?? undefined,
       })),
     } as unknown as ReportContent;
 

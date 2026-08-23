@@ -144,7 +144,7 @@ export async function POST(request: Request) {
   const admin = createAdminSupabase();
   const { data: setRow } = await admin
     .from("look_sets")
-    .select("id, report_id, created_at")
+    .select("id, report_id, created_at, occasion_id")
     .eq("id", setId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -295,6 +295,10 @@ export async function POST(request: Request) {
     referenceImageUrl: fullRefUrl ?? undefined,
     faceReferenceImageUrl: faceRefUrl ?? undefined,
     profileReferenceImageUrl: refs.profileUrl ?? undefined,
+    occasionId:
+      typeof (setRow as { occasion_id?: string | null }).occasion_id === "string"
+        ? (setRow as { occasion_id: string }).occasion_id
+        : null,
   });
   if (!img) {
     return NextResponse.json({ error: "Generation failed" }, { status: 502 });

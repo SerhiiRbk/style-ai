@@ -1,6 +1,8 @@
 import type { ShoppingItem } from "@/lib/report";
 import { HOUSEHOLD_TEXTILE_RE } from "@/lib/style-extras";
 import { hasJacketHost } from "@/lib/ai/look-brief";
+import { canonicalTuck } from "@/lib/look-constructor";
+import { lookOccasionIsTailored } from "@/lib/look-occasion-fit";
 
 export type LookTryOnKind = "look" | "capsule";
 
@@ -122,6 +124,7 @@ function pickCatalogImageItems(
 export function catalogPromptFromItems(
   items: ShoppingItem[],
   lookDescription?: string,
+  occasionId?: string | null,
 ): string | undefined {
   items = items.filter((i) => !HOUSEHOLD_TEXTILE_RE.test(i.title));
   const jacketHost =
@@ -137,6 +140,9 @@ export function catalogPromptFromItems(
     return true;
   });
   if (!items.length) return undefined;
+  const tuckShirt =
+    lookOccasionIsTailored(occasionId) &&
+    canonicalTuck(lookDescription ?? "") !== "out";
   const lines = items.map((i) => {
     const colour = promptColourLabel(i);
     const note = i.similarPick
@@ -150,6 +156,9 @@ export function catalogPromptFromItems(
       /\b(pocket[\s-]?squares?|pochettes?)\b/i.test(i.title)
     ) {
       return `- folded in the jacket breast pocket (never a trouser pocket): ${colour}${i.title}${note}`;
+    }
+    if (i.category === "Shirts" && tuckShirt) {
+      return `- wearing a ${colour}${i.category.toLowerCase()} tucked into the trousers: ${i.title}${note}`;
     }
     return `- wearing a ${colour}${i.category.toLowerCase()}: ${i.title}${note}`;
   });
@@ -256,6 +265,45 @@ export function resolveLookCatalogItems(
 ): ShoppingItem[] {
   if (typeof lookIndex !== "number" || !lookItems) return [];
   return lookItems[lookIndex] ?? [];
+}
+
+/**
+ * Keep the shopper's Shop-the-look ticks. Missing IDs are returned so the
+ * caller can hydrate them from the catalogue — never substitute a rematched
+ * SKU in the same slot (that rendered beige linen over a selected blue shirt).
+ */
+export function selectLookCatalogItems(
+  all: ShoppingItem[],
+  productIds: string[] | null,
+): { selected: ShoppingItem[]; missingIds: string[] } {
+  if (!productIds?.length) return { selected: all, missingIds: [] };
+  const selected: ShoppingItem[] = [];
+  const missingIds: string[] = [];
+  const seen = new Set<string>();
+  for (const id of productIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const hit = all.find((i) => (i.productId ?? i.title) === id);
+    if (hit) selected.push(hit);
+    else missingIds.push(id);
+  }
+  return { selected, missingIds };
+}
+
+/** Append hydrated catalogue rows, skipping IDs already in `selected`. */
+export function mergeSelectedLookItems(
+  selected: ShoppingItem[],
+  hydrated: ShoppingItem[],
+): ShoppingItem[] {
+  const seen = new Set(selected.map((i) => i.productId ?? i.title));
+  const out = [...selected];
+  for (const item of hydrated) {
+    const key = item.productId ?? item.title;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 /** Match capsule combo piece labels back to shopping-list catalogue rows. */

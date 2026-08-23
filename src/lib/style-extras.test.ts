@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  lookGarmentsFromItems,
+  lookItemsFromCell,
+  resolveLookGarments,
   colorFamilyNeedles,
   colorMatchScore,
+  colorShade,
+  lookAsksTeal,
   decomposeLook,
   garmentTitleMatchScore,
   leatherToneFamily,
@@ -132,6 +137,92 @@ test("decomposeLook reads dusty rose as a pink-family colour", () => {
   assert.match(shirt?.color ?? "", /rose|pink/);
 });
 
+test("colorMatchScore rejects a white hex against teal or sage", () => {
+  const tealWhite = colorMatchScore(
+    "muted teal",
+    "#FFFFFF",
+    "Cotton Rich Oxford Shirt",
+  );
+  const sageWhite = colorMatchScore(
+    "sage",
+    "#FFFFFF",
+    "Cotton Rich Oxford Shirt",
+  );
+  const oatmealCream = colorMatchScore(
+    "oatmeal",
+    "cream",
+    "Slim Oxford Shirt",
+  );
+  assert.ok(tealWhite < 0.25, `teal vs white must lose, got ${tealWhite}`);
+  assert.ok(sageWhite < 0.25, `sage vs white must lose, got ${sageWhite}`);
+  assert.ok(
+    oatmealCream > tealWhite,
+    "cream may still sit next to oatmeal",
+  );
+  const tealBlue = colorMatchScore(
+    "muted teal",
+    "light blue",
+    "Reserved Regular Fit Linen Shirt",
+  );
+  const tealGrey = colorMatchScore(
+    "muted teal",
+    "grey",
+    "Reserved Slim Fit Linen Shirt",
+  );
+  const tealSage = colorMatchScore(
+    "muted teal",
+    "sage",
+    "Reserved Slim Fit Linen Shirt",
+  );
+  const tealCream = colorMatchScore(
+    "muted teal",
+    "cream",
+    "Reserved Slim Fit Linen Shirt",
+  );
+  assert.ok(tealBlue >= 0.45, `muted teal vs light blue must stay, got ${tealBlue}`);
+  assert.ok(tealGrey >= 0.45, `muted teal vs grey must stay, got ${tealGrey}`);
+  assert.ok(tealBlue > tealSage, "blue must beat sage for a teal shirt");
+  assert.ok(tealBlue > tealCream, "blue must beat cream for a teal shirt");
+  assert.equal(lookAsksTeal("muted teal linen shirt"), true);
+  assert.equal(lookAsksTeal("sage linen shirt"), false);
+  const tealSky = colorMatchScore("muted teal", "sky blue", "Linen Shirt", {
+    productHex: "#8FB6D6",
+  });
+  const tealFaded = colorMatchScore(
+    "muted teal",
+    "Faded sky blue",
+    "Linen Shirt",
+    { productHex: "#e6e6df" },
+  );
+  assert.ok(
+    tealSky > tealFaded,
+    `real sky blue must beat washed-out faded sky (${tealSky} vs ${tealFaded})`,
+  );
+  assert.equal(colorShade("oatmeal cotton chinos"), "light");
+  assert.equal(colorShade("coffee worsted trousers"), "dark");
+  assert.equal(colorShade("Light Buff Stretch Chinos"), "light");
+  assert.ok(
+    colorMatchScore("oatmeal", "beige", "Reserved Chino Slim Fit Trousers") >=
+      0.7,
+    "oatmeal should land on beige chinos",
+  );
+  const oatmealCreamShirt = colorMatchScore(
+    "oatmeal",
+    "cream",
+    "ASOS Design Slim Oxford Shirt",
+  );
+  const oatmealChambray = colorMatchScore(
+    "oatmeal",
+    "Chambray",
+    "Marks & Spencer Cotton Rich Oxford Shirt",
+    { productHex: "#8CA3BE" },
+  );
+  assert.ok(
+    oatmealCreamShirt > oatmealChambray,
+    `oatmeal shirt must prefer cream over chambray (${oatmealCreamShirt} vs ${oatmealChambray})`,
+  );
+});
+
 test("colorMatchScore treats dusty rose as a neighbour of pink and lavender", () => {
   const roseVsPink = colorMatchScore("dusty rose", "pink", "Pink Linen Shirt");
   const roseVsLavender = colorMatchScore(
@@ -239,28 +330,28 @@ test("colorFamilyNeedles pulls pink-family catalogue words for dusty rose", () =
   assert.ok(!needles.includes("nude"));
 });
 
-test("colorMatchScore falls teal back to dark/bottle green, not navy", () => {
-  const tealDark = colorMatchScore("teal", "dark green", "Dark Green Jumper");
-  const tealBottle = colorMatchScore("teal", "bottle green", "Bottle Green Jumper");
-  const tealNavy = colorMatchScore("teal", "navy", "Navy Jumper");
-  const tealSage = colorMatchScore("teal", "sage", "Sage Jumper");
-  assert.ok(tealDark >= 0.7, `teal↔dark green should be strong, got ${tealDark}`);
-  assert.ok(tealBottle >= 0.7, `teal↔bottle green should be strong, got ${tealBottle}`);
-  assert.ok(tealNavy < 0.2, `teal must not fall back to navy, got ${tealNavy}`);
-  assert.ok(tealSage < tealDark, `bare teal should prefer dark green over sage, ${tealSage} vs ${tealDark}`);
+test("colorMatchScore falls teal back to blue or grey, not sage", () => {
+  const tealBlue = colorMatchScore("teal", "light blue", "Light Blue Shirt");
+  const tealGrey = colorMatchScore("teal", "grey", "Grey Shirt");
+  const tealSage = colorMatchScore("teal", "sage", "Sage Shirt");
+  const tealGreen = colorMatchScore("teal", "green", "Green Shirt");
+  assert.ok(tealBlue >= 0.45, `teal↔light blue should stay, got ${tealBlue}`);
+  assert.ok(tealGrey >= 0.45, `teal↔grey should stay, got ${tealGrey}`);
+  assert.ok(tealBlue > tealSage, `teal must prefer blue over sage, ${tealBlue} vs ${tealSage}`);
+  assert.ok(tealBlue > tealGreen, `teal must prefer blue over green, ${tealBlue} vs ${tealGreen}`);
 
-  const softSage = colorMatchScore("soft teal", "sage", "Sage Jumper");
-  const softDark = colorMatchScore("soft teal", "dark green", "Dark Green Jumper");
-  const softNavy = colorMatchScore("soft teal", "navy", "Navy Jumper");
-  assert.ok(softSage >= 0.7, `soft teal↔sage should be strong, got ${softSage}`);
-  assert.ok(softSage > softDark, `soft teal should prefer sage over dark green, ${softSage} vs ${softDark}`);
-  assert.ok(softNavy < 0.2, `soft teal must not fall back to navy, got ${softNavy}`);
+  const mutedBlue = colorMatchScore("muted teal", "light blue", "Light Blue Shirt");
+  const mutedNavy = colorMatchScore("muted teal", "navy", "Navy Shirt");
+  assert.ok(
+    mutedBlue > mutedNavy,
+    `muted teal should prefer light blue over navy, ${mutedBlue} vs ${mutedNavy}`,
+  );
 
   const needles = colorFamilyNeedles("teal");
-  assert.ok(needles.includes("green"), `missing green: ${needles.join(",")}`);
   assert.ok(needles.includes("teal"), `missing teal: ${needles.join(",")}`);
-  assert.ok(!needles.includes("navy"), "teal must not pull navy into the pool");
-  assert.ok(!needles.includes("blue"), "teal must not pull blue into the pool");
+  assert.ok(needles.includes("blue"), `missing blue: ${needles.join(",")}`);
+  assert.ok(!needles.includes("sage"), "teal must not pull sage into the pool");
+  assert.ok(!needles.includes("olive"), "teal must not pull olive into the pool");
 });
 
 test("colorMatchScore prefers muted pink hex over hot fuchsia for dusty rose", () => {
@@ -313,6 +404,12 @@ test("drawstring clause prefers elasticated titles over suit trousers", () => {
 
   assert.equal(isDrawstringTitle("Loose Fit Pure Linen Elasticated Waist Trousers"), true);
   assert.equal(isDrawstringTitle("Linen Suit Trousers"), false);
+  assert.equal(
+    isDrawstringTitle("Linen Trousers", {
+      description: "Elasticated waist with drawstring",
+    }),
+    true,
+  );
 
   const elastic = silhouetteFitScore(clause, "M&S Loose Fit Linen Blend Elasticated Waist Trousers");
   const suit = silhouetteFitScore(clause, "Reserved Linen Suit Trousers");
@@ -320,4 +417,81 @@ test("drawstring clause prefers elasticated titles over suit trousers", () => {
   assert.ok(elastic > 0);
   assert.ok(suit < 0);
   assert.equal(plain, 0);
+});
+
+test("lookGarmentsFromItems maps structured items via the shared garment vocabulary", () => {
+  const garments = lookGarmentsFromItems([
+    { garment: "crewneck knit", color: "powder blue" },
+    { garment: "chinos", color: "grey-blue" },
+    { garment: "loafers", color: "soft denim" },
+    { garment: "tote bag", color: null },
+  ]);
+  assert.deepEqual(
+    garments.map((g) => g.category),
+    ["Knitwear", "Trousers", "Footwear", "Accessories"],
+  );
+  // The clause carries the model's colour words for downstream colour matching.
+  assert.ok(garments[0]!.clause.includes("powder"));
+  assert.ok(garments[1]!.clause.includes("grey"));
+});
+
+test("lookGarmentsFromItems: knitted tie is an accessory, not Knitwear", () => {
+  const garments = lookGarmentsFromItems([
+    { garment: "knitted tie", color: "navy" },
+  ]);
+  assert.equal(garments.length, 1);
+  assert.equal(garments[0]!.category, "Accessories");
+});
+
+test("lookGarmentsFromItems drops unknown garments and dedupes; empty stays empty", () => {
+  const garments = lookGarmentsFromItems([
+    { garment: "vibe", color: "warm" },
+    { garment: "chinos", color: "stone" },
+    { garment: "chinos", color: "stone" },
+  ]);
+  assert.equal(garments.length, 1);
+  assert.equal(garments[0]!.category, "Trousers");
+  assert.deepEqual(lookGarmentsFromItems([]), []);
+  assert.deepEqual(lookGarmentsFromItems(undefined), []);
+});
+
+test("resolveLookGarments falls back to prose when structured slots are thinner", () => {
+  const description =
+    "Camel poplin shirt, coffee worsted trousers, oatmeal leather messenger bag, warm grey suede derbies";
+  const complete = [
+    { garment: "shirt", color: "camel" },
+    { garment: "trousers", color: "coffee" },
+    { garment: "messenger bag", color: "oatmeal" },
+    { garment: "derbies", color: "warm grey" },
+  ];
+  const fromItems = resolveLookGarments(complete, description);
+  assert.equal(fromItems.length, 4);
+  assert.ok(fromItems.some((g) => g.garment.includes("derby") || g.category === "Footwear"));
+
+  const missingShoe = complete.slice(0, 3);
+  const fallback = resolveLookGarments(missingShoe, description);
+  const prose = decomposeLook(description);
+  assert.deepEqual(
+    fallback.map((g) => g.category),
+    prose.map((g) => g.category),
+  );
+  assert.ok(prose.length > missingShoe.length);
+
+  assert.deepEqual(
+    resolveLookGarments(undefined, description).map((g) => g.category),
+    prose.map((g) => g.category),
+  );
+});
+
+test("lookItemsFromCell accepts jsonb slots and ignores garbage", () => {
+  assert.deepEqual(
+    lookItemsFromCell([
+      { garment: "chinos", color: "stone" },
+      { garment: 1 },
+      null,
+    ]),
+    [{ garment: "chinos", color: "stone" }],
+  );
+  assert.equal(lookItemsFromCell(null), null);
+  assert.equal(lookItemsFromCell({ garment: "chinos" }), null);
 });

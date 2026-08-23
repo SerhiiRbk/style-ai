@@ -23,7 +23,7 @@ function hexes(bestColors: ColorRec[]): Set<string> {
 function assertOnPalette(recipes: LookColorRecipe[], palette: ColorRec[]) {
   const allowed = hexes(palette);
   for (const r of recipes) {
-    for (const sw of [r.hero, r.bottom, ...r.neutrals, r.accent].filter(Boolean)) {
+    for (const sw of [r.hero, r.bottom, r.shoe, ...r.neutrals, r.accent].filter(Boolean)) {
       assert.ok(
         allowed.has(sw!.hex.toLowerCase()),
         `${sw!.name} ${sw!.hex} is not in BEST`,
@@ -112,14 +112,42 @@ test("party × statement prompt forbids a tote and office crewneck", () => {
   assert.match(text, /MUST contrast the trousers/i);
 });
 
-test("prompt lists hero, bottom and shared neutrals", () => {
+test("prompt lists hero, bottom, pinned shoes and shared neutrals", () => {
   const [recipe] = lookSetColorRecipes(best("soft-summer"), 3);
   assert.ok(recipe);
   const text = formatLookColorRecipePrompt(recipe);
   assert.match(text, new RegExp(recipe.hero.name, "i"));
   assert.match(text, new RegExp(recipe.hero.hex, "i"));
   assert.match(text, new RegExp(recipe.bottom.name, "i"));
+  assert.match(text, /Shoes:/i);
   assert.match(text, /shared neutrals/i);
+});
+
+test("three looks pin distinct shoe colours when the palette allows", () => {
+  const recipes = lookSetColorRecipes(best("soft-autumn"), 3);
+  const shoes = recipes.map((r) => r.shoe.hex.toLowerCase());
+  assert.ok(
+    new Set(shoes).size >= 2,
+    `shoes should not all be the same grey: ${shoes.join(",")}`,
+  );
+});
+
+test("work prompt pins a white or light-blue shirt from the trousers", () => {
+  const recipes = lookSetColorRecipes(best("soft-autumn"), 3, {
+    occasionId: "work",
+  });
+  const coffee = recipes.find((r) => /coffee|brown|olive|camel/i.test(r.bottom.name));
+  const light = recipes.find((r) =>
+    /oatmeal|cream|stone|grey|gray/i.test(r.bottom.name),
+  );
+  if (coffee) {
+    const text = formatLookColorRecipePrompt(coffee, { occasionId: "work" });
+    assert.match(text, /Shirt: white oxford/i);
+  }
+  if (light && light !== coffee) {
+    const text = formatLookColorRecipePrompt(light, { occasionId: "work" });
+    assert.match(text, /Shirt: light blue oxford/i);
+  }
 });
 
 test("count 0 returns no recipes", () => {

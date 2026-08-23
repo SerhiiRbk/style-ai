@@ -1,9 +1,15 @@
-import { hexToHsl, reportPalette, type ColorRec } from "./colour-palette";
+import {
+  hexToHsl,
+  palettePersonWithTrust,
+  reportPalette,
+  type ColorRec,
+} from "./colour-palette";
 import {
   classifySubseason,
   type Boldness,
   type StyleProfile,
 } from "./style-profile";
+import { workDefaultShirtColor } from "./look-occasion-fit";
 
 export type LookColorRecipeMood = {
   boldness?: Boldness;
@@ -18,6 +24,8 @@ export type LookColorRecipe = {
   neutrals: [ColorRec, ColorRec];
   accent: ColorRec | null;
   scheme: LookValueScheme;
+  /** Per-look shoe colour — rotated so a 3-look set is not three warm-grey loafers. */
+  shoe: ColorRec;
 };
 
 type SwatchRole = "hero" | "anchor" | "light" | "mid";
@@ -143,6 +151,7 @@ export function lookSetColorRecipes(
   );
   const bottoms = [...preferredBottoms, ...extraBottoms];
   const seen = new Set<string>();
+  const usedShoes = new Set<string>();
   const recipes: LookColorRecipe[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -181,12 +190,28 @@ export function lookSetColorRecipes(
       heroL <= bottomL ? "deep-over-light" : "light-over-deep";
     const accent =
       heroPool[(i + Math.ceil(heroPool.length / 2)) % heroPool.length] ?? null;
+    const accentSw =
+      accent && accent.hex.toLowerCase() !== hero.hex.toLowerCase()
+        ? accent
+        : null;
+    const shoePool = [...shared, accentSw, hero].filter(
+      (c): c is ColorRec => Boolean(c),
+    );
+    const unused = shoePool.filter(
+      (c) => !usedShoes.has(c.hex.toLowerCase()),
+    );
+    const shoe =
+      contrastSwatch(bottom, unused.length ? unused : shoePool) ??
+      shared[0] ??
+      hero;
+    usedShoes.add(shoe.hex.toLowerCase());
     recipes.push({
       hero,
       bottom,
       neutrals: shared,
-      accent: accent && accent.hex.toLowerCase() !== hero.hex.toLowerCase() ? accent : null,
+      accent: accentSw,
       scheme,
+      shoe,
     });
   }
   return recipes;
@@ -241,33 +266,50 @@ export function formatLookColorRecipePrompt(
       `(velvet jacket, silk shirt or rich colour), not a standalone office crewneck.\n`
     : `- Hero (nearest the face / main top): ${swatch(recipe.hero)}\n`;
   const shoe =
+    recipe.shoe ??
     contrastSwatch(recipe.bottom, [
       ...recipe.neutrals,
       recipe.accent,
       recipe.hero,
-    ]) ?? recipe.neutrals[0];
+    ]) ??
+    recipe.neutrals[0];
   const belt =
     recipe.neutrals.find(
       (n) => n.hex.toLowerCase() !== shoe.hex.toLowerCase(),
     ) ?? recipe.neutrals[0];
+  const isWork =
+    mood?.occasionId === "work" || mood?.occasionId === "formal";
+  const shirtColor = isWork
+    ? workDefaultShirtColor(recipe.bottom.name, recipe.bottom.hex)
+    : null;
+  const shirtLine = shirtColor
+    ? shirtColor === "white"
+      ? `- Shirt: white oxford or poplin — trousers are dark / brown. Do not put the hero colour on the shirt.\n`
+      : `- Shirt: light blue oxford or poplin — trousers are light. Do not put the hero colour on the shirt.\n`
+    : "";
   const neutralsLine = isParty
     ? `- Shoes: ${swatch(shoe)} — MUST contrast the trousers (different lightness or family; ` +
       `never greige/mushroom/taupe shoes with greige/mushroom/taupe trousers). No tote.\n` +
       `- Belt: ${swatch(belt)}\n`
-    : `- Shared neutrals (shoes, belt, bag): ${recipe.neutrals.map(swatch).join(", ")}\n` +
-      `- Shoes must contrast the trousers — not the same greige/mushroom/taupe family.\n`;
+    : `- Shoes: ${swatch(shoe)} — this look's pair, not the same grey as every other look. ` +
+      `Must contrast the trousers (not the same greige/mushroom/taupe family).\n` +
+      `- Shared neutrals (belt, bag): ${recipe.neutrals.map(swatch).join(", ")}\n`;
   return (
     `Colour recipe for THIS look (mandatory — do not substitute):\n` +
     heroLine +
     `- Bottom: ${swatch(recipe.bottom)}\n` +
+    shirtLine +
     neutralsLine +
     accent +
-    `Use ONLY these colours in "palette" and in every garment colour word in the description.\n`
+    `Use ONLY these colours in "palette" and in every garment colour word in the description.` +
+    (shirtColor
+      ? ` The shirt colour above is the one exception — white or light blue is required for work.\n`
+      : `\n`)
   );
 }
 
 export function recipePaletteHexes(recipe: LookColorRecipe): string[] {
-  const out: string[] = [recipe.hero.hex, recipe.bottom.hex];
+  const out: string[] = [recipe.hero.hex, recipe.bottom.hex, recipe.shoe.hex];
   for (const n of recipe.neutrals) out.push(n.hex);
   if (recipe.accent) out.push(recipe.accent.hex);
   const seen = new Set<string>();
@@ -293,13 +335,16 @@ export function bestSwatchesForProfile(profile: StyleProfile): ColorRec[] {
     });
   return reportPalette({
     subseason,
-    undertone,
-    contrast,
-    hairColor: profile.physical.hairColor,
-    eyeColor: profile.physical.eyeColor,
-    skinTone: profile.physical.skinTone,
-    skinHex: profile.physical.skinHex,
-    hairHex: profile.physical.hairHex,
-    eyeHex: profile.physical.eyeHex,
+    ...palettePersonWithTrust({
+      undertone,
+      contrast,
+      hairColor: profile.physical.hairColor,
+      eyeColor: profile.physical.eyeColor,
+      skinTone: profile.physical.skinTone,
+      skinHex: profile.physical.skinHex,
+      hairHex: profile.physical.hairHex,
+      eyeHex: profile.physical.eyeHex,
+      lighting: profile.physical.lighting,
+    }),
   }).best;
 }

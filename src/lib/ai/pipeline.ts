@@ -22,6 +22,7 @@ import {
   EYE_COLOR_LABELS,
   type EyeColorId,
   type Intake,
+  type LookItem,
   type StyleProfile,
   type ReportContent,
   type Boldness,
@@ -35,6 +36,7 @@ import {
   LOOK_WEARABLE_RULE,
   partyJacketMatchesSlot,
   sanitizeLookDescription,
+  sanitizeLookItems,
   withWearableLookRule,
   type LookBriefSeason,
 } from "@/lib/ai/look-brief";
@@ -48,6 +50,8 @@ import { languageInstruction, type ReportLanguage } from "@/lib/languages";
 import {
   reportPalette,
   annotateNearFaceGuidance,
+  assessHexTrust,
+  palettePersonWithTrust,
   parseSwatchHex,
   refineSeasonFromSkinHex,
 } from "@/lib/colour-palette";
@@ -245,6 +249,16 @@ const visionSchema = z.object({
         "high-saturation. Fair skin with dark hair is high value-contrast but is " +
         "often still 'muted' — judge saturation, not lightness.",
     ),
+  lighting: z
+    .enum(["neutral", "warm-tint", "cool-tint", "mixed"])
+    .optional()
+    .describe(
+      "colour cast of the light on the FACE across the photos: 'neutral' = " +
+        "daylight / balanced; 'warm-tint' = orange/yellow indoor bulbs; " +
+        "'cool-tint' = blue-ish light; 'mixed' = conflicting sources. Tinted " +
+        "light does NOT make photos unusable — report it honestly, it only " +
+        "flags the hexes as skewed.",
+    ),
 });
 
 /** Step 1 — Vision analysis → physical attributes + colour season. */
@@ -277,6 +291,9 @@ export async function analyzeProfile(
               `muted = soft, greyed, dusty; clear = bright, vivid. Do NOT confuse high light/dark ` +
               `(value) contrast — e.g. fair skin with dark hair — for 'clear'; such colouring is ` +
               `frequently muted, which points to Summer rather than Winter. ` +
+              `Also judge the colour cast of the light on the face ('neutral', 'warm-tint', ` +
+              `'cool-tint' or 'mixed') — tinted light NEVER makes a photo unusable, but report ` +
+              `it honestly, since it skews the pixel hexes. ` +
               `Context: age ${intake.age}, height ${intake.heightCm}cm, ${intake.genderPresentation}.` +
               (intake.hairColor
                 ? ` Self-reported hair: ${HAIR_COLOR_LABELS[intake.hairColor]}.`
@@ -301,9 +318,34 @@ export async function analyzeProfile(
 
   // Correct the base season using the chroma signal: a muted cool/neutral person
   // read as "winter" from value-contrast alone is really a Summer.
-  const skinHex = parseSwatchHex(output.skinHex) ?? undefined;
-  const hairHex = parseSwatchHex(output.hairHex) ?? undefined;
-  const eyeHex = parseSwatchHex(output.eyeHex) ?? undefined;
+  const rawSkinHex = parseSwatchHex(output.skinHex) ?? undefined;
+  const rawHairHex = parseSwatchHex(output.hairHex) ?? undefined;
+  const rawEyeHex = parseSwatchHex(output.eyeHex) ?? undefined;
+
+  // Lighting gate — never rejects photos. Hexes stay on the profile when they
+  // may tint the palette (`deterministicColors` re-runs assessHexTrust from
+  // stored lighting). Season still ignores tinted cheeks.
+  const trust = assessHexTrust({
+    lighting: output.lighting,
+    contrast: output.contrast,
+    undertone: output.undertone,
+    skinHex: rawSkinHex,
+    hairHex: rawHairHex,
+  });
+  if (!trust.useForPalette) {
+    console.warn("[vision] photo hexes dropped — palette from categorical signals", {
+      lighting: output.lighting ?? "neutral",
+      contrast: output.contrast,
+    });
+  } else if (!trust.useForSeason) {
+    console.warn("[vision] photo hexes palette-only — season from categorical signals", {
+      lighting: output.lighting ?? "neutral",
+      contrast: output.contrast,
+    });
+  }
+  const skinHex = trust.useForPalette ? rawSkinHex : undefined;
+  const hairHex = trust.useForPalette ? rawHairHex : undefined;
+  const eyeHex = trust.useForPalette ? rawEyeHex : undefined;
 
   const colorSeason = refineSeasonFromSkinHex({
     season: refineSeasonForClarity({
@@ -312,7 +354,7 @@ export async function analyzeProfile(
       clarity: output.clarity,
     }),
     undertone: output.undertone,
-    skinHex,
+    skinHex: trust.useForSeason ? rawSkinHex : undefined,
   });
 
   return {
@@ -345,6 +387,7 @@ export async function analyzeProfile(
       skinHex,
       hairHex,
       eyeHex,
+      lighting: output.lighting,
     },
     colorSeason,
     colorSubseason: classifySubseason({
@@ -427,14 +470,17 @@ function deterministicColors(profile: StyleProfile): ReportContent["colors"] {
   return annotateNearFaceGuidance(
     reportPalette({
       subseason,
-      undertone,
-      contrast,
-      hairColor: profile.physical.hairColor,
-      eyeColor: profile.physical.eyeColor,
-      skinTone: profile.physical.skinTone,
-      skinHex: profile.physical.skinHex,
-      hairHex: profile.physical.hairHex,
-      eyeHex: profile.physical.eyeHex,
+      ...palettePersonWithTrust({
+        undertone,
+        contrast,
+        hairColor: profile.physical.hairColor,
+        eyeColor: profile.physical.eyeColor,
+        skinTone: profile.physical.skinTone,
+        skinHex: profile.physical.skinHex,
+        hairHex: profile.physical.hairHex,
+        eyeHex: profile.physical.eyeHex,
+        lighting: profile.physical.lighting,
+      }),
     }),
     {
       boldness: profile.boldness,
@@ -535,6 +581,16 @@ export async function recommend(
         `(blazer, overshirt, crewneck, chinos, trousers, loafers, sneakers) — not vague phrases like ` +
         `"textured layers" or "warm accents". ${LOOK_WEARABLE_RULE}\n`;
 
+  // Structured slots — the machine-readable mirror of the description that
+  // catalogue matching consumes directly (no prose re-parsing for new looks).
+  const itemsLine =
+    `- For EVERY look also fill "items": one entry per garment named in the ` +
+    `description, in the same order. "garment" is the concrete catalogue noun ` +
+    `exactly as worn (crewneck knit, chinos, loafers, belt, tote bag); "color" is ` +
+    `the exact colour word(s) that garment carries in the description (null when ` +
+    `uncoloured). The items list and the description MUST name the same garments ` +
+    `and the same colours — never a garment in one but not the other.\n`;
+
   const grounding = rules.length
     ? `Ground every recommendation in these established style rules:\n- ${rules.join("\n- ")}\n`
     : "";
@@ -567,6 +623,7 @@ export async function recommend(
       `what to emphasise, what to balance, and which cuts/proportions to avoid for this shape. Reference the body type explicitly.\n` +
       `- Ensure the looks flatter this body type.\n` +
       looksLine +
+      itemsLine +
       `- doList and dontList: 4 short, actionable items each.\n` +
       `Keep the tone refined and encouraging.` +
       languageInstruction(language),
@@ -579,11 +636,17 @@ export async function recommend(
   // Snap each look's palette onto the best colours so the generated look IMAGE
   // (which is prompted with look.palette) can't drift off-season even if the
   // model ignored the colour instruction above.
-  output.looks = (output.looks ?? []).map((l) => ({
-    ...l,
-    description: sanitizeLookDescription(l.description ?? ""),
-    palette: snapPaletteToBest(l.palette ?? [], colors.best),
-  }));
+  output.looks = (output.looks ?? []).map((l) => {
+    const description = sanitizeLookDescription(l.description ?? "");
+    return {
+      ...l,
+      description,
+      // Keep the structured slots in step with the sanitised prose — items
+      // must never resurrect a prop/pocket-square the description dropped.
+      items: sanitizeLookItems(l.items, description),
+      palette: snapPaletteToBest(l.palette ?? [], colors.best),
+    };
+  });
   return output;
 }
 
@@ -614,7 +677,14 @@ export async function generateExtraLook(opts: {
   styleId?: string;
   /** Set-slot colour recipe — pins this look's hero/bottom/neutrals. */
   colorRecipe?: LookColorRecipe;
-}): Promise<{ context: string; title: string; description: string; palette: string[] }> {
+}): Promise<{
+  context: string;
+  title: string;
+  description: string;
+  palette: string[];
+  /** Structured garment slots (machine-readable mirror of `description`). */
+  items?: LookItem[];
+}> {
   const {
     intake,
     profile,
@@ -683,6 +753,10 @@ export async function generateExtraLook(opts: {
     `- title: a short evocative name (2–4 words).\n` +
     `- description: ONE line naming each garment with its colour, comma-separated ` +
       `— concrete catalogue words only. ${LOOK_WEARABLE_RULE}\n` +
+    `- items: one entry per garment named in the description, in the same order — ` +
+      `"garment" is the concrete catalogue noun exactly as worn, "color" is the exact ` +
+      `colour word(s) from the description (null when uncoloured). The items list and ` +
+      `the description MUST name the same garments and the same colours.\n` +
     (colorRecipe
       ? formatLookColorRecipePrompt(colorRecipe, { boldness, occasionId })
       : `- CRITICAL — colours: the "palette" hex codes AND every garment colour in the ` +
@@ -720,9 +794,11 @@ export async function generateExtraLook(opts: {
     colorRecipe ? recipePaletteHexes(colorRecipe) : (output.palette ?? []),
     colors.best,
   );
+  const description = sanitizeLookDescription(output.description ?? "");
   return {
     ...output,
-    description: sanitizeLookDescription(output.description ?? ""),
+    description,
+    items: sanitizeLookItems(output.items, description),
     palette,
     context,
   };
@@ -807,6 +883,8 @@ export async function generateLookImage(opts: {
   nearFaceHex?: string;
   /** EXPERIMENTAL — per-run prompt-version override (else `IMAGE_PROMPT_VERSION`). */
   promptVersion?: string | number | null;
+  /** Work / formal default the shirt hem tucked in. */
+  occasionId?: string | null;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
@@ -845,7 +923,10 @@ export async function generateLookImage(opts: {
           .join(" ")
       : look.description;
     const eyewearBlock = eyewearPromptDirective(directiveSource);
-    const tuckBlock = tuckPromptDirective(directiveSource);
+    const tuckBlock = tuckPromptDirective(
+      `${look.description} ${directiveSource}`,
+      opts.occasionId,
+    );
     const tieBlock = tiePromptDirective(directiveSource);
     const hatBlock = hatPromptDirective(directiveSource);
     const sneakerBlock = sneakerPromptDirective(directiveSource);
@@ -1604,6 +1685,8 @@ export async function generateReportTryOnImage(opts: {
   garmentImageUrls?: string[];
   /** Same photos with titles so each input image can be bound to a garment. */
   garmentImages?: { url: string; title: string; category: string }[];
+  /** Work / formal default the shirt hem tucked in. */
+  occasionId?: string | null;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
@@ -1618,7 +1701,7 @@ export async function generateReportTryOnImage(opts: {
     ).filter((i) => i.url && /^https?:\/\//i.test(i.url));
     const garmentImageUrls = garmentImages.map((i) => i.url);
     const eyewearBlock = eyewearPromptDirective(opts.garmentsText);
-    const tuckBlock = tuckPromptDirective(opts.garmentsText);
+    const tuckBlock = tuckPromptDirective(opts.garmentsText, opts.occasionId);
     const tieBlock = tiePromptDirective(opts.garmentsText);
     const hatBlock = hatPromptDirective(opts.garmentsText);
     const sneakerBlock = sneakerPromptDirective(opts.garmentsText);

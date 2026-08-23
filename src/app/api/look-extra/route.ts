@@ -150,6 +150,7 @@ export async function POST(request: Request) {
     referenceImageUrl: refs.fullUrl,
     faceReferenceImageUrl: refs.faceUrl,
     profileReferenceImageUrl: refs.profileUrl,
+    occasionId: ctx.id,
   });
   if (!img) {
     return NextResponse.json({ error: "Generation failed" }, { status: 502 });
@@ -167,7 +168,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not store look" }, { status: 500 });
   }
 
-  const { error: insErr } = await admin.from("looks").insert({
+  const lookRow: {
+    report_id: string;
+    user_id: string;
+    idx: number;
+    context: string;
+    title: string;
+    description: string;
+    palette: string[];
+    image_path: string;
+    items?: { garment: string; color?: string | null }[];
+  } = {
     report_id: reportId,
     user_id: user.id,
     idx: newIndex,
@@ -176,7 +187,15 @@ export async function POST(request: Request) {
     description: look.description,
     palette: look.palette,
     image_path: imagePath,
-  });
+  };
+  if (look.items?.length) lookRow.items = look.items;
+  let { error: insErr } = await admin.from("looks").insert(lookRow);
+  // Pre-0048 DB has no `items` column — retry without it (matching falls back
+  // to prose decomposition for this look, same as before the migration).
+  if (insErr && lookRow.items && /items/.test(insErr.message)) {
+    delete lookRow.items;
+    ({ error: insErr } = await admin.from("looks").insert(lookRow));
+  }
   if (insErr) {
     return NextResponse.json({ error: "Could not save look" }, { status: 500 });
   }

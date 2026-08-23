@@ -69,6 +69,7 @@ export default async function LookSetPage({
             key={look.idx}
             setId={set.setId}
             lookIndex={look.idx}
+            occasionId={set.occasionId}
             title={look.title}
             description={look.description}
             palette={look.palette}

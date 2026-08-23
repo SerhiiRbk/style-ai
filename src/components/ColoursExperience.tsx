@@ -95,7 +95,7 @@ function trackEvent(name: string, props?: Record<string, unknown>) {
 // private-mode failures degrade silently. Cleared by "Clear" / "Try another".
 // v2: palettes grew from 8 → 10 swatches; drop pre-change cached sessions so a
 // restored result never shows the old, shorter palette.
-const COLOURS_SESSION_KEY = "valetti_colours_session_v5";
+const COLOURS_SESSION_KEY = "valetti_colours_session_v6";
 const COLOURS_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 type ColoursSession = {
@@ -383,6 +383,7 @@ export function ColoursExperience() {
           skinHex: person.skinHex,
           hairHex: person.hairHex,
           eyeHex: person.eyeHex,
+          lighting: person.lighting,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -765,6 +766,11 @@ export function ColoursExperience() {
                   {result.undertone} undertone · {result.contrast} contrast ·{" "}
                   {result.skinTone}
                 </p>
+                {result.lightingWarning && (
+                  <p className="mt-2 max-w-md text-xs leading-relaxed text-brass">
+                    {result.lightingWarning}
+                  </p>
+                )}
               </div>
             </div>
 

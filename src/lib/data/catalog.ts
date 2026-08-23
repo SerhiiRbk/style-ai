@@ -38,6 +38,16 @@ import {
   lookOccasionIsTailored,
   lookOccasionQueryHint,
   prefersSuedeFootwear,
+  prefersLoaferFootwear,
+  isLoaferTitle,
+  clauseAsksLinen,
+  workDefaultShirtColor,
+  prefersChinoTrousers,
+  prefersWoolTrousers,
+  isChinoTitle,
+  isNonDressShirtTitle,
+  isNonButtonShirtTitle,
+  isWorkFashionShirtTitle,
 } from "@/lib/look-occasion-fit";
 import { lookOccasionIdFromContext } from "@/lib/look-contexts";
 import {
@@ -45,15 +55,17 @@ import {
   colorFamilyNeedles,
   colorMatchScore,
   colorFamilies,
+  colorShade,
   leatherToneFamily,
   lookColorCue,
-  decomposeLook,
+  lookAsksTeal,
   garmentTitleMatchScore,
   HOUSEHOLD_TEXTILE_RE,
   selectLookGarmentSlots,
   isBlazerGarment,
   isDrawstringTitle,
   isTailoredBlazerTitle,
+  resolveLookGarments,
   prefersDrawstringSilhouette,
   silhouetteFitScore,
   paletteColorHints,
@@ -113,15 +125,6 @@ type MatchRow = {
 };
 
 const HEX_RE = /^#?[0-9a-f]{6}$/i;
-
-/**
- * Non-button-down tops that live inside the catalogue's "Shirts" category (tees,
- * tanks, polos, sweatshirts). They out-rank real shirts on the vector query for a
- * muted palette, which left blazer looks with a tee/jumper instead of a shirt —
- * so the buying plan's shirt slot filters these out when real shirts exist.
- */
-const NON_BUTTON_SHIRT_RE =
-  /\b(t-?shirts?|tees?|tank|vest\s*tops?|camisole|polo|henley|sweat(?:er|shirt)?|hoodie|jersey)\b/i;
 
 /**
  * Short-sleeve pieces mis-filed under "Knitwear" (e.g. a "Short Sleeve
@@ -250,8 +253,10 @@ const MIN_LOOK_PICK_SCORE = 0.42;
  *  Work trousers also read fit/viscose; belts drop stretch/braided; suede
  *  clause prefers dress derbies; dress-shirt titles beat generic cotton.
  *  coffee/warm grey parse as colours; black is not a brown stand-in; messenger
- *  is not a crossbody; belt/shoes follow trouser leather tone. */
-export const LOOK_MATCH_VERSION = 23;
+ *  is not a crossbody; belt/shoes follow trouser leather tone.
+ *  v24: reranker sees typed subtype/material/fit/pattern; non-button shirts,
+ *  suede, dress shoes, chinos and drawstring prefer ingest columns over title. */
+export const LOOK_MATCH_VERSION = 24;
 const LOOK_STYLE_FIT_WEIGHT = 0.1;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
 // (e.g. a sky-blue shirt for "soft slate blue") even when it isn't the single
@@ -263,6 +268,38 @@ const INSPIRATION_MATCH_COUNT = 28;
 const COLOR_SUPPLEMENT_SIMILARITY = 0.58;
 const COLOR_SUPPLEMENT_LIMIT = 10;
 const MIN_COLOR_WHEN_STRONG = 0.45;
+const CHROMATIC_FAMILIES = new Set([
+  "green",
+  "blue",
+  "red",
+  "pink",
+  "purple",
+  "orange",
+  "yellow",
+]);
+
+function hasChromaticCue(cue: string | null): boolean {
+  if (!cue) return false;
+  const fams = colorFamilies(cue);
+  for (const f of fams) if (CHROMATIC_FAMILIES.has(f)) return true;
+  return false;
+}
+
+function hasSameChromaticFamily(cue: string | null, row: MatchRow): boolean {
+  if (!cue) return false;
+  const asked = colorFamilies(cue);
+  const title = formatCatalogProductTitle(row.brand, row.title);
+  const got = colorFamilies(`${row.color ?? ""} ${title}`);
+  for (const f of asked) {
+    if (CHROMATIC_FAMILIES.has(f) && got.has(f)) return true;
+  }
+  return false;
+}
+
+function hasStrongColorHit(rows: MatchRow[], cue: string | null): boolean {
+  if (!cue) return false;
+  return rows.some((r) => hasSameChromaticFamily(cue, r));
+}
 
 type MatchProductsArgs = {
   query_embedding: number[];
@@ -382,6 +419,7 @@ function isOfficeWorkRow(
       materialFamily: row.material_family,
       description: row.description,
       pattern: row.pattern,
+      garmentSubtype: row.garment_subtype,
     });
   }
   if (lookOccasionAppliesToBelt(garment)) {
@@ -391,12 +429,13 @@ function isOfficeWorkRow(
     });
   }
   if (lookOccasionAppliesToShoe(garment)) {
-    return !isOccasionCasualShoeTitle(title, clause);
+    return !isOccasionCasualShoeTitle(title, clause, row.garment_subtype);
   }
   return !isOccasionCasualTrouserTitle(title, clause, {
     fit: row.fit,
     materialFamily: row.material_family,
     description: row.description,
+    garmentSubtype: row.garment_subtype,
   });
 }
 
@@ -430,7 +469,25 @@ async function dropCasualWorkShirts(
       const title = formatCatalogProductTitle(r.brand, r.title);
       return isOfficeWorkRow(g.garment, title, g.clause, r);
     });
-    matchByKey.set(key, office.length ? office : pool);
+    let next = office.length ? office : pool;
+    // Teal / sage work shirts are often relaxed linen. Prefer hue over the
+    // office-fit veto when the only office survivors are cream / white.
+    if (lookOccasionAppliesToShirt(g.garment)) {
+      const cue = lookColorCue(g.color, g.clause);
+      if (hasChromaticCue(cue) && !hasStrongColorHit(next, cue)) {
+        const colorHits = pool.filter((r) => {
+          const title = formatCatalogProductTitle(r.brand, r.title);
+          if (isNonDressShirtTitle(title, r.garment_subtype)) return false;
+          if (isWorkFashionShirtTitle(title, r.material_family)) return false;
+          return hasSameChromaticFamily(cue, r);
+        });
+        if (colorHits.length) {
+          const seen = new Set(colorHits.map((r) => r.id));
+          next = [...colorHits, ...next.filter((r) => !seen.has(r.id))];
+        }
+      }
+    }
+    matchByKey.set(key, next);
   }
   await supplementWorkLookRows(workGarments, matchByKey, matchKeyFor, gender);
 }
@@ -471,8 +528,34 @@ async function supplementWorkLookRows(
             "color.ilike.%brown%,color.ilike.%coffee%,color.ilike.%chocolate%,color.ilike.%camel%,color.ilike.%taupe%,title.ilike.%brown%,title.ilike.%coffee%,title.ilike.%camel%",
           )
           .limit(16);
-        extra.push(...((data as MatchRow[]) ?? []));
+          extra.push(...((data as MatchRow[]) ?? []));
       }
+    }
+    if (
+      prefersChinoTrousers(g.garment, g.clause) &&
+      !prefersWoolTrousers(g.clause)
+    ) {
+      const lightAsk = LIGHT_CUE_RE.test(cue ?? "");
+      let q = sb
+        .from("products")
+        .select(PRODUCT_MATCH_COLS)
+        .eq("category", "Trousers")
+        .or("hidden.eq.false,hidden.is.null")
+        .or("in_stock.eq.true,in_stock.is.null")
+        .ilike("title", "%chino%")
+        .not("title", "ilike", "%short%")
+        .not("title", "ilike", "%bermuda%")
+        .limit(20);
+      if (lightAsk) {
+        q = q.or(
+          "color.ilike.%beige%,color.ilike.%buff%,color.ilike.%ecru%,color.ilike.%stone%,color.ilike.%sand%,color.ilike.%oatmeal%,color.ilike.%khaki%,color.ilike.%putty%,color.ilike.%oyster%,color.ilike.%cream%,color.ilike.%tan%",
+        );
+      }
+      const { data, error } = await q;
+      if (error) {
+        console.warn("[look-match] chino supplement failed", error.message);
+      }
+      extra.push(...((data as MatchRow[]) ?? []));
     }
     if (
       lookOccasionAppliesToBag(g.garment) &&
@@ -500,8 +583,88 @@ async function supplementWorkLookRows(
       }
     }
     if (lookOccasionAppliesToShirt(g.garment)) {
+      const tealAsk = lookAsksTeal(cue);
+      const greenAsk = colorFamilies(cue ?? "").has("green") && !tealAsk;
+      if (tealAsk) {
+        const tealShirtQuery = () => {
+          let q = sb
+            .from("products")
+            .select(PRODUCT_MATCH_COLS)
+            .eq("category", "Shirts")
+            .or("hidden.eq.false,hidden.is.null")
+            .or("in_stock.eq.true,in_stock.is.null")
+            .not("title", "ilike", "%t-shirt%")
+            .not("title", "ilike", "%tee%")
+            .not("title", "ilike", "%polo%")
+            .not("title", "ilike", "%henley%")
+            .not("title", "ilike", "%relaxed%");
+          if (clauseAsksLinen(g.clause)) {
+            q = q.ilike("title", "%linen%");
+          }
+          return q;
+        };
+        const { data: officeTeal } = await tealShirtQuery()
+          .or(
+            "color.ilike.%teal%,color.ilike.%light blue%,color.ilike.%sky%,color.ilike.%chambray%,color.ilike.%pale blue%",
+          )
+          .or("title.ilike.%regular%,title.ilike.%slim%")
+          .not("title", "ilike", "%stand%")
+          .limit(16);
+        extra.push(...((officeTeal as MatchRow[]) ?? []));
+        const { data: coolTeal } = await tealShirtQuery()
+          .or(
+            "color.ilike.%teal%,color.ilike.%light blue%,color.ilike.%sky%,color.ilike.%chambray%,color.ilike.%pale%,color.ilike.%powder%,color.ilike.%grey%,color.ilike.%gray%",
+          )
+          .limit(24);
+        extra.push(...((coolTeal as MatchRow[]) ?? []));
+      }
+      if (greenAsk) {
+          let q = sb
+            .from("products")
+            .select(PRODUCT_MATCH_COLS)
+            .eq("category", "Shirts")
+            .or("hidden.eq.false,hidden.is.null")
+            .or("in_stock.eq.true,in_stock.is.null")
+            .or(
+              "color.ilike.%teal%,color.ilike.%sage%,color.ilike.%green%,color.ilike.%olive%",
+            )
+            .not("title", "ilike", "%t-shirt%")
+            .not("title", "ilike", "%tee%")
+            .not("title", "ilike", "%polo%")
+            .not("title", "ilike", "%henley%")
+            .limit(24);
+          if (clauseAsksLinen(g.clause)) {
+            q = q.ilike("title", "%linen%");
+          }
+          const { data } = await q;
+          extra.push(...((data as MatchRow[]) ?? []));
+      }
+      const lightNeutralAsk =
+        LIGHT_CUE_RE.test(cue ?? "") &&
+        (colorFamilies(cue ?? "").has("brown") ||
+          colorFamilies(cue ?? "").has("white"));
+      if (lightNeutralAsk) {
+        const { data } = await sb
+          .from("products")
+          .select(PRODUCT_MATCH_COLS)
+          .eq("category", "Shirts")
+          .or("hidden.eq.false,hidden.is.null")
+          .or("in_stock.eq.true,in_stock.is.null")
+          .or("title.ilike.%oxford%,title.ilike.%poplin%")
+          .or(
+            "color.ilike.%beige%,color.ilike.%cream%,color.ilike.%oatmeal%,color.ilike.%ecru%,color.ilike.%ivory%,color.ilike.%sand%",
+          )
+          .not("title", "ilike", "%t-shirt%")
+          .not("title", "ilike", "%polo%")
+          .not("title", "ilike", "%henley%")
+          .limit(16);
+        extra.push(...((data as MatchRow[]) ?? []));
+      }
       const hasDress = pool.some((r) =>
-        isWorkDressShirtTitle(formatCatalogProductTitle(r.brand, r.title)),
+        isWorkDressShirtTitle(
+          formatCatalogProductTitle(r.brand, r.title),
+          r.garment_subtype,
+        ),
       );
       if (!hasDress) {
         const { data } = await sb
@@ -522,7 +685,7 @@ async function supplementWorkLookRows(
         const title = formatCatalogProductTitle(r.brand, r.title);
         return (
           isSuedeFootwearTitle(title, r.material_family) &&
-          isDressFootwearTitle(title)
+          isDressFootwearTitle(title, r.garment_subtype)
         );
       });
       if (!hasDressSuede) {
@@ -549,7 +712,14 @@ async function supplementWorkLookRows(
       if (seen.has(raw.id)) continue;
       if (!catalogGenderAllowed(raw.gender, gender ?? null)) continue;
       const title = formatCatalogProductTitle(raw.brand, raw.title);
-      if (!isOfficeWorkRow(g.garment, title, g.clause, raw)) continue;
+      const officeOk = isOfficeWorkRow(g.garment, title, g.clause, raw);
+      const colorRescue =
+        lookOccasionAppliesToShirt(g.garment) &&
+        hasChromaticCue(cue) &&
+        !isNonDressShirtTitle(title, raw.garment_subtype) &&
+        !isWorkFashionShirtTitle(title, raw.material_family) &&
+        hasSameChromaticFamily(cue, raw);
+      if (!officeOk && !colorRescue) continue;
       seen.add(raw.id);
       merged.push({ ...raw, similarity: COLOR_SUPPLEMENT_SIMILARITY });
     }
@@ -561,7 +731,7 @@ async function supplementWorkLookRows(
         const title = formatCatalogProductTitle(r.brand, r.title);
         return (
           isSuedeFootwearTitle(title, r.material_family) &&
-          isDressFootwearTitle(title)
+          isDressFootwearTitle(title, r.garment_subtype)
         );
       });
       if (dressSuede.length) {
@@ -613,6 +783,13 @@ async function supplementColorFamilyRows(
     if (!catalogGenderAllowed(raw.gender, opts.gender)) continue;
     const price = raw.price_eur != null ? Number(raw.price_eur) : null;
     if (opts.maxPrice && price != null && price > opts.maxPrice) continue;
+    const title = formatCatalogProductTitle(raw.brand, raw.title);
+    if (
+      opts.category === "Shirts" &&
+      isNonDressShirtTitle(title, raw.garment_subtype)
+    ) {
+      continue;
+    }
     extra.push({ ...raw, similarity: COLOR_SUPPLEMENT_SIMILARITY });
     if (extra.length >= COLOR_SUPPLEMENT_LIMIT) break;
   }
@@ -797,7 +974,7 @@ export async function matchShopping(
       // blazer. Falls back to the full pool only if no true shirt was matched.
       if (category === "Shirts") {
         const buttonShirts = ranked.filter(
-          (r) => !NON_BUTTON_SHIRT_RE.test(r.title),
+          (r) => !isNonButtonShirtTitle(r.title, r.p.garment_subtype),
         );
         if (buttonShirts.length) ranked = buttonShirts;
       }
@@ -890,7 +1067,7 @@ function garmentQueryText(
     `Look: ${opts.lookTitle}`,
     opts.paletteHints ? `Palette: ${opts.paletteHints}` : null,
     lookStyleQueryHint(opts.styleId),
-    lookOccasionQueryHint(opts.occasionId, garment),
+    lookOccasionQueryHint(opts.occasionId, garment, opts.clause),
     `${opts.colorSeason} personal style`,
   ]
     .filter(Boolean)
@@ -970,7 +1147,9 @@ function rankMatchRows(
     const lookStyleFit = lookStyleFitScore(styleId, styleFitInput(row, title));
     const tagFit = tagFitScore(row, boldness);
     const attrFit = attrFitScore(row, slot, garmentScore);
-    const silhouetteFit = silhouetteFitScore(clause, title);
+    const silhouetteFit = silhouetteFitScore(clause, title, {
+      description: row.description,
+    });
     return {
       row,
       colorScore,
@@ -996,7 +1175,9 @@ function rankMatchRows(
   // pool has one, drop suit/pressed-crease alternatives (same pattern as blazers).
   if (prefersDrawstringSilhouette(garment, clause)) {
     const drawstring = ranked.filter((r) =>
-      isDrawstringTitle(formatCatalogProductTitle(r.row.brand, r.row.title)),
+      isDrawstringTitle(formatCatalogProductTitle(r.row.brand, r.row.title), {
+        description: r.row.description,
+      }),
     );
     if (drawstring.length) return drawstring;
   }
@@ -1040,18 +1221,51 @@ function rankMatchRows(
   // shirts — and travel bags in a messenger/tote slot — when a meeting
   // option exists.
   if (lookOccasionAppliesToGarment(occasionId, garment)) {
+    const beforeOffice = ranked;
     const office = ranked.filter((r) => {
       const title = formatCatalogProductTitle(r.row.brand, r.row.title);
       return isOfficeWorkRow(garment, title, clause, r.row);
     });
     if (office.length) ranked = office;
-    if (lookOccasionAppliesToShirt(garment)) {
+    // Office-fit must not replace a named hue with cream / beige. Relaxed
+    // teal-blue linen is closer than an oatmeal oxford that merely looks "work".
+    if (lookOccasionAppliesToShirt(garment) && colorCue && hasChromaticCue(colorCue)) {
+      const familyOk = (r: RankedMatch) => {
+        const title = formatCatalogProductTitle(r.row.brand, r.row.title);
+        if (isNonDressShirtTitle(title, r.row.garment_subtype)) return false;
+        if (isWorkFashionShirtTitle(title, r.row.material_family)) return false;
+        if (/\bstand(?:[-\s]?up)?\s+collar\b/i.test(title)) return false;
+        if (lookAsksTeal(colorCue)) {
+          const fams = colorFamilies(rowColorText(r.row));
+          return fams.has("blue") || fams.has("grey");
+        }
+        return hasSameChromaticFamily(colorCue, r.row);
+      };
+      const officeFamily = ranked.filter(familyOk);
+      if (officeFamily.length) ranked = officeFamily;
+      else {
+        const rescued = beforeOffice.filter(familyOk);
+        if (rescued.length) ranked = rescued;
+      }
+    }
+    if (lookOccasionAppliesToShirt(garment) && !clauseAsksLinen(clause)) {
       const dress = ranked.filter((r) =>
         isWorkDressShirtTitle(
           formatCatalogProductTitle(r.row.brand, r.row.title),
+          r.row.garment_subtype,
         ),
       );
       if (dress.length) ranked = dress;
+    }
+    if (lookOccasionAppliesToShirt(garment) && clauseAsksLinen(clause)) {
+      const linen = ranked.filter(
+        (r) =>
+          r.row.material_family === "linen" ||
+          /\blinen\b/i.test(
+            formatCatalogProductTitle(r.row.brand, r.row.title),
+          ),
+      );
+      if (linen.length) ranked = linen;
     }
     if (
       !lookOccasionAppliesToShirt(garment) &&
@@ -1061,12 +1275,40 @@ function rankMatchRows(
     ) {
       const colorOk = dropOpposingNeutrals(ranked, colorCue);
       if (colorOk.length) ranked = colorOk;
-      const wool = ranked.filter((r) =>
-        /\b(wool|worsted)\b/i.test(
-          formatCatalogProductTitle(r.row.brand, r.row.title),
-        ),
-      );
-      if (wool.length) ranked = wool;
+      // Chinos named in the look must stay cotton chinos — the wool lock
+      // otherwise resurrects brown suit trousers for an oatmeal chino slot.
+      if (prefersChinoTrousers(garment, clause) && !prefersWoolTrousers(clause)) {
+        const isChino = (r: RankedMatch) =>
+          isChinoTitle(
+            formatCatalogProductTitle(r.row.brand, r.row.title),
+            r.row.garment_subtype,
+          );
+        const chinos = ranked.filter(isChino);
+        if (chinos.length) ranked = chinos;
+        else {
+          const rescued = beforeOffice.filter(isChino);
+          if (rescued.length) ranked = rescued;
+          else {
+            const notWool = ranked.filter((r) => {
+              const title = formatCatalogProductTitle(r.row.brand, r.row.title);
+              return (
+                r.row.material_family !== "wool" &&
+                !/\b(wool|worsted|suit)\b/i.test(title)
+              );
+            });
+            if (notWool.length) ranked = notWool;
+          }
+        }
+      } else if (prefersWoolTrousers(clause)) {
+        const wool = ranked.filter(
+          (r) =>
+            r.row.material_family === "wool" ||
+            /\b(wool|worsted)\b/i.test(
+              formatCatalogProductTitle(r.row.brand, r.row.title),
+            ),
+        );
+        if (wool.length) ranked = wool;
+      }
     }
     if (lookOccasionAppliesToShoe(garment)) {
       if (prefersSuedeFootwear(clause)) {
@@ -1078,15 +1320,27 @@ function rankMatchRows(
         );
         if (suede.length) ranked = suede;
       }
-      const dress = ranked.filter((r) =>
-        isDressFootwearTitle(
-          formatCatalogProductTitle(r.row.brand, r.row.title),
-        ),
-      );
-      if (dress.length) ranked = dress;
+      if (prefersLoaferFootwear(clause)) {
+        const loafers = ranked.filter((r) =>
+          isLoaferTitle(
+            formatCatalogProductTitle(r.row.brand, r.row.title),
+            r.row.garment_subtype,
+          ),
+        );
+        if (loafers.length) ranked = loafers;
+      } else {
+        const dress = ranked.filter((r) =>
+          isDressFootwearTitle(
+            formatCatalogProductTitle(r.row.brand, r.row.title),
+            r.row.garment_subtype,
+          ),
+        );
+        if (dress.length) ranked = dress;
+      }
       if (!/\bboots?\b/i.test(clause ?? "")) {
         const noBoots = ranked.filter(
           (r) =>
+            r.row.garment_subtype !== "boots" &&
             !/\bboots?\b/i.test(
               formatCatalogProductTitle(r.row.brand, r.row.title),
             ),
@@ -1097,6 +1351,57 @@ function rankMatchRows(
   }
 
   ranked = dropOpposingNeutrals(ranked, colorCue);
+  ranked = dropOppositeShade(ranked, colorCue);
+
+  // Shirt colour: keep the named family; drop beige-for-teal and blue-for-oatmeal.
+  if (lookOccasionAppliesToShirt(garment) && colorCue) {
+    if (hasChromaticCue(colorCue)) {
+      const same = ranked.filter((r) => hasSameChromaticFamily(colorCue, r.row));
+      const close = same.filter((r) => r.colorScore >= MIN_COLOR_WHEN_STRONG);
+      if (close.length) ranked = close;
+      else if (same.length) ranked = same;
+      const asked = colorFamilies(colorCue);
+      if (lookAsksTeal(colorCue)) {
+        const cool = ranked.filter((r) => {
+          const fams = colorFamilies(rowColorText(r.row));
+          return fams.has("blue") || fams.has("grey");
+        });
+        if (cool.length) ranked = cool;
+        // Catalogue teal is rare — голубой / mid-grey, not navy or black linen.
+        const notDark = ranked.filter((r) => productShadeBucket(r.row) !== "dark");
+        if (notDark.length) ranked = notDark;
+      } else if (asked.has("green")) {
+        const noBlue = ranked.filter((r) => {
+          const fams = colorFamilies(rowColorText(r.row));
+          return fams.has("green") && !fams.has("blue");
+        });
+        if (noBlue.length) ranked = noBlue;
+        if (colorShade(colorCue) === "light") {
+          const noBrown = ranked.filter((r) => {
+            const fams = colorFamilies(rowColorText(r.row));
+            return fams.has("green") && !fams.has("brown");
+          });
+          if (noBrown.length) ranked = noBrown;
+        }
+      }
+    } else {
+      const close = ranked.filter((r) => r.colorScore >= MIN_COLOR_WHEN_STRONG);
+      if (close.length) ranked = close;
+      const asked = colorFamilies(colorCue);
+      if (asked.has("brown") || asked.has("white")) {
+        const warm = ranked.filter((r) => {
+          const fams = colorFamilies(rowColorText(r.row));
+          return fams.has("brown") || fams.has("white");
+        });
+        if (warm.length) ranked = warm;
+      }
+    }
+    const office = ranked.filter((r) => {
+      const title = formatCatalogProductTitle(r.row.brand, r.row.title);
+      return !isWorkFashionShirtTitle(title, r.row.material_family);
+    });
+    if (office.length) ranked = office;
+  }
 
   // When a true same-family colour exists (dusty rose → dusty pink), drop
   // beige/nude neighbours that only scored because the vector pool was beige.
@@ -1185,6 +1490,10 @@ function toRerankCandidate(row: MatchRow, category: string): RerankGarmentSlot["
     color: row.color,
     priceEur: row.price_eur != null ? Number(row.price_eur) : null,
     category,
+    subtype: row.garment_subtype ?? null,
+    material: row.material_family ?? null,
+    fit: row.fit ?? null,
+    pattern: row.pattern ?? null,
   };
 }
 
@@ -1247,6 +1556,58 @@ function dropOpposingNeutrals(
     }
   }
   return ranked;
+}
+
+const LIGHT_CUE_RE =
+  /\b(oatmeal|cream|ivory|ecru|beige|sand|stone|oat|bone|light|pale|greige|mushroom|off[-\s]?white)\b/i;
+const DARK_CUE_RE =
+  /\b(coffee|chocolate|espresso|mocha|navy|charcoal|black|dark|deep|ink)\b/i;
+
+function hexLightness(hex?: string | null): number | null {
+  const m = (hex ?? "").trim().match(/^#?([0-9a-f]{6})$/i);
+  if (!m) return null;
+  const h = m[1]!;
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  return (Math.max(r, g, b) + Math.min(r, g, b)) / 2;
+}
+
+function productShadeBucket(row: MatchRow): "light" | "mid" | "dark" | null {
+  const named = colorShade(rowColorText(row));
+  if (named) return named;
+  const l = hexLightness(row.color_hex ?? row.color);
+  if (l == null) return null;
+  if (l >= 0.58) return "light";
+  if (l <= 0.4) return "dark";
+  return "mid";
+}
+
+function isLightNeutralProduct(row: MatchRow, title: string): boolean {
+  const shade = productShadeBucket(row);
+  if (shade === "dark") return false;
+  if (shade === "light") return true;
+  const l = hexLightness(row.color_hex ?? row.color);
+  if (l != null) return l >= 0.58;
+  return LIGHT_CUE_RE.test(`${row.color ?? ""} ${title}`);
+}
+
+/** Oatmeal chinos must not keep coffee / chocolate wool when a light option exists. */
+function dropOppositeShade(
+  ranked: RankedMatch[],
+  colorCue: string | null,
+): RankedMatch[] {
+  if (!colorCue || !ranked.length) return ranked;
+  const lightAsk = LIGHT_CUE_RE.test(colorCue);
+  const darkAsk = DARK_CUE_RE.test(colorCue);
+  if (!lightAsk && !darkAsk) return ranked;
+  const keep = ranked.filter((r) => {
+    const shade = productShadeBucket(r.row);
+    if (lightAsk && shade === "dark") return false;
+    if (darkAsk && shade === "light") return false;
+    return r.colorScore >= 0.45 || (lightAsk && shade === "light") || (darkAsk && shade === "dark");
+  });
+  return keep.length ? keep : ranked;
 }
 
 function sharedChromaticFamily(aText: string, bText: string): string | null {
@@ -1429,6 +1790,47 @@ function resolveLeatherToneClash(
     );
   }
   return next;
+}
+
+/** Load shop rows by product id so try-on can dress the SKUs the user ticked. */
+export async function loadShoppingItemsByIds(
+  ids: string[],
+): Promise<ShoppingItem[]> {
+  if (!ids.length || !hasSupabaseAdmin) return [];
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return [];
+  const sb = createAdminSupabase();
+  const { data, error } = await sb
+    .from("products")
+    .select(`category,${PRODUCT_MATCH_COLS}`)
+    .in("id", unique);
+  if (error) {
+    console.warn("[look-tryon] loadShoppingItemsByIds", error.message);
+    return [];
+  }
+  const byId = new Map(
+    ((data ?? []) as Array<MatchRow & { category?: string | null }>).map(
+      (row) => [row.id, row],
+    ),
+  );
+  const out: ShoppingItem[] = [];
+  for (const id of unique) {
+    const row = byId.get(id);
+    if (!row) continue;
+    out.push({
+      category: row.category?.trim() || "Accessories",
+      title: formatCatalogProductTitle(row.brand, row.title),
+      why: "",
+      priceEur: Number(row.price_eur ?? 0),
+      retailer: row.brand ?? row.source ?? "",
+      url: row.deeplink ?? "#",
+      color: swatchHex(row),
+      ...(row.color?.trim() ? { colorName: row.color.trim() } : {}),
+      image: row.image_url ?? undefined,
+      productId: row.id,
+    });
+  }
+  return out;
 }
 
 function shoppingItemFromMatch(
@@ -1714,10 +2116,24 @@ export async function matchLookItems(
       );
       const description = [l.title, l.description].filter(Boolean).join(", ");
       const occasionId = lookOccasionIdFromContext(l.context);
+      // Structured slots win when they cover the look; a thinner list (dropped
+      // unknown noun) falls back to prose. Legacy looks have no items → same
+      // decomposeLook path as before — no LOOK_MATCH_VERSION bump.
+      const garments = resolveLookGarments(l.items, description);
+      if (lookOccasionIsTailored(occasionId)) {
+        const trousers = garments.find((g) => g.category === "Trousers");
+        for (const g of garments) {
+          if (!lookOccasionAppliesToShirt(g.garment)) continue;
+          if (lookColorCue(g.color, g.clause)) continue;
+          const shirt = workDefaultShirtColor(trousers?.color);
+          g.color = shirt;
+          g.clause = `${shirt} ${g.clause}`.trim();
+        }
+      }
       return {
         title: l.title,
         description: l.description ?? "",
-        garments: decomposeLook(description),
+        garments,
         paletteHints,
         occasionId,
       };

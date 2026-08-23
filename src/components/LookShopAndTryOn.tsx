@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ShopTheLook } from "./StyleGuides";
 import { LookTryOn } from "./LookTryOn";
 import type { ShoppingItem } from "@/lib/report";
@@ -41,9 +41,13 @@ export function LookShopAndTryOn({
   resetStoredTryOn?: boolean;
 }) {
   const keyOf = (it: ShoppingItem) => it.productId ?? it.title;
+  const itemKey = items.map(keyOf).join("|");
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(items.map(keyOf)),
   );
+  useEffect(() => {
+    setSelected(new Set(items.map(keyOf)));
+  }, [itemKey]);
 
   const toggle = (id: string) =>
     setSelected((prev) => {

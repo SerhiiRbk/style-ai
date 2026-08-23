@@ -388,12 +388,30 @@ export const colorRecSchema = z.object({
   role: z.enum(["versatile"]).optional(),
 });
 export const hairRecSchema = z.object({ name: z.string(), why: z.string() });
+/** One structured garment slot in a look — the machine-readable mirror of the
+ * prose `description`. Feeds catalogue matching directly, replacing the fragile
+ * regex decomposition of the description for new looks. */
+export const lookItemSchema = z.object({
+  garment: z
+    .string()
+    .describe(
+      "concrete catalogue noun exactly as worn, e.g. 'crewneck knit', 'chinos', 'loafers', 'belt', 'tote bag'",
+    ),
+  color: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("the exact colour word(s) this garment has in the description"),
+});
 export const lookContentSchema = z.object({
   context: z.string(),
   title: z.string(),
   description: z.string(),
   palette: z.array(z.string()),
+  /** Optional: legacy persisted looks predate it (decomposeLook fallback). */
+  items: z.array(lookItemSchema).optional(),
 });
+export type LookItem = z.infer<typeof lookItemSchema>;
 
 /** Structured report content produced by the reasoning model (Output.object). */
 export const reportContentSchema = z.object({
@@ -438,6 +456,8 @@ export const styleProfileSchema = z.object({
     skinHex: z.string().optional(),
     hairHex: z.string().optional(),
     eyeHex: z.string().optional(),
+    /** Light cast on the analysis photos — tinted light weakens hex mix, never flips season. */
+    lighting: z.enum(["neutral", "warm-tint", "cool-tint", "mixed"]).optional(),
   }),
   colorSeason: ColorSeason,
   /** 12-subseason classification (optional — older reports may lack it). */

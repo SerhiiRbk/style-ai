@@ -14,6 +14,8 @@ import {
   refineSeasonForClarity,
 } from "@/lib/style-profile";
 import {
+  assessHexTrust,
+  palettePersonWithTrust,
   carloNoteFor,
   paletteForPerson,
   parseSwatchHex,
@@ -65,6 +67,15 @@ export const colourVisionSchema = z.object({
     .string()
     .optional()
     .describe("hex of the iris (#rrggbb)"),
+  lighting: z
+    .enum(["neutral", "warm-tint", "cool-tint", "mixed"])
+    .optional()
+    .describe(
+      "colour cast of the light on the FACE: 'neutral' = daylight / balanced; " +
+        "'warm-tint' = orange/yellow indoor bulbs; 'cool-tint' = blue-ish light; " +
+        "'mixed' = conflicting sources. Tinted light does NOT make a photo " +
+        "unusable — report it honestly, it only flags the hexes as skewed.",
+    ),
 });
 
 export const COLOUR_VISION_PROMPT =
@@ -79,6 +90,9 @@ export const COLOUR_VISION_PROMPT =
   "muted = soft, greyed, dusty; clear = bright, vivid. Do NOT confuse high light/dark " +
   "(value) contrast — e.g. fair skin with dark hair — for 'clear'; such colouring is " +
   "frequently muted, which points to Summer rather than Winter. " +
+  "Also judge the colour cast of the light on the face ('neutral', 'warm-tint', " +
+  "'cool-tint' or 'mixed') — tinted light NEVER makes a photo unusable, but report " +
+  "it honestly, since it skews the pixel hexes. " +
   "Be objective and tactful — never judgmental.";
 
 /** Discriminated result so callers can reject an unusable photo cleanly. */
@@ -116,9 +130,31 @@ export async function analyzeColoursWith(
   // Correct the base season using the chroma signal (same as the report
   // pipeline): a muted cool/neutral person read as "winter" from value-contrast
   // alone is really a Summer. Keeps `/colours` and the report in lockstep.
-  const skinHex = parseSwatchHex(output.skinHex) ?? undefined;
-  const hairHex = parseSwatchHex(output.hairHex) ?? undefined;
-  const eyeHex = parseSwatchHex(output.eyeHex) ?? undefined;
+  const rawSkinHex = parseSwatchHex(output.skinHex) ?? undefined;
+  const rawHairHex = parseSwatchHex(output.hairHex) ?? undefined;
+  const rawEyeHex = parseSwatchHex(output.eyeHex) ?? undefined;
+
+  // Lighting gate — never rejects the photo. Season stays categorical unless
+  // light is neutral; palette still mixes hexes under ordinary indoor lamps.
+  const trust = assessHexTrust({
+    lighting: output.lighting,
+    contrast: output.contrast,
+    undertone: output.undertone,
+    skinHex: rawSkinHex,
+    hairHex: rawHairHex,
+  });
+  const seasonHex = trust.useForSeason ? rawSkinHex : undefined;
+  const person = palettePersonWithTrust({
+    undertone: output.undertone,
+    contrast: output.contrast,
+    hairColor: output.hairColor,
+    eyeColor: output.eyeColor,
+    skinTone: output.skinTone,
+    skinHex: rawSkinHex,
+    hairHex: rawHairHex,
+    eyeHex: rawEyeHex,
+    lighting: output.lighting,
+  });
 
   const season = refineSeasonFromSkinHex({
     season: refineSeasonForClarity({
@@ -127,7 +163,7 @@ export async function analyzeColoursWith(
       clarity: output.clarity,
     }),
     undertone: output.undertone,
-    skinHex,
+    skinHex: seasonHex,
   });
 
   const subseason = classifySubseason({
@@ -151,19 +187,14 @@ export async function analyzeColoursWith(
       skinTone: output.skinTone,
       hairColor: output.hairColor,
       eyeColor: output.eyeColor,
-      skinHex,
-      hairHex,
-      eyeHex,
-      palette: paletteForPerson(subseason, {
-        undertone: output.undertone,
-        contrast: output.contrast,
-        hairColor: output.hairColor,
-        eyeColor: output.eyeColor,
-        skinTone: output.skinTone,
-        skinHex,
-        hairHex,
-        eyeHex,
-      }),
+      skinHex: person.skinHex ?? undefined,
+      hairHex: person.hairHex ?? undefined,
+      eyeHex: person.eyeHex ?? undefined,
+      lighting: output.lighting,
+      ...(trust.lightingWarning
+        ? { lightingWarning: trust.lightingWarning }
+        : {}),
+      palette: paletteForPerson(subseason, person),
       carloNote: carloNoteFor({
         season,
         subseasonLabel: label,

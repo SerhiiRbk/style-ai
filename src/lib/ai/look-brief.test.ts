@@ -8,6 +8,7 @@ import {
   hasJacketHost,
   pocketSquareHasHost,
   sanitizeLookDescription,
+  sanitizeLookItems,
   stripHandheldProps,
   stripMisplacedPocketSquare,
   withWearableLookRule,
@@ -44,6 +45,15 @@ test("season + strictness compose together, season first", () => {
     result.indexOf("Season:") < result.indexOf("Strictness:"),
     "season note must precede the strictness note",
   );
+});
+
+test("work occasion pins a blue-or-white oxford, not a chromatic shirt", () => {
+  const result = composeLookBrief(BRIEF, { occasionId: "work" });
+  assert.match(result, /light-blue oxford/i);
+  assert.match(result, /white oxford/i);
+  assert.match(result, /Do not put a chromatic hero/i);
+  assert.match(result, /tuck the shirt into the trousers/i);
+  assert.ok(result.endsWith(BRIEF));
 });
 
 test("party × statement adds an after-dark mood and forbids office knit+tote", () => {
@@ -205,4 +215,28 @@ test("sanitizeLookDescription strips wallets and orphan pocket squares", () => {
     "Slate blue fine-knit merino crew-neck jumper, greige tailored wool trousers, " +
       "sage suede Chelsea boots, greige leather tote bag",
   );
+});
+
+test("sanitizeLookItems drops handheld props and a hostless pocket square", () => {
+  const items = [
+    { garment: "pocket square", color: "cream" },
+    { garment: "wallet", color: null },
+    { garment: "crewneck knit", color: "sage" },
+  ];
+  // No jacket in the description → the square goes; the wallet always goes.
+  assert.deepEqual(
+    sanitizeLookItems(items, "Sage crewneck knit, stone chinos"),
+    [{ garment: "crewneck knit", color: "sage" }],
+  );
+  // With a blazer host the square stays.
+  assert.deepEqual(
+    sanitizeLookItems(items, "Navy blazer, sage crewneck knit"),
+    [
+      { garment: "pocket square", color: "cream" },
+      { garment: "crewneck knit", color: "sage" },
+    ],
+  );
+  // Nothing survives → undefined (signals "no structured slots").
+  assert.equal(sanitizeLookItems([{ garment: "wallet" }], "Chinos"), undefined);
+  assert.equal(sanitizeLookItems(undefined, "Chinos"), undefined);
 });

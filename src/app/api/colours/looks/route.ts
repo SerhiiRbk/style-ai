@@ -8,8 +8,10 @@ import { lookContextById } from "@/lib/look-contexts";
 import { itemBudgetPreferenceFromBandId } from "@/lib/budgets";
 import {
   paletteForPerson,
+  palettePersonWithTrust,
   parseSwatchHex,
   type Contrast,
+  type LightingCast,
   type Undertone,
 } from "@/lib/colour-palette";
 import { matchInspirationItems } from "@/lib/data/catalog";
@@ -26,7 +28,7 @@ import { createAdminSupabase } from "@/lib/supabase/server";
 export const maxDuration = 60;
 
 /** Bump when the matcher/garment/profile logic changes so cached looks recompute. */
-const LOOKS_CACHE_VERSION = "4";
+const LOOKS_CACHE_VERSION = "5";
 /** Cached looks are catalogue-dependent, so expire them daily. */
 const LOOKS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -86,7 +88,12 @@ export async function POST(request: Request) {
   const skinHex = parseSwatchHex(body?.skinHex);
   const hairHex = parseSwatchHex(body?.hairHex);
   const eyeHex = parseSwatchHex(body?.eyeHex);
-  const person = {
+  const lighting: LightingCast | undefined = (
+    ["neutral", "warm-tint", "cool-tint", "mixed"] as const
+  ).includes(body?.lighting as LightingCast)
+    ? (body.lighting as LightingCast)
+    : undefined;
+  const person = palettePersonWithTrust({
     undertone,
     contrast,
     skinTone,
@@ -95,7 +102,8 @@ export async function POST(request: Request) {
     skinHex,
     hairHex,
     eyeHex,
-  };
+    lighting,
+  });
 
   const geo = await getGeo();
 
@@ -119,6 +127,7 @@ export async function POST(request: Request) {
         skinHex ?? "",
         hairHex ?? "",
         eyeHex ?? "",
+        lighting ?? "",
         (geo.country ?? "Global").toLowerCase(),
         (geo.currency ?? "EUR").toLowerCase(),
       ].join("|"),
@@ -244,7 +253,10 @@ export async function POST(request: Request) {
     }
   }
 
-  const profile = buildAnonProfile(subseason, geo, boldness, person);
+  const profile = buildAnonProfile(subseason, geo, boldness, {
+    ...person,
+    lighting,
+  });
   const palette = paletteForPerson(subseason, person);
   const garments = buildAnonLookGarments(palette, occasion);
   const context = lookContextById(occasion);

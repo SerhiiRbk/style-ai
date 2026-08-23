@@ -77,6 +77,7 @@ import {
   watchGuideFor,
   shoeGuideFor,
   FORMAL_CONTEXTS,
+  lookItemsFromCell,
   type StyleExtras,
 } from "@/lib/style-extras";
 import {
@@ -87,6 +88,7 @@ import {
 } from "@/lib/colour-palette";
 import { translateReportParts } from "@/lib/ai/translate-report";
 import { getStoredReportPhotoPaths } from "@/lib/photo-tryon";
+import { lookOccasionIdFromContext } from "@/lib/look-contexts";
 import { ensureReportLookSet } from "@/lib/data/report-look-sets";
 import { normalizeLanguage } from "@/lib/languages";
 import {
@@ -1012,6 +1014,9 @@ async function generateReportImages(input: ImageJobInput) {
       index === boldLookIdx && boldAccent ? boldAccent.hex : ownDeep;
     const img = await generateLookImage({
       profile,
+      occasionId: lookOccasionIdFromContext(
+        (row.context as string | null) ?? null,
+      ),
       look: {
         title: (row.title as string | null) ?? "",
         description: (row.description as string | null) ?? "",
@@ -1475,18 +1480,25 @@ async function executeReportGeneration(
       .eq("id", reportId);
   }
 
-  await admin.from("looks").insert(
-    content.looks.map((l, i) => ({
-      report_id: reportId,
-      idx: i,
-      user_id: userId,
-      context: l.context,
-      title: l.title,
-      description: l.description,
-      palette: l.palette,
-      image_path: null,
-    })),
-  );
+  const lookRows = content.looks.map((l, i) => ({
+    report_id: reportId,
+    idx: i,
+    user_id: userId,
+    context: l.context,
+    title: l.title,
+    description: l.description,
+    palette: l.palette,
+    image_path: null as string | null,
+    ...(l.items?.length ? { items: l.items } : {}),
+  }));
+  let { error: lookInsErr } = await admin.from("looks").insert(lookRows);
+  // Pre-0048 DB has no `items` column — retry without it (matching falls back
+  // to prose for later rematches, same as before the migration).
+  if (lookInsErr && /items/.test(lookInsErr.message)) {
+    for (const row of lookRows) delete (row as { items?: unknown }).items;
+    ({ error: lookInsErr } = await admin.from("looks").insert(lookRows));
+  }
+  if (lookInsErr) throw new Error(lookInsErr.message);
 
   await ensureReportLookSet(admin, { reportId, userId }).catch((err) => {
     console.error("[look-set] promote report looks failed", reportId, err);
@@ -2019,6 +2031,7 @@ async function fetchReportView(
       title: l.title ?? "",
       description: l.description ?? "",
       palette: l.palette ?? [],
+      items: lookItemsFromCell(l.items) ?? undefined,
     })),
     doList: row.do_list ?? [],
     dontList: row.dont_list ?? [],

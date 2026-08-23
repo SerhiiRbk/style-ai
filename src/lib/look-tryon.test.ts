@@ -4,6 +4,8 @@ import type { ShoppingItem } from "@/lib/report";
 import {
   catalogImageRefsFromItems,
   catalogPromptFromItems,
+  mergeSelectedLookItems,
+  selectLookCatalogItems,
   MAX_CATALOG_REFERENCE_IMAGES,
   MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT,
 } from "./look-tryon";
@@ -116,6 +118,30 @@ test("catalog prompt drops tea towels instead of dressing them as knitwear", () 
   assert.doesNotMatch(prompt ?? "", /Tea Towels/i);
 });
 
+test("work catalog prompt tucks the shirt into the trousers", () => {
+  const work = catalogPromptFromItems(
+    [
+      item({ category: "Shirts", title: "Reserved Slim Fit Linen Shirt" }),
+      item({ category: "Trousers", title: "Reserved Chino Slim Fit Trousers" }),
+    ],
+    "Sage linen shirt, warm grey cotton chinos",
+    "work",
+  );
+  assert.match(work ?? "", /tucked into the trousers/);
+  const weekend = catalogPromptFromItems(
+    [item({ category: "Shirts", title: "Camp-collar shirt" })],
+    "Soft teal linen camp-collar shirt",
+    "weekend",
+  );
+  assert.doesNotMatch(weekend ?? "", /tucked into the trousers/);
+  const explicitOut = catalogPromptFromItems(
+    [item({ category: "Shirts", title: "Linen Shirt" })],
+    "Sage linen shirt worn untucked, grey chinos",
+    "work",
+  );
+  assert.doesNotMatch(explicitOut ?? "", /tucked into the trousers/);
+});
+
 test("catalog prompt uses the named colour, not a swatch hex", () => {
   const prompt = catalogPromptFromItems([
     item({
@@ -166,4 +192,41 @@ test("catalog prompt does not invent trousers when the look named shorts", () =>
   );
   assert.match(prompt ?? "", /charcoal tailored linen shorts/i);
   assert.doesNotMatch(prompt ?? "", /never shorts/i);
+});
+
+test("selectLookCatalogItems keeps ticked IDs and does not fill rematched SKUs", () => {
+  const blue = item({
+    category: "Shirts",
+    title: "Reserved Regular Fit Linen Shirt",
+    productId: "blue-shirt",
+  });
+  const beige = item({
+    category: "Shirts",
+    title: "Reserved Slim Fit Linen Shirt",
+    productId: "beige-shirt",
+  });
+  const wool = item({
+    category: "Trousers",
+    title: "Aaron Levine Wool Suit Trousers",
+    productId: "wool",
+  });
+  const picked = selectLookCatalogItems([beige, wool], [
+    "blue-shirt",
+    "buff-chinos",
+  ]);
+  assert.deepEqual(picked.selected, []);
+  assert.deepEqual(picked.missingIds, ["blue-shirt", "buff-chinos"]);
+  const hydrated = [
+    blue,
+    item({
+      category: "Trousers",
+      title: "Light Buff Stretch Chinos",
+      productId: "buff-chinos",
+    }),
+  ];
+  const merged = mergeSelectedLookItems(picked.selected, hydrated);
+  assert.equal(merged[0]?.productId, "blue-shirt");
+  assert.equal(merged[1]?.productId, "buff-chinos");
+  assert.ok(!merged.some((i) => i.productId === "beige-shirt"));
+  assert.ok(!merged.some((i) => i.productId === "wool"));
 });

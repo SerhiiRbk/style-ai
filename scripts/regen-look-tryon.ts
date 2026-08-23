@@ -39,7 +39,7 @@ const admin = createClient(url, key, {
 async function main() {
   const { data: set, error: setErr } = await admin
     .from("look_sets")
-    .select("id, user_id, look_items, report_id, created_at")
+    .select("id, user_id, look_items, report_id, created_at, occasion_id")
     .eq("id", SET_ID)
     .maybeSingle();
   if (setErr || !set) throw new Error(setErr?.message ?? "set not found");
@@ -75,9 +75,14 @@ async function main() {
   const lookItems =
     (set.look_items as Record<number, ShoppingItem[]> | null) ?? {};
   const items = lookItems[LOOK_INDEX] ?? [];
+  const occasionId =
+    typeof (set as { occasion_id?: string | null }).occasion_id === "string"
+      ? (set as { occasion_id: string }).occasion_id
+      : null;
   const catalogContext = catalogPromptFromItems(
     items,
     String(look.description ?? ""),
+    occasionId,
   );
   const catalogImages = catalogImageRefsFromItems(items, {
     max: MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT,
@@ -103,6 +108,7 @@ async function main() {
 
   const result = await generateLookImage({
     profile: parsed.data,
+    occasionId,
     look: {
       title: String(look.title ?? "Look"),
       description: String(look.description ?? ""),

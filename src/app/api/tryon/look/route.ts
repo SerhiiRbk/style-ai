@@ -6,7 +6,12 @@ import {
   generateReportTryOnImage,
 } from "@/lib/ai/pipeline";
 import { getReportById } from "@/lib/data/reports";
-import { lookItemsNeedRefresh, SHORT_SLEEVE_KNIT_RE, TURTLENECK_KNIT_RE } from "@/lib/data/catalog";
+import {
+  lookItemsNeedRefresh,
+  loadShoppingItemsByIds,
+  SHORT_SLEEVE_KNIT_RE,
+  TURTLENECK_KNIT_RE,
+} from "@/lib/data/catalog";
 import { HOUSEHOLD_TEXTILE_RE } from "@/lib/style-extras";
 import { ensureSetLookItems } from "@/lib/data/look-sets";
 import { isDemoReportId } from "@/lib/demo-report";
@@ -24,7 +29,9 @@ import {
   formatLookKey,
   paletteFromCapsulePieces,
   resolveCapsuleCatalogItems,
+  mergeSelectedLookItems,
   resolveLookCatalogItems,
+  selectLookCatalogItems,
   tryonStoragePath,
   isTieTitle,
   type LookTryOnKind,
@@ -36,6 +43,7 @@ import {
   resolveLookSetReferencePhotos,
 } from "@/lib/photo-tryon";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
+import { lookOccasionIdFromContext } from "@/lib/look-contexts";
 
 /** Look rendering + fal polling can exceed the default Vercel function timeout. */
 export const maxDuration = 300;
@@ -64,34 +72,6 @@ function withVersion(url: string, version: number | string): string {
     typeof version === "string" ? Date.parse(version) || Date.now() : version;
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}v=${v}`;
-}
-
-/**
- * Apply the user's Shop-the-look selection. After a catalogue rematch, stored
- * productIds can point at replaced items (e.g. olive trousers swapped for teal);
- * keep the hits that still exist and fill any category whose previous product
- * disappeared, so the try-on doesn't drop trousers entirely.
- */
-function selectLookCatalogItems(
-  all: ShoppingItem[],
-  productIds: string[] | null,
-): ShoppingItem[] {
-  if (!productIds?.length) return all;
-  const idSet = new Set(productIds);
-  const selected = all.filter((i) => idSet.has(i.productId ?? i.title));
-  if (!selected.length) return all;
-  const stale = productIds.some(
-    (id) => !all.some((i) => (i.productId ?? i.title) === id),
-  );
-  if (!stale) return selected;
-  const cats = new Set(selected.map((i) => i.category));
-  const filled = [...selected];
-  for (const item of all) {
-    if (cats.has(item.category)) continue;
-    filled.push(item);
-    cats.add(item.category);
-  }
-  return filled;
 }
 
 /** Return the latest saved full-look try-on for this report + look key, if any. */
@@ -244,11 +224,12 @@ export async function POST(request: Request) {
   let setFacePath: string | null = null;
   let setFullPath: string | null = null;
   let setReportId: string | null = null;
+  let occasionId: string | null = null;
 
   if (setId) {
     const { data: setRow } = await admin
       .from("look_sets")
-      .select("id, created_at, look_items, report_id")
+      .select("id, created_at, look_items, report_id, occasion_id")
       .eq("id", setId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -262,9 +243,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Set not found" }, { status: 404 });
     }
     profile = profRow.profile as StyleProfile;
+    occasionId =
+      typeof (setRow as { occasion_id?: string | null }).occasion_id === "string"
+        ? (setRow as { occasion_id: string }).occasion_id
+        : null;
     lookItems =
       (setRow.look_items as Record<number, ShoppingItem[]> | null) ?? undefined;
-    if (lookItemsNeedRefresh(lookItems)) {
+    // A rematch here swaps SKUs under the IDs the shopper just ticked.
+    if (!productIds?.length && lookItemsNeedRefresh(lookItems)) {
       lookItems =
         (await ensureSetLookItems(admin, user.id, setId, lookItems)) ??
         undefined;
@@ -302,6 +288,11 @@ export async function POST(request: Request) {
     refCreatedAt = report.createdAt;
     storageId = reportId!;
     reportIdForRow = reportId!;
+    occasionId = lookOccasionIdFromContext(
+      typeof lookIndex === "number"
+        ? report.looks?.[lookIndex]?.context
+        : undefined,
+    );
   }
 
   // Charge credits (try-on or re-render). Verify the balance up front so we
@@ -335,12 +326,18 @@ export async function POST(request: Request) {
       ? resolveCapsuleCatalogItems(capsulePieces, shopping)
       : resolveLookCatalogItems(lookItems, lookIndex);
 
-  // Item selection (looks only): keep only the "Shop a look" items the user left
-  // enabled. Empty/absent selection falls back to ALL items (current default).
-  const selectedItems =
-    kind === "look"
-      ? selectLookCatalogItems(allResolvedItems, productIds)
-      : allResolvedItems;
+  // Item selection (looks only): dress the SKUs the shopper ticked. If look_items
+  // rematched under them, hydrate the missing IDs from the catalogue instead of
+  // substituting a new shirt/trouser in the same slot.
+  let selectedItems = allResolvedItems;
+  if (kind === "look") {
+    const picked = selectLookCatalogItems(allResolvedItems, productIds);
+    const hydrated = picked.missingIds.length
+      ? await loadShoppingItemsByIds(picked.missingIds)
+      : [];
+    const merged = mergeSelectedLookItems(picked.selected, hydrated);
+    selectedItems = merged.length ? merged : allResolvedItems;
+  }
 
   // A tie can't be worn without a shirt. If the user deselected the shirt but
   // kept a tie, the image model has to fabricate a base layer — and defaults to
@@ -389,6 +386,7 @@ export async function POST(request: Request) {
   const catalogContext = catalogPromptFromItems(
     catalogItems,
     kind === "look" ? description : undefined,
+    occasionId,
   );
   const catalogImages = catalogImageRefsFromItems(catalogItems, {
     max:
@@ -465,6 +463,7 @@ export async function POST(request: Request) {
             catalogContext ?? `Dress the person in this outfit: ${description}. `,
           garmentImageUrls: catalogImageUrls,
           garmentImages: catalogImages,
+          occasionId,
         })
       : await generateLookImage({
           profile,
@@ -476,6 +475,7 @@ export async function POST(request: Request) {
             catalogImageUrls,
             catalogImages,
           },
+          occasionId,
           // Identity reference ONLY — the user's own photo, never the report's
           // generated look image (which would copy the original outfit).
           referenceImageUrl: fullUrl,
