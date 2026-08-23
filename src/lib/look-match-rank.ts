@@ -17,7 +17,11 @@ import {
   isOccasionCrossbodyBagTitle,
   isOccasionTravelBagTitle,
   isDressFootwearTitle,
+  isRainUtilityFootwearTitle,
   isSuedeFootwearTitle,
+  clauseAsksRainUtility,
+  prefersLeatherFootwear,
+  isLeatherUpperFootwear,
   isWorkDressShirtTitle,
   lookOccasionAppliesToBag,
   lookOccasionAppliesToBelt,
@@ -581,9 +585,32 @@ export function rankMatchRows(
           isDressFootwearTitle(
             formatCatalogProductTitle(r.row.brand, r.row.title),
             r.row.garment_subtype,
+            r.row.material_family,
           ),
         );
         if (dress.length) ranked = dress;
+      }
+      if (!clauseAsksRainUtility(clause)) {
+        const notRain = ranked.filter(
+          (r) =>
+            !isRainUtilityFootwearTitle(
+              formatCatalogProductTitle(r.row.brand, r.row.title),
+            ),
+        );
+        if (notRain.length) ranked = notRain;
+      }
+      if (
+        prefersLeatherFootwear(clause) &&
+        !prefersSuedeFootwear(clause) &&
+        /\b(boots?|chelsea|chukka)\b/i.test(`${garment} ${clause ?? ""}`)
+      ) {
+        const leather = ranked.filter((r) =>
+          isLeatherUpperFootwear(
+            formatCatalogProductTitle(r.row.brand, r.row.title),
+            r.row.material_family,
+          ),
+        );
+        if (leather.length) ranked = leather;
       }
       if (!/\bboots?\b/i.test(clause ?? "")) {
         const noBoots = ranked.filter(
@@ -596,6 +623,19 @@ export function rankMatchRows(
         if (noBoots.length) ranked = noBoots;
       }
     }
+  }
+
+  if (
+    /\b(boots?|chelsea|chukka)\b/i.test(`${garment} ${clause ?? ""}`) &&
+    !clauseAsksRainUtility(clause)
+  ) {
+    const notRain = ranked.filter(
+      (r) =>
+        !isRainUtilityFootwearTitle(
+          formatCatalogProductTitle(r.row.brand, r.row.title),
+        ),
+    );
+    if (notRain.length) ranked = notRain;
   }
 
   ranked = dropOpposingNeutrals(ranked, colorCue);

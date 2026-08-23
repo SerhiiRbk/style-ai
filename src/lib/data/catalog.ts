@@ -27,6 +27,9 @@ import {
   lookOccasionIsTailored,
   lookOccasionQueryHint,
   prefersSuedeFootwear,
+  prefersLeatherFootwear,
+  isLeatherUpperFootwear,
+  isRainUtilityFootwearTitle,
   clauseAsksLinen,
   workDefaultShirtColor,
   prefersChinoTrousers,
@@ -508,7 +511,7 @@ async function supplementWorkLookRows(
         const title = formatCatalogProductTitle(r.brand, r.title);
         return (
           isSuedeFootwearTitle(title, r.material_family) &&
-          isDressFootwearTitle(title, r.garment_subtype)
+          isDressFootwearTitle(title, r.garment_subtype, r.material_family)
         );
       });
       if (!hasDressSuede) {
@@ -526,6 +529,37 @@ async function supplementWorkLookRows(
           console.warn("[look-match] suede shoe supplement failed", error.message);
         }
         extra.push(...((data as MatchRow[]) ?? []));
+      }
+    }
+    if (
+      lookOccasionAppliesToShoe(g.garment) &&
+      prefersLeatherFootwear(g.clause) &&
+      /\b(boots?|chelsea|chukka)\b/i.test(`${g.garment} ${g.clause}`)
+    ) {
+      const hasLeatherBoot = pool.some((r) => {
+        const title = formatCatalogProductTitle(r.brand, r.title);
+        return isLeatherUpperFootwear(title, r.material_family);
+      });
+      if (!hasLeatherBoot) {
+        const { data, error } = await sb
+          .from("products")
+          .select(PRODUCT_MATCH_COLS)
+          .eq("category", "Footwear")
+          .or("hidden.eq.false,hidden.is.null")
+          .or("in_stock.eq.true,in_stock.is.null")
+          .or(
+            "title.ilike.%leather boot%,title.ilike.%leather chelsea%,title.ilike.%suede boot%,title.ilike.%chelsea boot%",
+          )
+          .limit(16);
+        if (error) {
+          console.warn("[look-match] leather boot supplement failed", error.message);
+        }
+        extra.push(
+          ...((data as MatchRow[]) ?? []).filter((r) => {
+            const title = formatCatalogProductTitle(r.brand, r.title);
+            return !isRainUtilityFootwearTitle(title);
+          }),
+        );
       }
     }
     if (!extra.length) continue;
@@ -554,7 +588,7 @@ async function supplementWorkLookRows(
         const title = formatCatalogProductTitle(r.brand, r.title);
         return (
           isSuedeFootwearTitle(title, r.material_family) &&
-          isDressFootwearTitle(title, r.garment_subtype)
+          isDressFootwearTitle(title, r.garment_subtype, r.material_family)
         );
       });
       if (dressSuede.length) {

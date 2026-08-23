@@ -14,7 +14,15 @@ import type { ShoppingItem } from "@/lib/report";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import {
   archiveReplacedLookImages,
+  rememberOriginalLook,
+  saveConstructEstimate,
 } from "@/lib/data/look-sets";
+import { generateConstructedLookOpinion } from "@/lib/ai/tryon-opinion";
+import { lookSetOccasionLabel } from "@/lib/look-contexts";
+import {
+  lookEstimateFingerprint,
+  type StoredLookEstimate,
+} from "@/lib/look-estimate";
 import {
   cacheBustAssetUrl,
   renderAndStoreThreeQuarterLook,
@@ -316,6 +324,28 @@ export async function POST(request: Request) {
   }
 
   const previousTitle = lookRow.title ?? title;
+  {
+    const { data: li } = await admin
+      .from("look_sets")
+      .select("look_items")
+      .eq("id", setId)
+      .maybeSingle();
+    const currentItems =
+      ((li?.look_items as Record<number, ShoppingItem[]> | null) ?? {})[
+        lookRow.idx ?? lookIndex
+      ] ?? [];
+    if (lookRow.image_path) {
+      await rememberOriginalLook(admin, setId, lookRow.idx ?? lookIndex, {
+        title: previousTitle,
+        description: String(lookRow.description ?? ""),
+        palette: (lookRow.palette as string[]) ?? [],
+        imagePath: lookRow.image_path,
+        imagePathTq: lookRow.image_path_tq ?? null,
+        items: currentItems,
+        savedAt: new Date().toISOString(),
+      });
+    }
+  }
   await archiveReplacedLookImages(admin, setId, [
     { path: lookRow.image_path, title: previousTitle },
     {
@@ -397,6 +427,36 @@ export async function POST(request: Request) {
     console.error("[look-set] construct rematch failed", setId, lookIndex, err);
   }
 
+  let estimate: StoredLookEstimate | null = null;
+  try {
+    const opinion = await generateConstructedLookOpinion({
+      title,
+      description,
+      garments: items.map((item) => ({
+        title: item.title,
+        category: item.category,
+        color: item.colorName ?? item.color,
+      })),
+      profile,
+      occasionLabel: lookSetOccasionLabel(setRow.occasion_id as string | null),
+    });
+    if (opinion) {
+      estimate = {
+        opinion,
+        fingerprint: lookEstimateFingerprint(description, items),
+        savedAt: new Date().toISOString(),
+      };
+      await saveConstructEstimate(
+        admin,
+        setId,
+        lookRow.idx ?? lookIndex,
+        estimate,
+      );
+    }
+  } catch (err) {
+    console.error("[look-set] construct estimate failed", setId, lookIndex, err);
+  }
+
   let balance: number | null = null;
   if (hasSupabaseAdmin) {
     try {
@@ -444,5 +504,6 @@ export async function POST(request: Request) {
     description,
     palette,
     items,
+    estimate,
   });
 }

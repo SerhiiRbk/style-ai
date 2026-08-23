@@ -18,6 +18,7 @@ import {
   loadPublicLookSet,
 } from "@/lib/data/look-sets";
 import { lookSetOccasionLabel } from "@/lib/look-contexts";
+import { lookDiffersFromOriginal } from "@/lib/look-original";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
 import { LookGeneratingRefresh } from "@/components/LookGeneratingRefresh";
@@ -79,6 +80,14 @@ export default async function LookSetPage({
             }
             items={set.lookItems?.[look.idx] ?? []}
             isOwner={isOwner}
+            canRevert={lookDiffersFromOriginal(
+              {
+                imagePath: look.imagePath,
+                description: look.description,
+              },
+              "originalLooks" in set ? set.originalLooks?.[look.idx] : undefined,
+            )}
+            initialEstimate={owned?.constructEstimates?.[look.idx] ?? null}
           />
         ) : (
           <article key={look.idx} className="flex flex-col">

@@ -9,7 +9,10 @@ import {
   isOccasionCrossbodyBagTitle,
   isOccasionTravelBagTitle,
   isDressFootwearTitle,
+  isRainUtilityFootwearTitle,
+  isLeatherUpperFootwear,
   isSuedeFootwearTitle,
+  prefersLeatherFootwear,
   isWorkDressShirtTitle,
   lookOccasionAppliesToBag,
   lookOccasionAppliesToBelt,
@@ -48,6 +51,8 @@ test("work and formal are tailored occasions", () => {
   assert.equal(lookOccasionAppliesToGarment("work", "messenger bag"), true);
   assert.equal(lookOccasionAppliesToBelt("belt"), true);
   assert.equal(lookOccasionAppliesToShoe("derbies"), true);
+  assert.equal(lookOccasionAppliesToShoe("boots"), true);
+  assert.equal(lookOccasionAppliesToShoe("chelsea"), true);
   assert.equal(lookOccasionAppliesToGarment("work", "knit"), false);
   assert.equal(lookOccasionAppliesToShirt("shirt"), true);
   assert.equal(lookOccasionAppliesToShirt("oxford"), true);
@@ -306,6 +311,41 @@ test("suede derbies are preferred when the look named suede", () => {
   assert.equal(
     isOccasionCasualShoeTitle("Reserved Suede Mule Shoes", "dusty rose suede derbies"),
     true,
+  );
+});
+
+test("rain and rubber boots are utility unless the look asked for them", () => {
+  assert.equal(
+    isRainUtilityFootwearTitle(
+      "Valmonti Men’s Waterproof Ankle Rain Boots Slip-Resistant Urban Footwear",
+    ),
+    true,
+  );
+  assert.equal(isRainUtilityFootwearTitle("Zara Leather Chelsea Boots"), false);
+  assert.equal(prefersLeatherFootwear("rust leather boots"), true);
+  assert.equal(prefersLeatherFootwear("warm grey suede loafers"), false);
+  assert.equal(
+    isOccasionCasualShoeTitle(
+      "Waterproof Ankle Rain Boots",
+      "rust leather boots",
+    ),
+    true,
+  );
+  assert.equal(
+    isDressFootwearTitle("Leather Chelsea Boots", "boots", "leather"),
+    true,
+  );
+  assert.equal(
+    isDressFootwearTitle("Waterproof Ankle Rain Boots", "boots", "denim"),
+    false,
+  );
+  assert.equal(
+    isLeatherUpperFootwear("Leather Chelsea Boots", "leather"),
+    true,
+  );
+  assert.equal(
+    isLeatherUpperFootwear("Dark-Moss Suede Chelsea Boots", "suede"),
+    false,
   );
 });
 

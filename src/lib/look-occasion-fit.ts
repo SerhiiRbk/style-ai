@@ -29,6 +29,10 @@ const SHOE_GARMENTS = new Set([
   "loafers",
   "brogue",
   "brogues",
+  "boot",
+  "boots",
+  "chelsea",
+  "chukka",
 ]);
 
 const BAG_GARMENTS = new Set([
@@ -75,6 +79,14 @@ const FASHION_SHIRT_RE =
 const NON_DRESS_SHIRT_RE =
   /\b(t-?shirts?|tees?|tank|polo|henley|slogan)\b/i;
 const DRESS_SHOE_RE = /\b(derb(?:y|ies)|oxfords?|brogues?)\b/i;
+const RAIN_UTILITY_BOOT_RE =
+  /\b(rain\s+boots?|wellingtons?|wellies|gumboots?|galoshes?|rubber\s+(?:ankle\s+)?boots?)\b/i;
+const HIKING_UTILITY_BOOT_RE =
+  /\b(hiking|trek(?:king)?|trail\s+boots?|mountain\s+boots?|all[-\s]?terrain|rugged|outdoor|motorcycle|combat)\b/i;
+const LEATHER_FOOTWEAR_RE =
+  /\b(leather|calf(?:skin)?|cordovan|nubuck)\b/i;
+const LEATHER_BOOT_RE =
+  /\b(chelsea|chukka|derby\s+boots?|brogue\s+boots?)\b/i;
 
 export function lookOccasionIsTailored(
   occasionId: string | null | undefined,
@@ -237,6 +249,12 @@ export function isOccasionCasualShoeTitle(
   clause?: string | null,
   subtype?: string | null,
 ): boolean {
+  if (isRainUtilityFootwearTitle(title) && !clauseAsksRainUtility(clause)) {
+    return true;
+  }
+  if (HIKING_UTILITY_BOOT_RE.test(title) && !HIKING_UTILITY_BOOT_RE.test(clause ?? "")) {
+    return true;
+  }
   if (subtype && CASUAL_SHOE_SUBTYPES.has(subtype)) {
     return !CASUAL_SHOE_RE.test(clause ?? "");
   }
@@ -246,6 +264,28 @@ export function isOccasionCasualShoeTitle(
 
 export function prefersSuedeFootwear(clause?: string | null): boolean {
   return SUEDE_RE.test(clause ?? "");
+}
+
+export function prefersLeatherFootwear(clause?: string | null): boolean {
+  return LEATHER_FOOTWEAR_RE.test(clause ?? "") || LEATHER_BOOT_RE.test(clause ?? "");
+}
+
+/** Smooth leather upper — not suede, unless the title also says leather. */
+export function isLeatherUpperFootwear(
+  title: string,
+  materialFamily?: string | null,
+): boolean {
+  if (isRainUtilityFootwearTitle(title)) return false;
+  if (materialFamily === "suede" && !LEATHER_FOOTWEAR_RE.test(title)) return false;
+  return materialFamily === "leather" || LEATHER_FOOTWEAR_RE.test(title);
+}
+
+export function isRainUtilityFootwearTitle(title: string): boolean {
+  return RAIN_UTILITY_BOOT_RE.test(title);
+}
+
+export function clauseAsksRainUtility(clause?: string | null): boolean {
+  return RAIN_UTILITY_BOOT_RE.test(clause ?? "");
 }
 
 export function prefersLoaferFootwear(clause?: string | null): boolean {
@@ -317,10 +357,21 @@ export function isSuedeFootwearTitle(
 export function isDressFootwearTitle(
   title: string,
   subtype?: string | null,
+  materialFamily?: string | null,
 ): boolean {
+  if (isRainUtilityFootwearTitle(title)) return false;
+  if (HIKING_UTILITY_BOOT_RE.test(title)) return false;
   if (subtype && DRESS_SHOE_SUBTYPES.has(subtype)) return true;
   if (subtype && CASUAL_SHOE_SUBTYPES.has(subtype)) return false;
-  return DRESS_SHOE_RE.test(title);
+  if (DRESS_SHOE_RE.test(title) || LEATHER_BOOT_RE.test(title)) return true;
+  const isBoot = subtype === "boots" || /\bboots?\b/i.test(title);
+  if (!isBoot) return false;
+  return (
+    materialFamily === "leather" ||
+    materialFamily === "suede" ||
+    LEATHER_FOOTWEAR_RE.test(title) ||
+    SUEDE_RE.test(title)
+  );
 }
 
 /** True when this title is a travel / weekender bag unless the look asked for one. */
@@ -395,6 +446,9 @@ export function lookOccasionQueryHint(
   if (lookOccasionAppliesToShoe(garment ?? "")) {
     if (prefersLoaferFootwear(clause)) {
       return "leather or suede loafers, not derby, not oxford, not mule, not boat shoe, not sandal";
+    }
+    if (/\b(boots?|chelsea|chukka)\b/i.test(`${garment ?? ""} ${clause ?? ""}`)) {
+      return "leather or suede chelsea, chukka or lace-up boots, not rain boots, not wellingtons, not rubber, not hiking";
     }
     return "leather or suede dress derby or oxford, not mule, not boat shoe, not sandal";
   }

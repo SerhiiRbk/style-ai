@@ -339,4 +339,51 @@ export const LOOK_MATCH_REGRESSION: LookMatchRegressionCase[] = [
     acceptIds: ["loafer-grey"],
     rejectIds: ["loafer-green", "loafer-navy"],
   },
+  {
+    id: "leather-boots-not-rain",
+    why: "Rust leather boots must not fall to rubber rain boots even when those score a closer vector hit.",
+    slot: {
+      garment: "boots",
+      color: "rust",
+      clause: "rust leather boots",
+    },
+    occasionId: "work",
+    pool: [
+      p(
+        "rain-black",
+        "Waterproof Ankle Rain Boots Slip-Resistant Urban Footwear",
+        "Black/Red",
+        {
+          color_hex: "#111111",
+          garment_subtype: "boots",
+          material_family: "denim",
+          similarity: 0.96,
+        },
+      ),
+      p("leather-coffee", "Leather Boots Timeless Stylish", "Coffee", {
+        color_hex: "#4B3621",
+        garment_subtype: "boots",
+        material_family: "leather",
+      }),
+      p("leather-chelsea", "Leather Chelsea Boots", "Brown", {
+        color_hex: "#6F4E37",
+        garment_subtype: "boots",
+        material_family: "leather",
+      }),
+      p("suede-moss", "Dark-Moss Suede Chelsea Boots", "Dark Moss", {
+        color_hex: "#4A5240",
+        garment_subtype: "boots",
+        material_family: "suede",
+        similarity: 0.93,
+      }),
+      p("rugged-brown", "Rugged Leather Boots With Buckle Outdoor Footwear", "Brown", {
+        color_hex: "#6F4E37",
+        garment_subtype: "boots",
+        material_family: "leather",
+        similarity: 0.91,
+      }),
+    ],
+    acceptIds: ["leather-coffee", "leather-chelsea"],
+    rejectIds: ["rain-black", "suede-moss", "rugged-brown"],
+  },
 ];

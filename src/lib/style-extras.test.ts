@@ -551,6 +551,27 @@ test("resolveLookGarments falls back to prose when structured slots are thinner"
   );
 });
 
+test("resolveLookGarments prefers the brief's boots over a stale loafer slot", () => {
+  const description =
+    "rust leather jacket, oatmeal shirt, coffee chinos, olive belt, rust leather boots, oatmeal briefcase";
+  const stale = [
+    { garment: "linen blazer", color: "camel" },
+    { garment: "cotton shirt", color: "oatmeal" },
+    { garment: "chinos", color: "coffee" },
+    { garment: "woven belt", color: "olive" },
+    { garment: "suede loafers", color: "warm grey" },
+    { garment: "leather briefcase", color: "oatmeal" },
+  ];
+  const garments = resolveLookGarments(stale, description);
+  const shoe = garments.find((g) => g.category === "Footwear");
+  const outer = garments.find((g) => g.category === "Outerwear");
+  assert.ok(shoe);
+  assert.match(shoe!.garment, /boot/i);
+  assert.match(shoe!.clause, /leather boots/i);
+  assert.ok(outer);
+  assert.match(outer!.garment, /jacket/i);
+});
+
 test("lookItemsFromCell accepts jsonb slots and ignores garbage", () => {
   assert.deepEqual(
     lookItemsFromCell([

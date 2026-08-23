@@ -3323,9 +3323,43 @@ export function resolveLookGarments(
 ): LookGarment[] {
   const fromProse = decomposeLook(description);
   const structured = lookGarmentsFromItems(items);
-  return structured.length >= fromProse.length && structured.length
-    ? structured
-    : fromProse;
+  if (!structured.length) return fromProse;
+  if (structured.length < fromProse.length) return fromProse;
+  return preferProseFootwear(structured, fromProse);
+}
+
+function footwearKind(garment: string): string {
+  const g = garment.toLowerCase();
+  if (/\bloafers?\b/.test(g)) return "loafers";
+  if (/\b(chelsea|chukka|boots?)\b/.test(g)) return "boots";
+  if (/\b(derb|oxford|brogue)\b/.test(g)) return "dress";
+  if (/\b(sneaker|trainer)\b/.test(g)) return "sneakers";
+  return g.trim();
+}
+
+/** Constructor overwrites the brief but can leave stale `items` (loafers vs boots). */
+function preferProseFootwear(
+  structured: LookGarment[],
+  prose: LookGarment[],
+): LookGarment[] {
+  const used = new Set<number>();
+  return structured.map((slot) => {
+    const proseIdx = prose.findIndex((p, i) => {
+      if (used.has(i) || p.category !== slot.category) return false;
+      return slotKind(slot) !== slotKind(p);
+    });
+    if (proseIdx < 0) return slot;
+    used.add(proseIdx);
+    return prose[proseIdx]!;
+  });
+}
+
+function slotKind(g: LookGarment): string {
+  if (g.category === "Footwear") return footwearKind(g.garment);
+  const raw = g.garment.toLowerCase();
+  if (/\bblazer\b/.test(raw)) return "blazer";
+  if (/\b(jacket|coat|trench)\b/.test(raw)) return "jacket";
+  return raw.replace(/^(linen|cotton|wool|suede|leather|woven)\s+/, "").trim();
 }
 
 /** Parse a `looks.items` jsonb cell into structured slots (null when absent). */
