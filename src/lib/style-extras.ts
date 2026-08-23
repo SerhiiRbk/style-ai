@@ -2930,6 +2930,16 @@ export function lookAsksTeal(text?: string | null): boolean {
   return /\bteal\b/i.test(text ?? "");
 }
 
+/** True when the look named plum — fallback is navy/slate, not pastel pink. */
+export function lookAsksPlum(text?: string | null): boolean {
+  return /\b(softplum|plum|aubergine|eggplant)\b/i.test(text ?? "");
+}
+
+/** True when the look named charcoal — not a licence for dark teal/green. */
+export function lookAsksCharcoal(text?: string | null): boolean {
+  return /\b(charcoal|graphite|anthracite|asphalt|gunmetal)\b/i.test(text ?? "");
+}
+
 export function lookColorCue(
   color?: string | null,
   clause?: string | null,
@@ -2959,10 +2969,21 @@ export function colorFamilyNeedles(queryColor: string | null): string[] {
   const families = parseColorTokens(queryColor ?? "").families;
   if (!families.size) return [];
   const needles = new Set<string>();
+  // Named tokens in the cue first — "charcoal" must not fall off the 8-needle cap
+  // behind dove/ash/silver.
+  for (const w of normalizeCompoundColors((queryColor ?? "").toLowerCase())
+    .split(/\s+/)
+    .filter(Boolean)) {
+    if (COLOR_FAMILY[w] && isSearchableColorToken(w)) needles.add(w);
+  }
   for (const [token, meta] of Object.entries(COLOR_FAMILY)) {
     if (!families.has(meta.family)) continue;
     if (!isSearchableColorToken(token)) continue;
     needles.add(token);
+  }
+  // Catalogue plum is rare — also pull the wearable menswear stand-in.
+  if (lookAsksPlum(queryColor)) {
+    for (const n of ["navy", "blue", "slate", "indigo"]) needles.add(n);
   }
   return [...needles];
 }
@@ -2991,6 +3012,37 @@ function hueDist(a: number, b: number): number {
 function parseHexColor(raw?: string | null): string | null {
   const m = (raw ?? "").trim().match(/^#?([0-9a-f]{6})$/i);
   return m ? `#${m[1]!.toLowerCase()}` : null;
+}
+
+/** Hue family from a swatch when the feed has no colour word. */
+export function familyFromHex(raw?: string | null): string | null {
+  const hex = parseHexColor(raw);
+  if (!hex) return null;
+  const { h, s, l } = hexToHsl(hex);
+  if (s < 0.08 && l >= 0.88) return "white";
+  if (s < 0.08 && l <= 0.14) return "black";
+  if (s < 0.1) return "grey";
+  // Light rosy reds are pink, not crimson.
+  if ((h >= 320 || h < 18) && l >= 0.5 && s <= 0.65) return "pink";
+  if (h < 15 || h >= 345) return "red";
+  if (h < 40) return "orange";
+  if (h < 70) return "yellow";
+  if (h < 155) return "green";
+  if (h < 255) return "blue";
+  if (h < 320) return "purple";
+  return "pink";
+}
+
+/** Families from title/colour words, or the hex swatch when words are missing. */
+export function productColorFamilies(
+  color: string | null,
+  title: string,
+  hex?: string | null,
+): Set<string> {
+  const fams = colorFamilies(`${color ?? ""} ${title}`);
+  if (fams.size) return fams;
+  const inferred = familyFromHex(hex ?? parseHexColor(color));
+  return inferred ? new Set([inferred]) : fams;
 }
 
 function namedColorHex(text: string | null): string | null {
@@ -3086,13 +3138,40 @@ export function colorMatchScore(
     }
   }
 
+  if (lookAsksCharcoal(queryColor) && !lookAsksTeal(queryColor)) {
+    const inferred =
+      p.families.size === 0 ? familyFromHex(productHex ?? productColor) : null;
+    const green = p.families.has("green") || inferred === "green";
+    const blueNotGrey =
+      (p.families.has("blue") || inferred === "blue") &&
+      !p.families.has("grey") &&
+      !p.families.has("black");
+    if (green || blueNotGrey) word = Math.min(word, 0.15);
+  }
+
+  if (lookAsksPlum(queryColor)) {
+    const inferred =
+      p.families.size === 0 ? familyFromHex(productHex ?? productColor) : null;
+    const pink =
+      (p.families.has("pink") || inferred === "pink") &&
+      !p.families.has("purple");
+    const cool =
+      p.families.has("blue") ||
+      p.families.has("grey") ||
+      inferred === "blue" ||
+      inferred === "grey";
+    // Hue-wheel pink is candy, not a plum stand-in. Navy / slate is.
+    if (pink) word = Math.min(word, 0.15);
+    if (cool) word = Math.max(word, 0.55);
+  }
+
   if (queryHex && productHex) {
     if (hexScore != null) {
       // Empty-family 0.5 must not rescue a far / opposite hex (white vs teal).
-      if (!p.families.size) return hexScore;
+      if (!p.families.size && word < 0.45) return hexScore;
       return Math.max(word, hexScore);
     }
-    if (!p.families.size) return 0.12;
+    if (!p.families.size && word < 0.45) return 0.12;
     // Only crush a strong same-family word when the swatch is a neon jump
     // (catalogue "pink" that is fuchsia). Soft plum ↔ lilac stays.
     const qH = hexToHsl(queryHex);

@@ -8,6 +8,8 @@ import {
   colorMatchScore,
   colorShade,
   lookAsksTeal,
+  lookAsksPlum,
+  lookAsksCharcoal,
   decomposeLook,
   garmentTitleMatchScore,
   leatherToneFamily,
@@ -263,8 +265,10 @@ test("colorMatchScore finds neighbours for greige, sage, soft plum and mushroom"
   const plumNavy = colorMatchScore("soft plum", "navy", "Navy Knit");
   assert.ok(plumMauve >= 0.5, `soft plum↔mauve, got ${plumMauve}`);
   assert.ok(plumLilac >= 0.5, `soft plum↔lilac, got ${plumLilac}`);
-  assert.ok(plumRose >= 0.5, `soft plum↔rose should be a neighbour, got ${plumRose}`);
-  assert.ok(plumNavy < 0.2, `soft plum must not match navy, got ${plumNavy}`);
+  assert.ok(plumRose < 0.25, `soft plum must not fall to rose, got ${plumRose}`);
+  assert.ok(plumNavy >= 0.45, `soft plum falls to navy, got ${plumNavy}`);
+  assert.ok(plumNavy > plumRose, "navy must beat rose when plum is missing");
+  assert.ok(plumMauve > plumNavy, "same-family purple still beats the navy fallback");
 
   const mushTaupe = colorMatchScore("mushroom", "taupe", "Taupe Suede Loafers");
   const mushGreige = colorMatchScore("mushroom", "greige", "Greige Suede Loafers");
@@ -318,6 +322,70 @@ test("messenger titles do not match a crossbody bag", () => {
     garmentTitleMatchScore("messenger", "Zara Leather Messenger Bag"),
     1,
   );
+});
+
+test("colorMatchScore falls plum back to navy, not pastel pink", () => {
+  const plumNavy = colorMatchScore("soft plum", "navy", "Navy Blazer");
+  const plumSlate = colorMatchScore("soft plum", "slate blue", "Slate Blazer");
+  const plumPink = colorMatchScore("soft plum", "pastel pink", "Pink Blazer");
+  const plumPinkHex = colorMatchScore("soft plum", "#E1A0A8", "Slim Fit Blazer", {
+    productHex: "#E1A0A8",
+  });
+  const plumNavyHex = colorMatchScore(
+    "soft plum",
+    "#28324A",
+    "Unstructured Blazer",
+    { productHex: "#28324A" },
+  );
+  const plumMauve = colorMatchScore("soft plum", "mauve", "Mauve Blazer");
+  assert.ok(plumNavy >= 0.45, `plum↔navy should stay, got ${plumNavy}`);
+  assert.ok(plumSlate >= 0.45, `plum↔slate should stay, got ${plumSlate}`);
+  assert.ok(plumPink < 0.25, `pastel pink is not a plum stand-in, got ${plumPink}`);
+  assert.ok(plumNavy > plumPink, "navy must beat pastel pink for plum");
+  assert.ok(
+    plumPinkHex < 0.25,
+    `hex-only pastel pink is not a plum stand-in, got ${plumPinkHex}`,
+  );
+  assert.ok(
+    plumNavyHex >= 0.45,
+    `hex-only navy should stay for plum, got ${plumNavyHex}`,
+  );
+  assert.ok(plumNavyHex > plumPinkHex, "hex navy must beat hex pink for plum");
+  assert.ok(plumMauve > plumNavy, "catalogue purple still beats the navy fallback");
+  assert.equal(lookAsksPlum("soft plum unstructured blazer"), true);
+  assert.equal(lookAsksPlum("softplum unstructured blazer"), true);
+  assert.equal(lookAsksPlum("aubergine knit"), true);
+  assert.equal(lookAsksPlum("dusty rose knit"), false);
+  assert.equal(lookAsksPlum("mauve blazer"), false);
+});
+
+test("colorMatchScore does not treat blue-green as charcoal", () => {
+  const grey = colorMatchScore("soft charcoal", "Grey", "Suede Loafers");
+  const green = colorMatchScore("soft charcoal", "Blue Green", "Suede Loafers", {
+    productHex: "#2F4B7C",
+  });
+  assert.ok(grey >= 0.3, `charcoal↔grey should stay, got ${grey}`);
+  assert.ok(green < 0.2, `blue-green is not charcoal, got ${green}`);
+  assert.ok(grey > green, "grey must beat blue-green for charcoal");
+  assert.equal(lookAsksCharcoal("soft charcoal suede loafers"), true);
+  assert.equal(lookAsksCharcoal("soft teal sneakers"), false);
+});
+
+test("colorFamilyNeedles puts charcoal before other greys", () => {
+  const needles = colorFamilyNeedles("soft charcoal");
+  assert.ok(needles.includes("charcoal"), `missing charcoal: ${needles.join(",")}`);
+  assert.ok(
+    needles.indexOf("charcoal") < needles.indexOf("dove"),
+    `charcoal should be first among greys: ${needles.join(",")}`,
+  );
+});
+
+test("colorFamilyNeedles pulls navy for a plum cue", () => {
+  const needles = colorFamilyNeedles("soft plum");
+  assert.ok(needles.includes("plum"), `missing plum: ${needles.join(",")}`);
+  assert.ok(needles.includes("navy"), `missing navy fallback: ${needles.join(",")}`);
+  assert.ok(needles.includes("blue"), `missing blue fallback: ${needles.join(",")}`);
+  assert.ok(!needles.includes("pink"), "pink must not be a plum search needle");
 });
 
 test("colorFamilyNeedles pulls pink-family catalogue words for dusty rose", () => {

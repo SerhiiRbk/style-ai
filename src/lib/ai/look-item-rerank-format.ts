@@ -1,5 +1,8 @@
 /** Shared rerank candidate shape — kept free of server-only so tests can import it. */
 
+/** Max vector candidates passed to the reranker per garment slot. */
+export const LOOK_RERANK_CANDIDATE_LIMIT = 8;
+
 export type RerankCandidate = {
   id: string;
   brand: string | null;

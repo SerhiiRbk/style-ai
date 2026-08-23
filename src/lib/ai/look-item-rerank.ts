@@ -1,7 +1,9 @@
 import "server-only";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { env, hasAI } from "@/lib/env";
+import { env, hasAI, hasSupabaseAdmin } from "@/lib/env";
+import { createAdminSupabase } from "@/lib/supabase/server";
+import { LOOK_RERANK_VERSION } from "@/lib/look-match-version";
 import { lookStyleRerankHint } from "@/lib/look-style-fit";
 import { lookOccasionRerankHint } from "@/lib/look-occasion-fit";
 import {
@@ -9,11 +11,15 @@ import {
   type RerankCandidate,
   type RerankGarmentSlot,
 } from "@/lib/ai/look-item-rerank-format";
+import {
+  loadOrComputeRerank,
+  memoryRerankStore,
+  rerankCacheKey,
+  type RerankCacheStore,
+} from "@/lib/ai/look-item-rerank-cache";
 
 export type { RerankCandidate, RerankGarmentSlot };
-
-/** Max vector candidates passed to the reranker per garment slot. */
-export const LOOK_RERANK_CANDIDATE_LIMIT = 8;
+export { LOOK_RERANK_CANDIDATE_LIMIT } from "@/lib/ai/look-item-rerank-format";
 
 export type RerankPick = {
   slot: number;
@@ -88,9 +94,53 @@ function buildRerankPrompt(
   );
 }
 
+const memoryPicks = memoryRerankStore<RerankPick[]>();
+
+function rerankStoragePath(key: string): string {
+  return `looks/rerank/${LOOK_RERANK_VERSION}/${key}.json`;
+}
+
+function persistentRerankStore(): RerankCacheStore<RerankPick[]> {
+  return {
+    async get(key) {
+      const hit = await memoryPicks.get(key);
+      if (hit) return hit;
+      if (!hasSupabaseAdmin) return null;
+      try {
+        const { data } = await createAdminSupabase()
+          .storage.from("assets")
+          .download(rerankStoragePath(key));
+        if (!data) return null;
+        const parsed = JSON.parse(await data.text()) as { picks?: RerankPick[] };
+        if (!Array.isArray(parsed?.picks)) return null;
+        await memoryPicks.set(key, parsed.picks);
+        return parsed.picks;
+      } catch {
+        return null;
+      }
+    },
+    async set(key, picks) {
+      await memoryPicks.set(key, picks);
+      if (!hasSupabaseAdmin) return;
+      try {
+        await createAdminSupabase()
+          .storage.from("assets")
+          .upload(rerankStoragePath(key), JSON.stringify({ picks, savedAt: Date.now() }), {
+            contentType: "application/json",
+            upsert: true,
+          });
+      } catch {
+        // Best-effort — the next rematch just recomputes.
+      }
+    },
+  };
+}
+
 /**
  * LLM rerank: one reasoning call per look, picking candidate indices per slot.
  * Returns null on failure so callers can fall back to heuristic ranking.
+ * Cached by look copy + ordered top-8 ids + LOOK_RERANK_VERSION so a heuristic
+ * rematch that does not change candidates skips Sonnet.
  */
 export async function rerankLookItemSlots(
   lookTitle: string,
@@ -100,41 +150,60 @@ export async function rerankLookItemSlots(
   styleId?: string | null,
   occasionId?: string | null,
 ): Promise<RerankPick[] | null> {
-  if (!hasAI || !slots.length) return null;
+  if (!slots.length) return null;
 
   const withCandidates = slots.filter((s) => s.candidates.length > 0);
   if (!withCandidates.length) return null;
 
-  try {
-    const { output } = await generateText({
-      model: env.modelReasoning,
-      output: Output.object({ schema: lookItemRerankSchema }),
-      prompt: buildRerankPrompt(
-        lookTitle,
-        lookDescription,
-        paletteHints,
-        withCandidates,
-        styleId,
-        occasionId,
-      ),
-    });
+  const key = rerankCacheKey({
+    lookTitle,
+    lookDescription,
+    paletteHints,
+    styleId,
+    occasionId,
+    slots: withCandidates.map((s) => ({
+      slot: s.slot,
+      candidateIds: s.candidates.map((c) => c.id),
+    })),
+  });
 
-    const valid = new Map<number, RerankPick>();
-    for (const pick of output.picks) {
-      const slot = withCandidates.find((s) => s.slot === pick.slot);
-      if (!slot) continue;
-      const max = slot.candidates.length - 1;
-      if (pick.candidateIndex < -1 || pick.candidateIndex > max) continue;
-      valid.set(pick.slot, {
-        slot: pick.slot,
-        candidateIndex: pick.candidateIndex,
-        similarPick: pick.similarPick,
-        why: pick.why,
-      });
-    }
-    return [...valid.values()];
-  } catch (err) {
-    console.error("[look-item-rerank]", err);
-    return null;
-  }
+  return loadOrComputeRerank(
+    key,
+    async () => {
+      if (!hasAI) return null;
+      try {
+        const { output } = await generateText({
+          model: env.modelReasoning,
+          output: Output.object({ schema: lookItemRerankSchema }),
+          prompt: buildRerankPrompt(
+            lookTitle,
+            lookDescription,
+            paletteHints,
+            withCandidates,
+            styleId,
+            occasionId,
+          ),
+        });
+
+        const valid = new Map<number, RerankPick>();
+        for (const pick of output.picks) {
+          const slot = withCandidates.find((s) => s.slot === pick.slot);
+          if (!slot) continue;
+          const max = slot.candidates.length - 1;
+          if (pick.candidateIndex < -1 || pick.candidateIndex > max) continue;
+          valid.set(pick.slot, {
+            slot: pick.slot,
+            candidateIndex: pick.candidateIndex,
+            similarPick: pick.similarPick,
+            why: pick.why,
+          });
+        }
+        return [...valid.values()];
+      } catch (err) {
+        console.error("[look-item-rerank]", err);
+        return null;
+      }
+    },
+    persistentRerankStore(),
+  );
 }
