@@ -6,7 +6,12 @@ import { getGeo } from "@/lib/geo";
 import { Subseason, Boldness } from "@/lib/style-profile";
 import { lookContextById } from "@/lib/look-contexts";
 import { itemBudgetPreferenceFromBandId } from "@/lib/budgets";
-import { paletteForSubseason } from "@/lib/colour-palette";
+import {
+  paletteForPerson,
+  parseSwatchHex,
+  type Contrast,
+  type Undertone,
+} from "@/lib/colour-palette";
 import { matchInspirationItems } from "@/lib/data/catalog";
 import {
   buildAnonProfile,
@@ -21,7 +26,7 @@ import { createAdminSupabase } from "@/lib/supabase/server";
 export const maxDuration = 60;
 
 /** Bump when the matcher/garment/profile logic changes so cached looks recompute. */
-const LOOKS_CACHE_VERSION = "1";
+const LOOKS_CACHE_VERSION = "4";
 /** Cached looks are catalogue-dependent, so expire them daily. */
 const LOOKS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -69,6 +74,28 @@ export async function POST(request: Request) {
   const source = body?.source === "quiz" ? "quiz" : "photo";
   const anonId =
     typeof body?.anonId === "string" && body.anonId ? body.anonId : null;
+  const undertone: Undertone = ["warm", "cool", "neutral"].includes(body?.undertone)
+    ? body.undertone
+    : "neutral";
+  const contrast: Contrast = ["low", "medium", "high"].includes(body?.contrast)
+    ? body.contrast
+    : "medium";
+  const skinTone = typeof body?.skinTone === "string" ? body.skinTone : null;
+  const hairColor = typeof body?.hairColor === "string" ? body.hairColor : null;
+  const eyeColor = typeof body?.eyeColor === "string" ? body.eyeColor : null;
+  const skinHex = parseSwatchHex(body?.skinHex);
+  const hairHex = parseSwatchHex(body?.hairHex);
+  const eyeHex = parseSwatchHex(body?.eyeHex);
+  const person = {
+    undertone,
+    contrast,
+    skinTone,
+    hairColor,
+    eyeColor,
+    skinHex,
+    hairHex,
+    eyeHex,
+  };
 
   const geo = await getGeo();
 
@@ -84,6 +111,14 @@ export async function POST(request: Request) {
         occasion,
         budgetId,
         boldness,
+        undertone,
+        contrast,
+        (skinTone ?? "").toLowerCase(),
+        (hairColor ?? "").toLowerCase(),
+        (eyeColor ?? "").toLowerCase(),
+        skinHex ?? "",
+        hairHex ?? "",
+        eyeHex ?? "",
         (geo.country ?? "Global").toLowerCase(),
         (geo.currency ?? "EUR").toLowerCase(),
       ].join("|"),
@@ -209,8 +244,8 @@ export async function POST(request: Request) {
     }
   }
 
-  const profile = buildAnonProfile(subseason, geo, boldness);
-  const palette = paletteForSubseason(subseason);
+  const profile = buildAnonProfile(subseason, geo, boldness, person);
+  const palette = paletteForPerson(subseason, person);
   const garments = buildAnonLookGarments(palette, occasion);
   const context = lookContextById(occasion);
 

@@ -140,6 +140,8 @@ export async function POST(request: Request) {
     note,
     rules,
     existingTitles,
+    occasionId: ctx.id,
+    boldness: profile.boldness,
   });
 
   const img = await generateLookImage({

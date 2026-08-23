@@ -193,10 +193,25 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const l = (max + min) / 2;
-  let s = 0;
   const d = max - min;
-  if (d !== 0) s = d / (1 - Math.abs(2 * l - 1));
-  return { h: 0, s, l };
+  let s = 0;
+  let h = 0;
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    switch (max) {
+      case r:
+        h = ((g - b) / d) % 6;
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      default:
+        h = (r - g) / d + 4;
+    }
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s, l };
 }
 
 const lc = (s: string) => (s || "").toLowerCase();
@@ -2310,9 +2325,9 @@ export function itemsForLook(look: Look, shopping: ShoppingItem[]): ShoppingItem
       const score = colorMatchScore(g.color, best.color, best.title);
       items.push({
         ...best,
-        similarPick: score < 0.45,
+        similarPick: score < 0.7,
         why:
-          score >= 0.45
+          score >= 0.7
             ? best.why
             : `A similar ${g.garment} from your capsule — close in category and tone.`,
       });
@@ -2348,6 +2363,7 @@ const GARMENT_CATEGORY: Record<string, string> = {
   shirt: "Shirts", oxford: "Shirts", tee: "Shirts", polo: "Shirts", henley: "Shirts",
   trousers: "Trousers", chinos: "Trousers", chino: "Trousers", jeans: "Trousers",
   denim: "Trousers", slacks: "Trousers", pants: "Trousers",
+  shorts: "Trousers", short: "Trousers", bermudas: "Trousers", bermuda: "Trousers",
   loafers: "Footwear", loafer: "Footwear", boots: "Footwear", boot: "Footwear", sneakers: "Footwear",
   sneaker: "Footwear", derbies: "Footwear", derby: "Footwear", oxfords: "Footwear", brogues: "Footwear",
   "oxford shoes": "Footwear", "oxford shoe": "Footwear",
@@ -2356,6 +2372,14 @@ const GARMENT_CATEGORY: Record<string, string> = {
   shoes: "Footwear", trainers: "Footwear", sandals: "Footwear", sandal: "Footwear",
   belt: "Accessories", watch: "Accessories", scarf: "Accessories", tie: "Accessories",
   necktie: "Accessories", bowtie: "Accessories", "bow tie": "Accessories",
+  bolo: "Accessories", "bolo tie": "Accessories",
+  tote: "Accessories", "tote bag": "Accessories",
+  messenger: "Accessories", "messenger bag": "Accessories",
+  briefcase: "Accessories", satchel: "Accessories",
+  backpack: "Accessories", "travel bag": "Accessories",
+  "pocket square": "Accessories", pochette: "Accessories", handkerchief: "Accessories",
+  neckerchief: "Accessories", "neck scarf": "Accessories", bandana: "Accessories",
+  foulard: "Accessories",
   sunglasses: "Accessories", glasses: "Accessories", eyeglasses: "Accessories",
   goggles: "Accessories", "ski goggles": "Accessories",
   hat: "Accessories", cap: "Accessories", beanie: "Accessories",
@@ -2391,12 +2415,13 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   silver: { family: "grey", shade: "light" }, pearl: { family: "grey", shade: "light" },
   mirrored: { family: "grey", shade: "light" }, mirror: { family: "grey", shade: "light" },
   charcoal: { family: "grey", shade: "dark" }, slate: { family: "grey", shade: "dark" },
+  warmgrey: { family: "grey" },
   graphite: { family: "grey", shade: "dark" }, anthracite: { family: "grey", shade: "dark" },
   asphalt: { family: "grey", shade: "dark" }, gunmetal: { family: "grey", shade: "dark" },
   // blue
   blue: { family: "blue" }, sky: { family: "blue", shade: "light" },
   navy: { family: "blue", shade: "dark" }, indigo: { family: "blue", shade: "dark" },
-  midnight: { family: "blue", shade: "dark" }, teal: { family: "blue" },
+  midnight: { family: "blue", shade: "dark" },
   // compound blues (normalised from "slate blue" etc. before tokenising) — these
   // read as their own muted/light blue, NOT as the dark-grey "slate".
   slateblue: { family: "blue" }, powderblue: { family: "blue", shade: "light" },
@@ -2407,30 +2432,95 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   ivory: { family: "white", shade: "light" }, ecru: { family: "white", shade: "light" },
   bone: { family: "white", shade: "light" },
   // brown / neutral warm
-  brown: { family: "brown" }, khaki: { family: "brown" }, taupe: { family: "brown" },
+  brown: { family: "brown" }, khaki: { family: "brown", shade: "light" },
+  taupe: { family: "brown", shade: "light" },
   cognac: { family: "brown" }, mocha: { family: "brown" },
   tan: { family: "brown", shade: "light" }, camel: { family: "brown", shade: "light" },
   beige: { family: "brown", shade: "light" }, sand: { family: "brown", shade: "light" },
   stone: { family: "brown", shade: "light" }, oat: { family: "brown", shade: "light" },
   oatmeal: { family: "brown", shade: "light" },
+  nude: { family: "brown", shade: "light" }, champagne: { family: "brown", shade: "light" },
+  fawn: { family: "brown", shade: "light" },
   greige: { family: "brown", shade: "light" }, mushroom: { family: "brown", shade: "light" },
   chocolate: { family: "brown", shade: "dark" }, chestnut: { family: "brown", shade: "dark" },
-  espresso: { family: "brown", shade: "dark" },
-  // green
+  espresso: { family: "brown", shade: "dark" }, coffee: { family: "brown", shade: "dark" },
+  // green — teal is blue-green; catalog teal is rare, so it lives here so
+  // dark/bottle green fills the slot instead of navy. "soft teal" still
+  // prefers sage via the light shade modifier.
   green: { family: "green" }, sage: { family: "green", shade: "light" },
   olive: { family: "green", shade: "dark" }, forest: { family: "green", shade: "dark" },
   emerald: { family: "green", shade: "dark" },
+  bottle: { family: "green", shade: "dark" },
+  teal: { family: "green", shade: "dark" },
   // red / warm
   red: { family: "red" },   rust: { family: "red" }, terracotta: { family: "red" }, copper: { family: "red" },
   burgundy: { family: "red", shade: "dark" }, maroon: { family: "red", shade: "dark" },
+  // pink / rose — dusty rose must land here, not as a bare shade word
+  pink: { family: "pink" }, rose: { family: "pink", shade: "light" },
+  blush: { family: "pink", shade: "light" }, dustyrose: { family: "pink", shade: "light" },
+  oldrose: { family: "pink", shade: "light" }, berry: { family: "pink" },
+  fuchsia: { family: "pink" }, magenta: { family: "pink" },
   // other hues
-  pink: { family: "pink" }, purple: { family: "purple" }, plum: { family: "purple" },
-  mauve: { family: "purple" }, aubergine: { family: "purple" },
+  purple: { family: "purple" }, plum: { family: "purple" },
+  softplum: { family: "purple", shade: "light" },
+  mauve: { family: "purple", shade: "light" }, aubergine: { family: "purple", shade: "dark" },
+  lilac: { family: "purple", shade: "light" }, lavender: { family: "purple", shade: "light" },
   orange: { family: "orange" },
   amber: { family: "orange" }, ochre: { family: "yellow" },
   yellow: { family: "yellow" }, mustard: { family: "yellow" },
   gold: { family: "yellow" }, golden: { family: "yellow" },
   tortoise: { family: "brown" }, havana: { family: "brown" },
+};
+
+/** Adjacent hue families used only when the exact family is missing. */
+const COLOR_NEIGHBORS: Record<string, readonly string[]> = {
+  pink: ["purple"],
+  purple: ["pink"],
+  white: ["brown"],
+  brown: ["white", "grey", "green"],
+  grey: ["brown"],
+  green: ["brown"],
+  orange: ["yellow"],
+  yellow: ["orange"],
+};
+
+/** Pairs that may neighbour only as light/mid — never chocolate or charcoal. */
+const LIGHT_NEIGHBOR_PAIRS = new Set([
+  "white-brown",
+  "brown-white",
+  "brown-grey",
+  "grey-brown",
+  "brown-green",
+  "green-brown",
+]);
+
+/** Representative hex for a named token — used when the look has no palette swatch. */
+const NAMED_COLOR_HEX: Record<string, string> = {
+  rose: "#C29AA0",
+  dustyrose: "#C29AA0",
+  blush: "#D4A8B0",
+  pink: "#D4A0AE",
+  lilac: "#B7A4C4",
+  lavender: "#B8A4C8",
+  mauve: "#9A7A8C",
+  plum: "#7A6577",
+  softplum: "#7A6577",
+  berry: "#8E4A5C",
+  coffee: "#3F332B",
+  greige: "#DAD3C6",
+  mushroom: "#A99C8C",
+  taupe: "#B49C7E",
+  sage: "#9AA588",
+  teal: "#2A6B73",
+  khaki: "#9A8B5C",
+  stone: "#C2B8A8",
+  beige: "#D4C4A8",
+  sand: "#D9C7A3",
+  nude: "#D8C4A0",
+  champagne: "#E3C6A8",
+  fawn: "#C9A57A",
+  dove: "#C5C1B8",
+  olive: "#6B6B47",
 };
 
 /** Synonyms used to verify a catalogue title matches the parsed garment. */
@@ -2452,6 +2542,8 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   chinos: ["chino", "chinos", "trouser", "trousers"],
   chino: ["chino", "chinos", "trouser", "trousers"],
   jeans: ["jean", "jeans", "denim"],
+  shorts: ["short", "shorts", "bermuda"],
+  bermuda: ["bermuda", "shorts"],
   loafers: ["loafer", "loafers"],
   loafer: ["loafer", "loafers"],
   sneakers: ["sneaker", "sneakers", "trainer", "trainers"],
@@ -2459,16 +2551,32 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   boots: ["boot", "boots"],
   boot: ["boot", "boots"],
   chelsea: ["chelsea", "boot", "boots"],
-  derbies: ["derby", "derbies"],
-  derby: ["derby", "derbies"],
-  oxfords: ["oxford", "oxfords"],
+  derbies: ["derby", "derbies", "oxford", "oxfords"],
+  derby: ["derby", "derbies", "oxford", "oxfords"],
+  oxfords: ["oxford", "oxfords", "derby", "derbies"],
   brogues: ["brogue", "brogues"],
   belt: ["belt"],
+  tote: ["tote", "tote bag"],
+  "tote bag": ["tote", "tote bag"],
+  messenger: ["messenger", "satchel"],
+  "messenger bag": ["messenger", "satchel"],
+  briefcase: ["briefcase"],
+  satchel: ["satchel", "messenger"],
+  backpack: ["backpack", "rucksack"],
+  "travel bag": ["travel bag", "weekender", "duffel", "duffle", "holdall"],
+  "pocket square": ["pocket square", "pochette", "handkerchief"],
+  pochette: ["pochette", "pocket square"],
+  handkerchief: ["handkerchief", "pocket square"],
   watch: ["watch"],
   scarf: ["scarf"],
-  tie: ["tie", "necktie", "bow tie", "bowtie"],
+  neckerchief: ["neckerchief", "neck scarf", "neck-scarf", "bandana", "foulard"],
+  "neck scarf": ["neck scarf", "neckerchief", "neck-scarf", "bandana", "foulard"],
+  bandana: ["bandana", "neckerchief", "neck scarf"],
+  foulard: ["foulard", "neckerchief", "neck scarf"],
+  tie: ["tie", "necktie", "bow tie", "bowtie", "bolo"],
   necktie: ["tie", "necktie"],
   bowtie: ["bow tie", "bowtie", "tie"],
+  bolo: ["bolo", "bolo tie"],
   hat: ["hat", "cap", "beanie", "fedora"],
   cap: ["cap", "hat"],
   beanie: ["beanie", "watch cap"],
@@ -2497,6 +2605,28 @@ const GARMENT_KEYS = Object.keys(GARMENT_CATEGORY).sort(
   (a, b) => b.length - a.length,
 );
 
+/** Kitchen / bath textiles that leak into Knitwear via "waffle-knit tea towels". */
+export const HOUSEHOLD_TEXTILE_RE =
+  /\b(?:tea[\s-]?towels?|dish[\s-]?towels?|bath[\s-]?towels?|hand[\s-]?towels?|beach[\s-]?towels?|kitchen[\s-]?towels?|face[\s-]?towels?|wash[\s-]?cloths?|flannels?|bedding|duvets?|pillowcases?|napkins?|table[\s-]?cloths?|placemats?)\b/i;
+
+function garmentKeyPattern(key: string): RegExp {
+  const escaped = key
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  return new RegExp(`\\b${escaped}s?\\b`);
+}
+
+function clauseMentionsGarmentKey(normalized: string, key: string): boolean {
+  return garmentKeyPattern(key).test(normalized);
+}
+
+function findGarmentKeyIndex(text: string, key: string, from = 0): number {
+  const slice = text.slice(from);
+  const match = slice.match(garmentKeyPattern(key));
+  if (!match || match.index == null) return -1;
+  return from + match.index;
+}
+
 /** Collapse known two-word colours into a single token before parsing. */
 function normalizeCompoundColors(text: string): string {
   return text
@@ -2505,6 +2635,10 @@ function normalizeCompoundColors(text: string): string {
     .replace(/powder\s+blue/g, "powderblue")
     .replace(/ice\s+blue/g, "iceblue")
     .replace(/steel\s+blue/g, "steelblue")
+    .replace(/dusty\s+rose/g, "dustyrose")
+    .replace(/old\s+rose/g, "oldrose")
+    .replace(/soft\s+plum/g, "softplum")
+    .replace(/warm\s+gr[ae]y/g, "warmgrey")
     .replace(/tortoise\s*shell/g, "tortoise")
     .replace(/yellow\s+gold/g, "gold");
 }
@@ -2586,6 +2720,47 @@ export function isTailoredBlazerTitle(title: string): boolean {
   return /\b(blazer|sport\s*coat)\b/.test(hay);
 }
 
+const DRAWSTRING_CLAUSE_RE = /\b(drawstring|elasticated|elastic\s+waist)\b/i;
+const DRAWSTRING_TITLE_RE =
+  /\b(drawstring|elasticated|elastic(?:ated)?\s+waist)\b/i;
+const TAILORED_TROUSER_TITLE_RE =
+  /\b(suit\s+trousers|suit\s+pants|pressed\s+crease|dress\s+(?:pants|trousers)|tailored\s+trousers)\b/i;
+const DRAWSTRING_GARMENTS = new Set([
+  "trousers",
+  "chinos",
+  "chino",
+  "pants",
+  "slacks",
+  "shorts",
+]);
+
+/** True when the look clause asks for drawstring / elasticated trousers. */
+export function prefersDrawstringSilhouette(
+  garment: string,
+  clause?: string | null,
+): boolean {
+  if (!clause || !DRAWSTRING_CLAUSE_RE.test(clause)) return false;
+  return DRAWSTRING_GARMENTS.has(normalizeGarmentKey(garment));
+}
+
+export function isDrawstringTitle(title: string): boolean {
+  return DRAWSTRING_TITLE_RE.test(title);
+}
+
+/**
+ * Soft rank nudge when a trousers slot asked for drawstring/elasticated.
+ * Positive for matching titles, negative for suit/pressed-crease trousers.
+ */
+export function silhouetteFitScore(
+  clause: string | null | undefined,
+  title: string,
+): number {
+  if (!clause || !DRAWSTRING_CLAUSE_RE.test(clause)) return 0;
+  if (DRAWSTRING_TITLE_RE.test(title)) return 0.12;
+  if (TAILORED_TROUSER_TITLE_RE.test(title)) return -0.08;
+  return 0;
+}
+
 /** 0–1 whether a catalogue product title mentions the parsed garment type. */
 export function garmentTitleMatchScore(garment: string, title: string): number {
   const hay = title.toLowerCase();
@@ -2604,6 +2779,67 @@ export function garmentTitleMatchScore(garment: string, title: string): number {
     }
     return 0;
   }
+  // Home textiles are not apparel — "waffle-knit tea towels" is not knitwear.
+  if (
+    HOUSEHOLD_TEXTILE_RE.test(hay) &&
+    key !== "handkerchief" &&
+    key !== "pocket square" &&
+    key !== "pochette"
+  ) {
+    return 0;
+  }
+  // Travel / weekender / duffel is not a messenger, tote or office bag.
+  if (
+    key === "messenger" ||
+    key === "messenger bag" ||
+    key === "briefcase" ||
+    key === "satchel" ||
+    key === "tote" ||
+    key === "tote bag" ||
+    key === "bag"
+  ) {
+    if (
+      /\b(travel\s+bags?|weekenders?|duffels?|duffles?|holdalls?|cabin\s+bags?|overnight\s+bags?|trolley|suitcase)\b/.test(
+        hay,
+      )
+    ) {
+      return 0;
+    }
+    if (
+      (key === "messenger" || key === "messenger bag") &&
+      /\bcrossbod(?:y|ies)\b/.test(hay) &&
+      !/\b(messenger|satchel)\b/.test(hay)
+    ) {
+      return 0;
+    }
+  }
+  // Shorts are not trousers / chinos / slacks.
+  if (
+    key === "trousers" ||
+    key === "chinos" ||
+    key === "chino" ||
+    key === "pants" ||
+    key === "slacks"
+  ) {
+    if (/\bshorts?\b|\bbermuda\b/.test(hay)) return 0;
+  }
+  // A "Tie With Pocket Square" set is a necktie, not a square. Same for a
+  // cap/hat/belt that happens to mention a square in the title.
+  if (key === "pocket square" || key === "pochette" || key === "handkerchief") {
+    if (
+      /\b(?:neck)?ties?\b|\bbow\s*tie\b|\bbolo\b|\bcaps?\b|\bhats?\b|\bbelts?\b/.test(
+        hay,
+      )
+    ) {
+      return 0;
+    }
+    // A supermarket pack of cotton handkerchiefs is not a linen pocket square.
+    if (
+      /\b(?:\d+\s*pks?|packs?\s+of|antibacterial|sanitized)\b/i.test(hay)
+    ) {
+      return 0;
+    }
+  }
   const terms = GARMENT_TITLE_SYNONYMS[key] ?? [key];
   return terms.some((t) => hay.includes(t)) ? 1 : 0;
 }
@@ -2613,6 +2849,13 @@ function shadeAffinity(a: Shade, b: Shade): number {
   if (a === b) return 1;
   const order: Record<Shade, number> = { light: 0, mid: 1, dark: 2 };
   return Math.abs(order[a] - order[b]) === 1 ? 0.35 : 0.3;
+}
+
+/** Neighbour families keep a usable score across light↔mid (greige↔dove grey). */
+function neighborShadeScore(a?: Shade, b?: Shade): number {
+  if (!a || !b || a === b) return 0.55;
+  const order: Record<Shade, number> = { light: 0, mid: 1, dark: 2 };
+  return Math.abs(order[a] - order[b]) === 1 ? 0.52 : 0.15;
 }
 
 /** Parse free-text colour into the set of hue families + an implied lightness. */
@@ -2641,34 +2884,172 @@ export function colorFamilies(text: string): Set<string> {
   return parseColorTokens(text).families;
 }
 
+/** Colour string to score against the catalogue — clause fills in missing tokens. */
+export function lookColorCue(
+  color?: string | null,
+  clause?: string | null,
+): string | null {
+  const named = color?.trim() || "";
+  if (named && parseColorTokens(named).families.size) return named;
+  const fromClause = clause?.trim() || "";
+  if (fromClause && parseColorTokens(fromClause).families.size) return fromClause;
+  return named || fromClause || null;
+}
+
+/** Belt / shoe / trouser leather family used to keep one tone per outfit. */
+export function leatherToneFamily(text: string): "black" | "brown" | null {
+  const families = parseColorTokens(text).families;
+  if (families.has("black") && !families.has("brown")) return "black";
+  if (families.has("brown")) return "brown";
+  return null;
+}
+
+/**
+ * Catalogue search tokens that share a look colour's hue family.
+ * Used to pull same-family products into the match pool when vector neighbours
+ * crowd them out (dusty rose must still see "pink" / "rose" knits).
+ * Skips fused compound keys ("dustyrose") that never appear in feeds.
+ */
+export function colorFamilyNeedles(queryColor: string | null): string[] {
+  const families = parseColorTokens(queryColor ?? "").families;
+  if (!families.size) return [];
+  const needles = new Set<string>();
+  for (const [token, meta] of Object.entries(COLOR_FAMILY)) {
+    if (!families.has(meta.family)) continue;
+    if (!isSearchableColorToken(token)) continue;
+    needles.add(token);
+  }
+  return [...needles];
+}
+
+/** Natural colour words safe for `ilike` — skip fused compounds like dustyrose. */
+function isSearchableColorToken(token: string): boolean {
+  if (token.length < 3 || token.length > 14) return false;
+  if (!/^[a-z]+$/.test(token)) return false;
+  if (token !== "blue" && token.endsWith("blue")) return false;
+  if (token !== "rose" && token.endsWith("rose")) return false;
+  if (token !== "plum" && token.endsWith("plum")) return false;
+  if (token !== "grey" && token.endsWith("grey")) return false;
+  return true;
+}
+
+export type ColorMatchOpts = {
+  queryHex?: string | null;
+  productHex?: string | null;
+};
+
+function hueDist(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+function parseHexColor(raw?: string | null): string | null {
+  const m = (raw ?? "").trim().match(/^#?([0-9a-f]{6})$/i);
+  return m ? `#${m[1]!.toLowerCase()}` : null;
+}
+
+function namedColorHex(text: string | null): string | null {
+  if (!text) return null;
+  const hex = parseHexColor(text);
+  if (hex) return hex;
+  const words = normalizeCompoundColors(text.toLowerCase()).split(/\s+/).filter(Boolean);
+  for (let i = words.length - 1; i >= 0; i--) {
+    const hit = NAMED_COLOR_HEX[words[i]!];
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function familiesNeighbor(
+  query: Set<string>,
+  product: Set<string>,
+  qShade?: Shade,
+  pShade?: Shade,
+): boolean {
+  for (const qf of query) {
+    const next = COLOR_NEIGHBORS[qf];
+    if (!next) continue;
+    for (const pf of product) {
+      if (!next.includes(pf)) continue;
+      // Cream ↔ beige, greige ↔ dove, sage ↔ khaki — never chocolate or charcoal.
+      if (LIGHT_NEIGHBOR_PAIRS.has(`${qf}-${pf}`)) {
+        if (qShade === "dark" || pShade === "dark") continue;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Hex proximity for a named look colour vs a catalogue swatch.
+ * Rejects far hues and neon jumps (dusty rose must not land on fuchsia).
+ */
+function hexProximityScore(queryHex: string, productHex: string): number | null {
+  const q = hexToHsl(queryHex);
+  const p = hexToHsl(productHex);
+  const dh = hueDist(q.h, p.h);
+  const dl = Math.abs(q.l - p.l);
+  if (dh > 32 || dl > 0.2) return null;
+  if (p.s > q.s + 0.28) return null;
+  const huePart = 1 - dh / 32;
+  const lightPart = 1 - dl / 0.2;
+  const satPart = 1 - Math.min(Math.abs(q.s - p.s), 0.35) / 0.35;
+  return 0.45 + 0.45 * (0.5 * huePart + 0.3 * lightPart + 0.2 * satPart);
+}
+
 /**
  * 0–1 colour fit between a look garment colour and a catalogue product. Matches
  * on hue family first, then on lightness: same hue + same lightness scores high,
  * adjacent mid↔light/dark scores soft, opposite lightness (dove vs asphalt)
  * scores low so the picker prefers a true shade match and flags the rest.
+ * Neighbouring families (rose↔pink/lilac) score ~0.55 so a missing exact
+ * colour can still fill the slot — marked similarPick by the caller.
  */
 export function colorMatchScore(
   queryColor: string | null,
   productColor: string | null,
   title: string,
+  opts?: ColorMatchOpts,
 ): number {
   const q = parseColorTokens(queryColor ?? "");
   if (!q.families.size && !q.shade) return 0.5; // no colour cue → neutral
   const p = parseColorTokens(`${productColor ?? ""} ${title}`);
-  if (!p.families.size) return 0.5; // product colour unknown → neutral
+  const queryHex = parseHexColor(opts?.queryHex) ?? namedColorHex(queryColor);
+  const productHex =
+    parseHexColor(opts?.productHex) ??
+    parseHexColor(productColor) ??
+    namedColorHex(productColor);
+  const hexScore =
+    queryHex && productHex ? hexProximityScore(queryHex, productHex) : null;
 
-  let hueMatch = false;
-  for (const f of q.families) {
-    if (p.families.has(f)) {
-      hueMatch = true;
-      break;
+  let word = 0.1;
+  if (!p.families.size) {
+    word = 0.5;
+  } else {
+    let same = false;
+    for (const f of q.families) {
+      if (p.families.has(f)) {
+        same = true;
+        break;
+      }
+    }
+    if (same) {
+      word = q.shade && p.shade ? shadeAffinity(q.shade, p.shade) : 0.8;
+    } else if (familiesNeighbor(q.families, p.families, q.shade, p.shade)) {
+      word = neighborShadeScore(q.shade, p.shade);
     }
   }
-  if (!hueMatch) return 0.1; // wrong hue family
 
-  // Same hue family — discriminate by lightness when both sides express it.
-  if (q.shade && p.shade) return shadeAffinity(q.shade, p.shade);
-  return 0.8; // hue matches; lightness unknown on one side
+  if (queryHex && productHex) {
+    if (hexScore != null) return Math.max(word, hexScore);
+    // Only crush a strong same-family word when the swatch is a neon jump
+    // (catalogue "pink" that is fuchsia). Soft plum ↔ lilac stays.
+    const qH = hexToHsl(queryHex);
+    const pH = hexToHsl(productHex);
+    if (word >= 0.7 && pH.s > qH.s + 0.28) return 0.35;
+  }
+  return word;
 }
 
 function extractGarmentFromClause(clause: string): LookGarment | null {
@@ -2680,8 +3061,11 @@ function extractGarmentFromClause(clause: string): LookGarment | null {
   const words = normalized.split(/\s+/).filter(Boolean);
   let garment: string | null = null;
   let category: string | null = null;
+  // "knitted tie" contains "knit" as a substring — it is a necktie, not a jumper.
+  const skipKnitForTie = /\bties?\b/.test(normalized);
   for (const key of GARMENT_KEYS) {
-    if (normalized.includes(key)) {
+    if (skipKnitForTie && (key === "knit" || key === "knitted")) continue;
+    if (clauseMentionsGarmentKey(normalized, key)) {
       garment = key;
       category = GARMENT_CATEGORY[key];
       break;
@@ -2703,7 +3087,7 @@ function decomposeFromWholeText(description: string): LookGarment[] {
   for (const key of GARMENT_KEYS) {
     let from = 0;
     while (from < lower.length) {
-      const index = lower.indexOf(key, from);
+      const index = findGarmentKeyIndex(lower, key, from);
       if (index === -1) break;
       const before = lower.slice(Math.max(0, index - 48), index);
       const clause = `${before} ${key}`.trim();
@@ -2745,6 +3129,46 @@ export function decomposeLook(description: string): LookGarment[] {
   }
   if (out.length) return out;
   return decomposeFromWholeText(description);
+}
+
+/**
+ * One slot per clothing category, but several Accessories (belt + tote +
+ * pocket square) — collapsing those to a single category drops pieces.
+ */
+export function selectLookGarmentSlots(
+  garments: LookGarment[],
+  max = 6,
+): LookGarment[] {
+  const hasJacket = garments.some(
+    (g) =>
+      g.category === "Outerwear" ||
+      /\b(blazers?|sport\s*coats?|jackets?|coats?)\b/.test(g.garment),
+  );
+  const out: LookGarment[] = [];
+  const usedCategories = new Set<string>();
+  const usedAccessories = new Set<string>();
+  for (const g of garments) {
+    if (out.length >= max) break;
+    if (
+      !hasJacket &&
+      (g.garment === "pocket square" ||
+        g.garment === "pochette" ||
+        g.garment === "handkerchief")
+    ) {
+      continue;
+    }
+    if (g.category === "Accessories") {
+      const key = g.garment.trim().toLowerCase();
+      if (!key || usedAccessories.has(key)) continue;
+      usedAccessories.add(key);
+    } else if (usedCategories.has(g.category)) {
+      continue;
+    } else {
+      usedCategories.add(g.category);
+    }
+    out.push(g);
+  }
+  return out;
 }
 
 /** Palette-aware wardrobe staples assumed already owned (clearly labelled in UI). */

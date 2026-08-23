@@ -96,7 +96,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     id: "transfers",
     title: "8. International transfers",
     paragraphs: [
-      "We are built for users in Europe and aim to process data in the EU/EEA where possible. Some subprocessors (including AI and payment providers) may process data in the United States or other countries.",
+      "We serve users worldwide — including the EU, the United States, and other countries — and aim to process data in the EU/EEA where possible. Some subprocessors (including AI and payment providers) may process data in the United States or other countries.",
       "Where required, we rely on appropriate safeguards such as the EU Standard Contractual Clauses and supplementary measures. You may request more information about transfers by contacting us.",
     ],
   },

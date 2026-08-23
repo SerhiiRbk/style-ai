@@ -1,5 +1,5 @@
 import "server-only";
-import { generateText, Output, embed } from "ai";
+import { generateImage, generateText, Output, embed } from "ai";
 import { z } from "zod";
 import { env, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
@@ -26,11 +26,30 @@ import {
   type ReportContent,
   type Boldness,
 } from "@/lib/style-profile";
-import { composeLookBrief, type LookBriefSeason } from "@/lib/ai/look-brief";
+import {
+  imageModelChain,
+  imageModelUsesChat,
+} from "@/lib/ai/image-models";
+import {
+  composeLookBrief,
+  LOOK_WEARABLE_RULE,
+  partyJacketMatchesSlot,
+  sanitizeLookDescription,
+  withWearableLookRule,
+  type LookBriefSeason,
+} from "@/lib/ai/look-brief";
+import { lookStyleHasBrief } from "@/lib/look-styles";
+import {
+  formatLookColorRecipePrompt,
+  recipePaletteHexes,
+  type LookColorRecipe,
+} from "@/lib/look-set-color-recipes";
 import { languageInstruction, type ReportLanguage } from "@/lib/languages";
 import {
   reportPalette,
   annotateNearFaceGuidance,
+  parseSwatchHex,
+  refineSeasonFromSkinHex,
 } from "@/lib/colour-palette";
 // EXPERIMENTAL prompt versioning — see look-prompt.ts for how to remove.
 import {
@@ -42,6 +61,7 @@ import {
   blazerTypePromptDirective,
   eyewearPromptDirective,
   fabricPromptDirective,
+  backpackPromptDirective,
   hatPromptDirective,
   shoeMaterialPromptDirective,
   sneakerPromptDirective,
@@ -51,34 +71,106 @@ import {
 
 export type PhotoInput = { role: string; url: string };
 
-/**
- * Run an image-generation request with bounded retries. The image model
- * intermittently returns a response with no image file (or a transient gateway
- * error); without a retry that surfaces to users as a failed "Render again" or a
- * partially-filled capsule. Retries a few times with light backoff before
- * giving up (returns null so callers can handle the miss).
- */
-async function renderImage(
-  content: ({ type: "text"; text: string } | { type: "image"; image: URL })[],
-  attempts = 3,
+type ImagePromptPart =
+  | { type: "text"; text: string }
+  | { type: "image"; image: URL };
+
+function imagePromptText(content: ImagePromptPart[]): string {
+  return content
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text)
+    .join("\n");
+}
+
+function imagePromptUrls(content: ImagePromptPart[]): URL[] {
+  return content
+    .filter((p): p is { type: "image"; image: URL } => p.type === "image")
+    .map((p) => p.image);
+}
+
+async function fetchImageBytes(url: URL): Promise<Uint8Array | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+async function renderViaChat(
+  model: string,
+  content: ImagePromptPart[],
+  attempts: number,
 ): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const result = await generateText({
-        model: env.modelImage,
+        model,
         messages: [{ role: "user", content }],
       });
       const file = result.files.find((f) => f.mediaType.startsWith("image/"));
       if (file) return { bytes: file.uint8Array, mediaType: file.mediaType };
     } catch (err) {
       if (attempt === attempts - 1) {
-        console.error("[image] generation failed after retries", err);
+        console.error("[image] chat model failed", model, err);
       }
     }
     if (attempt < attempts - 1) {
       await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
     }
   }
+  return null;
+}
+
+async function renderViaImageModel(
+  model: string,
+  content: ImagePromptPart[],
+): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  const text = imagePromptText(content);
+  const urls = imagePromptUrls(content).slice(0, 8);
+  const images = (
+    await Promise.all(urls.map((url) => fetchImageBytes(url)))
+  ).filter((b): b is Uint8Array => Boolean(b));
+  try {
+    const result = await generateImage({
+      model,
+      prompt: images.length ? { images, text } : text,
+      maxRetries: 1,
+      ...(model.startsWith("openai/")
+        ? { size: "1024x1536" as const }
+        : { aspectRatio: "9:16" as const }),
+    });
+    const image = result.image;
+    if (!image) return null;
+    return { bytes: image.uint8Array, mediaType: image.mediaType };
+  } catch (err) {
+    console.error("[image] image-only model failed", model, err);
+    return null;
+  }
+}
+
+/**
+ * Run an image-generation request with bounded retries, then the configured
+ * fallback models (Gemini Pro chat, then GPT Image / Flux Kontext). Returns
+ * null so callers can handle a total miss.
+ */
+async function renderImage(
+  content: ImagePromptPart[],
+  attempts = 3,
+): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  const models = imageModelChain(env.modelImage, env.modelImageFallbacks);
+  for (const [i, model] of models.entries()) {
+    const tries = i === 0 ? attempts : Math.min(2, attempts);
+    const rendered = imageModelUsesChat(model)
+      ? await renderViaChat(model, content, tries)
+      : await renderViaImageModel(model, content);
+    if (rendered) {
+      if (i > 0) console.warn("[image] rendered with fallback", model);
+      return rendered;
+    }
+  }
+  console.error("[image] generation failed on every model", models);
   return null;
 }
 
@@ -133,6 +225,17 @@ const visionSchema = z.object({
     .string()
     .describe("natural hair colour, e.g. 'dark brown', 'blonde', 'gray'"),
   eyeColor: z.string().describe("eye colour, e.g. 'brown', 'blue', 'green'"),
+  skinHex: z
+    .string()
+    .optional()
+    .describe(
+      "hex of mid-cheek skin in THIS photo (#rrggbb), no clothing or background",
+    ),
+  hairHex: z
+    .string()
+    .optional()
+    .describe("hex of the natural hair mass (#rrggbb), not a hat or dye patch"),
+  eyeHex: z.string().optional().describe("hex of the iris (#rrggbb)"),
   colorSeason: z.enum(["winter", "spring", "summer", "autumn"]),
   clarity: z
     .enum(["muted", "clear"])
@@ -168,7 +271,8 @@ export async function analyzeProfile(
             text:
               `Analyse these photos of a person for a professional, respectful style consultation. ` +
               `Determine skin tone, undertone, facial contrast, face shape, body type, natural hair colour ` +
-              `and eye colour, and assign a seasonal colour analysis. Be objective and tactful — never judgmental. ` +
+              `and eye colour, read the actual mid-cheek, hair-mass and iris hex (#rrggbb) from the photos, ` +
+              `and assign a seasonal colour analysis. Be objective and tactful — never judgmental. ` +
               `Also judge overall colouring CLARITY by chroma/saturation ('muted' vs 'clear'): ` +
               `muted = soft, greyed, dusty; clear = bright, vivid. Do NOT confuse high light/dark ` +
               `(value) contrast — e.g. fair skin with dark hair — for 'clear'; such colouring is ` +
@@ -197,10 +301,18 @@ export async function analyzeProfile(
 
   // Correct the base season using the chroma signal: a muted cool/neutral person
   // read as "winter" from value-contrast alone is really a Summer.
-  const colorSeason = refineSeasonForClarity({
-    season: output.colorSeason,
+  const skinHex = parseSwatchHex(output.skinHex) ?? undefined;
+  const hairHex = parseSwatchHex(output.hairHex) ?? undefined;
+  const eyeHex = parseSwatchHex(output.eyeHex) ?? undefined;
+
+  const colorSeason = refineSeasonFromSkinHex({
+    season: refineSeasonForClarity({
+      season: output.colorSeason,
+      undertone: output.undertone,
+      clarity: output.clarity,
+    }),
     undertone: output.undertone,
-    clarity: output.clarity,
+    skinHex,
   });
 
   return {
@@ -230,6 +342,9 @@ export async function analyzeProfile(
       measurements: intake.measurements,
       hairColor,
       eyeColor,
+      skinHex,
+      hairHex,
+      eyeHex,
     },
     colorSeason,
     colorSubseason: classifySubseason({
@@ -310,7 +425,17 @@ function deterministicColors(profile: StyleProfile): ReportContent["colors"] {
   // for bold-leaning clients) so the palette copy tells the client what to wear
   // closest to the face — the axis that drives face-to-garment contrast.
   return annotateNearFaceGuidance(
-    reportPalette({ subseason, undertone, contrast }),
+    reportPalette({
+      subseason,
+      undertone,
+      contrast,
+      hairColor: profile.physical.hairColor,
+      eyeColor: profile.physical.eyeColor,
+      skinTone: profile.physical.skinTone,
+      skinHex: profile.physical.skinHex,
+      hairHex: profile.physical.hairHex,
+      eyeHex: profile.physical.eyeHex,
+    }),
     {
       boldness: profile.boldness,
       goals: profile.goals,
@@ -408,7 +533,7 @@ export async function recommend(
         `- Each look description MUST list every garment with its colour, comma-separated ` +
         `(e.g. "Powder-blue crewneck knit, grey-blue chinos, soft-denim loafers"). Use concrete catalogue words ` +
         `(blazer, overshirt, crewneck, chinos, trousers, loafers, sneakers) — not vague phrases like ` +
-        `"textured layers" or "warm accents".\n`;
+        `"textured layers" or "warm accents". ${LOOK_WEARABLE_RULE}\n`;
 
   const grounding = rules.length
     ? `Ground every recommendation in these established style rules:\n- ${rules.join("\n- ")}\n`
@@ -456,6 +581,7 @@ export async function recommend(
   // model ignored the colour instruction above.
   output.looks = (output.looks ?? []).map((l) => ({
     ...l,
+    description: sanitizeLookDescription(l.description ?? ""),
     palette: snapPaletteToBest(l.palette ?? [], colors.best),
   }));
   return output;
@@ -480,21 +606,48 @@ export async function generateExtraLook(opts: {
   boldness?: Boldness;
   /** Per-request season override — shapes the TEXT brief only (never the image prompt). */
   season?: LookBriefSeason;
+  /** Occasion id — party × statement gets a stronger after-dark brief. */
+  occasionId?: string;
+  /** Slot in the set (0-based) — rotates party jacket fabric so looks don't clone. */
+  lookIndex?: number;
+  /** Aesthetic preset (Riviera, Nordic, …) — shapes the TEXT brief only. */
+  styleId?: string;
+  /** Set-slot colour recipe — pins this look's hero/bottom/neutrals. */
+  colorRecipe?: LookColorRecipe;
 }): Promise<{ context: string; title: string; description: string; palette: string[] }> {
-  const { intake, profile, context, brief, note, rules, existingTitles, boldness, season } =
-    opts;
+  const {
+    intake,
+    profile,
+    context,
+    brief,
+    note,
+    rules,
+    existingTitles,
+    boldness,
+    season,
+    occasionId,
+    lookIndex,
+    styleId,
+    colorRecipe,
+  } = opts;
 
   if (!hasAI) {
     const mock = mockReportContent(intake);
     const used = new Set((existingTitles ?? []).map((t) => t.toLowerCase()));
     const pick =
       mock.looks.find((l) => !used.has(l.title.toLowerCase())) ?? mock.looks[0]!;
-    return { ...pick, context };
+    return {
+      ...pick,
+      context,
+      ...(colorRecipe ? { palette: recipePaletteHexes(colorRecipe) } : {}),
+    };
   }
 
   // Weave season + strictness into the brief text only — the look IMAGE prompt
   // (generateLookImage) is untouched by design; see look-brief.ts.
-  const effectiveBrief = composeLookBrief(brief, { boldness, season });
+  const effectiveBrief = withWearableLookRule(
+    composeLookBrief(brief, { boldness, season, occasionId, lookIndex, styleId }),
+  );
 
   const grounding = rules?.length
     ? `Ground the look in these established style rules:\n- ${rules.join("\n- ")}\n`
@@ -510,39 +663,69 @@ export async function generateExtraLook(opts: {
   const bestPaletteText = colors.best.map((c) => `${c.name} ${c.hex}`).join(", ");
   const avoidPaletteText = colors.avoid.map((c) => c.name).join(", ");
 
-  const { output } = await generateText({
-    model: env.modelReasoning,
-    output: Output.object({ schema: lookContentSchema }),
-    prompt:
-      `You are a thoughtful personal stylist creating ONE additional outfit for an existing client report.\n\n` +
-      `Style Profile (JSON):\n${JSON.stringify(profile)}\n\n` +
-      `Occupation: ${intake.occupation}. Goals: ${intake.goals.join(", ")}. ` +
-      (intake.lifestyle?.length
-        ? `Lifestyle: ${intake.lifestyle.join(", ")}. `
-        : "") +
-      `Boldness: ${intake.boldness}. Budget: €${intake.budgetEur.min}–${intake.budgetEur.max}. ` +
-      `City climate: ${profile.demographics.climate}.\n` +
-      `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
-      `Occasion: ${context}. Styling brief: ${effectiveBrief}\n` +
-      noteLine +
-      avoid +
-      grounding +
-      `Produce exactly ONE look:\n` +
-      `- context: "${context}".\n` +
-      `- title: a short evocative name (2–4 words).\n` +
-      `- description: ONE line naming each garment with its colour, comma-separated ` +
-        `— concrete catalogue words only.\n` +
-      `- CRITICAL — colours: the "palette" hex codes AND every garment colour in the ` +
+  const lookPrompt = (extra = "") =>
+    `You are a thoughtful personal stylist creating ONE additional outfit for an existing client report.\n\n` +
+    `Style Profile (JSON):\n${JSON.stringify(profile)}\n\n` +
+    `Occupation: ${intake.occupation}. Goals: ${intake.goals.join(", ")}. ` +
+    (intake.lifestyle?.length
+      ? `Lifestyle: ${intake.lifestyle.join(", ")}. `
+      : "") +
+    `Boldness: ${intake.boldness}. Budget: €${intake.budgetEur.min}–${intake.budgetEur.max}. ` +
+    `City climate: ${profile.demographics.climate}.\n` +
+    `Body type: ${profile.physical.bodyType}${measurementsSummary(profile.physical.measurements)}.\n\n` +
+    `Occasion: ${context}. Styling brief: ${effectiveBrief}\n` +
+    noteLine +
+    extra +
+    avoid +
+    grounding +
+    `Produce exactly ONE look:\n` +
+    `- context: "${context}".\n` +
+    `- title: a short evocative name (2–4 words).\n` +
+    `- description: ONE line naming each garment with its colour, comma-separated ` +
+      `— concrete catalogue words only. ${LOOK_WEARABLE_RULE}\n` +
+    (colorRecipe
+      ? formatLookColorRecipePrompt(colorRecipe, { boldness, occasionId })
+      : `- CRITICAL — colours: the "palette" hex codes AND every garment colour in the ` +
         `"description" MUST be drawn ONLY from the client's BEST colours: ${bestPaletteText}. ` +
         `No black/charcoal and no warm tan/camel/brown/olive/rust unless it appears above. ` +
-        `Never use the AVOID colours (${avoidPaletteText}).\n` +
-      `Keep the tone refined and practical.` +
-      languageInstruction(intake.language),
-  });
+        `Never use the AVOID colours (${avoidPaletteText}).\n`) +
+    `Keep the tone refined and practical.` +
+    languageInstruction(intake.language);
+
+  const runLook = (prompt: string) =>
+    generateText({
+      model: env.modelReasoning,
+      output: Output.object({ schema: lookContentSchema }),
+      prompt,
+    });
+
+  let { output } = await runLook(lookPrompt());
+  if (
+    occasionId === "party" &&
+    boldness === "statement" &&
+    lookIndex != null &&
+    !lookStyleHasBrief(styleId) &&
+    !partyJacketMatchesSlot(output.description ?? "", lookIndex)
+  ) {
+    ({ output } = await runLook(
+      lookPrompt(
+        "RETRY: this look MUST include a blazer or sport coat in the jacket fabric specified above — not a shirt-only silhouette.\n",
+      ),
+    ));
+  }
 
   // Guarantee the returned palette is on-report even if the model drifted; the
-  // look image is prompted from this palette.
-  return { ...output, palette: snapPaletteToBest(output.palette ?? [], colors.best), context };
+  // look image is prompted from this palette. A set recipe wins over the model.
+  const palette = snapPaletteToBest(
+    colorRecipe ? recipePaletteHexes(colorRecipe) : (output.palette ?? []),
+    colors.best,
+  );
+  return {
+    ...output,
+    description: sanitizeLookDescription(output.description ?? ""),
+    palette,
+    context,
+  };
 }
 
 const carloNoteSchema = z.object({ note: z.string() });
@@ -602,6 +785,8 @@ export async function generateLookImage(opts: {
     catalogContext?: string;
     /** Public product image URLs rendered as garment references. */
     catalogImageUrls?: string[];
+    /** Same photos with titles so each input image can be bound to a garment. */
+    catalogImages?: { url: string; title: string; category: string }[];
     /** Explicit footwear directive (e.g. dress shoes only, no sandals). */
     footwearRule?: string;
   };
@@ -636,7 +821,14 @@ export async function generateLookImage(opts: {
     } = opts;
     const view = opts.view ?? "front";
     const isThreeQuarter = view === "three_quarter";
-    const catalogImageUrls = (look.catalogImageUrls ?? []).filter(Boolean);
+    const catalogImages = (
+      look.catalogImages?.length
+        ? look.catalogImages.filter((i) => i.url)
+        : (look.catalogImageUrls ?? [])
+            .filter(Boolean)
+            .map((url) => ({ url, title: "", category: "" }))
+    ).filter((i) => i.url);
+    const catalogImageUrls = catalogImages.map((i) => i.url);
     const hasCatalog = Boolean(look.catalogContext) || catalogImageUrls.length > 0;
     const hasOutfitRef = Boolean(outfitReferenceImageUrl);
     const hasFace = Boolean(faceReferenceImageUrl);
@@ -644,15 +836,37 @@ export async function generateLookImage(opts: {
     const hasFull = Boolean(referenceImageUrl);
     const faceImageCount = (hasFace ? 1 : 0) + (hasProfile ? 1 : 0);
     const personImageCount = faceImageCount + (hasFull ? 1 : 0);
-    const eyewearBlock = eyewearPromptDirective(look.description);
-    const tuckBlock = tuckPromptDirective(look.description);
-    const tieBlock = tiePromptDirective(look.description);
-    const hatBlock = hatPromptDirective(look.description);
-    const sneakerBlock = sneakerPromptDirective(look.description);
-    const fabricBlock = fabricPromptDirective(look.description);
-    const blazerTypeBlock = blazerTypePromptDirective(look.description);
-    const shoeMaterialBlock = shoeMaterialPromptDirective(look.description);
-    const ordinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"];
+    const wearableDescription = sanitizeLookDescription(look.description);
+    // Catalogue SKUs own materials and colours. The look caption used to leak
+    // "suede derbies" / "teal poplin" into these directives and beat the shop.
+    const directiveSource = hasCatalog
+      ? [look.catalogContext, catalogImages.map((i) => i.title).join(", ")]
+          .filter(Boolean)
+          .join(" ")
+      : look.description;
+    const eyewearBlock = eyewearPromptDirective(directiveSource);
+    const tuckBlock = tuckPromptDirective(directiveSource);
+    const tieBlock = tiePromptDirective(directiveSource);
+    const hatBlock = hatPromptDirective(directiveSource);
+    const sneakerBlock = sneakerPromptDirective(directiveSource);
+    const backpackBlock = backpackPromptDirective(directiveSource);
+    const fabricBlock = fabricPromptDirective(directiveSource);
+    const blazerTypeBlock = blazerTypePromptDirective(directiveSource);
+    const shoeMaterialBlock = shoeMaterialPromptDirective(directiveSource);
+    const ordinals = [
+      "FIRST",
+      "SECOND",
+      "THIRD",
+      "FOURTH",
+      "FIFTH",
+      "SIXTH",
+      "SEVENTH",
+      "EIGHTH",
+      "NINTH",
+      "TENTH",
+      "ELEVENTH",
+      "TWELFTH",
+    ];
     const ordinal = (n: number) => ordinals[n - 1] ?? `${n}TH`;
 
     const subject =
@@ -667,10 +881,22 @@ export async function generateLookImage(opts: {
     // When catalogue picks exist, THEY define the outfit. The free-text look
     // description is demoted to a styling/mood hint so it stops dominating and
     // re-creating the report's original look.
+    const namesSquare = /\b(pocket[\s-]?squares?|pochettes?|handkerchiefs?)\b/i.test(
+      `${wearableDescription} ${look.catalogContext ?? ""}`,
+    );
+    const emptyTrouserPockets =
+      `Trouser pockets stay empty and lie flat — no cloth peeking out. `;
+    const squarePlacement = namesSquare
+      ? `The pocket square sits in the jacket breast pocket only. `
+      : "";
     const outfitBlock = hasCatalog
       ? `${look.catalogContext ?? ""}` +
-        `Styling note (mood and proportions only — do NOT substitute different clothes): ${look.description}. `
-      : `Outfit: ${look.description}. `;
+        `Styling note: keep city-work formality and proportions. Do not add garments ` +
+        `or swap the catalogue shirt, trousers, shoes or bag for pieces named only ` +
+        `in a look caption. ` +
+        squarePlacement +
+        emptyTrouserPockets
+      : `Outfit: ${wearableDescription}. ` + squarePlacement + emptyTrouserPockets;
 
     // The image model tends to default to sandals for warm palettes; an explicit
     // footwear directive with a hard negative keeps formal looks in dress shoes.
@@ -696,6 +922,11 @@ export async function generateLookImage(opts: {
       `named frame exactly: sunglasses may be round, wayfarer, aviator, rectangular, geometric, oval, or wraparound sport; ` +
       `optical glasses may be round, rectangular, oval, geometric, or rimless (lenses mounted directly to the bridge and temples, no surrounding frame). ` +
       `When sunglasses are described as mirrored, the lenses are a reflective mirror finish, not a flat dark tint. ` +
+      `Hands stay empty unless a tote, backpack, briefcase or messenger bag is listed — ` +
+      `never hold a wallet, cardholder, phone, keys or any other small prop. ` +
+      `Trouser pockets stay empty and lie flat. ` +
+      `A listed backpack is held in one hand or slung on one shoulder — never worn ` +
+      `on both shoulders. ` +
       `If a shirt, oxford, tee, polo or henley is tucked in, the hem sits inside the trouser waistband; if worn untucked, the hem hangs over the trousers. ` +
       `A necktie is never worn on top of a jumper or knit — it sits on the shirt ` +
       `under the knit (V-neck or open cardigan) or between jacket lapels. ` +
@@ -742,17 +973,22 @@ export async function generateLookImage(opts: {
         : `The ${ordinal(imgIdx)} image shows the exact outfit to dress them in — copy only the clothing, ` +
           `colours and proportions; do not copy the model's face or body. `;
     }
-    if (catalogImageUrls.length) {
+    if (catalogImages.length) {
       const catalogStart = imgIdx + 1;
-      imgIdx += catalogImageUrls.length;
-      if (catalogImageUrls.length === 1) {
-        imageRoles +=
-          `The ${ordinal(catalogStart)} image is the actual catalogue garment to dress them in — ` +
-          `reproduce that exact garment on the person. `;
+      imgIdx += catalogImages.length;
+      if (catalogImages.length === 1) {
+        const only = catalogImages[0];
+        imageRoles += only.title
+          ? `The ${ordinal(catalogStart)} image is the ${only.category.toLowerCase()} to wear: ${only.title} — reproduce this exact piece. `
+          : `The ${ordinal(catalogStart)} image is the actual catalogue garment to dress them in — ` +
+            `reproduce that exact garment on the person. `;
       } else {
-        imageRoles +=
-          `Images ${ordinal(catalogStart)} through ${ordinal(imgIdx)} are catalogue garment references — ` +
-          `reproduce those exact garments on the person. `;
+        catalogImages.forEach((g, i) => {
+          const n = catalogStart + i;
+          imageRoles += g.title
+            ? `The ${ordinal(n)} image is the ${g.category.toLowerCase()} to wear: ${g.title} — reproduce this exact piece. `
+            : `The ${ordinal(n)} image is a catalogue garment reference — reproduce that exact garment on the person. `;
+        });
       }
       // When garment product photos share the prompt with the person's photos,
       // the model tends to blend faces from the product shots and lose likeness.
@@ -766,6 +1002,15 @@ export async function generateLookImage(opts: {
           `reproduce them at maximum fidelity. The catalogue images are clothing swatches ` +
           `only: copy the garments, and take NOTHING facial, body or pose-related from them. `;
       }
+    }
+    // Product shots drown the portrait when they come last. Re-attach the face
+    // after the swatches so identity is the final visual token.
+    if (hasFace && catalogImages.length) {
+      imgIdx += 1;
+      imageRoles +=
+        `The ${ordinal(imgIdx)} image is the SAME close-up front portrait again — ` +
+        `after the garment swatches, lock the face, bone structure, skin tone, hairline ` +
+        `and hairstyle to this photo. This is the person, not a fashion model. `;
     }
 
     // Text anchor for the face. The model regenerates the whole scene, so a
@@ -793,9 +1038,12 @@ export async function generateLookImage(opts: {
         `do not idealise, slim or restyle the face. ` +
         skinRule +
         `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
-        `Do NOT change the hair colour. ` +
+        `Keep the EXACT hairstyle from the portrait — same colour, length, texture, ` +
+        `volume, parting and hairline. Do not slick, wave, or restyle the hair into a ` +
+        `fashion-model cut. ` +
         `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
         `what the reference photo shows. ` +
+        `The result must be recognisably this same person, not a similar-looking model. ` +
         eyewearBlock;
     }
     if (!personImageCount && !catalogImageUrls.length) {
@@ -816,16 +1064,22 @@ export async function generateLookImage(opts: {
           `pale or mid-value top that matches the skin's own lightness directly under ` +
           `the chin — use either a deeper or a distinctly crisper palette tone there. `
         : "";
-    const nearFaceBlock = nearFaceHex
-      ? `Near-face colour: the garment closest to the face (the top layer — knit, ` +
-        `shirt, jacket or its collar) MUST be ${nearFaceHex} — a deliberate tone from ` +
-        `the palette. If the outfit text names a lighter or mid-value top, deepen it to ` +
-        `this tone; other garments keep their described colours. `
-      : nearFacePrinciple;
+    const nearFaceBlock = hasCatalog
+      ? `Keep each catalogue garment's colour exactly as listed and shown in its ` +
+        `product photo — do not deepen, teal-shift or recolour the shirt or shoes ` +
+        `for face contrast or palette harmony. `
+      : nearFaceHex
+        ? `Near-face colour: the garment closest to the face (the top layer — knit, ` +
+          `shirt, jacket or its collar) MUST be ${nearFaceHex} — a deliberate tone from ` +
+          `the palette. If the outfit text names a lighter or mid-value top, deepen it to ` +
+          `this tone; other garments keep their described colours. `
+        : nearFacePrinciple;
 
     const preamble =
       `Editorial, full-length fashion photograph for a premium style report. `;
-    const paletteLine = `Colour palette: ${look.palette.join(", ")}. `;
+    const paletteLine = hasCatalog
+      ? ""
+      : `Colour palette: ${look.palette.join(", ")}. `;
 
     // v1 baseline — kept byte-identical so version 1 == the historical prompt.
     const legacyPrompt =
@@ -843,6 +1097,7 @@ export async function generateLookImage(opts: {
       tieBlock +
       hatBlock +
       sneakerBlock +
+      backpackBlock +
       fabricBlock +
       blazerTypeBlock +
       shoeMaterialBlock +
@@ -871,6 +1126,9 @@ export async function generateLookImage(opts: {
         `numbers, arrows or graphic overlays anywhere in the frame`,
       `sunglasses or glasses listed in the outfit are worn on the face over the ` +
         `eyes in the named frame shape — not held, not in a pocket, not hanging from clothing, not on the forehead`,
+      `hands stay empty unless a listed tote, backpack, briefcase or messenger is carried — no wallet, cardholder, phone or other handheld prop`,
+      `trouser pockets stay empty and lie flat — no cloth peeking out`,
+      `a listed backpack is held in one hand or slung on one shoulder — never worn on both shoulders`,
     ];
     if (eyewearBlock) {
       constraints.push(
@@ -889,6 +1147,9 @@ export async function generateLookImage(opts: {
     if (sneakerBlock) {
       constraints.push(sneakerBlock.trim());
     }
+    if (backpackBlock) {
+      constraints.push(backpackBlock.trim());
+    }
     if (fabricBlock) {
       constraints.push(fabricBlock.trim());
     }
@@ -897,6 +1158,11 @@ export async function generateLookImage(opts: {
     }
     if (shoeMaterialBlock) {
       constraints.push(shoeMaterialBlock.trim());
+    }
+    if (hasCatalog) {
+      constraints.push(
+        `catalogue titles and photos win — do not use a look-caption shirt colour or shoe finish`,
+      );
     }
     if (isThreeQuarter) {
       constraints.push(
@@ -952,6 +1218,9 @@ export async function generateLookImage(opts: {
       } catch {
         // Skip malformed product URLs rather than failing the whole render.
       }
+    }
+    if (faceReferenceImageUrl && catalogImages.length) {
+      content.push({ type: "image", image: new URL(faceReferenceImageUrl) });
     }
 
     return await renderImage(content);
@@ -1333,17 +1602,27 @@ export async function generateReportTryOnImage(opts: {
   garmentsText: string;
   /** Optional catalogue product image URLs to reproduce exact garments. */
   garmentImageUrls?: string[];
+  /** Same photos with titles so each input image can be bound to a garment. */
+  garmentImages?: { url: string; title: string; category: string }[];
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
-    const garmentImageUrls = (opts.garmentImageUrls ?? []).filter(
-      (u): u is string => Boolean(u && /^https?:\/\//i.test(u)),
-    );
+    const garmentImages = (
+      opts.garmentImages?.length
+        ? opts.garmentImages.filter((i) => i.url)
+        : (opts.garmentImageUrls ?? []).map((url) => ({
+            url,
+            title: "",
+            category: "",
+          }))
+    ).filter((i) => i.url && /^https?:\/\//i.test(i.url));
+    const garmentImageUrls = garmentImages.map((i) => i.url);
     const eyewearBlock = eyewearPromptDirective(opts.garmentsText);
     const tuckBlock = tuckPromptDirective(opts.garmentsText);
     const tieBlock = tiePromptDirective(opts.garmentsText);
     const hatBlock = hatPromptDirective(opts.garmentsText);
     const sneakerBlock = sneakerPromptDirective(opts.garmentsText);
+    const backpackBlock = backpackPromptDirective(opts.garmentsText);
     const fabricBlock = fabricPromptDirective(opts.garmentsText);
     const blazerTypeBlock = blazerTypePromptDirective(opts.garmentsText);
     const shoeMaterialBlock = shoeMaterialPromptDirective(opts.garmentsText);
@@ -1370,9 +1649,15 @@ export async function generateReportTryOnImage(opts: {
       `fills 9:16 — continue the same backdrop with natural light falloff and ` +
       `subtle wall texture. Do NOT letterbox, pillarbox, or pad the image with ` +
       `flat solid-colour bars. ` +
-      (garmentImageUrls.length
-        ? `The remaining ${garmentImageUrls.length} image(s) show the actual ` +
-          `catalogue garment(s) — reproduce these exact products, not similar ones. `
+      (garmentImages.length
+        ? garmentImages
+            .map((g, i) => {
+              const n = i + 2;
+              return g.title
+                ? `Image ${n} is the ${g.category.toLowerCase()} to wear: ${g.title} — reproduce this exact piece. `
+                : `Image ${n} is a catalogue garment — reproduce this exact product. `;
+            })
+            .join("")
         : ``) +
       opts.garmentsText +
       `Layering — follow strictly: outerwear (jackets, blazers, coats, overshirts, ` +
@@ -1401,6 +1686,7 @@ export async function generateReportTryOnImage(opts: {
       tieBlock +
       hatBlock +
       sneakerBlock +
+      backpackBlock +
       fabricBlock +
       blazerTypeBlock +
       shoeMaterialBlock +

@@ -7,6 +7,7 @@ import {
 } from "@/lib/ai/pipeline";
 import { getReportById } from "@/lib/data/reports";
 import { lookItemsNeedRefresh, SHORT_SLEEVE_KNIT_RE, TURTLENECK_KNIT_RE } from "@/lib/data/catalog";
+import { HOUSEHOLD_TEXTILE_RE } from "@/lib/style-extras";
 import { ensureSetLookItems } from "@/lib/data/look-sets";
 import { isDemoReportId } from "@/lib/demo-report";
 import {
@@ -16,8 +17,10 @@ import {
   InsufficientCreditsError,
 } from "@/lib/credits";
 import {
-  catalogImageUrlsFromItems,
+  catalogImageRefsFromItems,
   catalogPromptFromItems,
+  MAX_CATALOG_REFERENCE_IMAGES,
+  MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT,
   formatLookKey,
   paletteFromCapsulePieces,
   resolveCapsuleCatalogItems,
@@ -360,12 +363,13 @@ export async function POST(request: Request) {
   // knit (stale look_items from before the knit filter can still carry one). A
   // short-sleeve knit worn on its own (no shirt in the set) is left untouched.
   const hasShirt = resolvedItems.some((i) => i.category === "Shirts");
-  let catalogItems = hasShirt
+  let catalogItems = (hasShirt
     ? resolvedItems.filter(
         (i) =>
           !(i.category === "Knitwear" && SHORT_SLEEVE_KNIT_RE.test(i.title)),
       )
-    : resolvedItems;
+    : resolvedItems
+  ).filter((i) => !HOUSEHOLD_TEXTILE_RE.test(i.title));
   // A roll-neck / turtleneck replaces the shirt. Keeping both makes the model
   // paint a collar ON TOP of the roll-neck and the jumper body over the shirt.
   const hasTurtleneck = catalogItems.some(
@@ -382,8 +386,17 @@ export async function POST(request: Request) {
         ? paletteFromCapsulePieces(capsulePieces, shopping)
         : [];
 
-  const catalogContext = catalogPromptFromItems(catalogItems);
-  const catalogImageUrls = catalogImageUrlsFromItems(catalogItems);
+  const catalogContext = catalogPromptFromItems(
+    catalogItems,
+    kind === "look" ? description : undefined,
+  );
+  const catalogImages = catalogImageRefsFromItems(catalogItems, {
+    max:
+      tryOnStyle === "editorial"
+        ? MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT
+        : MAX_CATALOG_REFERENCE_IMAGES,
+  });
+  const catalogImageUrls = catalogImages.map((r) => r.url);
 
   if (kind === "look" && !catalogItems.length) {
     // No catalogue picks → the model can only follow the look description, which
@@ -451,6 +464,7 @@ export async function POST(request: Request) {
           garmentsText:
             catalogContext ?? `Dress the person in this outfit: ${description}. `,
           garmentImageUrls: catalogImageUrls,
+          garmentImages: catalogImages,
         })
       : await generateLookImage({
           profile,
@@ -460,12 +474,16 @@ export async function POST(request: Request) {
             palette: effectivePalette,
             catalogContext,
             catalogImageUrls,
+            catalogImages,
           },
           // Identity reference ONLY — the user's own photo, never the report's
           // generated look image (which would copy the original outfit).
           referenceImageUrl: fullUrl,
           faceReferenceImageUrl: faceUrl,
           profileReferenceImageUrl: profileUrl,
+          // Identity first in the prompt — editorial try-on otherwise buries
+          // the portrait under the catalogue garment list.
+          promptVersion: 4,
           // Capsule combo photo defines the exact outfit to replicate on the user.
           outfitReferenceImageUrl:
             kind === "capsule" ? outfitReferenceUrl : undefined,

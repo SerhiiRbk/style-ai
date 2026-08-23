@@ -72,6 +72,19 @@ test("muted + cool + high-contrast → Summer, not Winter (clarity flip)", () =>
     clarity: "muted",
   });
   assert.equal(r.season, "summer");
+  assert.equal(r.subseason, "cool-summer");
+});
+
+test("muted + cool + medium contrast stays Soft Summer", () => {
+  const r = quizToResult({
+    ...base,
+    hair: "brown",
+    eye: "blue",
+    sun: "burn",
+    contrast: "medium",
+    clarity: "muted",
+  });
+  assert.equal(r.season, "summer");
   assert.equal(r.subseason, "soft-summer");
 });
 

@@ -8,7 +8,7 @@ import {
   type EyeColorId,
 } from "@/lib/style-profile";
 import {
-  paletteForSubseason,
+  paletteForPerson,
   carloNoteFor,
   type ColourAnalysisResult,
   type Undertone,
@@ -195,7 +195,15 @@ export function quizToResult(a: QuizAnswers): ColourAnalysisResult {
     undertone,
     contrast,
     skinTone: SKIN_TONE[a.sun],
-    palette: paletteForSubseason(subseason),
+    hairColor: HAIR_COLOR_LABELS[a.hair],
+    eyeColor: EYE_COLOR_LABELS[a.eye],
+    palette: paletteForPerson(subseason, {
+      undertone,
+      contrast,
+      hairColor: HAIR_COLOR_LABELS[a.hair],
+      eyeColor: EYE_COLOR_LABELS[a.eye],
+      skinTone: SKIN_TONE[a.sun],
+    }),
     carloNote: carloNoteFor({ season, subseasonLabel, undertone, contrast }),
   };
 }

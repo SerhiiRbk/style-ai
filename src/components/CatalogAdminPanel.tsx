@@ -3,6 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { ProductImage } from "@/components/ProductImage";
 import { CATALOG_CATEGORIES } from "@/lib/catalog-categories";
+import { GARMENT_SUBTYPES } from "../../scripts/feeds/attributes.mjs";
+import {
+  CatalogProductEditor,
+  EMPTY_DRAFT,
+  draftForColorClone,
+  draftFromProduct,
+  payloadFromDraft,
+  type CatalogProductDraft,
+} from "@/components/CatalogProductEditor";
 
 type Product = {
   id: string;
@@ -12,14 +21,21 @@ type Product = {
   category: string | null;
   color: string | null;
   price_eur: number | null;
+  original_price?: number | null;
+  currency?: string | null;
   image_url: string | null;
+  deeplink?: string | null;
+  gender?: string | null;
+  description?: string | null;
   source_type: string | null;
   hidden: boolean | null;
+  garment_subtype?: string | null;
 };
 
 export function CatalogAdminPanel() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
+  const [subtype, setSubtype] = useState("");
   const [page, setPage] = useState(1);
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -27,6 +43,12 @@ export function CatalogAdminPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [editor, setEditor] = useState<
+    null | { mode: "create" | "edit" | "clone"; id?: string }
+  >(null);
+  const [draft, setDraft] = useState<CatalogProductDraft>(EMPTY_DRAFT);
+  const [editorError, setEditorError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,6 +57,7 @@ export function CatalogAdminPanel() {
       const params = new URLSearchParams({ page: String(page) });
       if (q.trim()) params.set("q", q.trim());
       if (category) params.set("category", category);
+      if (subtype) params.set("subtype", subtype);
       const res = await fetch(`/api/admin/products?${params}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Could not load products");
@@ -47,7 +70,7 @@ export function CatalogAdminPanel() {
     } finally {
       setLoading(false);
     }
-  }, [q, category, page]);
+  }, [q, category, subtype, page]);
 
   useEffect(() => {
     void load();
@@ -75,6 +98,51 @@ export function CatalogAdminPanel() {
     }
   }
 
+  function openCreate() {
+    setDraft(EMPTY_DRAFT);
+    setEditorError(null);
+    setEditor({ mode: "create" });
+  }
+
+  function openEdit(p: Product) {
+    setDraft(draftFromProduct(p));
+    setEditorError(null);
+    setEditor({ mode: "edit", id: p.id });
+  }
+
+  function openColorClone() {
+    setDraft(draftForColorClone(draft));
+    setEditorError(null);
+    setEditor({ mode: "clone" });
+  }
+
+  async function saveEditor() {
+    if (!editor) return;
+    setSaving(true);
+    setEditorError(null);
+    try {
+      const payload = payloadFromDraft(draft);
+      const creating = editor.mode !== "edit";
+      const res = await fetch(
+        creating ? "/api/admin/products" : `/api/admin/products/${editor.id}`,
+        {
+          method: creating ? "POST" : "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not save product");
+      setEditor(null);
+      if (creating) setPage(1);
+      void load();
+    } catch (e) {
+      setEditorError(e instanceof Error ? e.message : "Could not save product");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function remove(id: string, title: string) {
     if (!window.confirm(`Delete “${title}” from the catalogue?`)) return;
     setPendingId(id);
@@ -94,14 +162,25 @@ export function CatalogAdminPanel() {
 
   return (
     <div>
-      <h2 className="font-display text-2xl">Manage products</h2>
-      <p className="mt-2 max-w-2xl text-sm text-stone">
-        Edit categories or remove items from the live catalogue. Category changes
-        refresh the search embedding when AI is configured.
-      </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="font-display text-2xl">Manage products</h2>
+          <p className="mt-2 max-w-2xl text-sm text-stone">
+            Add or edit catalogue items. Saves re-type attributes and refresh the
+            search embedding so matching picks up the change.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openCreate}
+          className="rounded-full bg-ink px-4 py-2 text-sm text-paper"
+        >
+          Add product
+        </button>
+      </div>
 
       <form
-        className="mt-6 grid gap-3 rounded-2xl border hairline bg-paper p-4 sm:grid-cols-3"
+        className="mt-6 grid gap-3 rounded-2xl border hairline bg-paper p-4 sm:grid-cols-4"
         onSubmit={(e) => {
           e.preventDefault();
           setPage(1);
@@ -130,9 +209,25 @@ export function CatalogAdminPanel() {
             </option>
           ))}
         </select>
+        <select
+          value={subtype}
+          onChange={(e) => {
+            setSubtype(e.target.value);
+            setPage(1);
+          }}
+          className="rounded-lg border hairline bg-cream/30 px-3 py-2 text-sm"
+        >
+          <option value="">All subtypes</option>
+          <option value="untagged">Untagged</option>
+          {GARMENT_SUBTYPES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
         <button
           type="submit"
-          className="rounded-full bg-ink px-4 py-2 text-sm text-paper sm:col-span-3 sm:justify-self-start"
+          className="rounded-full bg-ink px-4 py-2 text-sm text-paper sm:col-span-4 sm:justify-self-start"
         >
           Search
         </button>
@@ -174,7 +269,7 @@ export function CatalogAdminPanel() {
       ) : null}
 
       <div className="mt-4 overflow-hidden rounded-2xl border hairline bg-paper">
-        <div className="hidden border-b hairline bg-cream/40 px-4 py-2 text-[11px] uppercase tracking-wider text-stone-soft sm:grid sm:grid-cols-[minmax(0,1fr)_10rem_8rem_2.5rem] sm:gap-4">
+        <div className="hidden border-b hairline bg-cream/40 px-4 py-2 text-[11px] uppercase tracking-wider text-stone-soft sm:grid sm:grid-cols-[minmax(0,1fr)_10rem_8rem_5rem] sm:gap-4">
           <span>Product</span>
           <span>Category</span>
           <span>Source</span>
@@ -187,7 +282,7 @@ export function CatalogAdminPanel() {
             return (
               <li
                 key={p.id}
-                className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_10rem_8rem_2.5rem] sm:items-center sm:gap-4"
+                className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_10rem_8rem_5rem] sm:items-center sm:gap-4"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="relative h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-cream/50">
@@ -201,6 +296,7 @@ export function CatalogAdminPanel() {
                     <div className="truncate text-sm text-ink">{p.title}</div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-stone-soft">
                       {p.brand ? <span>{p.brand}</span> : null}
+                      {p.garment_subtype ? <span>{p.garment_subtype}</span> : null}
                       {p.color ? <span>{p.color}</span> : null}
                       {p.price_eur != null ? (
                         <span>€{p.price_eur.toFixed(2)}</span>
@@ -232,16 +328,26 @@ export function CatalogAdminPanel() {
                   ) : null}
                 </div>
 
-                <button
-                  type="button"
-                  disabled={busy}
-                  title="Delete from catalogue"
-                  aria-label={`Delete ${name}`}
-                  onClick={() => void remove(p.id, p.title)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-soft transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
-                >
-                  <TrashIcon />
-                </button>
+                <div className="flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => openEdit(p)}
+                    className="rounded-md px-2 py-1 text-xs text-stone hover:bg-cream/60 hover:text-ink disabled:opacity-50"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    title="Delete from catalogue"
+                    aria-label={`Delete ${name}`}
+                    onClick={() => void remove(p.id, p.title)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-soft transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                  >
+                    <TrashIcon />
+                  </button>
+                </div>
               </li>
             );
           })}
@@ -252,6 +358,19 @@ export function CatalogAdminPanel() {
           </p>
         ) : null}
       </div>
+
+      {editor ? (
+        <CatalogProductEditor
+          mode={editor.mode}
+          draft={draft}
+          busy={saving}
+          error={editorError}
+          onChange={setDraft}
+          onClose={() => setEditor(null)}
+          onSubmit={() => void saveEditor()}
+          onCloneColor={editor.mode === "edit" ? openColorClone : undefined}
+        />
+      ) : null}
     </div>
   );
 }

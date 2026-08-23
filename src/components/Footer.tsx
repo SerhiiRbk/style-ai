@@ -27,6 +27,7 @@ export function Footer() {
           title="Product"
           items={[
             ["How it works", "/how-it-works"],
+            ["Create a look", "/create-look"],
             ["Sample", "/report/valetti-style-prospect-demo"],
             ["Catalog", "/catalog"],
             ["Shop a Look", "/shop-a-look"],
@@ -52,7 +53,7 @@ export function Footer() {
       </div>
       <div className="container-luxe flex flex-col items-start justify-between gap-3 border-t hairline py-6 text-xs text-stone-soft sm:flex-row sm:items-center">
         <span>© {new Date().getFullYear()} {BRAND.legalName}. All rights reserved.</span>
-        <span>Made in the EU · GDPR-first · Affiliate links disclosed</span>
+        <span>EU, US & worldwide · GDPR-first · Affiliate links disclosed</span>
       </div>
     </footer>
   );

@@ -112,6 +112,16 @@ export function buildAnonProfile(
   subseason: SubseasonId,
   geo: Pick<Geo, "country" | "currency">,
   boldness: StyleProfile["boldness"] = "moderate",
+  person?: {
+    undertone?: StyleProfile["physical"]["undertone"];
+    contrast?: StyleProfile["physical"]["contrast"];
+    hairColor?: string | null;
+    eyeColor?: string | null;
+    skinTone?: string | null;
+    skinHex?: string | null;
+    hairHex?: string | null;
+    eyeHex?: string | null;
+  },
 ): StyleProfile {
   const base = neutralMatchProfile(geo.country ?? "Global");
   return {
@@ -120,6 +130,17 @@ export function buildAnonProfile(
       ...base.demographics,
       genderPresentation: "male",
       country: geo.country ?? "Global",
+    },
+    physical: {
+      ...base.physical,
+      undertone: person?.undertone ?? base.physical.undertone,
+      contrast: person?.contrast ?? base.physical.contrast,
+      hairColor: person?.hairColor ?? base.physical.hairColor,
+      eyeColor: person?.eyeColor ?? base.physical.eyeColor,
+      skinTone: person?.skinTone ?? base.physical.skinTone,
+      skinHex: person?.skinHex ?? undefined,
+      hairHex: person?.hairHex ?? undefined,
+      eyeHex: person?.eyeHex ?? undefined,
     },
     currency: geo.currency ?? "EUR",
     colorSeason: seasonForSubseason(subseason),

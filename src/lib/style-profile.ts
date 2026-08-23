@@ -221,10 +221,11 @@ export function classifySubseason(opts: {
       return "warm-spring";
     case "summer":
       if (depth === "light") return "light-summer";
-      // Muted colouring is the hallmark of soft-summer; only push to the cooler,
-      // slightly clearer cool-summer when the signal isn't muted.
-      if (muted) return "soft-summer";
+      // Soft Summer is muted *and* mid/low contrast. High contrast or deep
+      // colouring in a muted cool person is Cool Summer — still not Winter,
+      // but not the dusty mid-chroma Soft Summer dump either.
       if (depth === "deep" || contrast === "high" || clear) return "cool-summer";
+      if (muted) return "soft-summer";
       return "soft-summer";
     case "autumn":
       if (depth === "deep" && !muted) return "deep-autumn";
@@ -418,9 +419,9 @@ export const styleProfileSchema = z.object({
   demographics: z.object({
     age: z.number(),
     genderPresentation: GenderPresentation,
-    city: z.string(),
-    country: z.string(),
-    climate: z.string(),
+    city: z.string().default(""),
+    country: z.string().default(""),
+    climate: z.string().default(""),
   }),
   physical: z.object({
     skinTone: z.string(),
@@ -433,6 +434,10 @@ export const styleProfileSchema = z.object({
     measurements: measurementsSchema.optional(),
     hairColor: z.string().optional(),
     eyeColor: z.string().optional(),
+    /** Mid-cheek / hair-mass / iris hex read from the analysis photo. */
+    skinHex: z.string().optional(),
+    hairHex: z.string().optional(),
+    eyeHex: z.string().optional(),
   }),
   colorSeason: ColorSeason,
   /** 12-subseason classification (optional — older reports may lack it). */

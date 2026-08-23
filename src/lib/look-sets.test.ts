@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   bundleFor, priceForBundle, isLoyalty, setName, buildLookIntake,
+  lookSetProfileSource,
 } from "./look-sets";
-import { intakeSchema } from "@/lib/style-profile";
+import { intakeSchema, styleProfileSchema } from "@/lib/style-profile";
 
 test("bundles are 3/6/9 only", () => {
   assert.deepEqual(bundleFor(3), { looks: 3, credits: 12 });
@@ -41,5 +42,56 @@ test("mini-intake maps to a valid Intake with male + sensible defaults", () => {
   assert.ok(
     intakeSchema.safeParse(intake).success,
     "buildLookIntake must produce a schema-valid Intake",
+  );
+});
+
+test("a selected face photo always re-reads colouring, even with a saved profile", () => {
+  assert.equal(
+    lookSetProfileSource({ hasExistingProfile: true, hasFacePhoto: true }),
+    "fresh",
+  );
+});
+
+test("skipping the photo reuses the saved profile", () => {
+  assert.equal(
+    lookSetProfileSource({ hasExistingProfile: true, hasFacePhoto: false }),
+    "reuse",
+  );
+});
+
+test("look-set profiles without city still parse so Shop the Look can rematch", () => {
+  const parsed = styleProfileSchema.safeParse({
+    version: "1.0",
+    demographics: { age: 34, genderPresentation: "male" },
+    physical: {
+      skinTone: "medium",
+      undertone: "cool",
+      contrast: "medium",
+      faceShape: "oval",
+      bodyType: "trapezoid",
+      heightCm: 180,
+    },
+    colorSeason: "summer",
+    currency: "EUR",
+    goals: ["work"],
+    boldness: "moderate",
+    budgetEur: { min: 50, max: 200 },
+  });
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.equal(parsed.data.demographics.city, "");
+    assert.equal(parsed.data.demographics.country, "");
+    assert.equal(parsed.data.demographics.climate, "");
+  }
+});
+
+test("a first-time user must supply a face photo", () => {
+  assert.equal(
+    lookSetProfileSource({ hasExistingProfile: false, hasFacePhoto: false }),
+    "photo_required",
+  );
+  assert.equal(
+    lookSetProfileSource({ hasExistingProfile: false, hasFacePhoto: true }),
+    "fresh",
   );
 });

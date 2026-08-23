@@ -11,6 +11,10 @@ import { useCredits } from "./CreditsContext";
 import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 import { WORKING } from "@/components/luxe/messages";
 import type { TryOnOpinion, TryOnVerdict } from "@/lib/ai/tryon-opinion";
+import {
+  TryOnStyleToggle,
+  type CatalogTryOnStyle,
+} from "./TryOnStyleToggle";
 
 const VERDICT_STYLE: Record<TryOnVerdict, { dot: string; label: string }> = {
   great: { dot: "bg-emerald-400", label: "Strong match" },
@@ -44,6 +48,7 @@ export function TryOnTray({
     "idle" | "loading" | "done"
   >("idle");
   const [opinionNoProfile, setOpinionNoProfile] = useState(false);
+  const [tryOnStyle, setTryOnStyle] = useState<CatalogTryOnStyle>("photo");
 
   if (!selection || selection.items.length === 0) return null;
   const { items } = selection;
@@ -62,6 +67,7 @@ export function TryOnTray({
         body: JSON.stringify({
           productIds: selection.items.map((i) => i.productId),
           reportId,
+          style: tryOnStyle,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -166,6 +172,15 @@ export function TryOnTray({
               </button>
             </div>
           ))}
+        </div>
+
+        <div className="mt-3">
+          <TryOnStyleToggle
+            value={tryOnStyle}
+            onChange={setTryOnStyle}
+            disabled={state === "loading"}
+            tone="dark"
+          />
         </div>
 
         <button

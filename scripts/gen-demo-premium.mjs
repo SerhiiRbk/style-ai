@@ -12,7 +12,7 @@ import { fileURLToPath } from "url";
 import { generateText } from "ai";
 
 const modelImage =
-  process.env.AI_MODEL_IMAGE ?? "google/gemini-3.1-flash-image-preview";
+  process.env.AI_MODEL_IMAGE ?? "google/gemini-3.1-flash-image";
 
 if (!process.env.AI_GATEWAY_API_KEY) {
   console.error("Missing AI_GATEWAY_API_KEY");

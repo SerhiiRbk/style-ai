@@ -95,7 +95,7 @@ function trackEvent(name: string, props?: Record<string, unknown>) {
 // private-mode failures degrade silently. Cleared by "Clear" / "Try another".
 // v2: palettes grew from 8 → 10 swatches; drop pre-change cached sessions so a
 // restored result never shows the old, shorter palette.
-const COLOURS_SESSION_KEY = "valetti_colours_session_v2";
+const COLOURS_SESSION_KEY = "valetti_colours_session_v5";
 const COLOURS_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 type ColoursSession = {
@@ -362,6 +362,8 @@ export function ColoursExperience() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function fetchRecs(subseason: string, occ: string, budget: string) {
+    if (!result) return;
+    const person = result;
     setRecsLoading(true);
     try {
       const res = await fetch("/api/colours/looks", {
@@ -373,6 +375,14 @@ export function ColoursExperience() {
           budgetId: budget,
           source: recsSource.current,
           anonId: getAnonId(),
+          undertone: person.undertone,
+          contrast: person.contrast,
+          skinTone: person.skinTone,
+          hairColor: person.hairColor,
+          eyeColor: person.eyeColor,
+          skinHex: person.skinHex,
+          hairHex: person.hairHex,
+          eyeHex: person.eyeHex,
         }),
       });
       const data = await res.json().catch(() => ({}));

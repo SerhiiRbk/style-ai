@@ -1,6 +1,6 @@
 /**
  * Brand identity. The product is presented as the atelier "Valetti", with
- * Carlo Valetti as its lead stylist persona — a calm, European, quiet-luxury
+ * Carlo Valetti as its lead stylist persona — a calm, quiet-luxury
  * voice. The service is AI-assisted; that is disclosed subtly (subtitle/footer)
  * rather than foregrounded.
  */

@@ -1,4 +1,5 @@
 import "server-only";
+import { after } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getLatestReportProfile } from "@/lib/data/match-profile";
 import {
@@ -24,12 +25,9 @@ type AdminClient = ReturnType<typeof createAdminSupabase>;
  *      personalised one (getLatestReportProfile's `personalised` flag —
  *      not its neutral fallback).
  *   2. The most recent snapshot from a prior look set.
- * Returns `null` when neither exists, so the caller knows a fresh photo +
- * vision analysis is required. Never touches photos/intake — this is the
- * "does the user need to upload anything" check, used by the route to decide
- * whether to require a photo/consent/photo-gate at all (standalone-first
- * reuse rule: returning users pick an existing profile, only new users
- * upload).
+ * Returns `null` when neither exists, so the caller knows a face photo is
+ * required. A stored profile only covers the skip-photo path — if the
+ * request includes a face, the route re-reads colouring from that photo.
  */
 export async function resolveExistingProfile(
   admin: AdminClient,
@@ -71,6 +69,7 @@ export async function createLookSet(
     occasionId: string;
     season: LookBriefSeason;
     boldness: Boldness;
+    styleId?: string | null;
     name: string;
     carloNote?: string | null;
     profile: StyleProfile;
@@ -98,6 +97,7 @@ export async function createLookSet(
     occasionId,
     season,
     boldness,
+    styleId,
     name,
     carloNote,
     profile,
@@ -117,6 +117,7 @@ export async function createLookSet(
     occasion_id: occasionId,
     season,
     boldness,
+    ...(styleId ? { style_id: styleId } : {}),
     carlo_note: carloNote ?? null,
     name,
     is_public: isPublic,
@@ -135,6 +136,24 @@ export async function createLookSet(
       .insert(baseRow)
       .select("id")
       .single());
+  }
+  if (error && /style_id/.test(error.message)) {
+    const { style_id: _drop, ...withoutStyle } = baseRow as typeof baseRow & {
+      style_id?: string;
+    };
+    void _drop;
+    ({ data, error } = await admin
+      .from("look_sets")
+      .insert({ ...withoutStyle, looks_count: looksCount, status })
+      .select("id")
+      .single());
+    if (error && /looks_count|status/.test(error.message)) {
+      ({ data, error } = await admin
+        .from("look_sets")
+        .insert(withoutStyle)
+        .select("id")
+        .single());
+    }
   }
   if (error) throw new Error(error.message);
   if (!data) throw new Error("look_sets insert returned no row");
@@ -535,19 +554,25 @@ async function assembleLookSetResult(
   );
   const looks = looksFromRows(rows ?? [], looksCount, generating);
 
-  // Fill shop items only when the set has none. A stale matchVersion used to
-  // block the page on embedMany + catalogue RPCs — and Next.js prefetch from
-  // /looks fired that for every card in view. Try-on still rematches via
-  // ensureSetLookItems when the user actually shops.
-  const hasItems = Boolean(lookItems && Object.keys(lookItems).length);
-  if (!hasItems && looks.some((l) => l.imagePath)) {
-    lookItems = await ensureSetLookItems(
-      admin,
-      set.user_id,
-      setId,
-      lookItems,
-      looks,
-    );
+  // Rematch when shop items are missing or a stale matchVersion. If we already
+  // have a list, keep it on this request — a failed rematch used to wipe the
+  // shop block. Stale versions refresh after the response, like reports.
+  if (
+    looks.some((l) => l.imagePath) &&
+    lookItemsNeedRefresh(lookItems ?? undefined)
+  ) {
+    if (lookItems && Object.keys(lookItems).length) {
+      scheduleSetLookItemsRefresh(set.user_id, setId, lookItems, looks);
+    } else {
+      lookItems =
+        (await ensureSetLookItems(
+          admin,
+          set.user_id,
+          setId,
+          lookItems,
+          looks,
+        )) ?? lookItems;
+    }
   }
 
   return {
@@ -665,6 +690,27 @@ export async function loadPublicLookSet(
   };
 }
 
+function scheduleSetLookItemsRefresh(
+  userId: string,
+  setId: string,
+  lookItems: Record<number, ShoppingItem[]> | null,
+  looks: LoadedSetLook[],
+): void {
+  after(async () => {
+    try {
+      await ensureSetLookItems(
+        createAdminSupabase(),
+        userId,
+        setId,
+        lookItems,
+        looks,
+      );
+    } catch (err) {
+      console.error("[look-set] match refresh", setId, err);
+    }
+  });
+}
+
 /**
  * Recompute and persist look_items when they are missing or a stale match
  * version. Used on set load and on try-on so a version bump (e.g. the
@@ -696,7 +742,8 @@ export async function ensureSetLookItems(
     (l): l is LoadedSetLook & { imagePath: string } => Boolean(l.imagePath),
   );
   if (!withImages.length) return lookItems ?? null;
-  return backfillSetLookItems(admin, userId, setId, withImages);
+  const next = await backfillSetLookItems(admin, userId, setId, withImages);
+  return next && Object.keys(next).length ? next : lookItems ?? null;
 }
 
 /**
@@ -734,7 +781,14 @@ async function backfillSetLookItems(
     // matchLookItems keys results by position in content.looks; re-key by each
     // look's stable `idx` so the persisted map lines up with how the set view
     // and try-on look items up (by idx, not array position).
-    const byPos = await matchLookItems(parsed.data, content);
+    const { data: setMeta } = await admin
+      .from("look_sets")
+      .select("style_id")
+      .eq("id", setId)
+      .maybeSingle();
+    const styleId =
+      typeof setMeta?.style_id === "string" ? setMeta.style_id : null;
+    const byPos = await matchLookItems(parsed.data, content, { styleId });
     const items: Record<number, ShoppingItem[]> = {};
     looks.forEach((l, p) => {
       const matched = byPos[p];

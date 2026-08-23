@@ -2,6 +2,8 @@ import "server-only";
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { env, hasAI } from "@/lib/env";
+import { lookStyleRerankHint } from "@/lib/look-style-fit";
+import { lookOccasionRerankHint } from "@/lib/look-occasion-fit";
 
 /** Max vector candidates passed to the reranker per garment slot. */
 export const LOOK_RERANK_CANDIDATE_LIMIT = 8;
@@ -58,6 +60,8 @@ function buildRerankPrompt(
   lookDescription: string,
   paletteHints: string,
   slots: RerankGarmentSlot[],
+  styleId?: string | null,
+  occasionId?: string | null,
 ): string {
   const slotBlocks = slots
     .map((s) => {
@@ -75,23 +79,40 @@ function buildRerankPrompt(
     })
     .join("\n\n");
 
+  const styleHint = lookStyleRerankHint(styleId);
+  const occasionHint = lookOccasionRerankHint(occasionId);
   return (
     `You are a menswear stylist picking real catalogue products for ONE outfit look.\n\n` +
     `Look title: ${lookTitle}\n` +
     `Look description: ${lookDescription}\n` +
     (paletteHints ? `Palette hints: ${paletteHints}\n` : "") +
+    (styleHint ? `${styleHint}\n` : "") +
+    (occasionHint ? `${occasionHint}\n` : "") +
     `\nFor each slot, choose the single best candidate index that matches the ` +
     `garment TYPE (e.g. chinos not jeans, blazer not knit/zip sport jacket, ` +
     `crewneck not blazer), COLOUR shade within the family (medium grey not light ` +
     `grey or charcoal), and formality of this look. Use -1 only when every ` +
     `candidate is clearly wrong (wrong category, clashing colour, or unrelated ` +
-    `item).\n` +
+    `item). Never substitute a different accessory type: a pocket square is not ` +
+    `a tie, a "tie with pocket square" set, a cap, a hat, or a belt. A ` +
+    `travel bag, weekender or duffel is not a messenger, tote or briefcase. ` +
+    `A messenger slot is not a small crossbody. ` +
+    `If no candidate is the named accessory, use -1.\n` +
     `Outfit-level colour: do NOT pair a shirt and trousers in the same chromatic ` +
     `family (green, red, orange, yellow, pink, purple) unless the look description ` +
     `itself names that family on BOTH pieces. Sage + olive is a clash. Teal is ` +
     `blue, not green — a sage shirt wants teal, navy, stone, or cream trousers, ` +
     `not another green. Navy-on-navy and neutrals (grey, brown, black, white) are ` +
     `fine.\n` +
+    `Coffee, camel, chocolate or brown trousers are not black — pick a brown-family ` +
+    `trouser when one exists. Do not pair black trousers with a brown belt or brown ` +
+    `shoes (or the reverse). If the look names suede shoes, do not pick polished ` +
+    `leather. If the look names a messenger, do not pick a crossbody.\n` +
+    `A missing exact colour may be filled by a close neighbour (dusty rose → ` +
+    `muted pink or lilac; greige → beige/dove; sage → khaki; mushroom → taupe; ` +
+    `soft plum → mauve/lilac — never a neon or a navy stand-in). Mark those similarPick=true.\n` +
+    `Nude, champagne, camel and sand are warm beige — never a dusty-rose or ` +
+    `pink stand-in. If a pink or rose candidate exists, pick it over beige.\n` +
     `Set similarPick=true when the pick is the closest available option but not a ` +
     `strong colour or style match.\n` +
     `For every pick with candidateIndex >= 0 also write "why" — ONE calm sentence ` +
@@ -112,6 +133,8 @@ export async function rerankLookItemSlots(
   lookDescription: string,
   paletteHints: string,
   slots: RerankGarmentSlot[],
+  styleId?: string | null,
+  occasionId?: string | null,
 ): Promise<RerankPick[] | null> {
   if (!hasAI || !slots.length) return null;
 
@@ -127,6 +150,8 @@ export async function rerankLookItemSlots(
         lookDescription,
         paletteHints,
         withCandidates,
+        styleId,
+        occasionId,
       ),
     });
 

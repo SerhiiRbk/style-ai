@@ -13,7 +13,7 @@ export type ConstructorSlot = {
   lensColor?: string;
   /** Shirt / tee hem: tucked into the trousers, or worn untucked. */
   tuck?: "in" | "out";
-  /** Necktie cut: classic, grenadine, knitted, skinny, bow. */
+  /** Necktie cut: classic, grenadine, knitted, skinny, bow, bolo. */
   tieType?: string;
   /** Headwear cut: baseball, fedora, beanie, … */
   hatType?: string;
@@ -60,6 +60,7 @@ export const CONSTRUCTOR_TYPES: Record<string, ConstructorTypeOption[]> = {
     { id: "trousers", label: "Trousers" },
     { id: "chinos", label: "Chinos" },
     { id: "jeans", label: "Jeans" },
+    { id: "shorts", label: "Shorts" },
   ],
   Footwear: [
     { id: "loafers", label: "Loafers" },
@@ -74,6 +75,8 @@ export const CONSTRUCTOR_TYPES: Record<string, ConstructorTypeOption[]> = {
     { id: "watch", label: "Watch" },
     { id: "tie", label: "Tie" },
     { id: "scarf", label: "Scarf" },
+    { id: "neckerchief", label: "Neck scarf" },
+    { id: "pocket square", label: "Pocket square" },
     { id: "sunglasses", label: "Sunglasses" },
     { id: "glasses", label: "Glasses" },
     { id: "hat", label: "Hat" },
@@ -140,6 +143,12 @@ const LENS_BY_ID = new Map(LENS_COLORS.map((c) => [c.id, c]));
 
 /** Tokens from look briefs that map onto a constructor colour id. */
 const COLOR_ALIASES: Record<string, string> = {
+  dustyrose: "rose",
+  oldrose: "rose",
+  blush: "rose",
+  softplum: "plum",
+  lilac: "plum",
+  lavender: "plum",
   slateblue: "sky",
   powderblue: "sky",
   iceblue: "sky",
@@ -236,6 +245,10 @@ const CANONICAL_GARMENT: Record<string, string> = {
   chino: "chinos",
   pants: "trousers",
   slacks: "trousers",
+  shorts: "shorts",
+  short: "shorts",
+  bermuda: "shorts",
+  bermudas: "shorts",
   denim: "jeans",
   loafer: "loafers",
   sneaker: "sneakers",
@@ -266,6 +279,16 @@ const CANONICAL_GARMENT: Record<string, string> = {
   necktie: "tie",
   bowtie: "tie",
   "bow tie": "tie",
+  bolo: "tie",
+  "bolo tie": "tie",
+  "pocket square": "pocket square",
+  pochette: "pocket square",
+  handkerchief: "pocket square",
+  neckerchief: "neckerchief",
+  "neck scarf": "neckerchief",
+  "neck-scarf": "neckerchief",
+  bandana: "neckerchief",
+  foulard: "neckerchief",
   cap: "hat",
   hat: "hat",
   beanie: "hat",
@@ -687,6 +710,17 @@ export function sneakerPromptDirective(description: string): string {
   );
 }
 
+/** Prompt override so a listed backpack is carried, not worn as a two-strap pack. */
+export function backpackPromptDirective(description: string): string {
+  if (!/\bbackpacks?\b|\brucksacks?\b/i.test(description)) return "";
+  return (
+    `CRITICAL backpack: the backpack is carried — held in one hand by the top ` +
+    `handle or a strap, OR slung on ONE shoulder only (one strap on, the other ` +
+    `hanging loose). Never wear it on both shoulders, never as a hiking pack ` +
+    `strapped across the back over a blazer or shirt. `
+  );
+}
+
 export const HAT_TYPES: ConstructorTypeOption[] = [
   { id: "cap", label: "Cap" },
   { id: "baseball", label: "Baseball" },
@@ -861,6 +895,7 @@ export const TIE_TYPES: ConstructorTypeOption[] = [
   { id: "knitted", label: "Knitted" },
   { id: "skinny", label: "Skinny" },
   { id: "bow", label: "Bow tie" },
+  { id: "bolo", label: "Bolo" },
 ];
 
 export function defaultTieType(): string {
@@ -878,6 +913,7 @@ export function tieTypeLabel(tieType?: string): string {
 
 export function canonicalTieType(raw: string): string {
   const t = raw.toLowerCase();
+  if (/\bbolo(?:\s*-?\s*tie)?\b/.test(t) || /\bbola\s+tie\b/.test(t)) return "bolo";
   if (/\bbow(?:\s*-?\s*tie)?\b/.test(t)) return "bow";
   if (/\bgrenadine\b/.test(t)) return "grenadine";
   if (/\bknitted\b/.test(t) || /\bknit(?:ted)?\s+tie\b/.test(t) || /\bsquare[\s-]?end\b/.test(t)) {
@@ -897,6 +933,8 @@ function tieBrief(slot: ConstructorSlot): string {
   switch (slot.tieType) {
     case "bow":
       return `${color}bow tie tied at the collar`;
+    case "bolo":
+      return `${color}bolo tie — two leather cords with a decorative slide at the open collar, not a silk blade`;
     case "grenadine":
       return `${color}grenadine silk tie (open-weave texture, pointed blade) knotted at the collar`;
     case "knitted":
@@ -932,12 +970,14 @@ function descriptionHasKnit(description: string): boolean {
 
 /** Prompt override so a listed tie renders as the named cut, not a generic blade. */
 export function tiePromptDirective(description: string): string {
-  if (!/\btie\b|\bnecktie\b|\bbow\s*tie\b/i.test(description)) return "";
+  if (!/\btie\b|\bnecktie\b|\bbow\s*tie\b|\bbolo\b/i.test(description)) return "";
   const kind = canonicalTieType(description);
   const cut =
     kind === "bow"
       ? `It is a BOW TIE — a bow at the collar, not a long hanging blade. `
-      : kind === "grenadine"
+      : kind === "bolo"
+        ? `It is a BOLO tie: two thin leather cords through a decorative slide at the open collar, metal tips at the ends — never a silk necktie blade. `
+        : kind === "grenadine"
         ? `It is a GRENADINE silk tie: open-weave textured silk, pointed blade. `
         : kind === "knitted"
           ? `It is a KNITTED tie with a square (not pointed) end. `
@@ -951,17 +991,21 @@ export function tiePromptDirective(description: string): string {
     descriptionHasKnit(description) &&
     !hasCardigan &&
     !/\bv-?necks?\b/i.test(description);
-  const layering = descriptionHasKnit(description)
-    ? hasCardigan && !hasClosedKnit
-      ? `The cardigan is worn OVER the shirt and tie. The tie lies flat on the ` +
-        `SHIRT placket and is visible in the cardigan opening — NEVER on top of ` +
-        `the knit. `
-      : `A closed crewneck or roll-neck cannot carry a tie on its surface. Wear ` +
-        `a V-neck knit OVER the shirt and tie. The tie is knotted at the shirt ` +
-        `collar and lies on the shirt, visible only in the V — NEVER draped or ` +
-        `painted on top of the jumper. `
-    : `The tie is knotted at the shirt collar and clearly visible (between ` +
-      `jacket lapels if a jacket is worn). `;
+  const layering =
+    kind === "bolo"
+      ? `The bolo sits at an OPEN collar: the slide rests at the throat and the ` +
+        `two cords hang down the shirt placket. `
+      : descriptionHasKnit(description)
+        ? hasCardigan && !hasClosedKnit
+          ? `The cardigan is worn OVER the shirt and tie. The tie lies flat on the ` +
+            `SHIRT placket and is visible in the cardigan opening — NEVER on top of ` +
+            `the knit. `
+          : `A closed crewneck or roll-neck cannot carry a tie on its surface. Wear ` +
+            `a V-neck knit OVER the shirt and tie. The tie is knotted at the shirt ` +
+            `collar and lies on the shirt, visible only in the V — NEVER draped or ` +
+            `painted on top of the jumper. `
+        : `The tie is knotted at the shirt collar and clearly visible (between ` +
+          `jacket lapels if a jacket is worn). `;
   return (
     `CRITICAL neckwear: the outfit lists a tie — it MUST be knotted at the shirt ` +
     `collar. ` +
@@ -1190,6 +1234,12 @@ export function composeLookDescription(slots: ConstructorSlot[]): string {
       }
       if (isTie(s.garment)) {
         return tieBrief(s);
+      }
+      if (s.garment === "neckerchief") {
+        return `${colorBriefPrefix(s.color)}silk neckerchief knotted at the open collar`;
+      }
+      if (s.garment === "pocket square") {
+        return `${colorBriefPrefix(s.color)}pocket square folded in the jacket breast pocket`;
       }
       if (isHat(s.garment)) {
         return hatBrief(s);

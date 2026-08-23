@@ -369,7 +369,14 @@ export async function POST(request: Request) {
         },
       ],
     } as unknown as ReportContent;
-    const matched = await matchLookItems(profile, content);
+    const { data: setMeta } = await admin
+      .from("look_sets")
+      .select("style_id")
+      .eq("id", setId)
+      .maybeSingle();
+    const styleId =
+      typeof setMeta?.style_id === "string" ? setMeta.style_id : null;
+    const matched = await matchLookItems(profile, content, { styleId });
     items = matched[0] ?? [];
     if (items.length) {
       const { data: li } = await admin

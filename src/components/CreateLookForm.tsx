@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { LOOK_CONTEXTS } from "@/lib/look-contexts";
+import { DEFAULT_LOOK_STYLE_ID, LOOK_STYLES } from "@/lib/look-styles";
 import { LOOK_SET_BUNDLES, priceForBundle } from "@/lib/look-sets";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import { BodyTypePicker } from "@/components/BodyTypePicker";
@@ -100,9 +101,10 @@ export function CreateLookForm({
   const [bodyType, setBodyType] = useState<BodyTypeId | "">(initialBodyType);
   const [occasionId, setOccasionId] = useState<string>(LOOK_CONTEXTS[0]!.id);
   const [boldness, setBoldness] = useState<Boldness>("moderate");
+  const [styleId, setStyleId] = useState<string>(DEFAULT_LOOK_STYLE_ID);
   const [season, setSeason] = useState<LookBriefSeason>(defaultSeason());
   const [looks, setLooks] = useState<number>(3);
-  const [step, setStep] = useState<0 | 1>(0); // 0 = details, 1 = photo
+  const [step, setStep] = useState<0 | 1 | 2>(0); // details → photos → package
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; buy?: boolean } | null>(
@@ -113,9 +115,8 @@ export function CreateLookForm({
   // so a lost-response retry can't mint/charge a second set; cleared on success.
   const pendingKeyRef = useRef<string | null>(null);
 
-  // Photo SELECTION (all users) + upload. Fresh users must pick/upload a face
-  // (drives analysis) and consent; returning users may optionally pick which
-  // photo the looks render on (server falls back to their default otherwise).
+  // Photo SELECTION (all users) + upload. A selected face is analysed for
+  // colouring. Returning users may skip the photo and keep their saved palette.
   const [facePhotos, setFacePhotos] = useState<ReusePhoto[]>([]);
   const [fullPhotos, setFullPhotos] = useState<ReusePhoto[]>([]);
   const [facePath, setFacePath] = useState<string>("");
@@ -168,8 +169,8 @@ export function CreateLookForm({
   const ageNum = Number(age);
   const ageValid = Number.isInteger(ageNum) && ageNum >= 16 && ageNum <= 99;
   const canAfford = creditBalance >= price;
-  // Returning users reuse their profile (photo optional). New users must select
-  // or upload a face photo (that passed the gate) and give consent.
+  // Returning users may skip the photo and keep the saved palette. New users
+  // must select or upload a face (that passed the gate) and give consent.
   const photosReady = hasReusableProfile || (!!facePath && consent);
   const canSubmit = ageValid && !submitting && canAfford && photosReady;
 
@@ -190,11 +191,12 @@ export function CreateLookForm({
           looks,
           occasionId,
           boldness,
+          styleId,
           season,
           intake: { age: ageNum, bodyType: bodyType || undefined },
           faceRefPath: facePath || undefined,
           fullRefPath: fullPath || undefined,
-          // Fresh path only: returning users reuse their stored profile.
+          // Consent only when this request will run a first-time analysis.
           ...(hasReusableProfile
             ? {}
             : {
@@ -384,7 +386,13 @@ export function CreateLookForm({
           message="Carlo is building your set and rendering each look on you. This typically takes a minute or two."
         />
       ) : null}
-      <FlowHeader onBack={step > 0 ? () => setStep(0) : undefined} />
+      <FlowHeader
+        onBack={
+          step > 0
+            ? () => setStep((s) => (s === 0 ? 0 : ((s - 1) as 0 | 1 | 2)))
+            : undefined
+        }
+      />
       <div className="container-luxe max-w-3xl py-12">
         <p className="eyebrow">Create a Look</p>
         <h1 className="mt-3 font-display text-3xl">A new set of looks</h1>
@@ -393,8 +401,8 @@ export function CreateLookForm({
           and rendered on you.
         </p>
 
-        <div className="mt-8 flex items-center gap-3">
-          {["Details", "Photo"].map((label, i) => (
+        <div className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-2">
+          {["Details and Goals", "Photos", "Looks Package"].map((label, i) => (
             <div key={label} className="flex items-center gap-2">
               <span
                 className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
@@ -408,9 +416,9 @@ export function CreateLookForm({
               >
                 {label}
               </span>
-              {i === 0 ? (
+              {i < 2 ? (
                 <span
-                  className={`ml-1 h-px w-8 ${step > 0 ? "bg-ink" : "bg-line"}`}
+                  className={`ml-1 h-px w-8 ${step > i ? "bg-ink" : "bg-line"}`}
                 />
               ) : null}
             </div>
@@ -426,7 +434,7 @@ export function CreateLookForm({
             title={hasReusableProfile ? "Choose your photo" : "Your photos"}
             subtitle={
               hasReusableProfile
-                ? "Optional — pick which photo your looks are rendered on, or add a new one. If you skip this, we'll use your default."
+                ? "Optional — pick a photo to re-read your colours and render the looks on you. If you skip this, we'll keep your saved palette and default photo."
                 : "We read your colouring from a clear, front-facing photo and render the looks on you. A face photo is required; a full-length adds better full-body renders."
             }
           >
@@ -564,8 +572,36 @@ export function CreateLookForm({
             </div>
           </Block>
 
+          {/* Aesthetic */}
+          <Block
+            eyebrow="Aesthetic"
+            title="What style?"
+            subtitle="Steers cut and codes. Colours still come from your palette."
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              {LOOK_STYLES.map((s) => {
+                const active = styleId === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setStyleId(s.id)}
+                    className={`rounded-xl border p-4 text-left transition-colors ${
+                      active
+                        ? "border-ink bg-cream/60"
+                        : "border-line hover:border-ink/40"
+                    }`}
+                  >
+                    <div className="text-sm text-ink">{s.label}</div>
+                    <div className="text-xs text-stone-soft">{s.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </Block>
+
           {/* Strictness */}
-          <Block eyebrow="Style" title="How bold?" subtitle="">
+          <Block eyebrow="Boldness" title="How bold?" subtitle="">
             <div className="grid gap-3 sm:grid-cols-2">
               {BOLDNESS.map((b) => {
                 const active = boldness === b.id;
@@ -610,46 +646,49 @@ export function CreateLookForm({
               })}
             </div>
           </Block>
-
-          {/* Count + price */}
-          <Block
-            eyebrow="Set size"
-            title="How many looks?"
-            subtitle="More looks give more range for the same occasion."
-          >
-            <div className="grid grid-cols-3 gap-3">
-              {LOOK_SET_BUNDLES.map((b) => {
-                const p = priceForBundle(b.looks, loyalty) ?? b.credits;
-                const active = looks === b.looks;
-                return (
-                  <button
-                    key={b.looks}
-                    type="button"
-                    onClick={() => setLooks(b.looks)}
-                    className={`rounded-2xl border p-4 text-center transition-colors ${
-                      active
-                        ? "border-ink bg-cream/60"
-                        : "border-line bg-paper hover:border-ink/40"
-                    }`}
-                  >
-                    <span className="block font-display text-2xl text-ink">
-                      {b.looks}
-                    </span>
-                    <span className="mt-0.5 block text-xs text-stone-soft">
-                      looks
-                    </span>
-                    <span className="mt-2 block text-xs text-stone">
-                      {p} credits
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {loyalty ? (
-              <p className="mt-3 text-xs text-brass">Loyalty pricing applied.</p>
-            ) : null}
-          </Block>
             </>
+          )}
+
+          {step === 2 && (
+            <Block
+              eyebrow="Looks Package"
+              title="How many looks?"
+              subtitle="More looks give more range for the same occasion."
+            >
+              <div className="grid grid-cols-3 gap-3">
+                {LOOK_SET_BUNDLES.map((b) => {
+                  const p = priceForBundle(b.looks, loyalty) ?? b.credits;
+                  const active = looks === b.looks;
+                  return (
+                    <button
+                      key={b.looks}
+                      type="button"
+                      onClick={() => setLooks(b.looks)}
+                      className={`rounded-2xl border p-4 text-center transition-colors ${
+                        active
+                          ? "border-ink bg-cream/60"
+                          : "border-line bg-paper hover:border-ink/40"
+                      }`}
+                    >
+                      <span className="block font-display text-2xl text-ink">
+                        {b.looks}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-stone-soft">
+                        looks
+                      </span>
+                      <span className="mt-2 block text-xs text-stone">
+                        {p} credits
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {loyalty ? (
+                <p className="mt-3 text-xs text-brass">
+                  Loyalty pricing applied.
+                </p>
+              ) : null}
+            </Block>
           )}
 
           {error ? (
@@ -681,11 +720,35 @@ export function CreateLookForm({
               >
                 {ageValid ? "Continue" : "Enter your age"}
               </button>
-            ) : (
+            ) : step === 1 ? (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setStep(0)}
+                  className="rounded-full border hairline px-5 py-3 text-sm text-ink transition-colors hover:bg-cream/40"
+                >
+                  ← Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (photosReady) setStep(2);
+                  }}
+                  disabled={!photosReady}
+                  className="rounded-full bg-ink px-7 py-3 text-sm text-paper transition-colors hover:bg-ink-soft disabled:opacity-40"
+                >
+                  {!photosReady
+                    ? !facePath
+                      ? "Add a face photo"
+                      : "Accept the consent"
+                    : "Continue"}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
                   className="rounded-full border hairline px-5 py-3 text-sm text-ink transition-colors hover:bg-cream/40"
                 >
                   ← Back
@@ -700,12 +763,6 @@ export function CreateLookForm({
                       <LuxeSpinner size="xs" tone="paper" />
                       Generating {looks} looks…
                     </>
-                  ) : !photosReady ? (
-                    !facePath ? (
-                      "Add a face photo"
-                    ) : (
-                      "Accept the consent"
-                    )
                   ) : !canAfford ? (
                     "Not enough credits"
                   ) : (

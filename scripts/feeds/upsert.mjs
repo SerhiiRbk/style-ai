@@ -11,6 +11,7 @@ import {
 import { normalizeColor } from "./color.mjs";
 import { tagsFor } from "./tags.mjs";
 import { humanizeProductTitle } from "./humanize.mjs";
+import { parseProductAttributes, ATTR_TYPING_VERSION } from "./attributes.mjs";
 
 /**
  * Last-line guarantee that no raw feed title reaches the DB or the embedder.
@@ -45,7 +46,7 @@ const VALID_SOURCE_TYPES = ["feed", "scraper", "seed", "manual"];
  *    visible again; otherwise the hidden flag is left untouched (manual hides
  *    survive a re-import).
  */
-function toRow(p, embedding, sourceType, unhide) {
+export function toRow(p, embedding, sourceType, unhide) {
   const now = new Date().toISOString();
   const provenance =
     (p.sourceType && VALID_SOURCE_TYPES.includes(p.sourceType)
@@ -57,6 +58,7 @@ function toRow(p, embedding, sourceType, unhide) {
   // Rule-based style tags (formality / trend / versatility) so recommendation
   // ranking can reason about a product beyond its title text.
   const tags = tagsFor(p);
+  const attr = parseProductAttributes(p);
   const row = {
     source: p.source,
     external_id: p.externalId,
@@ -73,6 +75,12 @@ function toRow(p, embedding, sourceType, unhide) {
     color_family: norm?.family ?? null,
     color_is_neutral: norm ? norm.neutral : null,
     formality: tags.formality ?? null,
+    garment_subtype: attr.garment_subtype,
+    material_family: attr.material_family,
+    fit: attr.fit,
+    pattern: attr.pattern,
+    season: attr.season,
+    attr_typing_v: ATTR_TYPING_VERSION,
     trend_level: tags.trend_level ?? null,
     versatility: tags.versatility ?? null,
     original_price: p.price ?? null,
@@ -93,7 +101,7 @@ function toRow(p, embedding, sourceType, unhide) {
 }
 
 /** Map a canonical product to one per-country offer row. */
-function offerRow(productId, p, sourceType) {
+export function offerRow(productId, p, sourceType) {
   const provenance =
     (p.sourceType && VALID_SOURCE_TYPES.includes(p.sourceType)
       ? p.sourceType
