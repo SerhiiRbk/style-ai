@@ -96,6 +96,7 @@ function buildRerankPrompt(
     `item). Never substitute a different accessory type: a pocket square is not ` +
     `a tie, a "tie with pocket square" set, a cap, a hat, or a belt. A ` +
     `travel bag, weekender or duffel is not a messenger, tote or briefcase. ` +
+    `A messenger slot is not a small crossbody. ` +
     `If no candidate is the named accessory, use -1.\n` +
     `Outfit-level colour: do NOT pair a shirt and trousers in the same chromatic ` +
     `family (green, red, orange, yellow, pink, purple) unless the look description ` +
@@ -103,6 +104,10 @@ function buildRerankPrompt(
     `blue, not green — a sage shirt wants teal, navy, stone, or cream trousers, ` +
     `not another green. Navy-on-navy and neutrals (grey, brown, black, white) are ` +
     `fine.\n` +
+    `Coffee, camel, chocolate or brown trousers are not black — pick a brown-family ` +
+    `trouser when one exists. Do not pair black trousers with a brown belt or brown ` +
+    `shoes (or the reverse). If the look names suede shoes, do not pick polished ` +
+    `leather. If the look names a messenger, do not pick a crossbody.\n` +
     `A missing exact colour may be filled by a close neighbour (dusty rose → ` +
     `muted pink or lilac; greige → beige/dove; sage → khaki; mushroom → taupe; ` +
     `soft plum → mauve/lilac — never a neon or a navy stand-in). Mark those similarPick=true.\n` +

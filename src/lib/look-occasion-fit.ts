@@ -59,6 +59,7 @@ const SHORTS_RE = /\bshorts?\b|\bbermuda\b/i;
 const JEANS_RE = /\bjeans?\b/i;
 const TRAVEL_BAG_RE =
   /\b(travel\s+bags?|weekenders?|duffels?|duffles?|holdalls?|cabin\s+bags?|overnight\s+bags?|trolley|suitcase)\b/i;
+const CROSSBODY_RE = /\bcrossbod(?:y|ies)\b/i;
 const CASUAL_BELT_RE =
   /\b(stretch|active(?:\s+waist)?|elastic|braided|webbing|canvas|d-rings?)\b/i;
 const NOT_A_BELT_RE =
@@ -70,6 +71,8 @@ const DRESS_SHIRT_RE =
   /\b(oxford|poplin|twill|non[-\s]?iron|easy\s+iron|double\s+cuff)\b/i;
 const FASHION_SHIRT_RE =
   /\b(bow\s+shirts?|pussy\s+bow|tie[-\s]?neck|washed)\b/i;
+const NON_DRESS_SHIRT_RE =
+  /\b(t-?shirts?|tees?|tank|polo|henley|slogan)\b/i;
 const DRESS_SHOE_RE = /\b(derb(?:y|ies)|oxfords?|brogues?)\b/i;
 
 export function lookOccasionIsTailored(
@@ -173,6 +176,9 @@ export function isOccasionCasualShirtTitle(
   if (DENIM_RE.test(hay) && !DENIM_RE.test(asked)) return true;
   if (WESTERN_RE.test(hay)) return true;
   if (FASHION_SHIRT_RE.test(hay)) return true;
+  if (NON_DRESS_SHIRT_RE.test(hay) && !NON_DRESS_SHIRT_RE.test(asked)) {
+    return true;
+  }
   return false;
 }
 
@@ -223,13 +229,25 @@ export function isOccasionTravelBagTitle(
   return !TRAVEL_BAG_RE.test(clause ?? "");
 }
 
+/** A crossbody is not a Work messenger unless the look named one. */
+export function isOccasionCrossbodyBagTitle(
+  title: string,
+  clause?: string | null,
+  garment?: string | null,
+): boolean {
+  const askedMessenger = /\bmessenger\b/.test(`${garment ?? ""} ${clause ?? ""}`);
+  if (!askedMessenger) return false;
+  if (!CROSSBODY_RE.test(title)) return false;
+  return !CROSSBODY_RE.test(clause ?? "");
+}
+
 export function lookOccasionQueryHint(
   occasionId: string | null | undefined,
   garment?: string | null,
 ): string | null {
   if (!lookOccasionIsTailored(occasionId)) return null;
   if (lookOccasionAppliesToBag(garment ?? "")) {
-    return "leather messenger, satchel or slim briefcase, not travel bag, not weekender, not duffel";
+    return "leather messenger, satchel or slim briefcase, not travel bag, not weekender, not duffel, not crossbody";
   }
   if (lookOccasionAppliesToShirt(garment ?? "")) {
     return "long-sleeve oxford or poplin dress shirt, regular or slim fit, not short-sleeve, not stand-up collar, not relaxed, not viscose, not linen, not camp-collar";

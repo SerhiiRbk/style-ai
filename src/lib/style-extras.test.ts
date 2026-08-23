@@ -5,6 +5,8 @@ import {
   colorMatchScore,
   decomposeLook,
   garmentTitleMatchScore,
+  leatherToneFamily,
+  lookColorCue,
   isDrawstringTitle,
   prefersDrawstringSilhouette,
   selectLookGarmentSlots,
@@ -193,6 +195,38 @@ test("colorMatchScore rejects nude / beige as a dusty-rose stand-in", () => {
   assert.ok(beige < 0.2, `beige must stay rejected, got ${beige}`);
   assert.ok(pink >= 0.7, `dusty pink should be same family, got ${pink}`);
   assert.ok(pink > nude, "a pink knit must beat a nude jumper");
+});
+
+test("coffee trousers parse as dark brown, not a missing colour", () => {
+  const garments = decomposeLook(
+    "Camel poplin shirt, coffee worsted trousers, warm grey leather belt, oatmeal leather messenger bag, warm grey suede derbies",
+  );
+  const trousers = garments.find((g) => g.garment === "trousers");
+  const belt = garments.find((g) => g.garment === "belt");
+  assert.equal(trousers?.color, "coffee");
+  assert.equal(belt?.color, "warmgrey");
+  const coffeeBrown = colorMatchScore("coffee", "brown", "Wool Suit Trousers");
+  const coffeeBlack = colorMatchScore("coffee", "black", "Pure Wool Suit Trousers");
+  assert.ok(coffeeBrown >= 0.7, `coffee↔brown should be strong, got ${coffeeBrown}`);
+  assert.ok(coffeeBlack < 0.3, `coffee must not match black, got ${coffeeBlack}`);
+  const needles = colorFamilyNeedles("coffee");
+  assert.ok(needles.includes("brown"), `missing brown: ${needles.join(",")}`);
+  assert.ok(needles.includes("coffee"), `missing coffee: ${needles.join(",")}`);
+  assert.ok(!needles.includes("black"));
+  assert.equal(lookColorCue(null, "coffee worsted trousers"), "coffee worsted trousers");
+  assert.equal(leatherToneFamily("Black Slim Fit Wool Trousers"), "black");
+  assert.equal(leatherToneFamily("Brown leather derby"), "brown");
+});
+
+test("messenger titles do not match a crossbody bag", () => {
+  assert.equal(
+    garmentTitleMatchScore("messenger", "Zara Leather Crossbody Bag"),
+    0,
+  );
+  assert.equal(
+    garmentTitleMatchScore("messenger", "Zara Leather Messenger Bag"),
+    1,
+  );
 });
 
 test("colorFamilyNeedles pulls pink-family catalogue words for dusty rose", () => {

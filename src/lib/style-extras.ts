@@ -2415,6 +2415,7 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   silver: { family: "grey", shade: "light" }, pearl: { family: "grey", shade: "light" },
   mirrored: { family: "grey", shade: "light" }, mirror: { family: "grey", shade: "light" },
   charcoal: { family: "grey", shade: "dark" }, slate: { family: "grey", shade: "dark" },
+  warmgrey: { family: "grey" },
   graphite: { family: "grey", shade: "dark" }, anthracite: { family: "grey", shade: "dark" },
   asphalt: { family: "grey", shade: "dark" }, gunmetal: { family: "grey", shade: "dark" },
   // blue
@@ -2442,7 +2443,7 @@ const COLOR_FAMILY: Record<string, { family: string; shade?: Shade }> = {
   fawn: { family: "brown", shade: "light" },
   greige: { family: "brown", shade: "light" }, mushroom: { family: "brown", shade: "light" },
   chocolate: { family: "brown", shade: "dark" }, chestnut: { family: "brown", shade: "dark" },
-  espresso: { family: "brown", shade: "dark" },
+  espresso: { family: "brown", shade: "dark" }, coffee: { family: "brown", shade: "dark" },
   // green — teal is blue-green; catalog teal is rare, so it lives here so
   // dark/bottle green fills the slot instead of navy. "soft teal" still
   // prefers sage via the light shade modifier.
@@ -2505,6 +2506,7 @@ const NAMED_COLOR_HEX: Record<string, string> = {
   plum: "#7A6577",
   softplum: "#7A6577",
   berry: "#8E4A5C",
+  coffee: "#3F332B",
   greige: "#DAD3C6",
   mushroom: "#A99C8C",
   taupe: "#B49C7E",
@@ -2556,8 +2558,8 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   belt: ["belt"],
   tote: ["tote", "tote bag"],
   "tote bag": ["tote", "tote bag"],
-  messenger: ["messenger", "satchel", "crossbody"],
-  "messenger bag": ["messenger", "satchel", "crossbody"],
+  messenger: ["messenger", "satchel"],
+  "messenger bag": ["messenger", "satchel"],
   briefcase: ["briefcase"],
   satchel: ["satchel", "messenger"],
   backpack: ["backpack", "rucksack"],
@@ -2636,6 +2638,7 @@ function normalizeCompoundColors(text: string): string {
     .replace(/dusty\s+rose/g, "dustyrose")
     .replace(/old\s+rose/g, "oldrose")
     .replace(/soft\s+plum/g, "softplum")
+    .replace(/warm\s+gr[ae]y/g, "warmgrey")
     .replace(/tortoise\s*shell/g, "tortoise")
     .replace(/yellow\s+gold/g, "gold");
 }
@@ -2802,6 +2805,13 @@ export function garmentTitleMatchScore(garment: string, title: string): number {
     ) {
       return 0;
     }
+    if (
+      (key === "messenger" || key === "messenger bag") &&
+      /\bcrossbod(?:y|ies)\b/.test(hay) &&
+      !/\b(messenger|satchel)\b/.test(hay)
+    ) {
+      return 0;
+    }
   }
   // Shorts are not trousers / chinos / slacks.
   if (
@@ -2874,6 +2884,26 @@ export function colorFamilies(text: string): Set<string> {
   return parseColorTokens(text).families;
 }
 
+/** Colour string to score against the catalogue — clause fills in missing tokens. */
+export function lookColorCue(
+  color?: string | null,
+  clause?: string | null,
+): string | null {
+  const named = color?.trim() || "";
+  if (named && parseColorTokens(named).families.size) return named;
+  const fromClause = clause?.trim() || "";
+  if (fromClause && parseColorTokens(fromClause).families.size) return fromClause;
+  return named || fromClause || null;
+}
+
+/** Belt / shoe / trouser leather family used to keep one tone per outfit. */
+export function leatherToneFamily(text: string): "black" | "brown" | null {
+  const families = parseColorTokens(text).families;
+  if (families.has("black") && !families.has("brown")) return "black";
+  if (families.has("brown")) return "brown";
+  return null;
+}
+
 /**
  * Catalogue search tokens that share a look colour's hue family.
  * Used to pull same-family products into the match pool when vector neighbours
@@ -2899,6 +2929,7 @@ function isSearchableColorToken(token: string): boolean {
   if (token !== "blue" && token.endsWith("blue")) return false;
   if (token !== "rose" && token.endsWith("rose")) return false;
   if (token !== "plum" && token.endsWith("plum")) return false;
+  if (token !== "grey" && token.endsWith("grey")) return false;
   return true;
 }
 

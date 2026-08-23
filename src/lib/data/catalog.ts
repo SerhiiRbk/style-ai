@@ -25,6 +25,7 @@ import {
   isOccasionCasualShirtTitle,
   isOccasionCasualShoeTitle,
   isOccasionCasualTrouserTitle,
+  isOccasionCrossbodyBagTitle,
   isOccasionTravelBagTitle,
   isDressFootwearTitle,
   isSuedeFootwearTitle,
@@ -44,6 +45,8 @@ import {
   colorFamilyNeedles,
   colorMatchScore,
   colorFamilies,
+  leatherToneFamily,
+  lookColorCue,
   decomposeLook,
   garmentTitleMatchScore,
   HOUSEHOLD_TEXTILE_RE,
@@ -245,7 +248,9 @@ const MIN_LOOK_PICK_SCORE = 0.42;
  *  v23: Work shirts also drop short-sleeve and stand-up/mandarin collars
  *  hidden in the product description (title-only "Cotton Shirt" was a camp).
  *  Work trousers also read fit/viscose; belts drop stretch/braided; suede
- *  clause prefers dress derbies; dress-shirt titles beat generic cotton. */
+ *  clause prefers dress derbies; dress-shirt titles beat generic cotton.
+ *  coffee/warm grey parse as colours; black is not a brown stand-in; messenger
+ *  is not a crossbody; belt/shoes follow trouser leather tone. */
 export const LOOK_MATCH_VERSION = 23;
 const LOOK_STYLE_FIT_WEIGHT = 0.1;
 // Pull a wider candidate pool so colour re-ranking can pick the right shade
@@ -366,7 +371,10 @@ function isOfficeWorkRow(
   row: MatchRow,
 ): boolean {
   if (lookOccasionAppliesToBag(garment)) {
-    return !isOccasionTravelBagTitle(title, clause);
+    return (
+      !isOccasionTravelBagTitle(title, clause) &&
+      !isOccasionCrossbodyBagTitle(title, clause, garment)
+    );
   }
   if (lookOccasionAppliesToShirt(garment)) {
     return !isOccasionCasualShirtTitle(title, clause, {
@@ -439,6 +447,58 @@ async function supplementWorkLookRows(
     const key = matchKeyFor(g);
     const pool = matchByKey.get(key) ?? [];
     const extra: MatchRow[] = [];
+    const cue = lookColorCue(g.color, g.clause);
+    if (
+      lookOccasionAppliesToGarment("work", g.garment) &&
+      !lookOccasionAppliesToShirt(g.garment) &&
+      !lookOccasionAppliesToBag(g.garment) &&
+      !lookOccasionAppliesToBelt(g.garment) &&
+      !lookOccasionAppliesToShoe(g.garment) &&
+      colorFamilies(cue ?? "").has("brown")
+    ) {
+      const hasBrown = pool.some((r) => {
+        const fams = colorFamilies(`${r.color ?? ""} ${r.title}`);
+        return fams.has("brown") && !fams.has("black");
+      });
+      if (!hasBrown) {
+        const { data } = await sb
+          .from("products")
+          .select(PRODUCT_MATCH_COLS)
+          .eq("category", "Trousers")
+          .or("hidden.eq.false,hidden.is.null")
+          .or("in_stock.eq.true,in_stock.is.null")
+          .or(
+            "color.ilike.%brown%,color.ilike.%coffee%,color.ilike.%chocolate%,color.ilike.%camel%,color.ilike.%taupe%,title.ilike.%brown%,title.ilike.%coffee%,title.ilike.%camel%",
+          )
+          .limit(16);
+        extra.push(...((data as MatchRow[]) ?? []));
+      }
+    }
+    if (
+      lookOccasionAppliesToBag(g.garment) &&
+      /\bmessenger\b/.test(`${g.garment} ${g.clause}`)
+    ) {
+      const hasMessenger = pool.some((r) => {
+        const title = formatCatalogProductTitle(r.brand, r.title);
+        return (
+          /\b(messenger|satchel|briefcase)\b/i.test(title) &&
+          !/\bcrossbod/i.test(title)
+        );
+      });
+      if (!hasMessenger) {
+        const { data } = await sb
+          .from("products")
+          .select(PRODUCT_MATCH_COLS)
+          .eq("category", "Accessories")
+          .or("hidden.eq.false,hidden.is.null")
+          .or("in_stock.eq.true,in_stock.is.null")
+          .or(
+            "title.ilike.%messenger%,title.ilike.%satchel%,title.ilike.%briefcase%",
+          )
+          .limit(12);
+        extra.push(...((data as MatchRow[]) ?? []));
+      }
+    }
     if (lookOccasionAppliesToShirt(g.garment)) {
       const hasDress = pool.some((r) =>
         isWorkDressShirtTitle(formatCatalogProductTitle(r.brand, r.title)),
@@ -895,10 +955,11 @@ function rankMatchRows(
   occasionId?: string | null,
 ): RankedMatch[] {
   const slot = slotAttrs(garment, clause);
+  const colorCue = lookColorCue(color, clause);
   let ranked = rows.map((row) => {
     const title = formatCatalogProductTitle(row.brand, row.title);
     const sim = row.similarity ?? 0;
-    const colorScore = colorMatchScore(color, row.color, title, {
+    const colorScore = colorMatchScore(colorCue, row.color, title, {
       productHex: row.color_hex,
     });
     const garmentScore = garmentTitleMatchScore(garment, title);
@@ -929,6 +990,8 @@ function rankMatchRows(
     };
   });
 
+  ranked = dropOpposingNeutrals(ranked, colorCue);
+
   // Drawstring/elasticated trousers: when the look asked for them and the
   // pool has one, drop suit/pressed-crease alternatives (same pattern as blazers).
   if (prefersDrawstringSilhouette(garment, clause)) {
@@ -957,7 +1020,20 @@ function rankMatchRows(
   // Accessories share one catalogue category, so a pocket-square query also
   // returns ties, caps and belts. Colour-only hits must not fill the slot.
   if (STRICT_ACCESSORY_TYPES.has(garment.trim().toLowerCase())) {
-    return ranked.filter((r) => r.garmentScore >= 0.5);
+    const typed = ranked.filter((r) => r.garmentScore >= 0.5);
+    if (typed.length) {
+      ranked = typed;
+    } else if (/\bmessenger\b/.test(garment)) {
+      const briefcases = ranked.filter((r) =>
+        /\bbriefcase\b/i.test(
+          formatCatalogProductTitle(r.row.brand, r.row.title),
+        ),
+      );
+      if (briefcases.length) ranked = briefcases;
+      else ranked = typed;
+    } else {
+      ranked = typed;
+    }
   }
 
   // Work / Formal: drop linen, relaxed and drawstring trousers — casual
@@ -983,6 +1059,8 @@ function rankMatchRows(
       !lookOccasionAppliesToBelt(garment) &&
       !lookOccasionAppliesToShoe(garment)
     ) {
+      const colorOk = dropOpposingNeutrals(ranked, colorCue);
+      if (colorOk.length) ranked = colorOk;
       const wool = ranked.filter((r) =>
         /\b(wool|worsted)\b/i.test(
           formatCatalogProductTitle(r.row.brand, r.row.title),
@@ -1018,12 +1096,14 @@ function rankMatchRows(
     }
   }
 
+  ranked = dropOpposingNeutrals(ranked, colorCue);
+
   // When a true same-family colour exists (dusty rose → dusty pink), drop
   // beige/nude neighbours that only scored because the vector pool was beige.
   // Do not let a navy short/jean evict a real trouser that is only a weaker
   // colour neighbour — type wins, then colour within type.
   if (
-    color &&
+    colorCue &&
     ranked.some((r) => r.colorScore >= STRONG_COLOR_MATCH)
   ) {
     const close = ranked.filter((r) => r.colorScore >= MIN_COLOR_WHEN_STRONG);
@@ -1130,6 +1210,45 @@ function rowColorText(row: MatchRow): string {
   return `${row.color ?? ""} ${formatCatalogProductTitle(row.brand, row.title)}`;
 }
 
+/** Coffee/camel trousers must not land on black; camel shirts must not land on cream when a brown option exists. */
+function dropOpposingNeutrals(
+  ranked: RankedMatch[],
+  colorCue: string | null,
+): RankedMatch[] {
+  const asked = colorFamilies(colorCue ?? "");
+  if (asked.has("brown")) {
+    const brown = ranked.filter((r) => {
+      const fams = colorFamilies(rowColorText(r.row));
+      return fams.has("brown") && !fams.has("black");
+    });
+    if (brown.length) {
+      ranked = ranked.filter((r) => {
+        const fams = colorFamilies(rowColorText(r.row));
+        return !(fams.has("black") && !fams.has("brown"));
+      });
+      if (!asked.has("white")) {
+        const withoutCream = ranked.filter((r) => {
+          const fams = colorFamilies(rowColorText(r.row));
+          return !(fams.has("white") && !fams.has("brown"));
+        });
+        if (withoutCream.length) ranked = withoutCream;
+      }
+    }
+  }
+  if (asked.has("black")) {
+    const black = ranked.filter((r) =>
+      colorFamilies(rowColorText(r.row)).has("black"),
+    );
+    if (black.length) {
+      ranked = ranked.filter((r) => {
+        const fams = colorFamilies(rowColorText(r.row));
+        return !(fams.has("brown") && !fams.has("black"));
+      });
+    }
+  }
+  return ranked;
+}
+
 function sharedChromaticFamily(aText: string, bText: string): string | null {
   const a = colorFamilies(aText);
   const b = colorFamilies(bText);
@@ -1215,6 +1334,100 @@ function resolveShirtTrouserClash(
     goal,
     alt.similarPick,
   );
+  return next;
+}
+
+function isLeatherHarmonyItem(item: ShoppingItem): boolean {
+  if (item.category === "Footwear") return true;
+  if (item.category !== "Accessories") return false;
+  return /\b(belts?|bags?|messenger|briefcase|satchel|tote|crossbod)/i.test(
+    item.title,
+  );
+}
+
+function resolveLeatherToneClash(
+  items: ShoppingItem[],
+  matchSlots: GarmentMatchSlot[],
+  matchByKey: Map<string, MatchRow[]>,
+  profile: StyleProfile,
+  goal: string,
+  styleId?: string | null,
+  occasionId?: string | null,
+): ShoppingItem[] {
+  const trouserIdx = items.findIndex((i) => i.category === "Trousers");
+  if (trouserIdx < 0) return items;
+  const trouserSlot = matchSlots.find((s) => s.garment.category === "Trousers");
+  if (!trouserSlot) return items;
+
+  const next = [...items];
+  const usedIds = () =>
+    new Set(next.map((i) => i.productId).filter((id): id is string => Boolean(id)));
+
+  const pickTone = (
+    slot: GarmentMatchSlot,
+    want: "black" | "brown",
+    skipId?: string,
+  ): RankedMatch | undefined => {
+    const skip = usedIds();
+    if (skipId) skip.delete(skipId);
+    return rankMatchRows(
+      matchByKey.get(slot.matchKey) ?? [],
+      slot.garment.color,
+      slot.garment.garment,
+      profile.boldness,
+      slot.garment.clause,
+      styleId,
+      occasionId,
+    )
+      .sort((a, b) => b.score - a.score)
+      .find((r) => {
+        if (skip.has(r.row.id)) return false;
+        if (r.garmentScore < 0.5 && r.colorScore < 0.45) return false;
+        return leatherToneFamily(rowColorText(r.row)) === want;
+      });
+  };
+
+  const askedTrouser = colorFamilies(
+    `${trouserSlot.garment.color ?? ""} ${trouserSlot.garment.clause}`,
+  );
+  if (
+    askedTrouser.has("brown") &&
+    leatherToneFamily(itemColorText(next[trouserIdx]!)) === "black"
+  ) {
+    const alt = pickTone(trouserSlot, "brown", next[trouserIdx]!.productId);
+    if (alt) {
+      next[trouserIdx] = shoppingItemFromMatch(
+        alt.row,
+        trouserSlot.garment,
+        profile,
+        goal,
+        alt.similarPick,
+      );
+    }
+  }
+
+  const tTone = leatherToneFamily(itemColorText(next[trouserIdx]!));
+  if (!tTone) return next;
+
+  for (let i = 0; i < next.length; i++) {
+    const item = next[i]!;
+    if (i === trouserIdx || !isLeatherHarmonyItem(item)) continue;
+    const iTone = leatherToneFamily(itemColorText(item));
+    if (!iTone || iTone === tTone) continue;
+    const slot = matchSlots.find((s) =>
+      s.rows.some((r) => r.id === item.productId),
+    );
+    if (!slot) continue;
+    const alt = pickTone(slot, tTone, item.productId);
+    if (!alt) continue;
+    next[i] = shoppingItemFromMatch(
+      alt.row,
+      slot.garment,
+      profile,
+      goal,
+      alt.similarPick,
+    );
+  }
   return next;
 }
 
@@ -1384,8 +1597,16 @@ async function matchItemsForLook(
       );
     }
     if (items.length) {
-      return resolveShirtTrouserClash(
-        items,
+      return resolveLeatherToneClash(
+        resolveShirtTrouserClash(
+          items,
+          matchSlots,
+          matchByKey,
+          profile,
+          goal,
+          styleId,
+          occasionId,
+        ),
         matchSlots,
         matchByKey,
         profile,
@@ -1420,8 +1641,16 @@ async function matchItemsForLook(
     );
   }
 
-  return resolveShirtTrouserClash(
-    items,
+  return resolveLeatherToneClash(
+    resolveShirtTrouserClash(
+      items,
+      matchSlots,
+      matchByKey,
+      profile,
+      goal,
+      styleId,
+      occasionId,
+    ),
     matchSlots,
     matchByKey,
     profile,

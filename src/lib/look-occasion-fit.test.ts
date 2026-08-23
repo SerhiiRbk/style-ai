@@ -6,6 +6,7 @@ import {
   isOccasionCasualShirtTitle,
   isOccasionCasualShoeTitle,
   isOccasionCasualTrouserTitle,
+  isOccasionCrossbodyBagTitle,
   isOccasionTravelBagTitle,
   isDressFootwearTitle,
   isSuedeFootwearTitle,
@@ -156,6 +157,13 @@ test("relaxed viscose shirts are casual unless the look asked for them", () => {
   );
   assert.equal(
     isOccasionCasualShirtTitle(
+      "Zara Vintage-Effect Slogan Print T-Shirt",
+      "camel poplin shirt",
+    ),
+    true,
+  );
+  assert.equal(
+    isOccasionCasualShirtTitle(
       "Reserved Regular Fit Cotton Shirt",
       "soft teal poplin shirt",
       {
@@ -232,6 +240,22 @@ test("travel bags are casual unless the look asked for them", () => {
   );
   assert.equal(
     isOccasionTravelBagTitle("Canvas Weekender", "olive travel bag"),
+    false,
+  );
+  assert.equal(
+    isOccasionCrossbodyBagTitle(
+      "Zara Leather Crossbody Bag",
+      "oatmeal leather messenger bag",
+      "messenger",
+    ),
+    true,
+  );
+  assert.equal(
+    isOccasionCrossbodyBagTitle(
+      "Zara Leather Messenger Bag",
+      "oatmeal leather messenger bag",
+      "messenger",
+    ),
     false,
   );
 });
