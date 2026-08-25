@@ -72,6 +72,12 @@ import {
   tiePromptDirective,
   tuckPromptDirective,
 } from "@/lib/look-constructor";
+import {
+  catalogTryOnGarmentsText,
+  pickTryOnGarments,
+  upgradeCatalogImageUrl,
+} from "@/lib/look-tryon";
+import { MAX_TRYON_GARMENTS } from "@/lib/tryon-limits";
 
 export type PhotoInput = { role: string; url: string };
 
@@ -1594,7 +1600,7 @@ export type CatalogTryOnGarment = {
 
 /**
  * Catalog try-on via the image model (same pipeline as look renders): dress
- * the person from their own full-length photo in 1–4 exact catalogue garments,
+ * the person from their own full-length photo in up to 6 exact catalogue garments,
  * preserving identity, pose, background and lighting, with correct layering
  * (outerwear over a base layer — never on bare skin).
  */
@@ -1604,16 +1610,17 @@ export async function generateCatalogTryOnImage(opts: {
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI || !opts.garments.length) return null;
   try {
-    const garments = opts.garments.slice(0, 4);
-    const garmentImageUrls = garments
-      .map((g) => g.imageUrl)
-      .filter((u): u is string => Boolean(u && /^https?:\/\//i.test(u)));
-
-    const garmentLines = garments.map((g, i) => {
-      const colour =
-        g.color && g.color !== "#CCCCCC" ? `, colour ${g.color}` : "";
-      return `${i + 1}. ${g.title} (${g.category.toLowerCase()}${colour})`;
-    });
+    const garments = pickTryOnGarments(opts.garments, MAX_TRYON_GARMENTS);
+    const garmentImages = garments
+      .filter(
+        (g): g is CatalogTryOnGarment & { imageUrl: string } =>
+          Boolean(g.imageUrl && /^https?:\/\//i.test(g.imageUrl)),
+      )
+      .map((g) => ({
+        url: upgradeCatalogImageUrl(g.imageUrl),
+        title: g.title,
+        category: g.category,
+      }));
 
     const prompt =
       `Photorealistic virtual try-on. ` +
@@ -1622,11 +1629,15 @@ export async function generateCatalogTryOnImage(opts: {
       `identity perfectly: same face and expression, same hairstyle, same skin tone, ` +
       `same body shape and proportions, same pose and hand positions, same background, ` +
       `same camera angle, perspective and lighting. ` +
-      (garmentImageUrls.length
-        ? `The remaining ${garmentImageUrls.length} image(s) show the actual catalogue ` +
-          `garment(s) — reproduce these exact products, not similar ones. `
+      (garmentImages.length
+        ? garmentImages
+            .map((g, i) => {
+              const n = i + 2;
+              return `Image ${n} is the ${g.category.toLowerCase()} to wear: ${g.title} — reproduce this exact piece. `;
+            })
+            .join("")
         : ``) +
-      `Dress the person in these catalogue pieces:\n${garmentLines.join("\n")}\n` +
+      catalogTryOnGarmentsText(garments) +
       `Layering rules — follow strictly: outerwear (jackets, blazers, coats, ` +
       `overshirts, cardigans) is always worn OVER a base layer, never directly on ` +
       `bare skin; if the original photo already shows a suitable top underneath, keep ` +
@@ -1649,9 +1660,9 @@ export async function generateCatalogTryOnImage(opts: {
       { type: "text", text: prompt },
       { type: "image", image: new URL(opts.personImageUrl) },
     ];
-    for (const url of garmentImageUrls) {
+    for (const g of garmentImages) {
       try {
-        content.push({ type: "image", image: new URL(url) });
+        content.push({ type: "image", image: new URL(g.url) });
       } catch {
         // Skip malformed product URLs rather than failing the whole render.
       }
@@ -1698,8 +1709,16 @@ export async function generateReportTryOnImage(opts: {
             title: "",
             category: "",
           }))
-    ).filter((i) => i.url && /^https?:\/\//i.test(i.url));
-    const garmentImageUrls = garmentImages.map((i) => i.url);
+    ).filter((i) => i.url && /^https?:\/\//i.test(i.url))
+      .map((i) => ({ ...i, url: upgradeCatalogImageUrl(i.url) }));
+    const refs = pickTryOnGarments(
+      garmentImages.map((g) => ({
+        ...g,
+        category: g.category || "Clothing",
+      })),
+      MAX_TRYON_GARMENTS,
+    );
+    const garmentImageUrls = refs.map((i) => i.url);
     const eyewearBlock = eyewearPromptDirective(opts.garmentsText);
     const tuckBlock = tuckPromptDirective(opts.garmentsText, opts.occasionId);
     const tieBlock = tiePromptDirective(opts.garmentsText);
@@ -1732,8 +1751,8 @@ export async function generateReportTryOnImage(opts: {
       `fills 9:16 — continue the same backdrop with natural light falloff and ` +
       `subtle wall texture. Do NOT letterbox, pillarbox, or pad the image with ` +
       `flat solid-colour bars. ` +
-      (garmentImages.length
-        ? garmentImages
+      (refs.length
+        ? refs
             .map((g, i) => {
               const n = i + 2;
               return g.title

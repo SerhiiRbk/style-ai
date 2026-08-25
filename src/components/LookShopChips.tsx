@@ -34,6 +34,7 @@ export function LookShopChips({
   selectedIds,
   onToggle,
   swappable = false,
+  lockedIds,
   onNeedAlternatives,
   onChooseAlternative,
 }: {
@@ -44,6 +45,8 @@ export function LookShopChips({
   selectedIds?: Set<string>;
   onToggle?: (id: string) => void;
   swappable?: boolean;
+  /** Locked anchors stay as picked — no alternative picker. */
+  lockedIds?: Set<string>;
   onNeedAlternatives?: (item: ShoppingItem) => Promise<ShoppingItem[]>;
   onChooseAlternative?: (fromId: string, alt: ShoppingItem) => void | Promise<void>;
 }) {
@@ -83,7 +86,8 @@ export function LookShopChips({
               item={it}
               on={on}
               selectable={selectable}
-              swappable={swappable}
+              swappable={swappable && !lockedIds?.has(id)}
+              locked={lockedIds?.has(id) ?? false}
               currency={currency}
               lang={lang}
               onToggle={onToggle}
@@ -102,6 +106,7 @@ function ShopChip({
   on,
   selectable,
   swappable,
+  locked = false,
   currency,
   lang,
   onToggle,
@@ -112,6 +117,7 @@ function ShopChip({
   on: boolean;
   selectable: boolean;
   swappable: boolean;
+  locked?: boolean;
   currency: Currency;
   lang?: ReportLanguage;
   onToggle?: (id: string) => void;
@@ -219,6 +225,11 @@ function ShopChip({
             </span>
           </a>
         )}
+        {locked ? (
+          <span className="rounded-full bg-brass/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-brass">
+            {tt("Yours")}
+          </span>
+        ) : null}
         {item.similarPick ? (
           <span className="rounded-full bg-cream px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-stone">
             {tt("Similar")}

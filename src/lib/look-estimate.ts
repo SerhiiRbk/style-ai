@@ -46,6 +46,12 @@ export function estimateMatchesLook(
   return Boolean(stored?.fingerprint && stored.fingerprint === fingerprint);
 }
 
+export function parseLookEstimateOpinion(
+  raw: unknown,
+): LookEstimateOpinion | null {
+  return parseOpinion(raw);
+}
+
 function parseOpinion(raw: unknown): LookEstimateOpinion | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;

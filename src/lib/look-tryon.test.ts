@@ -4,10 +4,15 @@ import type { ShoppingItem } from "@/lib/report";
 import {
   catalogImageRefsFromItems,
   catalogPromptFromItems,
+  catalogTryOnGarmentsText,
+  footwearTryOnHint,
   mergeSelectedLookItems,
+  pickTryOnGarments,
   selectLookCatalogItems,
+  upgradeCatalogImageUrl,
   MAX_CATALOG_REFERENCE_IMAGES,
   MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT,
+  MAX_TRYON_GARMENTS,
 } from "./look-tryon";
 
 function item(
@@ -24,6 +29,59 @@ function item(
     ...partial,
   };
 }
+
+test("try-on generation accepts six garments and keeps footwear", () => {
+  assert.equal(MAX_TRYON_GARMENTS, 6);
+  const picked = pickTryOnGarments(
+    [
+      item({ category: "Outerwear", title: "Moto jacket" }),
+      item({ category: "Knitwear", title: "Cashmere jumper" }),
+      item({ category: "Trousers", title: "Chinos" }),
+      item({ category: "Accessories", title: "Leather belt" }),
+      item({ category: "Footwear", title: "Montejunto Boots" }),
+      item({ category: "Accessories", title: "Tote" }),
+    ],
+    MAX_TRYON_GARMENTS,
+  );
+  assert.equal(picked.length, 6);
+  assert.ok(picked.some((g) => g.category === "Footwear"));
+});
+
+test("when over the try-on budget, drop a bag before the boots", () => {
+  const picked = pickTryOnGarments(
+    [
+      item({ category: "Shirts", title: "Oxford" }),
+      item({ category: "Knitwear", title: "Jumper" }),
+      item({ category: "Outerwear", title: "Blazer" }),
+      item({ category: "Trousers", title: "Trousers" }),
+      item({ category: "Footwear", title: "Montejunto Boots" }),
+      item({ category: "Accessories", title: "Belt" }),
+      item({ category: "Accessories", title: "Tote" }),
+    ],
+    MAX_TRYON_GARMENTS,
+  );
+  assert.equal(picked.length, 6);
+  assert.ok(picked.some((g) => g.title === "Montejunto Boots"));
+  assert.ok(!picked.some((g) => g.title === "Tote"));
+});
+
+test("footwear hint and try-on text lock unnamed boots to the product photo", () => {
+  assert.match(footwearTryOnHint("Montejunto Boots"), /product photo/i);
+  assert.match(footwearTryOnHint("Montejunto Boots"), /Chelsea/i);
+  const text = catalogTryOnGarmentsText([
+    { title: "Moto jacket", category: "Outerwear", color: "Brown" },
+    { title: "Montejunto Boots", category: "Footwear", color: "Brown" },
+  ]);
+  assert.match(text, /Montejunto Boots/);
+  assert.match(text, /Do not substitute tan or camel suede Chelsea boots/);
+});
+
+test("http catalogue image URLs upgrade to https", () => {
+  assert.equal(
+    upgradeCatalogImageUrl("http://oldmulla.com/boot.jpg"),
+    "https://oldmulla.com/boot.jpg",
+  );
+});
 
 test("catalog image refs keep all five shop-the-look pieces", () => {
   const refs = catalogImageRefsFromItems([

@@ -67,6 +67,13 @@ import {
 } from "@/lib/budgets";
 import { LOOK_MATCH_VERSION, LOOK_RERANK_VERSION } from "@/lib/look-match-version";
 import {
+  completeLookFills,
+  composeCompleteLookDescription,
+  composeCompleteLookTitle,
+  completeLookPalette,
+  restoreLockedAnchors,
+} from "@/lib/complete-look";
+import {
   LIGHT_CUE_RE,
   hasChromaticCue,
   hasSameChromaticFamily,
@@ -999,6 +1006,13 @@ function lookAskedForFamilyOnBoth(
  * trousers from the ranked pool unless the look itself named that family on
  * both pieces. Keep the original pair only when every alternative also clashes.
  */
+function isLockedProduct(
+  productId: string | undefined,
+  lockedIds?: Set<string>,
+): boolean {
+  return Boolean(productId && lockedIds?.has(productId));
+}
+
 function resolveShirtTrouserClash(
   items: ShoppingItem[],
   matchSlots: GarmentMatchSlot[],
@@ -1007,6 +1021,7 @@ function resolveShirtTrouserClash(
   goal: string,
   styleId?: string | null,
   occasionId?: string | null,
+  lockedIds?: Set<string>,
 ): ShoppingItem[] {
   const shirtIdx = items.findIndex((i) => i.category === "Shirts");
   const trouserIdx = items.findIndex((i) => i.category === "Trousers");
@@ -1022,43 +1037,58 @@ function resolveShirtTrouserClash(
 
   const shirtSlot = matchSlots.find((s) => s.garment.category === "Shirts");
   const trouserSlot = matchSlots.find((s) => s.garment.category === "Trousers");
-  if (!shirtSlot || !trouserSlot) return items;
-  if (lookAskedForFamilyOnBoth(shirtSlot.garment, trouserSlot.garment, clash)) {
+  if (shirtSlot && trouserSlot && lookAskedForFamilyOnBoth(shirtSlot.garment, trouserSlot.garment, clash)) {
     return items;
   }
 
-  const usedIds = new Set(
-    items
-      .map((i) => i.productId)
-      .filter((id): id is string => Boolean(id) && id !== trousers.productId),
-  );
-  const shirtText = itemColorText(shirt);
-  const alt = rankMatchRows(
-    matchByKey.get(trouserSlot.matchKey) ?? [],
-    trouserSlot.garment.color,
-    trouserSlot.garment.garment,
-    profile.boldness,
-    trouserSlot.garment.clause,
-    styleId,
-    occasionId,
-  )
-    .sort((a, b) => b.score - a.score)
-    .find((r) => {
-      if (usedIds.has(r.row.id)) return false;
-      if (r.garmentScore < 0.5 && r.colorScore < 0.45) return false;
-      return !sharedChromaticFamily(shirtText, rowColorText(r.row));
-    });
-  if (!alt) return items;
+  const rematchSlot = (
+    idx: number,
+    slot: GarmentMatchSlot,
+    keepText: string,
+    currentId?: string,
+  ): ShoppingItem[] | null => {
+    const usedIds = new Set(
+      items
+        .map((i) => i.productId)
+        .filter((id): id is string => Boolean(id) && id !== currentId),
+    );
+    const alt = rankMatchRows(
+      matchByKey.get(slot.matchKey) ?? [],
+      slot.garment.color,
+      slot.garment.garment,
+      profile.boldness,
+      slot.garment.clause,
+      styleId,
+      occasionId,
+    )
+      .sort((a, b) => b.score - a.score)
+      .find((r) => {
+        if (usedIds.has(r.row.id)) return false;
+        if (r.garmentScore < 0.5 && r.colorScore < 0.45) return false;
+        return !sharedChromaticFamily(keepText, rowColorText(r.row));
+      });
+    if (!alt) return null;
+    const next = [...items];
+    next[idx] = shoppingItemFromMatch(
+      alt.row,
+      slot.garment,
+      profile,
+      goal,
+      alt.similarPick,
+    );
+    return next;
+  };
 
-  const next = [...items];
-  next[trouserIdx] = shoppingItemFromMatch(
-    alt.row,
-    trouserSlot.garment,
-    profile,
-    goal,
-    alt.similarPick,
-  );
-  return next;
+  const trousersLocked = isLockedProduct(trousers.productId, lockedIds);
+  const shirtLocked = isLockedProduct(shirt.productId, lockedIds);
+
+  if (!trousersLocked && trouserSlot) {
+    return rematchSlot(trouserIdx, trouserSlot, itemColorText(shirt), trousers.productId) ?? items;
+  }
+  if (!shirtLocked && shirtSlot) {
+    return rematchSlot(shirtIdx, shirtSlot, itemColorText(trousers), shirt.productId) ?? items;
+  }
+  return items;
 }
 
 function isLeatherHarmonyItem(item: ShoppingItem): boolean {
@@ -1077,11 +1107,11 @@ function resolveLeatherToneClash(
   goal: string,
   styleId?: string | null,
   occasionId?: string | null,
+  lockedIds?: Set<string>,
 ): ShoppingItem[] {
   const trouserIdx = items.findIndex((i) => i.category === "Trousers");
   if (trouserIdx < 0) return items;
   const trouserSlot = matchSlots.find((s) => s.garment.category === "Trousers");
-  if (!trouserSlot) return items;
 
   const next = [...items];
   const usedIds = () =>
@@ -1111,22 +1141,28 @@ function resolveLeatherToneClash(
       });
   };
 
-  const askedTrouser = colorFamilies(
-    `${trouserSlot.garment.color ?? ""} ${trouserSlot.garment.clause}`,
-  );
+  const trousersLocked = isLockedProduct(next[trouserIdx]?.productId, lockedIds);
   if (
-    askedTrouser.has("brown") &&
-    leatherToneFamily(itemColorText(next[trouserIdx]!)) === "black"
+    trouserSlot &&
+    !trousersLocked
   ) {
-    const alt = pickTone(trouserSlot, "brown", next[trouserIdx]!.productId);
-    if (alt) {
-      next[trouserIdx] = shoppingItemFromMatch(
-        alt.row,
-        trouserSlot.garment,
-        profile,
-        goal,
-        alt.similarPick,
-      );
+    const askedTrouser = colorFamilies(
+      `${trouserSlot.garment.color ?? ""} ${trouserSlot.garment.clause}`,
+    );
+    if (
+      askedTrouser.has("brown") &&
+      leatherToneFamily(itemColorText(next[trouserIdx]!)) === "black"
+    ) {
+      const alt = pickTone(trouserSlot, "brown", next[trouserIdx]!.productId);
+      if (alt) {
+        next[trouserIdx] = shoppingItemFromMatch(
+          alt.row,
+          trouserSlot.garment,
+          profile,
+          goal,
+          alt.similarPick,
+        );
+      }
     }
   }
 
@@ -1136,6 +1172,7 @@ function resolveLeatherToneClash(
   for (let i = 0; i < next.length; i++) {
     const item = next[i]!;
     if (i === trouserIdx || !isLeatherHarmonyItem(item)) continue;
+    if (isLockedProduct(item.productId, lockedIds)) continue;
     const iTone = leatherToneFamily(itemColorText(item));
     if (!iTone || iTone === tTone) continue;
     const slot = matchSlots.find((s) =>
@@ -1609,6 +1646,170 @@ export async function matchLookItems(
     return result;
   } catch {
     return {};
+  }
+}
+
+/**
+ * Fill empty outfit slots around 1–3 locked catalogue anchors. Anchors are
+ * never substituted. Additive — does not change LOOK_MATCH_VERSION.
+ */
+export async function matchLookAroundAnchors(
+  profile: StyleProfile,
+  opts: {
+    anchors: ShoppingItem[];
+    occasionId?: string | null;
+    styleId?: string | null;
+  },
+): Promise<{
+  items: ShoppingItem[];
+  title: string;
+  description: string;
+  palette: string[];
+}> {
+  const anchors = opts.anchors;
+  const occasionId = opts.occasionId ?? "smart_casual";
+  const styleId = opts.styleId ?? null;
+  const fills = completeLookFills(anchors, occasionId);
+  const title = composeCompleteLookTitle(occasionId, anchors);
+  const empty = {
+    items: restoreLockedAnchors(anchors, anchors),
+    title,
+    description: composeCompleteLookDescription(anchors),
+    palette: completeLookPalette(anchors),
+  };
+  if (!fills.length || !hasAI || !hasSupabaseAdmin) return empty;
+
+  try {
+    const sb = createAdminSupabase();
+    const goal = profile.goals[0]?.toLowerCase() ?? "your goals";
+    const market = marketForCurrency(profile.currency);
+    const country = profile.demographics.country;
+    const currency = profile.currency;
+    const gender = genderFilterFor(profile.demographics.genderPresentation);
+    const paletteHints = paletteColorHints([], []);
+
+    const garments = fills.map((g) => ({ ...g }));
+    const description = composeCompleteLookDescription(anchors);
+
+    const keyFor = (g: LookGarment) =>
+      `${title}::${g.category}::${g.garment}::${g.color ?? ""}::${styleId ?? ""}::${occasionId}`;
+
+    const queries = garments.map((g) => ({
+      key: keyFor(g),
+      category: g.category,
+      garment: g.garment,
+      color: g.color,
+      text: garmentQueryText(g.garment, g.color, g.category, {
+        lookTitle: title,
+        clause: g.clause,
+        paletteHints,
+        colorSeason: profile.colorSeason,
+        gender,
+        styleId,
+        occasionId,
+      }),
+    }));
+
+    const { embeddings } = await embedMany({
+      model: env.embedModel,
+      values: queries.map((q) => q.text),
+    });
+
+    const matchByKey = new Map<string, MatchRow[]>();
+    const poolConcurrency = 2;
+    for (let i = 0; i < queries.length; i += poolConcurrency) {
+      const batch = queries.slice(i, i + poolConcurrency);
+      await Promise.all(
+        batch.map(async (q, offset) => {
+          const idx = i + offset;
+          try {
+            const data = await loadMatchPool(sb, {
+              query_embedding: embeddings[idx],
+              match_count: LOOK_MATCH_COUNT,
+              filter_category: q.category,
+              max_price: profile.budgetEur.max,
+              country,
+              currency,
+              market,
+              gender_filter: gender,
+              color: q.color,
+            });
+            matchByKey.set(q.key, data);
+          } catch (err) {
+            console.error(
+              "[complete-look] pool failed",
+              q.category,
+              q.garment,
+              err,
+            );
+            matchByKey.set(q.key, []);
+          }
+        }),
+      );
+    }
+
+    const lockedIds = new Set(
+      anchors
+        .map((a) => a.productId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
+    for (const [key, rows] of matchByKey) {
+      matchByKey.set(
+        key,
+        rows.filter((r) => !lockedIds.has(r.id)),
+      );
+    }
+
+    const filled = await matchItemsForLook(
+      title,
+      description,
+      paletteHints,
+      garments,
+      matchByKey,
+      keyFor,
+      profile,
+      goal,
+      styleId,
+      occasionId,
+    );
+    const matchSlots: GarmentMatchSlot[] = garments.map((g, slot) => ({
+      slot,
+      garment: g,
+      matchKey: keyFor(g),
+      rows: matchByKey.get(keyFor(g)) ?? [],
+    }));
+    const merged = restoreLockedAnchors(anchors, filled);
+    const items = restoreLockedAnchors(
+      anchors,
+      resolveLeatherToneClash(
+        resolveShirtTrouserClash(
+          merged,
+          matchSlots,
+          matchByKey,
+          profile,
+          goal,
+          styleId,
+          occasionId,
+          lockedIds,
+        ),
+        matchSlots,
+        matchByKey,
+        profile,
+        goal,
+        styleId,
+        occasionId,
+        lockedIds,
+      ),
+    );
+    return {
+      items,
+      title,
+      description: composeCompleteLookDescription(items),
+      palette: completeLookPalette(items),
+    };
+  } catch (err) {
+    console.error("[complete-look] match failed", err);
+    return empty;
   }
 }
 

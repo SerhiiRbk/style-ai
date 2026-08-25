@@ -135,6 +135,14 @@ export const env = {
   // below this cap.
   lookSetUserCapFree: intEnv(process.env.LOOK_SET_USER_CAP_FREE, 3),
 
+  // Per-user hourly fuse for Complete the look match (embeddings + rerank).
+  // Credits now cover the render; this is a backstop on cache-miss spend.
+  // Cache hits do not count.
+  completeLookUserHourlyCap: intEnv(
+    process.env.COMPLETE_LOOK_USER_HOURLY_CAP,
+    20,
+  ),
+
   // Salt for hashing IPs before they become rate-limit bucket keys (IP is PII).
   rateLimitSalt: process.env.RATE_LIMIT_SALT ?? "",
 

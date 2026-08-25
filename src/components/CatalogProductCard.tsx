@@ -152,7 +152,9 @@ export function CatalogTryOnHint({ cost }: { cost: number }) {
           Sign in
         </Link>{" "}
         to try up to {MAX_TRYON_ITEMS} catalogue pieces on your photo ({cost} credit
-        {cost === 1 ? "" : "s"} per render). Previews are not saved to a report.
+        {cost === 1 ? "" : "s"} per render), or pick 1–3 and{" "}
+        <span className="text-ink">Complete the look</span> ({cost} credit for
+        the shop and a try-on). Previews are not saved to a report.
       </div>
     );
   }
@@ -160,8 +162,10 @@ export function CatalogTryOnHint({ cost }: { cost: number }) {
   return (
     <div className="mt-6 rounded-2xl border hairline bg-cream/40 px-4 py-3 text-sm text-stone">
       Select up to {MAX_TRYON_ITEMS} items with{" "}
-      <span className="text-ink">+ Add to outfit</span>, then render them together on your
-      photo · {cost} credit{cost === 1 ? "" : "s"} per try-on
+      <span className="text-ink">+ Add to outfit</span>. Render them on your photo,
+      or pick 1–3 and <span className="text-ink">Complete the look</span> — we
+      fill the rest and render it · {cost} credit
+      {cost === 1 ? "" : "s"}
       {balance != null ? (
         <>
           {" "}
