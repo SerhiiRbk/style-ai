@@ -23,9 +23,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Valetti — men's personal style atelier",
+  title: BRAND.seoTitle,
   description:
-    "AI-assisted men's personal styling from Valetti. Carlo Valetti — our lead stylist persona — guides you through a calm, practical plan: hair, colours, tailoring, silhouettes, and a precise shopping list, with the reason behind every call.",
+    "Valetti is an AI-assisted men's personal styling atelier. Colour analysis, photorealistic looks, and a precise shopping plan — with the reason behind every call.",
   metadataBase: getSiteUrl(),
   alternates: { canonical: "/" },
   icons: {
@@ -33,9 +33,9 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-icon.png", type: "image/png", sizes: "180x180" }],
   },
   openGraph: {
-    title: "Valetti — men's personal style atelier",
+    title: BRAND.seoTitle,
     description:
-      "AI-assisted men's personal styling — Carlo Valetti is Valetti's lead stylist persona. Explainable recommendations, photorealistic looks, and a precise shopping plan.",
+      "AI-assisted men's personal styling from Valetti — colour analysis, photorealistic looks, and a precise shopping plan.",
     type: "website",
     url: "/",
     locale: "en_US",
@@ -51,9 +51,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Valetti — personal style atelier",
+    title: BRAND.seoTitle,
     description:
-      "AI-assisted personal styling — Carlo Valetti, Valetti's stylist persona. Find your own style, not the latest trend.",
+      "AI-assisted men's personal styling from Valetti. Colour analysis, photorealistic looks, and a shopping plan.",
     images: [BRAND.ogImage],
   },
 };

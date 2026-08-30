@@ -71,6 +71,7 @@ import {
   accessoryPicksFor,
   headwearPicksFor,
   capsuleMatrix,
+  capsuleOutfitDescription,
   facialHairFor,
   premiumEyewearPicks,
   buildExtras,
@@ -1051,6 +1052,11 @@ async function generateReportImages(input: ImageJobInput) {
 
   if (tier === "lookbook" || tier === "premium") {
     const colorByTitle = new Map(shopping.map((s) => [s.title, s.color]));
+    const colorNameByTitle = new Map(
+      shopping
+        .filter((s) => s.colorName)
+        .map((s) => [s.title, s.colorName as string]),
+    );
     const matrix = capsuleMatrix(shopping, profile);
     // Cache-buster: asset URLs are served `immutable`, so a regenerated slot must
     // land on a NEW path or browsers/edge keep serving the previous image.
@@ -1091,15 +1097,27 @@ async function generateReportImages(input: ImageJobInput) {
           : undefined;
         // Prepend the palette-correct shoe colour so capsule renders match the
         // footwear section instead of the model's default brown leather.
+        const contrastRule =
+          "The shirt or knit and the trousers must contrast in lightness — never the same grey. " +
+          "Keep each named garment colour; do not paint the trousers to match the top. " +
+          "One chromatic hero — do not repeat that colour on the shoes or a second main garment. " +
+          "Shoes must not match the jacket unless both are a dark navy or black formal set. " +
+          "If shirt and trousers are both mid-neutrals (greige, mushroom, taupe, stone, camel, beige, mid-grey), add a dark anchor (navy, charcoal, black or dark brown). " +
+          "If the look includes shorts: no jacket, jumper, hoodie or classic dress shoe " +
+          "(oxford, brogue, derby, boot) — loafers or sneakers only.";
         const footwearRule =
-          [footwearColorText.trim(), footwearStyleRule]
+          [footwearColorText.trim(), footwearStyleRule, contrastRule]
             .filter(Boolean)
             .join(" ") || undefined;
         const img = await generateLookImage({
           profile,
           look: {
             title: combo.context,
-            description: combo.pieces.join(", "),
+            description: capsuleOutfitDescription(
+              combo.pieces,
+              colorByTitle,
+              colorNameByTitle,
+            ),
             palette: combo.pieces
               .map((p) => colorByTitle.get(p))
               .filter((c): c is string => Boolean(c)),

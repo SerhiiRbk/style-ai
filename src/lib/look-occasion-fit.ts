@@ -432,7 +432,7 @@ export function lookOccasionQueryHint(
 ): string | null {
   if (!lookOccasionIsTailored(occasionId)) return null;
   if (lookOccasionAppliesToBag(garment ?? "")) {
-    return "leather messenger, satchel or slim briefcase, not travel bag, not weekender, not duffel, not crossbody";
+    return "leather messenger, satchel or slim briefcase, not tote, not shopper, not travel bag, not weekender, not duffel, not crossbody";
   }
   if (lookOccasionAppliesToShirt(garment ?? "")) {
     if (clauseAsksLinen(clause)) {

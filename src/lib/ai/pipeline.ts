@@ -41,6 +41,7 @@ import {
   type LookBriefSeason,
 } from "@/lib/ai/look-brief";
 import { lookStyleHasBrief } from "@/lib/look-styles";
+import { lookOccasionIdFromContext } from "@/lib/look-contexts";
 import {
   formatLookColorRecipePrompt,
   recipePaletteHexes,
@@ -643,13 +644,14 @@ export async function recommend(
   // (which is prompted with look.palette) can't drift off-season even if the
   // model ignored the colour instruction above.
   output.looks = (output.looks ?? []).map((l) => {
-    const description = sanitizeLookDescription(l.description ?? "");
+    const occasionId = lookOccasionIdFromContext(l.context);
+    const description = sanitizeLookDescription(l.description ?? "", occasionId);
     return {
       ...l,
       description,
       // Keep the structured slots in step with the sanitised prose — items
       // must never resurrect a prop/pocket-square the description dropped.
-      items: sanitizeLookItems(l.items, description),
+      items: sanitizeLookItems(l.items, description, occasionId),
       palette: snapPaletteToBest(l.palette ?? [], colors.best),
     };
   });
@@ -677,8 +679,10 @@ export async function generateExtraLook(opts: {
   season?: LookBriefSeason;
   /** Occasion id — party × statement gets a stronger after-dark brief. */
   occasionId?: string;
-  /** Slot in the set (0-based) — rotates party jacket fabric so looks don't clone. */
+  /** Slot in the set (0-based) — rotates party jacket fabric and work silhouettes. */
   lookIndex?: number;
+  /** Set size — 6 and 9 looks get a wider variety brief than 3. */
+  looksCount?: number;
   /** Aesthetic preset (Riviera, Nordic, …) — shapes the TEXT brief only. */
   styleId?: string;
   /** Set-slot colour recipe — pins this look's hero/bottom/neutrals. */
@@ -703,6 +707,7 @@ export async function generateExtraLook(opts: {
     season,
     occasionId,
     lookIndex,
+    looksCount,
     styleId,
     colorRecipe,
   } = opts;
@@ -722,7 +727,14 @@ export async function generateExtraLook(opts: {
   // Weave season + strictness into the brief text only — the look IMAGE prompt
   // (generateLookImage) is untouched by design; see look-brief.ts.
   const effectiveBrief = withWearableLookRule(
-    composeLookBrief(brief, { boldness, season, occasionId, lookIndex, styleId }),
+    composeLookBrief(brief, {
+      boldness,
+      season,
+      occasionId,
+      lookIndex,
+      looksCount,
+      styleId,
+    }),
   );
 
   const grounding = rules?.length
@@ -800,11 +812,14 @@ export async function generateExtraLook(opts: {
     colorRecipe ? recipePaletteHexes(colorRecipe) : (output.palette ?? []),
     colors.best,
   );
-  const description = sanitizeLookDescription(output.description ?? "");
+  const description = sanitizeLookDescription(
+    output.description ?? "",
+    occasionId,
+  );
   return {
     ...output,
     description,
-    items: sanitizeLookItems(output.items, description),
+    items: sanitizeLookItems(output.items, description, occasionId),
     palette,
     context,
   };
@@ -920,14 +935,23 @@ export async function generateLookImage(opts: {
     const hasFull = Boolean(referenceImageUrl);
     const faceImageCount = (hasFace ? 1 : 0) + (hasProfile ? 1 : 0);
     const personImageCount = faceImageCount + (hasFull ? 1 : 0);
-    const wearableDescription = sanitizeLookDescription(look.description);
+    const wearableDescription = sanitizeLookDescription(
+      look.description,
+      opts.occasionId,
+    );
     // Catalogue SKUs own materials and colours. The look caption used to leak
     // "suede derbies" / "teal poplin" into these directives and beat the shop.
+    // Always include the sanitised description so a stored "crewneck + tie"
+    // is rewritten to a V-neck before the tie/layering directives run.
     const directiveSource = hasCatalog
-      ? [look.catalogContext, catalogImages.map((i) => i.title).join(", ")]
+      ? [
+          look.catalogContext,
+          catalogImages.map((i) => i.title).join(", "),
+          wearableDescription,
+        ]
           .filter(Boolean)
           .join(" ")
-      : look.description;
+      : wearableDescription;
     const eyewearBlock = eyewearPromptDirective(directiveSource);
     const tuckBlock = tuckPromptDirective(
       `${look.description} ${directiveSource}`,
@@ -1719,15 +1743,19 @@ export async function generateReportTryOnImage(opts: {
       MAX_TRYON_GARMENTS,
     );
     const garmentImageUrls = refs.map((i) => i.url);
-    const eyewearBlock = eyewearPromptDirective(opts.garmentsText);
-    const tuckBlock = tuckPromptDirective(opts.garmentsText, opts.occasionId);
-    const tieBlock = tiePromptDirective(opts.garmentsText);
-    const hatBlock = hatPromptDirective(opts.garmentsText);
-    const sneakerBlock = sneakerPromptDirective(opts.garmentsText);
-    const backpackBlock = backpackPromptDirective(opts.garmentsText);
-    const fabricBlock = fabricPromptDirective(opts.garmentsText);
-    const blazerTypeBlock = blazerTypePromptDirective(opts.garmentsText);
-    const shoeMaterialBlock = shoeMaterialPromptDirective(opts.garmentsText);
+    const garmentsText = sanitizeLookDescription(
+      opts.garmentsText,
+      opts.occasionId,
+    );
+    const eyewearBlock = eyewearPromptDirective(garmentsText);
+    const tuckBlock = tuckPromptDirective(garmentsText, opts.occasionId);
+    const tieBlock = tiePromptDirective(garmentsText);
+    const hatBlock = hatPromptDirective(garmentsText);
+    const sneakerBlock = sneakerPromptDirective(garmentsText);
+    const backpackBlock = backpackPromptDirective(garmentsText);
+    const fabricBlock = fabricPromptDirective(garmentsText);
+    const blazerTypeBlock = blazerTypePromptDirective(garmentsText);
+    const shoeMaterialBlock = shoeMaterialPromptDirective(garmentsText);
 
     const prompt =
       `Photorealistic virtual try-on for a style report. ` +
@@ -1761,7 +1789,7 @@ export async function generateReportTryOnImage(opts: {
             })
             .join("")
         : ``) +
-      opts.garmentsText +
+      garmentsText +
       `Layering — follow strictly: outerwear (jackets, blazers, coats, overshirts, ` +
       `cardigans) is always worn OVER a base layer, never on bare skin. A knit may ` +
       `be worn on its own; only show a shirt under a knit if a shirt is listed, and ` +

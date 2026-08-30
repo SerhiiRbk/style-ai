@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reportPalette, type ColorRec } from "./colour-palette";
+import { hexToHsl, reportPalette, type ColorRec } from "./colour-palette";
 import {
   contrastSwatch,
   formatLookColorRecipePrompt,
@@ -148,6 +148,32 @@ test("work prompt pins a white or light-blue shirt from the trousers", () => {
     const text = formatLookColorRecipePrompt(light, { occasionId: "work" });
     assert.match(text, /Shirt: light blue oxford/i);
   }
+});
+
+test("shoe is never a chromatic clone of the hero jacket", () => {
+  for (const n of [3, 6]) {
+    const recipes = lookSetColorRecipes(best("soft-summer"), n);
+    for (const r of recipes) {
+      const h = hexToHsl(r.hero.hex);
+      const s = hexToHsl(r.shoe.hex);
+      if (h.s >= 0.22 && h.l > 0.34 && s.s >= 0.22 && s.l > 0.34) {
+        const d = Math.abs(h.h - s.h);
+        const hue = d > 180 ? 360 - d : d;
+        assert.ok(
+          hue >= 30 || Math.abs(h.l - s.l) >= 0.28,
+          `hero ${r.hero.name} ${r.hero.hex} clones shoe ${r.shoe.name} ${r.shoe.hex}`,
+        );
+      }
+    }
+  }
+});
+
+test("recipe prompt forbids repeating the hero on the shoes", () => {
+  const [recipe] = lookSetColorRecipes(best("soft-summer"), 3);
+  assert.ok(recipe);
+  const text = formatLookColorRecipePrompt(recipe);
+  assert.match(text, /one chromatic hero/i);
+  assert.match(text, /shoes must not match the jacket/i);
 });
 
 test("count 0 returns no recipes", () => {

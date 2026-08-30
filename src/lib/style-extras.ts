@@ -1995,6 +1995,353 @@ function tokenMatcher(tokens: string[]): RegExp {
 /** Casual, warm-weather footwear that reads wrong for a polished/professional wardrobe. */
 export const CASUAL_FOOTWEAR_RE =
   /\b(sandal|sndls?|slides?|flip[-\s]?flop|espadrille|clog|havaianas|thong|pool slider)\b/i;
+/** Shorts / bermudas — not full-length trousers, never under a blazer. */
+export const SHORTS_TITLE_RE = /\bshorts\b|\bbermuda\b/i;
+
+export function isShortsTitle(title: string): boolean {
+  return SHORTS_TITLE_RE.test(title);
+}
+
+/** Oxfords, brogues, derbies and boots — never with shorts. Loafers/sneakers stay. */
+export function isClassicShoeWithShorts(title: string): boolean {
+  if (/\b(loafer|loafers|sneakers?|trainers?|sandals?|slides?|espadrilles?)\b/i.test(title)) {
+    return false;
+  }
+  return /\b(oxfords?|brogues?|derb(?:y|ies)|chelsea|chukka|boots?|monk\s+straps?|wholecuts?|cap[\s-]?toe)\b/i.test(
+    title,
+  );
+}
+
+/**
+ * If the outfit has shorts, drop jackets/knits/hoodies and swap oxfords,
+ * brogues, derbies and boots for a casual shoe. Used by the capsule matrix
+ * and tests so shorts stay a warm-weather open look.
+ */
+export function sanitizeShortsOutfit(
+  pieces: string[],
+  opts?: { shirts?: string[]; casualShoes?: string[]; assumedSneaker?: string },
+): string[] {
+  if (!pieces.some(isShortsTitle)) return pieces;
+  const next = pieces.filter((p) => isShortsTitle(p) || !isWarmLayerWithShorts(p));
+  const hasOpenTop = next.some(
+    (p) =>
+      !isShortsTitle(p) &&
+      !isClassicShoeWithShorts(p) &&
+      !SNEAKER_RE.test(p) &&
+      !isWarmLayerWithShorts(p),
+  );
+  if (!hasOpenTop) {
+    const shirt = (opts?.shirts ?? []).find((t) => !next.includes(t));
+    if (shirt) next.unshift(shirt);
+  }
+  const shoeAt = next.findIndex(isClassicShoeWithShorts);
+  if (shoeAt >= 0) {
+    const casual =
+      (opts?.casualShoes ?? []).find(
+        (s) => !isClassicShoeWithShorts(s) && !next.includes(s),
+      ) ?? opts?.assumedSneaker;
+    if (casual) next[shoeAt] = casual;
+  }
+  return next;
+}
+
+/** Closed layers that read wrong with shorts. An open shirt, polo or tee is not a layer. */
+export function isWarmLayerWithShorts(title: string): boolean {
+  if (
+    /\b(polos?|t-?shirts?|tees?\b|camp[\s-]?collar|oxfords?)\b/i.test(title) &&
+    !/\b(sweater|jumper|hoodie|jacket|blazer|cardigan|coat)\b/i.test(title)
+  ) {
+    return false;
+  }
+  if (/\bshirts?\b/i.test(title) && !/\b(sweater|jumper|hoodie|jacket|blazer|sweatshirt)\b/i.test(title)) {
+    return false;
+  }
+  return /\b(blazers?|sport\s+coats?|jackets?|coats?|trench|overcoat|parka|bomber|anorak|gilet|hoodie|hooded|sweatshirts?|sweaters?|jumpers?|pullovers?|cardigans?|crewnecks?|roll-?necks?|turtlenecks?|shawl)\b/i.test(
+    title,
+  );
+}
+
+const GREY_COLUMN = new Set(["grey", "gray", "greige", "charcoal", "stone", "taupe"]);
+
+/** Human colour word for a capsule piece so the image prompt is not title-only. */
+export function capsuleColorWord(
+  title: string,
+  hex?: string | null,
+  colorName?: string | null,
+): string {
+  const named = colorName?.trim();
+  if (named && !/^#?[0-9a-f]{6}$/i.test(named)) return named.toLowerCase();
+  const parsed = parseHexColor(hex ?? "");
+  if (parsed) {
+    const { h, s, l } = hexToHsl(parsed);
+    if (s < 0.12) {
+      if (l <= 0.22) return "charcoal";
+      if (l <= 0.4) return "dark grey";
+      if (l <= 0.62) return "mid grey";
+      if (l <= 0.82) return "light grey";
+      return "off-white";
+    }
+    if (h >= 200 && h < 255 && l < 0.38) return "navy";
+    return familyFromHex(parsed) ?? "";
+  }
+  const fams = colorFamilies(title);
+  if (fams.has("grey")) return "grey";
+  if (fams.has("blue") && /\bnavy\b/i.test(title)) return "navy";
+  const first = [...fams][0];
+  return first ?? "";
+}
+
+export function capsuleOutfitDescription(
+  pieces: string[],
+  colorByTitle: Map<string, string>,
+  colorNameByTitle?: Map<string, string>,
+): string {
+  return pieces
+    .map((title) => {
+      const word = capsuleColorWord(
+        title,
+        colorByTitle.get(title),
+        colorNameByTitle?.get(title),
+      );
+      if (!word) return title;
+      if (new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(title)) {
+        return title;
+      }
+      return `${word} ${title}`;
+    })
+    .join(", ");
+}
+
+function pieceLightness(title: string, colorByTitle: Map<string, string>): number | null {
+  const hex = parseHexColor(colorByTitle.get(title) ?? "");
+  if (hex) return hexToHsl(hex).l;
+  if (/\b(charcoal|navy|black|ink)\b/i.test(title)) return 0.2;
+  if (/\b(grey|gray|greige|stone|taupe|heather)\b/i.test(title)) return 0.55;
+  if (/\b(white|ivory|cream|oat|oatmeal)\b/i.test(title)) return 0.88;
+  return null;
+}
+
+/** True when a shirt/knit and trousers would read as one grey column. */
+export function capsuleColumnBlends(
+  top: string,
+  bottom: string,
+  colorByTitle: Map<string, string>,
+): boolean {
+  const topFams = productColorFamilies(
+    colorByTitle.get(top) ?? null,
+    top,
+    colorByTitle.get(top),
+  );
+  const botFams = productColorFamilies(
+    colorByTitle.get(bottom) ?? null,
+    bottom,
+    colorByTitle.get(bottom),
+  );
+  const bothGrey =
+    [...topFams].some((f) => GREY_COLUMN.has(f)) &&
+    [...botFams].some((f) => GREY_COLUMN.has(f));
+  if (!bothGrey) return false;
+  const lt = pieceLightness(top, colorByTitle);
+  const lb = pieceLightness(bottom, colorByTitle);
+  if (lt == null || lb == null) return true;
+  return Math.abs(lt - lb) < 0.28;
+}
+
+function pieceHsl(
+  title: string,
+  colorByTitle: Map<string, string>,
+): { h: number; s: number; l: number } | null {
+  const hex = parseHexColor(colorByTitle.get(title) ?? "");
+  if (hex) return hexToHsl(hex);
+  return null;
+}
+
+export function isJacketTitle(title: string): boolean {
+  return (
+    /\b(blazers?|sport\s+coats?|jackets?|coats?|trench)\b/i.test(title) &&
+    !/\b(t-?shirt|tee)\b/i.test(title)
+  );
+}
+
+export function isShoeTitle(title: string): boolean {
+  if (/\bshirts?\b/i.test(title)) return false;
+  // "light blue oxford" is a shirt; "oxfords" / "oxford shoes" are footwear.
+  if (
+    /\boxford\b/i.test(title) &&
+    !/\b(oxfords|shoes?|cap-?toe|wholecuts?)\b/i.test(title)
+  ) {
+    return false;
+  }
+  return /\b(shoes?|loafers?|derb(?:y|ies)|oxfords?|brogues?|boots?|sneakers?|trainers?|sandals?|slides?)\b/i.test(
+    title,
+  );
+}
+
+export function isAccentOnlyTitle(title: string): boolean {
+  return /\b(belts?|pocket\s+squares?|ties?|scar(?:f|ves)|totes?|briefcases?|bags?|messengers?)\b/i.test(
+    title,
+  );
+}
+
+/** True when shoes repeat a chromatic jacket — navy-on-navy formal is allowed. */
+export function jacketClonesShoes(
+  jacket: string,
+  shoe: string,
+  colorByTitle: Map<string, string>,
+): boolean {
+  const j = pieceHsl(jacket, colorByTitle);
+  const s = pieceHsl(shoe, colorByTitle);
+  if (!j || !s) {
+    const jf = productColorFamilies(
+      colorByTitle.get(jacket) ?? null,
+      jacket,
+      colorByTitle.get(jacket),
+    );
+    const sf = productColorFamilies(
+      colorByTitle.get(shoe) ?? null,
+      shoe,
+      colorByTitle.get(shoe),
+    );
+    const shared = [...jf].some((f) => sf.has(f) && f !== "grey" && f !== "black");
+    const bothDark =
+      /\b(navy|charcoal|black|ink)\b/i.test(jacket) &&
+      /\b(navy|charcoal|black|ink)\b/i.test(shoe);
+    return shared && !bothDark;
+  }
+  if (j.l <= 0.36 && s.l <= 0.36) return false;
+  // True greys are not a chromatic clone; muted teal-on-teal still is.
+  if (j.s < 0.12 && s.s < 0.12) return false;
+  return hueDist(j.h, s.h) < 30 && Math.abs(j.l - s.l) < 0.28;
+}
+
+/** Two large chromatic garments in the same hue — a second hero. */
+export function chromaticHeroClash(
+  a: string,
+  b: string,
+  colorByTitle: Map<string, string>,
+): boolean {
+  if (isAccentOnlyTitle(a) || isAccentOnlyTitle(b)) return false;
+  const ha = pieceHsl(a, colorByTitle);
+  const hb = pieceHsl(b, colorByTitle);
+  if (!ha || !hb) return false;
+  if (ha.s < 0.14 || hb.s < 0.14) return false;
+  if (ha.l <= 0.32 && hb.l <= 0.32) return false;
+  return hueDist(ha.h, hb.h) < 30 && Math.abs(ha.l - hb.l) < 0.32;
+}
+
+export function isMidNeutralPiece(
+  title: string,
+  colorByTitle: Map<string, string>,
+): boolean {
+  const hsl = pieceHsl(title, colorByTitle);
+  if (hsl) return hsl.s < 0.18 && hsl.l >= 0.42 && hsl.l <= 0.88;
+  return (
+    /\b(greige|taupe|mushroom|stone|camel|beige|sand|khaki|oatmeal|heather)\b/i.test(
+      title,
+    ) ||
+    (/\b(grey|gray)\b/i.test(title) && !/\b(charcoal|dark|navy|black)\b/i.test(title))
+  );
+}
+
+export function isDarkAnchorPiece(
+  title: string,
+  colorByTitle: Map<string, string>,
+): boolean {
+  const hsl = pieceHsl(title, colorByTitle);
+  if (hsl && hsl.l <= 0.36) {
+    if (hsl.s < 0.28) return true;
+    if (hsl.h < 45 || hsl.h > 330) return true;
+    if (hsl.h >= 200 && hsl.h < 260) return true;
+    return false;
+  }
+  return /\b(navy|charcoal|black|ink|espresso|coffee)\b/i.test(title);
+}
+
+/**
+ * One chromatic hero, shoes not cloning the jacket, and a dark anchor when
+ * the shirt/knit and trousers are both mid-neutrals.
+ */
+export function sanitizeLookHarmony(
+  pieces: string[],
+  colorByTitle: Map<string, string>,
+  opts?: {
+    shoes?: string[];
+    bottoms?: string[];
+    assumedDarkShoe?: string;
+    assumedDarkBottom?: string;
+  },
+): string[] {
+  const next = [...pieces];
+  const jacket = next.find(isJacketTitle);
+  const shoeIdx = next.findIndex(isShoeTitle);
+  const bottomIdx = next.findIndex((t) =>
+    /\b(trousers?|chinos?|jeans?|shorts?|slacks?)\b/i.test(t),
+  );
+  const bottomIsShorts =
+    bottomIdx >= 0 && isShortsTitle(next[bottomIdx]!);
+  const topIdx = next.findIndex(
+    (t) =>
+      !isJacketTitle(t) &&
+      !isShoeTitle(t) &&
+      !isAccentOnlyTitle(t) &&
+      !/\b(trousers?|chinos?|jeans?|shorts?|slacks?)\b/i.test(t),
+  );
+
+  if (
+    jacket &&
+    shoeIdx >= 0 &&
+    jacketClonesShoes(jacket, next[shoeIdx]!, colorByTitle)
+  ) {
+    const alt = (opts?.shoes ?? []).find(
+      (s) => !next.includes(s) && !jacketClonesShoes(jacket, s, colorByTitle),
+    );
+    next[shoeIdx] = alt ?? opts?.assumedDarkShoe ?? next[shoeIdx]!;
+  }
+
+  if (
+    !bottomIsShorts &&
+    jacket &&
+    bottomIdx >= 0 &&
+    chromaticHeroClash(jacket, next[bottomIdx]!, colorByTitle)
+  ) {
+    const alt = (opts?.bottoms ?? []).find(
+      (b) => !chromaticHeroClash(jacket, b, colorByTitle),
+    );
+    if (alt) next[bottomIdx] = alt;
+  } else if (
+    !bottomIsShorts &&
+    topIdx >= 0 &&
+    bottomIdx >= 0 &&
+    chromaticHeroClash(next[topIdx]!, next[bottomIdx]!, colorByTitle)
+  ) {
+    const alt = (opts?.bottoms ?? []).find(
+      (b) => !chromaticHeroClash(next[topIdx]!, b, colorByTitle),
+    );
+    if (alt) next[bottomIdx] = alt;
+  }
+
+  const hasDark = next.some((p) => isDarkAnchorPiece(p, colorByTitle));
+  if (
+    !hasDark &&
+    topIdx >= 0 &&
+    bottomIdx >= 0 &&
+    isMidNeutralPiece(next[topIdx]!, colorByTitle) &&
+    isMidNeutralPiece(next[bottomIdx]!, colorByTitle)
+  ) {
+    if (shoeIdx >= 0 && opts?.assumedDarkShoe) {
+      next[shoeIdx] = opts.assumedDarkShoe;
+    } else if (!bottomIsShorts) {
+      const darkBottom = (opts?.bottoms ?? []).find((b) =>
+        isDarkAnchorPiece(b, colorByTitle),
+      );
+      if (darkBottom) next[bottomIdx] = darkBottom;
+      else if (opts?.assumedDarkBottom) next[bottomIdx] = opts.assumedDarkBottom;
+    }
+  }
+
+  return next;
+}
+
 /** Casual outerwear that reads wrong in a boardroom / client-meeting context. */
 const CASUAL_OUTERWEAR_RE =
   /\b(field jacket|hood(?:ed|ie)?|bomber|parka|anorak|gilet|puffer|windbreaker|shacket|denim jacket|track(?:suit| jacket)?|cagoule|fleece)\b/i;
@@ -3583,7 +3930,11 @@ export function capsuleMatrix(
   const formalLayers = layers.filter((l) => !CASUAL_OUTERWEAR_RE.test(l));
   const casualLayers = layers.filter((l) => CASUAL_OUTERWEAR_RE.test(l));
 
-  const catTrousers = pick(["Trousers"]);
+  const catTrousersAll = pick(["Trousers"]);
+  const catShorts = catTrousersAll.filter(isShortsTitle);
+  // Shorts live in Trousers in the catalogue but are not dress trousers,
+  // chinos or jeans — pairing them with a blazer reads as a chopped suit.
+  const catTrousers = catTrousersAll.filter((t) => !isShortsTitle(t));
   // Prefer real catalogue chinos/jeans for those slots before falling back to
   // assumed basics, so purchasable trousers aren't crowded out by virtual ones.
   const catJeans = catTrousers.filter((t) => /\b(jeans?|denim)\b/i.test(t));
@@ -3712,16 +4063,27 @@ export function capsuleMatrix(
       bottom = catJeans.length ? rot("catJean", catJeans) : jeanBasic;
       if (!catJeans.length) owned.add(jeanBasic);
     } else if (slot.bottom === "chino") {
-      bottom = catChinos.length ? rot("catChino", catChinos) : chinoBasic;
-      if (!catChinos.length) owned.add(chinoBasic);
+      const layerInLook = pieces.some(isWarmLayerWithShorts);
+      const knitTop = topKind === "knit";
+      if (catChinos.length) {
+        bottom = rot("catChino", catChinos);
+      } else if (!layerInLook && !knitTop && catShorts.length) {
+        bottom = rot("catShorts", catShorts);
+      } else {
+        bottom = chinoBasic;
+        owned.add(chinoBasic);
+      }
     } else {
-      // Dress slot: prefer real tailored trousers (non-jean/chino), then any
-      // catalogue trouser, then an assumed chino.
+      // Dress slot: full-length tailored trousers only — never shorts.
       const dressPool = catOtherTrousers.length ? catOtherTrousers : catTrousers;
       bottom = dressPool.length ? rot("trousers", dressPool) : chinoBasic;
       if (!dressPool.length) owned.add(chinoBasic);
     }
-    if (bottom) pieces.push(bottom);
+    if (wearingJacket && bottom && isShortsTitle(bottom)) {
+      bottom = chinoBasic;
+      owned.add(chinoBasic);
+    }
+    const bottomIndex = bottom ? pieces.push(bottom) - 1 : -1;
 
     // Footwear last — the image prompt derives its footwear directive from it.
     const shoe =
@@ -3751,6 +4113,92 @@ export function capsuleMatrix(
         (t) => !isNeutralPiece(t) && !pieces.includes(t),
       );
       if (accentAlt) pieces[topIndex] = accentAlt;
+    }
+
+    // Grey shirt + grey trousers read as one column. Apply after accent swaps
+    // so a harmony pass cannot reintroduce the same-grey pair.
+    if (
+      topIndex >= 0 &&
+      bottomIndex >= 0 &&
+      capsuleColumnBlends(pieces[topIndex]!, pieces[bottomIndex]!, colorByTitle)
+    ) {
+      const [, topPool] = poolForTop(topKind);
+      const topAlt = topPool.find(
+        (t) =>
+          !pieces.includes(t) &&
+          !capsuleColumnBlends(t, pieces[bottomIndex]!, colorByTitle),
+      );
+      if (topAlt) {
+        pieces[topIndex] = topAlt;
+      } else {
+        const bottomAlts = [
+          ...catOtherTrousers,
+          ...catTrousers,
+          ...catChinos,
+          jeanBasic,
+          chinoBasic,
+        ];
+        const bottomAlt = bottomAlts.find(
+          (t) =>
+            t !== pieces[bottomIndex] &&
+            !capsuleColumnBlends(pieces[topIndex]!, t, colorByTitle),
+        );
+        if (bottomAlt) {
+          if (bottomAlt === jeanBasic || bottomAlt === chinoBasic) owned.add(bottomAlt);
+          pieces[bottomIndex] = bottomAlt;
+        }
+      }
+    }
+
+    const jacketInLook = pieces.find(isJacketTitle);
+    const darkShoe =
+      [...formalPool, ...casualPool].find(
+        (s) =>
+          isDarkAnchorPiece(s, colorByTitle) &&
+          !(jacketInLook && jacketClonesShoes(jacketInLook, s, colorByTitle)),
+      ) ?? basics.shoes[0];
+    const darkBottom =
+      [...catOtherTrousers, ...catTrousers].find((t) =>
+        isDarkAnchorPiece(t, colorByTitle),
+      ) ?? "Navy trousers";
+    const harmonized = sanitizeLookHarmony(pieces, colorByTitle, {
+      shoes: [...formalPool, ...casualPool],
+      bottoms: [
+        ...catOtherTrousers,
+        ...catTrousers,
+        ...catChinos,
+        jeanBasic,
+        chinoBasic,
+      ],
+      assumedDarkShoe: darkShoe,
+      assumedDarkBottom: darkBottom,
+    });
+    if (harmonized.join("|") !== pieces.join("|")) {
+      pieces.length = 0;
+      pieces.push(...harmonized);
+      for (const p of harmonized) {
+        if (
+          basics.casualShoes.includes(p) ||
+          basics.shoes.includes(p) ||
+          basics.bottoms.includes(p) ||
+          p === darkBottom
+        ) {
+          owned.add(p);
+        }
+      }
+    }
+
+    const cleaned = sanitizeShortsOutfit(pieces, {
+      shirts: dressShirts,
+      casualShoes: casualPool,
+      assumedSneaker: basics.casualShoes[0],
+    });
+    if (cleaned !== pieces) {
+      pieces.length = 0;
+      pieces.push(...cleaned);
+      for (const p of cleaned) {
+        if (basics.casualShoes.includes(p) || basics.bottoms.includes(p)) owned.add(p);
+      }
     }
 
     const key = pieces.join("|").toLowerCase();

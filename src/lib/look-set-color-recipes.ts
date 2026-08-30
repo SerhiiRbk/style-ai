@@ -110,6 +110,35 @@ function pickShared(
   return [light, mid];
 }
 
+function shoeClonesHero(shoe: ColorRec, hero: ColorRec): boolean {
+  const s = hexToHsl(shoe.hex);
+  const h = hexToHsl(hero.hex);
+  if (h.l <= 0.36 && s.l <= 0.36) return false;
+  if (h.s < 0.12 && s.s < 0.12) return false;
+  return hueDist(h.h, s.h) < 30 && Math.abs(h.l - s.l) < 0.28;
+}
+
+function chromaticClone(a: ColorRec, b: ColorRec): boolean {
+  const ha = hexToHsl(a.hex);
+  const hb = hexToHsl(b.hex);
+  if (ha.s < 0.14 || hb.s < 0.14) return false;
+  if (ha.l <= 0.32 && hb.l <= 0.32) return false;
+  return hueDist(ha.h, hb.h) < 30 && Math.abs(ha.l - hb.l) < 0.32;
+}
+
+function isMidNeutralSwatch(c: ColorRec): boolean {
+  const hsl = hexToHsl(c.hex);
+  return hsl.s < 0.18 && hsl.l >= 0.42 && hsl.l <= 0.88;
+}
+
+function isDarkAnchorSwatch(c: ColorRec): boolean {
+  const hsl = hexToHsl(c.hex);
+  if (hsl.l > 0.36) return false;
+  if (hsl.s < 0.28) return true;
+  if (hsl.h < 45 || hsl.h > 330) return true;
+  return hsl.h >= 200 && hsl.h < 260;
+}
+
 function bottomsPool(
   anchors: ColorRec[],
   lights: ColorRec[],
@@ -165,6 +194,7 @@ export function lookSetColorRecipes(
     ];
     for (const cand of tryOrder) {
       if (cand.hex.toLowerCase() === hero.hex.toLowerCase()) continue;
+      if (chromaticClone(hero, cand)) continue;
       const key = `${hero.hex}|${cand.hex}`.toLowerCase();
       if (seen.has(key)) continue;
       bottom = cand;
@@ -177,6 +207,7 @@ export function lookSetColorRecipes(
       const fallback = best.find(
         (sw) =>
           sw.hex.toLowerCase() !== hero.hex.toLowerCase() &&
+          !chromaticClone(hero, sw) &&
           !seen.has(`${hero.hex}|${sw.hex}`.toLowerCase()),
       );
       if (fallback) {
@@ -194,14 +225,25 @@ export function lookSetColorRecipes(
       accent && accent.hex.toLowerCase() !== hero.hex.toLowerCase()
         ? accent
         : null;
-    const shoePool = [...shared, accentSw, hero].filter(
-      (c): c is ColorRec => Boolean(c),
-    );
-    const unused = shoePool.filter(
+    const shoePool = [...anchors, ...shared, accentSw]
+      .filter((c): c is ColorRec => Boolean(c))
+      .filter((c) => !shoeClonesHero(c, hero));
+    const needDarkShoe =
+      isMidNeutralSwatch(hero) && isMidNeutralSwatch(bottom);
+    const darkPool = [...anchors, ...shoePool].filter(isDarkAnchorSwatch);
+    const eligible = needDarkShoe
+      ? darkPool.length
+        ? darkPool
+        : shoePool
+      : shoePool.length
+        ? shoePool
+        : darkPool;
+    const unused = eligible.filter(
       (c) => !usedShoes.has(c.hex.toLowerCase()),
     );
     const shoe =
-      contrastSwatch(bottom, unused.length ? unused : shoePool) ??
+      contrastSwatch(bottom, unused.length ? unused : eligible, hero) ??
+      darkPool[0] ??
       shared[0] ??
       hero;
     usedShoes.add(shoe.hex.toLowerCase());
@@ -228,6 +270,7 @@ function isWarmNeutral(c: ColorRec): boolean {
 export function contrastSwatch(
   from: ColorRec,
   candidates: (ColorRec | null | undefined)[],
+  avoidHero?: ColorRec | null,
 ): ColorRec | null {
   const fromHsl = hexToHsl(from.hex);
   let best: ColorRec | null = null;
@@ -238,6 +281,7 @@ export function contrastSwatch(
     const hsl = hexToHsl(c.hex);
     let score = Math.abs(hsl.l - fromHsl.l) + hueDist(fromHsl.h, hsl.h) / 360;
     if (isWarmNeutral(from) && isWarmNeutral(c)) score -= 0.45;
+    if (avoidHero && shoeClonesHero(c, avoidHero)) score -= 0.8;
     if (score > bestScore) {
       bestScore = score;
       best = c;
@@ -292,8 +336,12 @@ export function formatLookColorRecipePrompt(
       `never greige/mushroom/taupe shoes with greige/mushroom/taupe trousers). No tote.\n` +
       `- Belt: ${swatch(belt)}\n`
     : `- Shoes: ${swatch(shoe)} — this look's pair, not the same grey as every other look. ` +
-      `Must contrast the trousers (not the same greige/mushroom/taupe family).\n` +
+      `Must contrast the trousers (not the same greige/mushroom/taupe family). ` +
+      `Shoes must not match the jacket unless both are a dark navy or black formal set.\n` +
       `- Shared neutrals (belt, bag): ${recipe.neutrals.map(swatch).join(", ")}\n`;
+  const harmony =
+    `One chromatic hero — do not repeat ${recipe.hero.name} on the shoes or a second main garment. ` +
+    `If the shirt and trousers are both mid-neutrals (greige, mushroom, taupe, stone, camel, beige, mid-grey), add a dark anchor.\n`;
   return (
     `Colour recipe for THIS look (mandatory — do not substitute):\n` +
     heroLine +
@@ -301,6 +349,7 @@ export function formatLookColorRecipePrompt(
     shirtLine +
     neutralsLine +
     accent +
+    harmony +
     `Use ONLY these colours in "palette" and in every garment colour word in the description.` +
     (shirtColor
       ? ` The shirt colour above is the one exception — white or light blue is required for work.\n`

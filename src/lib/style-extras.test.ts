@@ -18,7 +18,58 @@ import {
   prefersDrawstringSilhouette,
   selectLookGarmentSlots,
   silhouetteFitScore,
+  capsuleMatrix,
+  isShortsTitle,
+  isClassicShoeWithShorts,
+  isWarmLayerWithShorts,
+  sanitizeShortsOutfit,
+  capsuleColorWord,
+  capsuleColumnBlends,
+  capsuleOutfitDescription,
+  jacketClonesShoes,
+  chromaticHeroClash,
+  isMidNeutralPiece,
+  isDarkAnchorPiece,
+  isShoeTitle,
+  sanitizeLookHarmony,
 } from "./style-extras";
+import { styleProfileSchema } from "./style-profile";
+import type { ShoppingItem } from "./report";
+
+function testProfile(
+  over: Partial<{ goals: string[]; lifestyle: string[]; boldness: "conservative" | "moderate" | "experimental" | "statement" }> = {},
+) {
+  return styleProfileSchema.parse({
+    version: "1.0",
+    demographics: { age: 40, genderPresentation: "male" },
+    physical: {
+      skinTone: "fair",
+      undertone: "cool",
+      contrast: "medium",
+      faceShape: "oval",
+      bodyType: "average",
+      heightCm: 180,
+    },
+    colorSeason: "summer",
+    goals: over.goals ?? ["Look more professional"],
+    lifestyle: over.lifestyle ?? ["Public speaking"],
+    occupation: "Software / IT",
+    boldness: over.boldness ?? "moderate",
+    budgetEur: { min: 50, max: 200 },
+  });
+}
+
+function item(category: string, title: string, color = "#647a93"): ShoppingItem {
+  return {
+    category,
+    title,
+    why: "",
+    priceEur: 80,
+    retailer: "Test",
+    url: "https://example.com",
+    color,
+  };
+}
 
 test("decomposeLook extracts tote and pocket square from a resort brief", () => {
   const garments = decomposeLook(
@@ -80,6 +131,242 @@ test("garmentTitleMatchScore rejects tea towels for a knit slot", () => {
     0,
   );
   assert.equal(garmentTitleMatchScore("sweater", "Merino Crewneck Sweater"), 1);
+});
+
+test("isShortsTitle matches shorts, not a short-sleeve shirt", () => {
+  assert.equal(isShortsTitle("Tailored Linen Blend Shorts"), true);
+  assert.equal(isShortsTitle("Denim Chino Bermuda"), true);
+  assert.equal(isShortsTitle("Short Sleeve V-Neck Shirt"), false);
+  assert.equal(isShortsTitle("Lightweight Summer Trousers"), false);
+});
+
+test("capsule matrix never puts shorts under a blazer", () => {
+  const shopping = [
+    item("Outerwear", "Valmonti Men’s Smart Casual Jacket – Lightweight Slim Blazer"),
+    item("Knitwear", "Geometric Colour Block Ribbed Knit High Neck Jumper"),
+    item("Shirts", "Textured Summer Shirt Long Sleeve"),
+    item("Trousers", "Valmonti Men’s Tailored Summer Shorts Smart Casual Twill Design"),
+    item("Trousers", "Valmonti Men’s Tailored Linen Blend Shorts Smart Summer Style"),
+    item("Footwear", "Classic Blue Leather Derbies"),
+  ];
+  const combos = capsuleMatrix(shopping, testProfile());
+  assert.ok(combos.length >= 3);
+  for (const combo of combos) {
+    const hasJacket = combo.pieces.some((p) => /blazer|jacket/i.test(p));
+    const hasShorts = combo.pieces.some(isShortsTitle);
+    assert.equal(
+      hasJacket && hasShorts,
+      false,
+      `${combo.context}: ${combo.pieces.join(" + ")}`,
+    );
+  }
+  const jacketLooks = combos.filter((c) =>
+    c.pieces.some((p) => /blazer|jacket/i.test(p)),
+  );
+  assert.ok(jacketLooks.length >= 1, "expected at least one jacket look");
+  assert.ok(
+    jacketLooks.every((c) => c.pieces.some((p) => /chinos?|jeans?/i.test(p))),
+    "jacket looks should fall back to full-length assumed bottoms",
+  );
+});
+
+test("classic shoes and warm layers are illegal with shorts", () => {
+  assert.equal(isClassicShoeWithShorts("Classic Blue Leather Derbies"), true);
+  assert.equal(isClassicShoeWithShorts("Cap-toe oxfords"), true);
+  assert.equal(isClassicShoeWithShorts("Wingtip brogues"), true);
+  assert.equal(isClassicShoeWithShorts("Chelsea boots"), true);
+  assert.equal(isClassicShoeWithShorts("White leather sneakers"), false);
+  assert.equal(isClassicShoeWithShorts("Suede loafers"), false);
+  assert.equal(isWarmLayerWithShorts("Navy blazer"), true);
+  assert.equal(isWarmLayerWithShorts("Merino crewneck jumper"), true);
+  assert.equal(isWarmLayerWithShorts("Zip hoodie"), true);
+  assert.equal(isWarmLayerWithShorts("Field jacket"), true);
+  assert.equal(isWarmLayerWithShorts("Linen camp collar shirt"), false);
+  assert.equal(isWarmLayerWithShorts("Knitted polo"), false);
+});
+
+test("capsule matrix may use shorts only on a jacket-free casual look", () => {
+  const shopping = [
+    item("Shirts", "Linen Camp Collar Shirt"),
+    item("Trousers", "Tailored Linen Blend Shorts"),
+    item("Footwear", "White leather sneakers"),
+  ];
+  const combos = capsuleMatrix(
+    shopping,
+    testProfile({
+      goals: ["Casual weekend"],
+      lifestyle: ["Active / outdoors"],
+    }),
+  );
+  const withShorts = combos.filter((c) => c.pieces.some(isShortsTitle));
+  assert.ok(withShorts.length >= 1, "expected shorts on a casual no-jacket look");
+  assert.ok(withShorts.every((c) => !c.pieces.some(isWarmLayerWithShorts)));
+  assert.ok(withShorts.every((c) => !c.pieces.some(isClassicShoeWithShorts)));
+});
+
+test("sanitizeShortsOutfit drops a jumper and derby from a shorts look", () => {
+  const cleaned = sanitizeShortsOutfit(
+    [
+      "Unstructured navy blazer",
+      "Camel merino crewneck jumper",
+      "Tailored linen shorts",
+      "Brown leather derbies",
+    ],
+    {
+      shirts: ["Linen camp collar shirt"],
+      casualShoes: ["White leather sneakers"],
+      assumedSneaker: "White leather sneakers",
+    },
+  );
+  assert.ok(cleaned.some(isShortsTitle));
+  assert.ok(cleaned.includes("Linen camp collar shirt"));
+  assert.ok(cleaned.includes("White leather sneakers"));
+  assert.equal(cleaned.some(isWarmLayerWithShorts), false);
+  assert.equal(cleaned.some(isClassicShoeWithShorts), false);
+});
+
+test("capsule color words distinguish navy trousers from a mid-grey shirt", () => {
+  assert.equal(capsuleColorWord("Linen trousers", "#28324A"), "navy");
+  assert.equal(capsuleColorWord("Textured shirt", "#8B8B8B"), "mid grey");
+  const desc = capsuleOutfitDescription(
+    ["Textured Summer Shirt", "Linen Blend Tailored Trousers"],
+    new Map([
+      ["Textured Summer Shirt", "#8B8B8B"],
+      ["Linen Blend Tailored Trousers", "#28324A"],
+    ]),
+  );
+  assert.match(desc, /mid grey Textured Summer Shirt/);
+  assert.match(desc, /navy Linen Blend Tailored Trousers/);
+});
+
+test("capsule column blends two mid-greys and not grey-on-navy", () => {
+  const colors = new Map([
+    ["Grey Shirt", "#8B8B8B"],
+    ["Grey Trousers", "#9A9A9A"],
+    ["Navy Trousers", "#28324A"],
+  ]);
+  assert.equal(capsuleColumnBlends("Grey Shirt", "Grey Trousers", colors), true);
+  assert.equal(capsuleColumnBlends("Grey Shirt", "Navy Trousers", colors), false);
+});
+
+test("capsule matrix breaks a grey shirt on grey trousers when a navy bottom exists", () => {
+  const shopping = [
+    item("Outerwear", "Navy blazer", "#28324A"),
+    item("Shirts", "Mid grey oxford", "#8B8B8B"),
+    item("Trousers", "Mid grey wool trousers", "#9A9A9A"),
+    item("Trousers", "Navy linen trousers", "#28324A"),
+    item("Footwear", "Black leather derbies", "#1a1a1a"),
+  ];
+  const combos = capsuleMatrix(shopping, testProfile());
+  for (const combo of combos) {
+    const top = combo.pieces.find((p) => /oxford|shirt|knit|jumper/i.test(p));
+    const bottom = combo.pieces.find((p) => /trousers|chinos|jeans/i.test(p));
+    if (!top || !bottom) continue;
+    const colors = new Map(shopping.map((s) => [s.title, s.color]));
+    assert.equal(
+      capsuleColumnBlends(top, bottom, colors),
+      false,
+      `${combo.context}: ${top} + ${bottom}`,
+    );
+  }
+});
+
+test("isShoeTitle does not treat an oxford shirt as footwear", () => {
+  assert.equal(isShoeTitle("Light blue oxford"), false);
+  assert.equal(isShoeTitle("Teal loafers"), true);
+  assert.equal(isShoeTitle("Cap-toe oxfords"), true);
+  assert.equal(isShoeTitle("Brown leather derbies"), true);
+});
+
+test("jacketClonesShoes catches teal-on-teal and allows a navy suit", () => {
+  const colors = new Map([
+    ["Teal blazer", "#5f8c86"],
+    ["Teal loafers", "#2C6E6A"],
+    ["Brown derbies", "#5A3D2B"],
+    ["Navy blazer", "#28324A"],
+    ["Navy derbies", "#1e2a3a"],
+  ]);
+  assert.equal(jacketClonesShoes("Teal blazer", "Teal loafers", colors), true);
+  assert.equal(jacketClonesShoes("Teal blazer", "Brown derbies", colors), false);
+  assert.equal(jacketClonesShoes("Navy blazer", "Navy derbies", colors), false);
+});
+
+test("chromaticHeroClash is true for two teals, false for teal plus navy", () => {
+  const colors = new Map([
+    ["Teal jumper", "#5f8c86"],
+    ["Teal trousers", "#3d7a74"],
+    ["Navy trousers", "#28324A"],
+  ]);
+  assert.equal(chromaticHeroClash("Teal jumper", "Teal trousers", colors), true);
+  assert.equal(chromaticHeroClash("Teal jumper", "Navy trousers", colors), false);
+});
+
+test("mid-neutral pieces need a dark anchor", () => {
+  const colors = new Map([
+    ["Greige shirt", "#dcd8d3"],
+    ["Mushroom trousers", "#b9aea1"],
+    ["Navy derbies", "#28324A"],
+  ]);
+  assert.equal(isMidNeutralPiece("Greige shirt", colors), true);
+  assert.equal(isMidNeutralPiece("Mushroom trousers", colors), true);
+  assert.equal(isDarkAnchorPiece("Navy derbies", colors), true);
+  assert.equal(isDarkAnchorPiece("Greige shirt", colors), false);
+});
+
+test("capsule matrix swaps teal loafers off a teal jacket", () => {
+  const shopping = [
+    item("Outerwear", "Teal blazer", "#5f8c86"),
+    item("Shirts", "Light blue oxford", "#c5d4e0"),
+    item("Trousers", "Navy linen trousers", "#28324A"),
+    item("Footwear", "Teal loafers", "#2C6E6A"),
+    item("Footwear", "Brown derbies", "#5A3D2B"),
+  ];
+  const colors = new Map(shopping.map((s) => [s.title, s.color]));
+  const combos = capsuleMatrix(shopping, testProfile());
+  for (const combo of combos) {
+    const jacket = combo.pieces.find((p) => /blazer|jacket/i.test(p));
+    const shoe = combo.pieces.find((p) => /loafer|derby|sneaker|shoe/i.test(p));
+    if (!jacket || !shoe) continue;
+    assert.equal(
+      jacketClonesShoes(jacket, shoe, colors),
+      false,
+      `${combo.context}: ${combo.pieces.join(" + ")}`,
+    );
+  }
+});
+
+test("sanitizeLookHarmony breaks teal shoes on a teal jacket and a greige column", () => {
+  const colors = new Map([
+    ["Teal blazer", "#5f8c86"],
+    ["Light blue oxford", "#c5d4e0"],
+    ["Greige trousers", "#dcd8d3"],
+    ["Teal loafers", "#2C6E6A"],
+    ["Brown derbies", "#5A3D2B"],
+    ["Navy trousers", "#28324A"],
+  ]);
+  const matchy = sanitizeLookHarmony(
+    ["Teal blazer", "Light blue oxford", "Greige trousers", "Teal loafers"],
+    colors,
+    { shoes: ["Brown derbies"], assumedDarkShoe: "Brown derbies" },
+  );
+  assert.equal(jacketClonesShoes("Teal blazer", matchy.find((p) => /derby|loafer/i.test(p)) ?? "", colors), false);
+
+  const flat = sanitizeLookHarmony(
+    ["Greige shirt", "Mushroom trousers", "Greige loafers"],
+    new Map([
+      ["Greige shirt", "#dcd8d3"],
+      ["Mushroom trousers", "#b9aea1"],
+      ["Greige loafers", "#cfc6b8"],
+      ["Navy derbies", "#28324A"],
+    ]),
+    { shoes: ["Navy derbies"], assumedDarkShoe: "Navy derbies" },
+  );
+  assert.ok(flat.some((p) => isDarkAnchorPiece(p, new Map([
+    ["Greige shirt", "#dcd8d3"],
+    ["Mushroom trousers", "#b9aea1"],
+    ["Greige loafers", "#cfc6b8"],
+    ["Navy derbies", "#28324A"],
+  ]))));
 });
 
 test("garmentTitleMatchScore rejects shorts for a trousers slot", () => {

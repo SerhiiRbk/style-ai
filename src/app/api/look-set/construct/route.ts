@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { hasSupabase, hasAI, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { generateLookImage } from "@/lib/ai/pipeline";
+import { sanitizeLookDescription } from "@/lib/ai/look-brief";
 import { matchLookItems } from "@/lib/data/catalog";
 import {
   CREDIT_COSTS,
@@ -288,7 +289,14 @@ export async function POST(request: Request) {
   const faceRefUrl = refs.faceUrl;
   const fullRefUrl = refs.fullUrl;
 
-  const description = composeLookDescription(slots);
+  const occasionId =
+    typeof (setRow as { occasion_id?: string | null }).occasion_id === "string"
+      ? (setRow as { occasion_id: string }).occasion_id
+      : null;
+  const description = sanitizeLookDescription(
+    composeLookDescription(slots),
+    occasionId,
+  );
   const palette = composeLookPalette(slots);
   const title = lookRow.title ?? "Look";
   const look = {
@@ -303,10 +311,7 @@ export async function POST(request: Request) {
     referenceImageUrl: fullRefUrl ?? undefined,
     faceReferenceImageUrl: faceRefUrl ?? undefined,
     profileReferenceImageUrl: refs.profileUrl ?? undefined,
-    occasionId:
-      typeof (setRow as { occasion_id?: string | null }).occasion_id === "string"
-        ? (setRow as { occasion_id: string }).occasion_id
-        : null,
+    occasionId,
   });
   if (!img) {
     return NextResponse.json({ error: "Generation failed" }, { status: 502 });

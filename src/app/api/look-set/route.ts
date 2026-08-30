@@ -590,6 +590,7 @@ export async function POST(request: Request) {
             season,
             occasionId: ctx.id,
             lookIndex: i,
+            looksCount,
             styleId,
             existingTitles: titlesSoFar,
             colorRecipe: colorRecipes[i],

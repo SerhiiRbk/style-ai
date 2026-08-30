@@ -52,6 +52,7 @@ import {
   paletteColorHints,
   styleFitScore,
   styleIntentPhrase,
+  isShortsTitle,
   type LookGarment,
 } from "@/lib/style-extras";
 import {
@@ -776,13 +777,20 @@ export async function matchShopping(
         category === "Knitwear"
           ? " Long-sleeve knitwear: jumpers, sweaters, crewnecks, roll-necks or cardigans — not short-sleeve sweatshirts, t-shirts, tank tops or sleeveless knits."
           : "";
+      // Trousers under a blazer must be full-length — shorts in this category
+      // otherwise win the summer vector and get worn as chopped dress trousers.
+      const trousersBias =
+        category === "Trousers"
+          ? " Full-length tailored trousers, wool trousers or chinos — not shorts, bermudas or cropped shorts."
+          : "";
       const query =
         `${category} in ${palette}; ${profile.colorSeason} palette; ` +
         `${profile.goals.join(", ")}; ${profile.physical.bodyType} build; ` +
         styleIntentPhrase(profile.boldness) +
         footwearBias +
         shirtBias +
-        knitBias;
+        knitBias +
+        trousersBias;
       const { embedding } = await embed({ model: env.embedModel, value: query });
       const pool = await loadMatchPool(sb, {
         query_embedding: embedding,
@@ -852,6 +860,14 @@ export async function matchShopping(
           (r) => !SHORT_SLEEVE_KNIT_RE.test(r.title),
         );
         if (longSleeve.length) ranked = longSleeve;
+      }
+
+      // Prefer full-length trousers whenever the pool has any — shorts may stay
+      // as a fallback only if nothing else matched (capsule matrix still keeps
+      // them off jackets).
+      if (category === "Trousers") {
+        const fullLength = ranked.filter((r) => !isShortsTitle(r.title));
+        if (fullLength.length) ranked = fullLength;
       }
 
       // A report should never surface two pairs of sandals: cap open/casual

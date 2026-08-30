@@ -61,6 +61,18 @@ test("slotsFromLook reads a bolo as a tie cut", () => {
   assert.equal(tie?.tieType, "bolo");
 });
 
+test("composeLookDescription turns a crewneck plus tie into a V-neck over the shirt", () => {
+  const text = composeLookDescription([
+    { category: "Knitwear", garment: "crewneck", color: "slate" },
+    { category: "Shirts", garment: "shirt", color: "ivory" },
+    { category: "Accessories", garment: "tie", color: "seafoam", tieType: "knitted" },
+    { category: "Trousers", garment: "trousers", color: "navy" },
+  ]);
+  assert.match(text, /V-neck jumper worn over the shirt and tie/i);
+  assert.doesNotMatch(text, /crewneck/i);
+  assert.match(text, /knitted tie/i);
+});
+
 test("composeLookDescription names bolo and neckerchief", () => {
   const text = composeLookDescription([
     { category: "Shirts", garment: "shirt", color: "ivory" },

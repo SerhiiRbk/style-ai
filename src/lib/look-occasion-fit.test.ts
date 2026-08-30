@@ -119,6 +119,10 @@ test("work query hint steers away from linen relaxed", () => {
     /not travel bag/i,
   );
   assert.match(
+    lookOccasionQueryHint("work", "tote") ?? "",
+    /not tote/i,
+  );
+  assert.match(
     lookOccasionQueryHint("work", "shirt") ?? "",
     /not relaxed/i,
   );
