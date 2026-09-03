@@ -200,7 +200,7 @@ export function TryOnButton({
             title={
               setFull
                 ? `Outfit set is full (${MAX_TRYON_ITEMS} max)`
-                : "Combine up to 4 pieces in one try-on"
+                : `Combine up to ${MAX_TRYON_ITEMS} pieces in one try-on`
             }
             className={`inline-flex cursor-pointer items-center rounded-full border px-3.5 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               inSet

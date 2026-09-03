@@ -1,6 +1,11 @@
 import type { ShoppingItem } from "@/lib/report";
 import { HOUSEHOLD_TEXTILE_RE } from "@/lib/style-extras";
 import { hasJacketHost } from "@/lib/ai/look-brief";
+import { canonicalTuck } from "@/lib/look-constructor";
+import { lookOccasionIsTailored } from "@/lib/look-occasion-fit";
+import { MAX_TRYON_GARMENTS } from "@/lib/tryon-limits";
+
+export { MAX_TRYON_GARMENTS };
 
 export type LookTryOnKind = "look" | "capsule";
 
@@ -46,9 +51,9 @@ export function tryonStoragePath(
 /**
  * Max catalogue product images fed to the image model as garment references.
  * Sized for a full shop-the-look row (shirt + bottoms + shoes + 2–3 extras)
- * so a 5-item list is not silently truncated to 4.
+ * so a 5–6 item list is not silently truncated.
  */
-export const MAX_CATALOG_REFERENCE_IMAGES = 6;
+export const MAX_CATALOG_REFERENCE_IMAGES = MAX_TRYON_GARMENTS;
 /**
  * Editorial try-on also attaches the person's portrait. More than a few
  * on-model product shots and the image model blends those faces over the
@@ -73,18 +78,98 @@ function promptColourLabel(item: ShoppingItem): string {
   return `${c} `;
 }
 
+type RankedGarment = { category: string; title?: string };
+
 /** Lower is kept first when the image-ref budget is exceeded. */
-function catalogRefPriority(item: ShoppingItem): number {
+function catalogRefPriority(item: RankedGarment): number {
   if (item.category === "Shirts") return 0;
   if (item.category === "Knitwear") return 1;
   if (item.category === "Outerwear") return 2;
   if (item.category === "Trousers") return 3;
   if (item.category === "Footwear") return 4;
   if (item.category === "Accessories") {
-    if (isTieTitle(item.title) || isEyewearTitle(item.title)) return 5;
+    const title = item.title ?? "";
+    if (isTieTitle(title) || isEyewearTitle(title)) return 5;
     return 6;
   }
   return 5;
+}
+
+/**
+ * Keep list order. If over `max`, drop lowest-priority extras first
+ * (bags/belts before shirt, trousers, or shoes).
+ */
+export function pickTryOnGarments<T extends RankedGarment>(
+  items: T[],
+  max: number = MAX_TRYON_GARMENTS,
+): T[] {
+  if (items.length <= max) return items;
+  const keep = new Set(
+    items
+      .map((item, index) => ({ item, index, rank: catalogRefPriority(item) }))
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .slice(0, max)
+      .map((r) => r.item),
+  );
+  return items.filter((i) => keep.has(i));
+}
+
+/** Lock the shoe silhouette so the model does not invent tan Chelsea boots. */
+export function footwearTryOnHint(title: string): string {
+  const t = title.toLowerCase();
+  if (/\bchelseas?\b/.test(t)) {
+    return "Chelsea boots with elastic side panels and no laces";
+  }
+  if (/\b(wingtip|brogue)\b/.test(t)) {
+    return "lace-up brogue shoes or boots with a perforated wingtip — not Chelsea boots";
+  }
+  if (/\b(derby|oxford|lace[\s-]?up|laced)\b/.test(t)) {
+    return "lace-up shoes or boots with visible laces — not slip-on Chelsea boots";
+  }
+  if (/\bloafers?\b/.test(t)) {
+    return "slip-on loafers with no laces";
+  }
+  if (/\b(sneakers?|trainers?)\b/.test(t)) {
+    return "low sneakers / trainers";
+  }
+  if (/\bboots?\b/.test(t)) {
+    return (
+      "the exact boot in the product photo (toe, shaft, laces or gore) — " +
+      "do not substitute Chelsea boots unless that photo is a Chelsea"
+    );
+  }
+  return "the exact shoe in the product photo — do not invent a different style";
+}
+
+export function catalogTryOnGarmentLine(
+  item: { title: string; category: string; color?: string | null },
+  index: number,
+): string {
+  const colour =
+    item.color && item.color !== "#CCCCCC" ? `, colour ${item.color}` : "";
+  const shoe =
+    item.category === "Footwear" ? `; ${footwearTryOnHint(item.title)}` : "";
+  return `${index + 1}. ${item.title} (${item.category.toLowerCase()}${colour}${shoe})`;
+}
+
+/** Shared garment block for catalogue / complete-look try-on prompts. */
+export function catalogTryOnGarmentsText(
+  garments: { title: string; category: string; color?: string | null }[],
+): string {
+  const lines = garments.map((g, i) => catalogTryOnGarmentLine(g, i));
+  return (
+    `Dress the person in these catalogue pieces:\n${lines.join("\n")}\n` +
+    `Wear every listed garment. Reproduce each catalogue garment faithfully — ` +
+    `exact colour, fabric, pattern, silhouette and fit. ` +
+    `If footwear is listed, wear THAT shoe from its product photo: same toe, ` +
+    `closure (laces / slip-on / elastic gore), shaft height and finish. ` +
+    `Do not substitute tan or camel suede Chelsea boots unless that exact shoe is listed. `
+  );
+}
+
+/** Prefer HTTPS so serverless image fetch is not blocked on cleartext. */
+export function upgradeCatalogImageUrl(url: string): string {
+  return url.startsWith("http://") ? `https://${url.slice("http://".length)}` : url;
 }
 
 type ShoppingItemWithImage = ShoppingItem & { image: string };
@@ -97,20 +182,11 @@ function itemsWithCatalogImages(items: ShoppingItem[]): ShoppingItemWithImage[] 
   );
 }
 
-/** Keep list order, drop lowest-priority extras once the image budget is full. */
 function pickCatalogImageItems(
   items: ShoppingItemWithImage[],
   max: number,
 ): ShoppingItemWithImage[] {
-  if (items.length <= max) return items;
-  const keep = new Set(
-    items
-      .map((item, index) => ({ item, index, rank: catalogRefPriority(item) }))
-      .sort((a, b) => a.rank - b.rank || a.index - b.index)
-      .slice(0, max)
-      .map((r) => r.item),
-  );
-  return items.filter((i) => keep.has(i));
+  return pickTryOnGarments(items, max);
 }
 
 /**
@@ -122,6 +198,7 @@ function pickCatalogImageItems(
 export function catalogPromptFromItems(
   items: ShoppingItem[],
   lookDescription?: string,
+  occasionId?: string | null,
 ): string | undefined {
   items = items.filter((i) => !HOUSEHOLD_TEXTILE_RE.test(i.title));
   const jacketHost =
@@ -137,6 +214,9 @@ export function catalogPromptFromItems(
     return true;
   });
   if (!items.length) return undefined;
+  const tuckShirt =
+    lookOccasionIsTailored(occasionId) &&
+    canonicalTuck(lookDescription ?? "") !== "out";
   const lines = items.map((i) => {
     const colour = promptColourLabel(i);
     const note = i.similarPick
@@ -150,6 +230,9 @@ export function catalogPromptFromItems(
       /\b(pocket[\s-]?squares?|pochettes?)\b/i.test(i.title)
     ) {
       return `- folded in the jacket breast pocket (never a trouser pocket): ${colour}${i.title}${note}`;
+    }
+    if (i.category === "Shirts" && tuckShirt) {
+      return `- wearing a ${colour}${i.category.toLowerCase()} tucked into the trousers: ${i.title}${note}`;
     }
     return `- wearing a ${colour}${i.category.toLowerCase()}: ${i.title}${note}`;
   });
@@ -256,6 +339,45 @@ export function resolveLookCatalogItems(
 ): ShoppingItem[] {
   if (typeof lookIndex !== "number" || !lookItems) return [];
   return lookItems[lookIndex] ?? [];
+}
+
+/**
+ * Keep the shopper's Shop-the-look ticks. Missing IDs are returned so the
+ * caller can hydrate them from the catalogue — never substitute a rematched
+ * SKU in the same slot (that rendered beige linen over a selected blue shirt).
+ */
+export function selectLookCatalogItems(
+  all: ShoppingItem[],
+  productIds: string[] | null,
+): { selected: ShoppingItem[]; missingIds: string[] } {
+  if (!productIds?.length) return { selected: all, missingIds: [] };
+  const selected: ShoppingItem[] = [];
+  const missingIds: string[] = [];
+  const seen = new Set<string>();
+  for (const id of productIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const hit = all.find((i) => (i.productId ?? i.title) === id);
+    if (hit) selected.push(hit);
+    else missingIds.push(id);
+  }
+  return { selected, missingIds };
+}
+
+/** Append hydrated catalogue rows, skipping IDs already in `selected`. */
+export function mergeSelectedLookItems(
+  selected: ShoppingItem[],
+  hydrated: ShoppingItem[],
+): ShoppingItem[] {
+  const seen = new Set(selected.map((i) => i.productId ?? i.title));
+  const out = [...selected];
+  for (const item of hydrated) {
+    const key = item.productId ?? item.title;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 /** Match capsule combo piece labels back to shopping-list catalogue rows. */

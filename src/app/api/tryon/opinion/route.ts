@@ -7,10 +7,11 @@ import {
   type OpinionGarment,
 } from "@/lib/ai/tryon-opinion";
 import type { StyleProfile } from "@/lib/style-profile";
+import { MAX_TRYON_GARMENTS } from "@/lib/tryon-limits";
 
 export const maxDuration = 60;
 
-const MAX_TRYON_PRODUCTS = 4;
+const MAX_TRYON_PRODUCTS = MAX_TRYON_GARMENTS;
 
 /**
  * Carlo's expert read on a catalogue (or report) try-on. Called by the try-on

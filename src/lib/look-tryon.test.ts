@@ -4,8 +4,15 @@ import type { ShoppingItem } from "@/lib/report";
 import {
   catalogImageRefsFromItems,
   catalogPromptFromItems,
+  catalogTryOnGarmentsText,
+  footwearTryOnHint,
+  mergeSelectedLookItems,
+  pickTryOnGarments,
+  selectLookCatalogItems,
+  upgradeCatalogImageUrl,
   MAX_CATALOG_REFERENCE_IMAGES,
   MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT,
+  MAX_TRYON_GARMENTS,
 } from "./look-tryon";
 
 function item(
@@ -22,6 +29,59 @@ function item(
     ...partial,
   };
 }
+
+test("try-on generation accepts six garments and keeps footwear", () => {
+  assert.equal(MAX_TRYON_GARMENTS, 6);
+  const picked = pickTryOnGarments(
+    [
+      item({ category: "Outerwear", title: "Moto jacket" }),
+      item({ category: "Knitwear", title: "Cashmere jumper" }),
+      item({ category: "Trousers", title: "Chinos" }),
+      item({ category: "Accessories", title: "Leather belt" }),
+      item({ category: "Footwear", title: "Montejunto Boots" }),
+      item({ category: "Accessories", title: "Tote" }),
+    ],
+    MAX_TRYON_GARMENTS,
+  );
+  assert.equal(picked.length, 6);
+  assert.ok(picked.some((g) => g.category === "Footwear"));
+});
+
+test("when over the try-on budget, drop a bag before the boots", () => {
+  const picked = pickTryOnGarments(
+    [
+      item({ category: "Shirts", title: "Oxford" }),
+      item({ category: "Knitwear", title: "Jumper" }),
+      item({ category: "Outerwear", title: "Blazer" }),
+      item({ category: "Trousers", title: "Trousers" }),
+      item({ category: "Footwear", title: "Montejunto Boots" }),
+      item({ category: "Accessories", title: "Belt" }),
+      item({ category: "Accessories", title: "Tote" }),
+    ],
+    MAX_TRYON_GARMENTS,
+  );
+  assert.equal(picked.length, 6);
+  assert.ok(picked.some((g) => g.title === "Montejunto Boots"));
+  assert.ok(!picked.some((g) => g.title === "Tote"));
+});
+
+test("footwear hint and try-on text lock unnamed boots to the product photo", () => {
+  assert.match(footwearTryOnHint("Montejunto Boots"), /product photo/i);
+  assert.match(footwearTryOnHint("Montejunto Boots"), /Chelsea/i);
+  const text = catalogTryOnGarmentsText([
+    { title: "Moto jacket", category: "Outerwear", color: "Brown" },
+    { title: "Montejunto Boots", category: "Footwear", color: "Brown" },
+  ]);
+  assert.match(text, /Montejunto Boots/);
+  assert.match(text, /Do not substitute tan or camel suede Chelsea boots/);
+});
+
+test("http catalogue image URLs upgrade to https", () => {
+  assert.equal(
+    upgradeCatalogImageUrl("http://oldmulla.com/boot.jpg"),
+    "https://oldmulla.com/boot.jpg",
+  );
+});
 
 test("catalog image refs keep all five shop-the-look pieces", () => {
   const refs = catalogImageRefsFromItems([
@@ -116,6 +176,30 @@ test("catalog prompt drops tea towels instead of dressing them as knitwear", () 
   assert.doesNotMatch(prompt ?? "", /Tea Towels/i);
 });
 
+test("work catalog prompt tucks the shirt into the trousers", () => {
+  const work = catalogPromptFromItems(
+    [
+      item({ category: "Shirts", title: "Reserved Slim Fit Linen Shirt" }),
+      item({ category: "Trousers", title: "Reserved Chino Slim Fit Trousers" }),
+    ],
+    "Sage linen shirt, warm grey cotton chinos",
+    "work",
+  );
+  assert.match(work ?? "", /tucked into the trousers/);
+  const weekend = catalogPromptFromItems(
+    [item({ category: "Shirts", title: "Camp-collar shirt" })],
+    "Soft teal linen camp-collar shirt",
+    "weekend",
+  );
+  assert.doesNotMatch(weekend ?? "", /tucked into the trousers/);
+  const explicitOut = catalogPromptFromItems(
+    [item({ category: "Shirts", title: "Linen Shirt" })],
+    "Sage linen shirt worn untucked, grey chinos",
+    "work",
+  );
+  assert.doesNotMatch(explicitOut ?? "", /tucked into the trousers/);
+});
+
 test("catalog prompt uses the named colour, not a swatch hex", () => {
   const prompt = catalogPromptFromItems([
     item({
@@ -166,4 +250,41 @@ test("catalog prompt does not invent trousers when the look named shorts", () =>
   );
   assert.match(prompt ?? "", /charcoal tailored linen shorts/i);
   assert.doesNotMatch(prompt ?? "", /never shorts/i);
+});
+
+test("selectLookCatalogItems keeps ticked IDs and does not fill rematched SKUs", () => {
+  const blue = item({
+    category: "Shirts",
+    title: "Reserved Regular Fit Linen Shirt",
+    productId: "blue-shirt",
+  });
+  const beige = item({
+    category: "Shirts",
+    title: "Reserved Slim Fit Linen Shirt",
+    productId: "beige-shirt",
+  });
+  const wool = item({
+    category: "Trousers",
+    title: "Aaron Levine Wool Suit Trousers",
+    productId: "wool",
+  });
+  const picked = selectLookCatalogItems([beige, wool], [
+    "blue-shirt",
+    "buff-chinos",
+  ]);
+  assert.deepEqual(picked.selected, []);
+  assert.deepEqual(picked.missingIds, ["blue-shirt", "buff-chinos"]);
+  const hydrated = [
+    blue,
+    item({
+      category: "Trousers",
+      title: "Light Buff Stretch Chinos",
+      productId: "buff-chinos",
+    }),
+  ];
+  const merged = mergeSelectedLookItems(picked.selected, hydrated);
+  assert.equal(merged[0]?.productId, "blue-shirt");
+  assert.equal(merged[1]?.productId, "buff-chinos");
+  assert.ok(!merged.some((i) => i.productId === "beige-shirt"));
+  assert.ok(!merged.some((i) => i.productId === "wool"));
 });

@@ -4,6 +4,7 @@ import { env, hasSupabaseAdmin, hasAI } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { generateLookImage } from "@/lib/ai/pipeline";
 import { matchLookItems } from "@/lib/data/catalog";
+import { lookItemsFromCell } from "@/lib/style-extras";
 import type { ReportContent, StyleProfile } from "@/lib/style-profile";
 
 export const runtime = "nodejs";
@@ -74,11 +75,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Report has no profile" }, { status: 409 });
   }
 
-  const { data: lookRows } = await admin
+  const firstLooks = await admin
     .from("looks")
-    .select("id, context, title, description, palette")
+    .select("id, context, title, description, palette, items")
     .eq("report_id", reportId)
     .order("created_at", { ascending: true });
+  const lookRows =
+    firstLooks.error && /items/.test(firstLooks.error.message)
+      ? (
+          await admin
+            .from("looks")
+            .select("id, context, title, description, palette")
+            .eq("report_id", reportId)
+            .order("created_at", { ascending: true })
+        ).data
+      : firstLooks.data;
   const looks = lookRows ?? [];
   if (!looks.length) {
     return NextResponse.json({ error: "Report has no looks" }, { status: 409 });
@@ -91,6 +102,9 @@ export async function POST(request: Request) {
       title: l.title ?? "",
       description: l.description ?? "",
       palette: (l.palette as string[] | null) ?? [],
+      // The pre-0048 fallback select has no `items` key — read it loosely.
+      items:
+        lookItemsFromCell((l as { items?: unknown }).items) ?? undefined,
     })),
   } as unknown as ReportContent;
 

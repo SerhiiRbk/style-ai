@@ -189,12 +189,19 @@ export type ShoppingItem = {
    * (soft fallback when in-budget matches were scarce).
    */
   outsideBudget?: boolean;
-  /** Bumped when look-matching logic changes — triggers background refresh. */
+  /** Bumped when look-matching heuristics change — triggers background refresh. */
   matchVersion?: number;
+  /** Bumped when the Sonnet rerank prompt changes. Missing means version 1. */
+  rerankVersion?: number;
   /** Set when the "why" was written by the reasons model (src/lib/ai/shopping-reasons). */
   reasonVersion?: number;
   /** Investment-framed reason, only on the hero piece — used by the "Start here" block. */
   heroWhy?: string;
+  /**
+   * Same-slot catalogue neighbours (top-8 minus the pick). Click-to-swap in
+   * Shop the Look. Never nested — alternatives themselves have no alternatives.
+   */
+  alternatives?: ShoppingItem[];
 };
 export type Look = {
   context: string;

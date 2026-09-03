@@ -5,6 +5,7 @@ import { signedAssetProxyUrl } from "@/lib/asset-token";
 import { canShareReport } from "@/lib/report";
 import { lookContextById } from "@/lib/look-contexts";
 import { parseArchivedLookImages } from "@/lib/look-archive";
+import { lookTryonLabel, parseLookTryonPath } from "@/lib/gallery-look-tryon";
 import type {
   GalleryItem,
   GalleryItemKind,
@@ -255,7 +256,9 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
     // Report look/capsule try-ons (`/tryon/look-{reportId}-...`) are also stored
     // with a null report_id; they belong to a report, not a standalone group,
     // and some are orphaned (object deleted). Keep only genuine standalone ones.
-    if (path.includes("/tryon/look-")) return;
+    // Look/capsule try-ons live on the report or Create-a-Look group (path
+    // `/tryon/look-{id}-…`). Do not also list them as catalogue tiles.
+    if (parseLookTryonPath(path)) return;
     const isShopALook = (t.origin as string | null) === "shop_a_look";
     const bucket = isShopALook ? shopALookItems : catalogItems;
     const garments = parseGarments(t.garments);
@@ -307,6 +310,51 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
     });
   }
 
+  const { data: lookTryonRows } = await db
+    .from("tryons")
+    .select("id, image_path, created_at")
+    .eq("user_id", user.id)
+    .like("image_path", "%/tryon/look-%")
+    .order("created_at", { ascending: true });
+  const lookTryons = (lookTryonRows ?? []) as {
+    id: string;
+    image_path: string | null;
+    created_at: string;
+  }[];
+
+  const attachLookTryons = (
+    items: GalleryItem[],
+    storageId: string,
+    titles: { idx: number; title: string | null }[],
+  ) => {
+    const seen = new Set(items.map((i) => i.src));
+    lookTryons.forEach((t, i) => {
+      const path = t.image_path;
+      if (!path) return;
+      const ref = parseLookTryonPath(path);
+      if (!ref || ref.storageId !== storageId.toLowerCase()) return;
+      const src = signedAssetProxyUrl(path);
+      if (seen.has(src)) return;
+      seen.add(src);
+      items.push({
+        id: `look-tryon:${t.id}:${i}`,
+        kind: "tryon",
+        src,
+        label: lookTryonLabel(ref.lookKey, titles),
+        tryonId: t.id,
+      });
+    });
+  };
+
+  for (const group of groups) {
+    if (group.tier === null) continue;
+    const titles = (looksByReport.get(group.id) ?? []).map((l, i) => ({
+      idx: i,
+      title: l.title,
+    }));
+    attachLookTryons(group.items, group.id, titles);
+  }
+
   // Create-a-Look sets (looks with a set_id, no parent report) — one group per
   // set so its generated looks show up in the gallery like report looks do.
   {
@@ -323,19 +371,43 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
             .eq("user_id", user.id)
             .order("created_at", { ascending: false })
         : setFirst;
-    const setList = (
-      (setQuery.data ?? []) as {
-        id: string;
-        occasion_id: string | null;
-        created_at: string;
-        archived_images?: unknown;
-        report_id?: string | null;
-      }[]
-    ).filter((s) => !s.report_id);
+    const allSets = (setQuery.data ?? []) as {
+      id: string;
+      occasion_id: string | null;
+      created_at: string;
+      archived_images?: unknown;
+      report_id?: string | null;
+    }[];
+    const linked = allSets.filter((s) => s.report_id);
+    if (linked.length) {
+      const { data: linkedLooks } = await db
+        .from("looks")
+        .select("set_id, idx, title")
+        .in(
+          "set_id",
+          linked.map((s) => s.id),
+        );
+      const titlesBySet = new Map<string, { idx: number; title: string | null }[]>();
+      for (const l of linkedLooks ?? []) {
+        const sid = l.set_id as string;
+        const arr = titlesBySet.get(sid) ?? [];
+        arr.push({
+          idx: typeof l.idx === "number" ? l.idx : arr.length,
+          title: (l.title as string | null) ?? null,
+        });
+        titlesBySet.set(sid, arr);
+      }
+      for (const s of linked) {
+        const group = groups.find((g) => g.id === s.report_id);
+        if (!group) continue;
+        attachLookTryons(group.items, s.id, titlesBySet.get(s.id) ?? []);
+      }
+    }
+    const setList = allSets.filter((s) => !s.report_id);
     if (setList.length) {
       const looksFirst = await db
         .from("looks")
-        .select("set_id, image_path, image_path_tq, title, created_at")
+        .select("set_id, idx, image_path, image_path_tq, title, created_at")
         .in(
           "set_id",
           setList.map((s) => s.id),
@@ -345,7 +417,7 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
         looksFirst.error && /image_path_tq/.test(looksFirst.error.message)
           ? await db
               .from("looks")
-              .select("set_id, image_path, title, created_at")
+              .select("set_id, idx, image_path, title, created_at")
               .in(
                 "set_id",
                 setList.map((s) => s.id),
@@ -355,6 +427,7 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
       const bySet = new Map<
         string,
         {
+          idx: number;
           image_path: string | null;
           image_path_tq: string | null;
           title: string | null;
@@ -364,6 +437,7 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
         const sid = l.set_id as string;
         const arr = bySet.get(sid) ?? [];
         arr.push({
+          idx: typeof l.idx === "number" ? l.idx : arr.length,
           image_path: (l.image_path as string | null) ?? null,
           image_path_tq:
             ((l as { image_path_tq?: string | null }).image_path_tq as
@@ -401,6 +475,14 @@ export async function getUserGallery(): Promise<GalleryReportGroup[] | null> {
             label: img.title || "Look",
           });
         });
+        attachLookTryons(
+          items,
+          s.id,
+          (bySet.get(s.id) ?? []).map((l) => ({
+            idx: l.idx,
+            title: l.title,
+          })),
+        );
         if (items.length) {
           groups.push({
             id: `set:${s.id}`,

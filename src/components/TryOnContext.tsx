@@ -8,8 +8,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { MAX_TRYON_GARMENTS } from "@/lib/tryon-limits";
 
-export const MAX_TRYON_ITEMS = 4;
+export const MAX_TRYON_ITEMS = MAX_TRYON_GARMENTS;
 
 export type TryOnSelectionItem = {
   productId: string;
@@ -20,7 +21,7 @@ export type TryOnSelectionItem = {
 type TryOnSelectionCtx = {
   items: TryOnSelectionItem[];
   isSelected: (productId: string) => boolean;
-  /** Selection is at the 4-item cap. */
+  /** Selection is at the 6-item cap. */
   full: boolean;
   toggle: (item: TryOnSelectionItem) => void;
   remove: (productId: string) => void;
@@ -29,7 +30,7 @@ type TryOnSelectionCtx = {
 
 const Ctx = createContext<TryOnSelectionCtx | null>(null);
 
-/** Multi-select state for the combined "try up to 4 pieces together" flow. */
+/** Multi-select state for the combined "try up to 6 pieces together" flow. */
 export function TryOnSelectionProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<TryOnSelectionItem[]>([]);
 

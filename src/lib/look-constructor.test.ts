@@ -7,6 +7,7 @@ import {
   canonicalTieType,
   composeLookDescription,
   slotsFromLook,
+  tuckPromptDirective,
 } from "./look-constructor";
 
 test("constructor Trousers types include shorts", () => {
@@ -60,6 +61,18 @@ test("slotsFromLook reads a bolo as a tie cut", () => {
   assert.equal(tie?.tieType, "bolo");
 });
 
+test("composeLookDescription turns a crewneck plus tie into a V-neck over the shirt", () => {
+  const text = composeLookDescription([
+    { category: "Knitwear", garment: "crewneck", color: "slate" },
+    { category: "Shirts", garment: "shirt", color: "ivory" },
+    { category: "Accessories", garment: "tie", color: "seafoam", tieType: "knitted" },
+    { category: "Trousers", garment: "trousers", color: "navy" },
+  ]);
+  assert.match(text, /V-neck jumper worn over the shirt and tie/i);
+  assert.doesNotMatch(text, /crewneck/i);
+  assert.match(text, /knitted tie/i);
+});
+
 test("composeLookDescription names bolo and neckerchief", () => {
   const text = composeLookDescription([
     { category: "Shirts", garment: "shirt", color: "ivory" },
@@ -90,4 +103,20 @@ test("slotsFromLook keeps charcoal shorts as the bottoms type", () => {
   assert.ok(bottoms, "expected a Trousers slot");
   assert.equal(bottoms?.garment, "shorts");
   assert.match(bottoms?.color ?? "", /charcoal/);
+});
+
+test("work looks default the shirt tucked in", () => {
+  const slots = slotsFromLook(
+    "Sage Summer Authority",
+    "Sage linen shirt, warm grey cotton chinos, oatmeal suede loafers",
+    "work",
+  );
+  const shirt = slots.find((s) => s.category === "Shirts");
+  assert.equal(shirt?.tuck, "in");
+  assert.match(tuckPromptDirective("Sage linen shirt, grey chinos", "work"), /tucked in/i);
+  assert.match(
+    tuckPromptDirective("linen shirt worn untucked, grey chinos", "work"),
+    /untucked/i,
+  );
+  assert.equal(tuckPromptDirective("Sage linen shirt, grey chinos", "weekend"), "");
 });

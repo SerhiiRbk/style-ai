@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  assessHexTrust,
   SUBSEASON_PALETTES,
   bestColorsForSubseason,
   avoidColorsForSubseason,
@@ -339,4 +340,159 @@ test("parseSwatchHex accepts #rgb and bare rrggbb", () => {
   assert.equal(parseSwatchHex("#ABC"), "#aabbcc");
   assert.equal(parseSwatchHex("4A6E9A"), "#4a6e9a");
   assert.equal(parseSwatchHex("n/a"), null);
+});
+
+test("assessHexTrust: tinted light keeps palette mix, never flips season", () => {
+  for (const lighting of ["warm-tint", "cool-tint"] as const) {
+    const t = assessHexTrust({
+      lighting,
+      contrast: "medium",
+      undertone: "cool",
+      skinHex: "#E8C9A8",
+      hairHex: "#3A2A1E",
+    });
+    assert.equal(t.useForSeason, false, lighting);
+    assert.equal(t.trustHexes, false, lighting);
+    assert.equal(t.useForPalette, true, lighting);
+    assert.equal(t.mixScale, 0.5, lighting);
+    assert.equal(t.dropLightness, false, lighting);
+    assert.ok(t.lightingWarning, `${lighting} must warn the user`);
+    assert.match(t.lightingWarning!, /daylight/);
+  }
+});
+
+test("assessHexTrust: mixed light drops hexes only when the cheek fights undertone", () => {
+  const fight = assessHexTrust({
+    lighting: "mixed",
+    contrast: "medium",
+    undertone: "cool",
+    skinHex: "#C4A06A",
+    hairHex: "#3A2A1E",
+  });
+  assert.equal(fight.useForPalette, false);
+  assert.equal(fight.mixScale, 0);
+  assert.ok(fight.lightingWarning);
+
+  const agree = assessHexTrust({
+    lighting: "mixed",
+    contrast: "medium",
+    undertone: "cool",
+    skinHex: "#E8C8BE",
+    hairHex: "#3A2A1E",
+  });
+  assert.equal(agree.useForPalette, true);
+  assert.equal(agree.mixScale, 0.5);
+  assert.equal(agree.useForSeason, false);
+});
+
+test("assessHexTrust: neutral light with consistent hexes is trusted, no warning", () => {
+  // Fair skin (#e8c9a8, L≈0.78) vs dark-brown hair (#3a2a1e, L≈0.17) ≈ 0.6 spread.
+  const t = assessHexTrust({
+    lighting: "neutral",
+    contrast: "high",
+    skinHex: "#E8C9A8",
+    hairHex: "#3A2A1E",
+  });
+  assert.equal(t.trustHexes, true);
+  assert.equal(t.useForSeason, true);
+  assert.equal(t.useForPalette, true);
+  assert.equal(t.mixScale, 1);
+  assert.equal(t.dropLightness, false);
+  assert.equal(t.lightingWarning, undefined);
+});
+
+test("assessHexTrust: contrast↔hex mismatch drops lightness only, silently", () => {
+  // Model says "high" but skin and hair are nearly the same lightness.
+  const high = assessHexTrust({
+    lighting: "neutral",
+    contrast: "high",
+    skinHex: "#C8B29A",
+    hairHex: "#B7A38C",
+  });
+  assert.equal(high.trustHexes, false);
+  assert.equal(high.useForPalette, true);
+  assert.equal(high.dropLightness, true);
+  assert.equal(high.lightingWarning, undefined);
+  // Model says "low" but the spread is huge (fair skin, near-black hair).
+  const low = assessHexTrust({
+    lighting: "neutral",
+    contrast: "low",
+    skinHex: "#F0DCC4",
+    hairHex: "#141210",
+  });
+  assert.equal(low.trustHexes, false);
+  assert.equal(low.useForPalette, true);
+  assert.equal(low.dropLightness, true);
+  assert.equal(low.lightingWarning, undefined);
+});
+
+test("assessHexTrust: missing lighting or hexes stays trusted (backward compatible)", () => {
+  assert.equal(assessHexTrust({}).trustHexes, true);
+  assert.equal(
+    assessHexTrust({ contrast: "high", skinHex: "#E8C9A8" }).trustHexes,
+    true,
+  );
+  assert.equal(
+    assessHexTrust({ lighting: "neutral", contrast: "medium" }).trustHexes,
+    true,
+  );
+});
+
+test("warm-tint still personalises hexes, weaker than full mix", () => {
+  const curated = SUBSEASON_PALETTES["soft-summer"];
+  const face = {
+    undertone: "cool" as const,
+    contrast: "medium" as const,
+    skinHex: "#E8C8BE",
+    hairHex: "#3A2A22",
+    eyeHex: "#4A6E9A",
+  };
+  const full = buildPaletteFromColouring(curated, "soft-summer", face);
+  const gentle = buildPaletteFromColouring(curated, "soft-summer", {
+    ...face,
+    hexMixScale: 0.5,
+  });
+  const other = buildPaletteFromColouring(curated, "soft-summer", {
+    undertone: "neutral",
+    contrast: "medium",
+    skinHex: "#C4A07A",
+    hairHex: "#1A1410",
+    eyeHex: "#5A3A22",
+    hexMixScale: 0.5,
+  });
+  assert.notDeepEqual(
+    gentle.map((s) => s.hex),
+    curated.map((s) => s.hex),
+    "tinted light must still shift chips off the shelf",
+  );
+  assert.notDeepEqual(
+    gentle.map((s) => s.hex),
+    full.map((s) => s.hex),
+    "half mix must differ from a full-strength mix",
+  );
+  assert.notDeepEqual(
+    gentle.map((s) => s.hex),
+    other.map((s) => s.hex),
+    "two tinted faces in the same subseason must not share hexes",
+  );
+});
+
+test("dropLightness keeps curated L while hue may still move", () => {
+  const curated = SUBSEASON_PALETTES["soft-summer"];
+  const palette = buildPaletteFromColouring(curated, "soft-summer", {
+    undertone: "cool",
+    contrast: "high",
+    skinHex: "#E8C8BE",
+    hairHex: "#3A2A22",
+    dropLightness: true,
+  });
+  const light = curated.findIndex((s) => hexToHsl(s.hex).l > 0.75);
+  if (light >= 0) {
+    const from = hexToHsl(curated[light]!.hex);
+    const to = hexToHsl(palette[light]!.hex);
+    assert.ok(
+      Math.abs(from.l - to.l) < 0.08,
+      `light chip L drifted ${from.l.toFixed(2)} → ${to.l.toFixed(2)}`,
+    );
+  }
 });

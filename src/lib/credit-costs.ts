@@ -13,6 +13,7 @@ export type CreditReason =
   | "report"
   | "report_refund"
   | "tryon"
+  | "complete_look"
   | "regen"
   | "premium_addon"
   | "look_extra"
@@ -35,6 +36,8 @@ export const REPORT_COST: Record<Tier, number> = {
 export const CREDIT_COSTS = {
   /** Virtual try-on of a single garment or a full look. */
   tryon: 1,
+  /** Catalogue Complete the look: fill empty slots and render the outfit. */
+  complete_look: 1,
   /** Re-rendering a try-on ("Render again"). */
   regen: 1,
   /**

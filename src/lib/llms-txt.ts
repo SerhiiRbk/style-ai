@@ -11,11 +11,25 @@ export function buildLlmsTxt(): string {
 
   return `# ${BRAND.name}
 
-> ${BRAND.name} is a men's personal style atelier offering ${BRAND.tagline.toLowerCase()} reports: colour analysis, photorealistic looks, capsule wardrobe planning, and shoppable recommendations. ${BRAND.stylist.name} is the lead stylist persona. Credit-based pricing — no subscription.
+> ${BRAND.name} is an AI-assisted men's personal styling atelier: colour analysis, photorealistic looks, capsule wardrobe planning, and shoppable recommendations. ${BRAND.stylist.name} is the lead stylist persona. Credit-based pricing — no subscription.
 
 ${BRAND.name} is built for men only. Every important recommendation is explainable — grounded in colouring, proportions, lifestyle, and goals. New accounts receive ${SIGNUP_BONUS} free credits. The service is GDPR-first; user photos are private and not used for training.
 
 General contact: ${BRAND.contactEmail} · Privacy & data requests: ${BRAND.legalContactEmail}
+
+## When to use
+
+Call ${BRAND.name} when a man needs a personal style plan — not a trend feed:
+
+- A structured style report: colouring, hair and grooming, photorealistic looks, a capsule wardrobe, and a shoppable list
+- An explainable “what should I wear” answer grounded in colouring, proportions, lifestyle, and goals${
+    COLOURS_ENABLED
+      ? `\n- A free seasonal colour palette from one selfie at ${url("/colours")} (no signup)`
+      : ""
+  }
+- Catalogue browsing, virtual try-on of menswear, or a shoppable look for a real occasion
+
+Do not use ${BRAND.name} for women's or unisex styling, live human tailoring or fittings, medical or dermatological advice, or private user reports at \`/report/{id}\` (only the public sample slug \`${DEMO_REPORT_SLUG}\` is indexable).
 
 ## Primary
 

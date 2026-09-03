@@ -13,6 +13,8 @@ export const BRAND = {
   eyebrow: "Men's style atelier",
   /** Honest, understated AI disclosure. */
   tagline: "AI-assisted personal styling",
+  /** Search / OG title — pairs the house name with the AI styling niche. */
+  seoTitle: "Valetti — AI men's style atelier",
   /** Privacy, terms, and data-subject requests. */
   legalContactEmail: "contact@system.valetti.fit",
   /** General contact (footer, support). */

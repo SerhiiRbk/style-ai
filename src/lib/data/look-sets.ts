@@ -11,10 +11,24 @@ import {
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 import type { ShoppingItem } from "@/lib/report";
 import { lookItemsNeedRefresh, matchLookItems } from "@/lib/data/catalog";
+import { lookItemsFromCell } from "@/lib/style-extras";
 import {
+  estimatesFromArchived,
+  originalsFromArchived,
   parseArchivedLookImages,
   type ArchivedLookImage,
 } from "@/lib/look-archive";
+import {
+  mergeOriginalLooks,
+  originalLooksToJson,
+  parseOriginalLooks,
+  type OriginalLookSnapshot,
+} from "@/lib/look-original";
+import {
+  lookEstimatesToJson,
+  parseLookEstimates,
+  type StoredLookEstimate,
+} from "@/lib/look-estimate";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
@@ -211,7 +225,15 @@ export async function saveSetLook(
     setId: string;
     userId: string;
     idx: number;
-    look: { context: string; title: string; description: string; palette: string[] };
+    look: {
+      context: string;
+      title: string;
+      description: string;
+      palette: string[];
+      /** Structured garment slots (lookContentSchema.items) — persisted so the
+       * background re-match keeps using them instead of prose decomposition. */
+      items?: { garment: string; color?: string | null }[];
+    };
     imagePath: string;
   },
 ): Promise<void> {
@@ -220,7 +242,18 @@ export async function saveSetLook(
   // aligned with `look_sets.look_items` (also keyed by idx) and with the
   // `{idx}.ext` storage path — set looks are inserted concurrently in chunks, so
   // created_at order is non-deterministic and must not be relied on for pairing.
-  const { error } = await admin.from("looks").insert({
+  const row: {
+    report_id: null;
+    set_id: string;
+    user_id: string;
+    idx: number;
+    context: string;
+    title: string;
+    description: string;
+    palette: string[];
+    image_path: string;
+    items?: { garment: string; color?: string | null }[];
+  } = {
     report_id: null,
     set_id: setId,
     user_id: userId,
@@ -230,7 +263,17 @@ export async function saveSetLook(
     description: look.description,
     palette: look.palette,
     image_path: imagePath,
-  });
+  };
+  if (look.items?.length) row.items = look.items;
+  const { error } = await admin.from("looks").insert(row);
+  // Pre-0048 DB has no `items` column — retry without it rather than failing
+  // the whole set render (same degrade-gracefully pattern as image_path_tq).
+  if (error && row.items && /items/.test(error.message)) {
+    delete row.items;
+    const retry = await admin.from("looks").insert(row);
+    if (retry.error) throw new Error(retry.error.message);
+    return;
+  }
   if (error) throw new Error(error.message);
 }
 
@@ -274,10 +317,11 @@ type SetLookRow = {
   palette: unknown;
   image_path: unknown;
   image_path_tq?: unknown;
+  items?: unknown;
 };
 
 const LOOK_ROW_SELECT =
-  "idx, context, title, description, palette, image_path, image_path_tq";
+  "idx, context, title, description, palette, image_path, image_path_tq, items";
 const LOOK_ROW_SELECT_BASE =
   "idx, context, title, description, palette, image_path";
 
@@ -291,7 +335,9 @@ async function selectSetLookRows(
     .eq("set_id", setId)
     .order("idx", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
-  if (first.error && /image_path_tq/.test(first.error.message)) {
+  // Pre-0044 / pre-0048 DBs lack image_path_tq / items — degrade to the base
+  // column set rather than failing the whole set view.
+  if (first.error && /image_path_tq|items/.test(first.error.message)) {
     return admin
       .from("looks")
       .select(LOOK_ROW_SELECT_BASE)
@@ -315,6 +361,7 @@ function looksFromRows(
       title: (r.title as string | null) ?? "",
       description: (r.description as string | null) ?? "",
       palette: (r.palette as string[] | null) ?? [],
+      items: lookItemsFromCell(r.items),
       imagePath: r.image_path as string,
       imagePathTq:
         typeof r.image_path_tq === "string" && r.image_path_tq
@@ -332,6 +379,7 @@ function looksFromRows(
         title: "",
         description: "",
         palette: [],
+        items: null,
         imagePath: null,
         imagePathTq: null,
       }
@@ -386,6 +434,8 @@ export type LoadedSetLook = {
   title: string;
   description: string;
   palette: string[];
+  /** Structured garment slots (0048); null on legacy rows → prose fallback. */
+  items: { garment: string; color?: string | null }[] | null;
   /** Null while this slot is still rendering (set status = generating). */
   imagePath: string | null;
   /** Optional 3/4 companion; null until the owner generates it. */
@@ -441,6 +491,187 @@ export async function archiveReplacedLookImages(
   }
 }
 
+/** First constructor Apply wins — later rebuilds must not overwrite Carlo. */
+export async function rememberOriginalLook(
+  admin: AdminClient,
+  setId: string,
+  lookIndex: number,
+  snapshot: OriginalLookSnapshot,
+): Promise<void> {
+  const { data, error } = await admin
+    .from("look_sets")
+    .select("original_looks, archived_images")
+    .eq("id", setId)
+    .maybeSingle();
+  const missingOriginals = Boolean(
+    error && /original_looks/.test(error.message),
+  );
+  let row = data;
+  if (missingOriginals) {
+    const fallback = await admin
+      .from("look_sets")
+      .select("archived_images")
+      .eq("id", setId)
+      .maybeSingle();
+    row = fallback.data as typeof row;
+  } else if (error) {
+    console.error("[look-set] read original_looks failed", setId, error.message);
+    return;
+  }
+
+  const fromColumn = missingOriginals
+    ? {}
+    : parseOriginalLooks(row?.original_looks);
+  const fromArchive = originalsFromArchived(row?.archived_images);
+  if (fromColumn[lookIndex] || fromArchive[lookIndex]) return;
+
+  const archive = parseArchivedLookImages(row?.archived_images);
+  const already = archive.find((e) => e.path === snapshot.imagePath);
+  if (already) {
+    already.lookIndex = lookIndex;
+    already.description = snapshot.description;
+    already.palette = snapshot.palette;
+    already.items = snapshot.items;
+    if (already.title === "Look" && snapshot.title) already.title = snapshot.title;
+  } else {
+    archive.push({
+      path: snapshot.imagePath,
+      title: snapshot.title,
+      createdAt: snapshot.savedAt,
+      lookIndex,
+      description: snapshot.description,
+      palette: snapshot.palette,
+      items: snapshot.items,
+    });
+  }
+
+  const patch: Record<string, unknown> = { archived_images: archive };
+  if (!missingOriginals) {
+    fromColumn[lookIndex] = snapshot;
+    patch.original_looks = originalLooksToJson(fromColumn);
+  }
+  const { error: updErr } = await admin
+    .from("look_sets")
+    .update(patch)
+    .eq("id", setId);
+  if (updErr) {
+    console.error("[look-set] write original look failed", setId, updErr.message);
+  }
+}
+
+/** Persist Carlo's estimate of a constructor rebuild. Falls back to archived_images. */
+export async function saveConstructEstimate(
+  admin: AdminClient,
+  setId: string,
+  lookIndex: number,
+  stored: StoredLookEstimate,
+): Promise<void> {
+  const { data, error } = await admin
+    .from("look_sets")
+    .select("construct_estimates")
+    .eq("id", setId)
+    .maybeSingle();
+  if (error) {
+    if (/construct_estimates/.test(error.message)) {
+      await saveEstimateOnArchive(admin, setId, lookIndex, stored);
+      return;
+    }
+    console.error("[look-set] read construct_estimates failed", setId, error.message);
+    return;
+  }
+  const map = parseLookEstimates(data?.construct_estimates);
+  map[lookIndex] = stored;
+  const { error: updErr } = await admin
+    .from("look_sets")
+    .update({ construct_estimates: lookEstimatesToJson(map) })
+    .eq("id", setId);
+  if (updErr && /construct_estimates/.test(updErr.message)) {
+    await saveEstimateOnArchive(admin, setId, lookIndex, stored);
+    return;
+  }
+  if (updErr) {
+    console.error("[look-set] write construct_estimates failed", setId, updErr.message);
+  }
+}
+
+/** Drop a look's estimate after Restore Carlo's look. */
+export async function clearConstructEstimate(
+  admin: AdminClient,
+  setId: string,
+  lookIndex: number,
+): Promise<void> {
+  const { data, error } = await admin
+    .from("look_sets")
+    .select("construct_estimates")
+    .eq("id", setId)
+    .maybeSingle();
+  if (!error && data) {
+    const map = parseLookEstimates(data.construct_estimates);
+    if (map[lookIndex]) {
+      delete map[lookIndex];
+      const { error: updErr } = await admin
+        .from("look_sets")
+        .update({ construct_estimates: lookEstimatesToJson(map) })
+        .eq("id", setId);
+      if (updErr && !/construct_estimates/.test(updErr.message)) {
+        console.error("[look-set] clear construct_estimates failed", setId, updErr.message);
+      }
+    }
+  }
+  await clearEstimateOnArchive(admin, setId, lookIndex);
+}
+
+async function saveEstimateOnArchive(
+  admin: AdminClient,
+  setId: string,
+  lookIndex: number,
+  stored: StoredLookEstimate,
+): Promise<void> {
+  const { data, error } = await admin
+    .from("look_sets")
+    .select("archived_images")
+    .eq("id", setId)
+    .maybeSingle();
+  if (error || !data) return;
+  const archive = parseArchivedLookImages(data.archived_images);
+  const idx = archive.findIndex((e) => e.lookIndex === lookIndex);
+  if (idx < 0) return;
+  archive[idx] = { ...archive[idx], constructEstimate: stored };
+  const { error: updErr } = await admin
+    .from("look_sets")
+    .update({ archived_images: archive })
+    .eq("id", setId);
+  if (updErr) {
+    console.error("[look-set] write archive estimate failed", setId, updErr.message);
+  }
+}
+
+async function clearEstimateOnArchive(
+  admin: AdminClient,
+  setId: string,
+  lookIndex: number,
+): Promise<void> {
+  const { data, error } = await admin
+    .from("look_sets")
+    .select("archived_images")
+    .eq("id", setId)
+    .maybeSingle();
+  if (error || !data) return;
+  const archive = parseArchivedLookImages(data.archived_images);
+  const idx = archive.findIndex((e) => e.lookIndex === lookIndex);
+  if (idx < 0 || !archive[idx].constructEstimate) return;
+  const next = { ...archive[idx] };
+  delete next.constructEstimate;
+  archive[idx] = next;
+  const { error: updErr } = await admin
+    .from("look_sets")
+    .update({ archived_images: archive })
+    .eq("id", setId);
+  if (updErr) {
+    console.error("[look-set] clear archive estimate failed", setId, updErr.message);
+  }
+}
+
 /** Storage paths to delete with a set (current looks, 3/4, archived). */
 export async function lookSetAssetPaths(
   admin: AdminClient,
@@ -493,6 +724,10 @@ export type LoadedLookSet = {
   reportId: string | null;
   createdAt: string;
   lookItems: Record<number, ShoppingItem[]> | null;
+  /** Carlo snapshot keyed by look idx — present after the first constructor Apply. */
+  originalLooks: Record<number, OriginalLookSnapshot>;
+  /** Carlo's estimate of a constructor rebuild, keyed by look idx. */
+  constructEstimates: Record<number, StoredLookEstimate>;
   looks: LoadedSetLook[];
   generating: boolean;
 };
@@ -521,11 +756,22 @@ async function assembleLookSetResult(
 
   // Progress, shop items, and look rows are independent — don't pay three
   // sequential round-trips on every /looks/[id] open (or Link prefetch).
-  const [progress, itemsResult, looksResult] = await Promise.all([
-    readSetProgress(admin, setId),
-    admin.from("look_sets").select("look_items").eq("id", setId).maybeSingle(),
-    selectSetLookRows(admin, setId),
-  ]);
+  const [progress, itemsResult, looksResult, originalResult, estimateResult] =
+    await Promise.all([
+      readSetProgress(admin, setId),
+      admin.from("look_sets").select("look_items").eq("id", setId).maybeSingle(),
+      selectSetLookRows(admin, setId),
+      admin
+        .from("look_sets")
+        .select("original_looks, archived_images")
+        .eq("id", setId)
+        .maybeSingle(),
+      admin
+        .from("look_sets")
+        .select("construct_estimates")
+        .eq("id", setId)
+        .maybeSingle(),
+    ]);
   const { looksCount, status } = progress;
 
   // Best-effort: on a DB where 0040 (look_sets.look_items) is not yet applied,
@@ -575,6 +821,31 @@ async function assembleLookSetResult(
     }
   }
 
+  let originalLooks: Record<number, OriginalLookSnapshot> = {};
+  let archivedRaw: unknown = null;
+  if (originalResult.error && /original_looks/.test(originalResult.error.message)) {
+    const archived = await admin
+      .from("look_sets")
+      .select("archived_images")
+      .eq("id", setId)
+      .maybeSingle();
+    archivedRaw = archived.data?.archived_images;
+    originalLooks = originalsFromArchived(archivedRaw);
+  } else if (!originalResult.error) {
+    archivedRaw = originalResult.data?.archived_images;
+    originalLooks = mergeOriginalLooks(
+      parseOriginalLooks(originalResult.data?.original_looks),
+      originalsFromArchived(archivedRaw),
+    );
+  }
+
+  const constructEstimates = {
+    ...estimatesFromArchived(archivedRaw),
+    ...(!estimateResult.error
+      ? parseLookEstimates(estimateResult.data?.construct_estimates)
+      : {}),
+  };
+
   return {
     setId: set.id,
     shareSlug: set.share_slug ?? null,
@@ -585,6 +856,8 @@ async function assembleLookSetResult(
     reportId: set.report_id ?? null,
     createdAt: set.created_at,
     lookItems,
+    originalLooks,
+    constructEstimates,
     looks,
     generating,
   };
@@ -647,6 +920,7 @@ export async function loadPublicLookSet(
   reportId: string | null;
   createdAt: string;
   lookItems: Record<number, ShoppingItem[]> | null;
+  originalLooks?: Record<number, OriginalLookSnapshot>;
   looks: LoadedSetLook[];
   generating: boolean;
 } | null> {
@@ -685,6 +959,7 @@ export async function loadPublicLookSet(
     reportId: (set.report_id as string | null) ?? null,
     createdAt: set.created_at as string,
     lookItems,
+    originalLooks: {},
     looks,
     generating: false,
   };
@@ -775,6 +1050,7 @@ async function backfillSetLookItems(
         title: l.title,
         description: l.description,
         palette: l.palette,
+        items: l.items ?? undefined,
       })),
     } as unknown as ReportContent;
 

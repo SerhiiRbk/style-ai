@@ -7,6 +7,7 @@ import { logEvent } from "@/lib/events";
 import {
   matchInspirationItems,
   LOOK_MATCH_VERSION,
+  LOOK_RERANK_VERSION,
   INSPIRATION_MATCH_VERSION,
   type InspirationMatchSlot,
 } from "@/lib/data/catalog";
@@ -17,7 +18,7 @@ import {
 } from "@/lib/budgets";
 
 /** Cache key that changes with either the shared match logic or the shop-a-look logic. */
-const CACHE_VERSION = `${LOOK_MATCH_VERSION}.${INSPIRATION_MATCH_VERSION}`;
+const CACHE_VERSION = `${LOOK_MATCH_VERSION}.${LOOK_RERANK_VERSION}.${INSPIRATION_MATCH_VERSION}`;
 
 /** Vision detection + per-garment vector search can exceed the default timeout. */
 export const maxDuration = 120;

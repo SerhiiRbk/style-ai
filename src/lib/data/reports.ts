@@ -69,14 +69,19 @@ import {
 import { resolveImagePromptVersion } from "@/lib/ai/look-prompt";
 import {
   accessoryPicksFor,
+  accessoryExtraPicksFor,
   headwearPicksFor,
+  headwearExtraPicksFor,
   capsuleMatrix,
+  capsuleOutfitDescription,
   facialHairFor,
   premiumEyewearPicks,
   buildExtras,
   watchGuideFor,
   shoeGuideFor,
   FORMAL_CONTEXTS,
+  capsuleImageDirectives,
+  lookItemsFromCell,
   type StyleExtras,
 } from "@/lib/style-extras";
 import {
@@ -87,6 +92,7 @@ import {
 } from "@/lib/colour-palette";
 import { translateReportParts } from "@/lib/ai/translate-report";
 import { getStoredReportPhotoPaths } from "@/lib/photo-tryon";
+import { lookOccasionIdFromContext } from "@/lib/look-contexts";
 import { ensureReportLookSet } from "@/lib/data/report-look-sets";
 import { normalizeLanguage } from "@/lib/languages";
 import {
@@ -469,7 +475,7 @@ async function generateHairImages(input: ImageJobInput) {
 
 /** Premium facial-hair & eyewear headshots — after hair, before look images. */
 async function generatePremiumGroomingImages(input: ImageJobInput) {
-  if (input.tier !== "premium") return;
+  if (input.tier !== "premium" && input.tier !== "lookbook") return;
 
   const admin = createAdminSupabase();
   const { reportId, userId, profile, photos } = input;
@@ -529,15 +535,42 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
   const existingAccessories = row?.accessories as AccessoryRec[] | null;
   const accessories: AccessoryRec[] =
     existingAccessories && existingAccessories.length > PREMIUM_ACCESSORY_GEN_LIMIT
-      ? existingAccessories
+      ? [
+          ...mergeByName(
+            existingAccessories.slice(0, PREMIUM_ACCESSORY_GEN_LIMIT),
+            pickAccessories(),
+          ),
+          ...mergeByName(
+            existingAccessories.slice(PREMIUM_ACCESSORY_GEN_LIMIT),
+            accessoryExtraPicksFor(profile).map((a) => ({
+              name: a.name,
+              why: a.why,
+              kind: a.kind,
+            })),
+          ),
+        ]
       : mergeByName(existingAccessories, pickAccessories());
-  // Headwear is included by default too — same "never shrink an add-on" rule.
   const existingHeadwear = row?.headwear as HeadwearRec[] | null;
   const headwear: HeadwearRec[] =
     existingHeadwear && existingHeadwear.length > PREMIUM_HEADWEAR_GEN_LIMIT
-      ? existingHeadwear
+      ? [
+          ...mergeByName(
+            existingHeadwear.slice(0, PREMIUM_HEADWEAR_GEN_LIMIT),
+            pickHeadwear(),
+          ),
+          ...mergeByName(
+            existingHeadwear.slice(PREMIUM_HEADWEAR_GEN_LIMIT),
+            headwearExtraPicksFor(profile).map((h) => ({
+              name: h.name,
+              why: h.why,
+              kind: h.kind,
+            })),
+          ),
+        ]
       : mergeByName(existingHeadwear, pickHeadwear());
 
+  const namesOf = (items: { name: string }[] | null | undefined) =>
+    (items ?? []).map((i) => i.name).join("|");
   const needsSeed =
     !row?.facial_hair ||
     !row?.eyewear ||
@@ -546,7 +579,10 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
     (row.facial_hair as FacialHairRec[]).length < PREMIUM_FACIAL_HAIR_GEN_LIMIT ||
     (row.eyewear as EyewearRec[]).length < PREMIUM_EYEWEAR_GEN_LIMIT ||
     (row.accessories as AccessoryRec[]).length < PREMIUM_ACCESSORY_GEN_LIMIT ||
-    (row.headwear as HeadwearRec[]).length < PREMIUM_HEADWEAR_GEN_LIMIT;
+    (row.headwear as HeadwearRec[]).length < PREMIUM_HEADWEAR_GEN_LIMIT ||
+    namesOf(row?.eyewear as EyewearRec[] | null) !== namesOf(eyewear) ||
+    namesOf(existingAccessories) !== namesOf(accessories) ||
+    namesOf(existingHeadwear) !== namesOf(headwear);
 
   if (needsSeed) {
     await admin
@@ -1012,6 +1048,9 @@ async function generateReportImages(input: ImageJobInput) {
       index === boldLookIdx && boldAccent ? boldAccent.hex : ownDeep;
     const img = await generateLookImage({
       profile,
+      occasionId: lookOccasionIdFromContext(
+        (row.context as string | null) ?? null,
+      ),
       look: {
         title: (row.title as string | null) ?? "",
         description: (row.description as string | null) ?? "",
@@ -1046,6 +1085,11 @@ async function generateReportImages(input: ImageJobInput) {
 
   if (tier === "lookbook" || tier === "premium") {
     const colorByTitle = new Map(shopping.map((s) => [s.title, s.color]));
+    const colorNameByTitle = new Map(
+      shopping
+        .filter((s) => s.colorName)
+        .map((s) => [s.title, s.colorName as string]),
+    );
     const matrix = capsuleMatrix(shopping, profile);
     // Cache-buster: asset URLs are served `immutable`, so a regenerated slot must
     // land on a NEW path or browsers/edge keep serving the previous image.
@@ -1086,15 +1130,33 @@ async function generateReportImages(input: ImageJobInput) {
           : undefined;
         // Prepend the palette-correct shoe colour so capsule renders match the
         // footwear section instead of the model's default brown leather.
+        const contrastRule =
+          "The shirt or knit and the trousers must contrast in lightness — never the same grey. " +
+          "Keep each named garment colour; do not paint the trousers to match the top. " +
+          "One chromatic hero — do not repeat that colour on the shoes or a second main garment. " +
+          "Shoes must not match the jacket unless both are a dark navy or black formal set. " +
+          "If shirt and trousers are both mid-neutrals (greige, mushroom, taupe, stone, camel, beige, mid-grey), add a dark anchor (navy, charcoal, black or dark brown). " +
+          "If the look includes shorts: no jacket, jumper, hoodie or classic dress shoe " +
+          "(oxford, brogue, derby, boot) — loafers or sneakers only.";
         const footwearRule =
-          [footwearColorText.trim(), footwearStyleRule]
+          [footwearColorText.trim(), footwearStyleRule, contrastRule]
             .filter(Boolean)
             .join(" ") || undefined;
         const img = await generateLookImage({
           profile,
+          occasionId: lookOccasionIdFromContext(combo.context),
           look: {
             title: combo.context,
-            description: combo.pieces.join(", "),
+            description: [
+              capsuleOutfitDescription(
+                combo.pieces,
+                colorByTitle,
+                colorNameByTitle,
+              ),
+              capsuleImageDirectives(combo.pieces),
+            ]
+              .filter(Boolean)
+              .join(" "),
             palette: combo.pieces
               .map((p) => colorByTitle.get(p))
               .filter((c): c is string => Boolean(c)),
@@ -1221,7 +1283,7 @@ export async function regenerateReportStyling(
   const admin = createAdminSupabase();
   const { data: row } = await admin
     .from("reports")
-    .select("id, user_id, tier, status, profile, colors")
+    .select("id, user_id, tier, status, profile, colors, language, shopping")
     .eq("id", reportId)
     .single();
   if (!row) return { ok: false, reason: "not-found" };
@@ -1235,17 +1297,66 @@ export async function regenerateReportStyling(
   if (!profile) return { ok: false, reason: "no-profile" };
   const userId = row.user_id as string;
 
+  const colors = (row.colors as {
+    best?: { name: string; hex?: string }[];
+    avoid?: { name: string; hex?: string }[];
+  } | null) ?? { best: [], avoid: [] };
+  let shopping = (row.shopping as ShoppingItem[] | null) ?? [];
+
   if (opts?.rematchShopping !== false) {
-    const colors =
-      (row.colors as { best: { name: string }[] } | null) ?? { best: [] };
     const content = {
-      colors: { best: colors.best ?? [], avoid: [] },
+      colors: {
+        best: colors.best ?? [],
+        avoid: colors.avoid ?? [],
+      },
       hair: { recommend: [], avoid: [] },
       looks: [],
     } as unknown as ReportContent;
     const matched = await matchShopping(profile, content);
     if (!isMockShopping(matched)) {
+      shopping = matched;
       await admin.from("reports").update({ shopping: matched }).eq("id", reportId);
+    }
+  }
+
+  // Keep Start here / buying plan in sync with the (possibly rematched) list.
+  // English reports compute extras live (`extras` stays null). Other languages
+  // persist a translated snapshot so the page/PDF do not flip back to English.
+  if (shopping.length) {
+    const extras = buildExtras(
+      assembleReport({
+        id: reportId,
+        tier,
+        profile,
+        content: {
+          colors: {
+            best: colors.best ?? [],
+            avoid: colors.avoid ?? [],
+          },
+          headline: "",
+          summary: "",
+          hair: { recommend: [], avoid: [] },
+          silhouette: { fit: "", rules: [] },
+          looks: [],
+          doList: [],
+          dontList: [],
+        } as unknown as ReportContent,
+        shopping,
+      }),
+    );
+    const language = normalizeLanguage(
+      (row as { language?: string | null }).language,
+    );
+    if (language === "en") {
+      // Persist the rebuilt extras so a rematch is visible before the next
+      // deploy (English otherwise recomputes live from whatever code is live).
+      await admin.from("reports").update({ extras }).eq("id", reportId);
+    } else {
+      const translated = await translateReportParts({ extras }, language);
+      await admin
+        .from("reports")
+        .update({ extras: translated.extras ?? extras })
+        .eq("id", reportId);
     }
   }
 
@@ -1475,18 +1586,25 @@ async function executeReportGeneration(
       .eq("id", reportId);
   }
 
-  await admin.from("looks").insert(
-    content.looks.map((l, i) => ({
-      report_id: reportId,
-      idx: i,
-      user_id: userId,
-      context: l.context,
-      title: l.title,
-      description: l.description,
-      palette: l.palette,
-      image_path: null,
-    })),
-  );
+  const lookRows = content.looks.map((l, i) => ({
+    report_id: reportId,
+    idx: i,
+    user_id: userId,
+    context: l.context,
+    title: l.title,
+    description: l.description,
+    palette: l.palette,
+    image_path: null as string | null,
+    ...(l.items?.length ? { items: l.items } : {}),
+  }));
+  let { error: lookInsErr } = await admin.from("looks").insert(lookRows);
+  // Pre-0048 DB has no `items` column — retry without it (matching falls back
+  // to prose for later rematches, same as before the migration).
+  if (lookInsErr && /items/.test(lookInsErr.message)) {
+    for (const row of lookRows) delete (row as { items?: unknown }).items;
+    ({ error: lookInsErr } = await admin.from("looks").insert(lookRows));
+  }
+  if (lookInsErr) throw new Error(lookInsErr.message);
 
   await ensureReportLookSet(admin, { reportId, userId }).catch((err) => {
     console.error("[look-set] promote report looks failed", reportId, err);
@@ -2019,6 +2137,7 @@ async function fetchReportView(
       title: l.title ?? "",
       description: l.description ?? "",
       palette: l.palette ?? [],
+      items: lookItemsFromCell(l.items) ?? undefined,
     })),
     doList: row.do_list ?? [],
     dontList: row.dont_list ?? [],

@@ -17,7 +17,7 @@ import { tierHasCapsule, type StyleReport } from "@/lib/report";
 import { formatMoneyPdf } from "@/lib/currency";
 import { BODY_TYPE_LABELS, isBodyType } from "@/lib/style-profile";
 import { capsuleMatrixImageAt } from "@/lib/demo-report";
-import { extrasForReport, investmentLevel, itemsForLook } from "@/lib/style-extras";
+import { extrasForReport, investmentLevel, itemsForLook, shoeGuideCards } from "@/lib/style-extras";
 import { humanizeProductTitle } from "@/lib/product-title";
 import { makeT } from "@/lib/i18n/report";
 import {
@@ -1475,7 +1475,16 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   );
   d.gap(4);
   d.subhead(tt("Shoe guide"), { keepWith: 14 });
-  d.text(tt("Cream sneakers · Suede chelsea boots · Derby shoes"), { color: STONE });
+  const shoeCards = extras.shoeGuide
+    ? shoeGuideCards(extras.shoeGuide, report.shopping)
+    : [];
+  d.text(
+    shoeCards.length
+      ? shoeCards.map((s) => s.name).join(" · ")
+      : extras.shoeGuide?.variants.map((v) => `${v.color} ${v.style}`).join(" · ") ??
+        "",
+    { color: STONE },
+  );
 
   /* ----------------------- how to wear, care & scent --------------------- */
   chapter("How to wear it, and make it last");

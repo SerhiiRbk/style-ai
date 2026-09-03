@@ -1170,7 +1170,7 @@ export default async function ReportPage({
             {canTryOn ? (
               <p className="mt-4 text-xs text-paper/45">
                 {tr(
-                  "Tip: use “+ Add to outfit” on up to 4 pieces to render them together on your photo in a single try-on.",
+                  "Tip: use “+ Add to outfit” on up to 6 pieces to render them together on your photo in a single try-on.",
                 )}
               </p>
             ) : null}
@@ -1271,7 +1271,11 @@ export default async function ReportPage({
               <FabricsGuide fabrics={extras.fabrics} lang={lang} />
             </div>
             <div className="mt-12">
-              <StyleDetails lang={lang} />
+              <StyleDetails
+                lang={lang}
+                shoeGuide={extras.shoeGuide}
+                shopping={report.shopping}
+              />
             </div>
           </div>
         </section>

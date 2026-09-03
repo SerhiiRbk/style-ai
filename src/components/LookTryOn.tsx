@@ -65,10 +65,10 @@ export function LookTryOn({
   );
   const [url, setUrl] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  // "editorial" = a fresh styled scene (best styling, face may drift a little);
-  // "studio" = your own photo on a clean studio backdrop (face/pose preserved).
+  // "studio" = edit the user's own photo (face/pose preserved);
+  // "editorial" = a fresh styled scene (best styling, face may drift).
   const [tryOnStyle, setTryOnStyle] = useState<"editorial" | "studio">(
-    "editorial",
+    "studio",
   );
 
   const creditsApply = balance !== null;
@@ -172,14 +172,14 @@ export function LookTryOn({
     hint: string;
   }[] = [
     {
-      id: "editorial",
-      label: "Styled scene",
-      hint: "A fresh, styled photo of you in this outfit.",
-    },
-    {
       id: "studio",
       label: "My photo · studio",
       hint: "Your own photo on a clean studio backdrop — face and pose preserved.",
+    },
+    {
+      id: "editorial",
+      label: "Styled scene",
+      hint: "A fresh, styled photo of you in this outfit.",
     },
   ];
   const activeStyleHint = styleOptions.find((o) => o.id === tryOnStyle)?.hint;

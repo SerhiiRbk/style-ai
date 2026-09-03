@@ -21,7 +21,11 @@ const MAX_DATA_URL_CHARS = 6_000_000;
 // v5: palettes built from mid-cheek / hair / iris hexes; Cool Summer split.
 // v6: stop dragging named blues through green toward brown eyes.
 // v7: same-family hue mix only; lights mute gold instead of snapping to sage.
-const COLOURS_CACHE_VERSION = "7";
+// v8: lighting cast judged; tinted light drops the pixel hexes (warns, never
+//     rejects) + silent contrast↔hex-spread cross-check.
+// v9: tinted light keeps hexes for palette mix (weaker), never flips season;
+//     contrast fight drops lightness only.
+const COLOURS_CACHE_VERSION = "9";
 
 /** Anonymous, deduplicated cache namespace in the `assets` bucket. */
 function cachePath(hash: string): string {

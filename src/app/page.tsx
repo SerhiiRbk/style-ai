@@ -15,6 +15,11 @@ import {
 import { lookCountForTier } from "@/lib/report";
 import { LOOK_SET_BUNDLES } from "@/lib/look-sets";
 import { BRAND } from "@/lib/brand";
+import {
+  organizationJsonLd,
+  serviceJsonLd,
+  websiteJsonLd,
+} from "@/lib/site-json-ld";
 import { absoluteUrl } from "@/lib/site-url";
 
 const CONSTRUCTOR_ASSETS = [
@@ -97,31 +102,9 @@ function JsonLd() {
   const data = {
     "@context": "https://schema.org",
     "@graph": [
-      {
-        "@type": "Organization",
-        "@id": `${site}#organization`,
-        name: BRAND.name,
-        url: site,
-        logo: absoluteUrl(BRAND.logo),
-        description:
-          "AI-assisted personal styling — explainable recommendations, photorealistic looks, and a precise shopping plan.",
-      },
-      {
-        "@type": "WebSite",
-        "@id": `${site}#website`,
-        url: site,
-        name: BRAND.name,
-        publisher: { "@id": `${site}#organization` },
-      },
-      {
-        "@type": "Service",
-        name: "Personal style report",
-        serviceType: "Personal styling",
-        provider: { "@id": `${site}#organization` },
-        areaServed: ["European Union", "United States", "Worldwide"],
-        description:
-          "A structured, explainable personal style report: colour analysis, hair and grooming, photorealistic looks, a capsule wardrobe and a shopping list.",
-      },
+      organizationJsonLd(site),
+      websiteJsonLd(site),
+      serviceJsonLd(site),
       {
         "@type": "FAQPage",
         mainEntity: FAQS.map((f) => ({
@@ -188,11 +171,11 @@ function Hero() {
             becoming a fashion victim.
           </h1>
           <p className="mt-6 max-w-md text-lg leading-relaxed text-stone">
-            {BRAND.name} is a men&apos;s personal style atelier —{" "}
+            {BRAND.name} is an AI-assisted men&apos;s personal styling atelier —{" "}
             <span className="text-ink">{BRAND.stylist.name}</span>, our lead
             stylist persona, is the voice behind every report. Share a few
-            photos, answer honest questions, and receive a calm, practical plan:
-            hair, colours, tailoring, silhouettes, and a precise shopping list —
+            photos, answer honest questions, and receive colour analysis,
+            photorealistic looks, tailoring notes, and a precise shopping list —
             each with the reason{" "}
             <span className="text-ink">why it works for you.</span> Or generate
             occasion looks and rebuild every piece in the constructor — then try

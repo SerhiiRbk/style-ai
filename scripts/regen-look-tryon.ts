@@ -2,14 +2,18 @@
  * Re-render one Create-a-Look try-on (no credit charge).
  *   NODE_PATH=scripts/shims node --env-file=.env.local \
  *     --import ./scripts/register-server-only.mjs --import tsx \
- *     scripts/regen-look-tryon.ts <setId> <lookIndex>
+ *     scripts/regen-look-tryon.ts <setId> <lookIndex> [--studio]
+ *
+ * Default is editorial (fresh scene — face can drift). `--studio` edits the
+ * customer's own full-length photo in place so identity holds.
  */
 import { createClient } from "@supabase/supabase-js";
-import { generateLookImage } from "../src/lib/ai/pipeline";
+import { generateLookImage, generateReportTryOnImage } from "../src/lib/ai/pipeline";
 import { styleProfileSchema } from "../src/lib/style-profile";
 import {
   catalogImageRefsFromItems,
   catalogPromptFromItems,
+  MAX_CATALOG_REFERENCE_IMAGES,
   MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT,
   formatLookKey,
   tryonStoragePath,
@@ -19,9 +23,10 @@ import type { ShoppingItem } from "../src/lib/report";
 
 const SET_ID = process.argv[2];
 const LOOK_INDEX = Number(process.argv[3]);
+const STUDIO = process.argv.includes("--studio");
 
 if (!SET_ID || !Number.isInteger(LOOK_INDEX)) {
-  console.error("Usage: regen-look-tryon.ts <setId> <lookIndex>");
+  console.error("Usage: regen-look-tryon.ts <setId> <lookIndex> [--studio]");
   process.exit(1);
 }
 
@@ -39,7 +44,7 @@ const admin = createClient(url, key, {
 async function main() {
   const { data: set, error: setErr } = await admin
     .from("look_sets")
-    .select("id, user_id, look_items, report_id, created_at")
+    .select("id, user_id, look_items, report_id, created_at, occasion_id")
     .eq("id", SET_ID)
     .maybeSingle();
   if (setErr || !set) throw new Error(setErr?.message ?? "set not found");
@@ -75,15 +80,22 @@ async function main() {
   const lookItems =
     (set.look_items as Record<number, ShoppingItem[]> | null) ?? {};
   const items = lookItems[LOOK_INDEX] ?? [];
+  const occasionId =
+    typeof (set as { occasion_id?: string | null }).occasion_id === "string"
+      ? (set as { occasion_id: string }).occasion_id
+      : null;
   const catalogContext = catalogPromptFromItems(
     items,
     String(look.description ?? ""),
+    occasionId,
   );
   const catalogImages = catalogImageRefsFromItems(items, {
-    max: MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT,
+    max: STUDIO
+      ? MAX_CATALOG_REFERENCE_IMAGES
+      : MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT,
   });
   console.log(
-    `look ${LOOK_INDEX} · ${look.title} · ${items.length} items · refs ${catalogImages.length}`,
+    `look ${LOOK_INDEX} · ${look.title} · ${STUDIO ? "studio" : "editorial"} · ${items.length} items · refs ${catalogImages.length}`,
   );
   for (const it of items) {
     console.log(`  ${it.category}: ${it.colorName ?? it.color} ${it.title}`);
@@ -101,22 +113,38 @@ async function main() {
   });
   if (!refs.fullUrl) throw new Error("no full-length reference photo");
 
-  const result = await generateLookImage({
-    profile: parsed.data,
-    look: {
-      title: String(look.title ?? "Look"),
-      description: String(look.description ?? ""),
-      palette: (look.palette as string[]) ?? [],
-      catalogContext,
-      catalogImageUrls: catalogImages.map((r) => r.url),
-      catalogImages,
-    },
-    referenceImageUrl: refs.fullUrl,
-    faceReferenceImageUrl: refs.faceUrl ?? undefined,
-    profileReferenceImageUrl: refs.profileUrl ?? undefined,
-    promptVersion: 4,
-  });
-  if (!result) throw new Error("generateLookImage returned null");
+  const result = STUDIO
+    ? await generateReportTryOnImage({
+        personImageUrl: refs.fullUrl,
+        garmentsText:
+          catalogContext ??
+          `Dress the person in this outfit: ${String(look.description ?? "")}. `,
+        garmentImageUrls: catalogImages.map((r) => r.url),
+        garmentImages: catalogImages,
+        occasionId,
+      })
+    : await generateLookImage({
+        profile: parsed.data,
+        occasionId,
+        look: {
+          title: String(look.title ?? "Look"),
+          description: String(look.description ?? ""),
+          palette: (look.palette as string[]) ?? [],
+          catalogContext,
+          catalogImageUrls: catalogImages.map((r) => r.url),
+          catalogImages,
+        },
+        referenceImageUrl: refs.fullUrl,
+        faceReferenceImageUrl: refs.faceUrl ?? undefined,
+        profileReferenceImageUrl: refs.profileUrl ?? undefined,
+        promptVersion: 4,
+      });
+  if (!result) {
+    throw new Error(
+      (STUDIO ? "generateReportTryOnImage" : "generateLookImage") +
+        " returned null",
+    );
+  }
 
   const ext = result.mediaType.includes("jpeg") ? "jpg" : "png";
   const lookKey = formatLookKey({ kind: "look", lookIndex: LOOK_INDEX });

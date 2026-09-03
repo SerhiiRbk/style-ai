@@ -121,6 +121,7 @@ export function buildAnonProfile(
     skinHex?: string | null;
     hairHex?: string | null;
     eyeHex?: string | null;
+    lighting?: StyleProfile["physical"]["lighting"];
   },
 ): StyleProfile {
   const base = neutralMatchProfile(geo.country ?? "Global");
@@ -141,6 +142,7 @@ export function buildAnonProfile(
       skinHex: person?.skinHex ?? undefined,
       hairHex: person?.hairHex ?? undefined,
       eyeHex: person?.eyeHex ?? undefined,
+      lighting: person?.lighting ?? base.physical.lighting,
     },
     currency: geo.currency ?? "EUR",
     colorSeason: seasonForSubseason(subseason),

@@ -7,6 +7,7 @@ import { useCredits } from "./CreditsContext";
 import { LuxeWorkingLabel } from "@/components/luxe/LuxeWorkingLabel";
 import { WORKING } from "@/components/luxe/messages";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
+import { parseLookEstimate } from "@/lib/look-estimate";
 import {
   BLAZER_TYPES,
   blazerTypeLabel,
@@ -61,6 +62,7 @@ export type ConstructedLook = {
   description: string;
   palette: string[];
   items: import("@/lib/report").ShoppingItem[];
+  estimate?: import("@/lib/look-estimate").StoredLookEstimate | null;
 };
 
 /**
@@ -72,6 +74,7 @@ export function LookConstructor({
   lookIndex,
   title,
   description,
+  occasionId,
   disabled,
   onApplied,
   onApplyingChange,
@@ -80,6 +83,7 @@ export function LookConstructor({
   lookIndex: number;
   title: string;
   description: string;
+  occasionId?: string | null;
   disabled?: boolean;
   onApplied: (look: ConstructedLook) => void;
   onApplyingChange?: (busy: boolean) => void;
@@ -90,7 +94,7 @@ export function LookConstructor({
     (includeThreeQuarter ? CREDIT_COSTS.look_three_quarter : 0);
   const { balance, setBalance } = useCredits();
   const initial = useMemo(
-    () => slotsFromLook(title, description),
+    () => slotsFromLook(title, description, occasionId),
     [title, description],
   );
   const [slots, setSlots] = useState<ConstructorSlot[]>(initial);
@@ -155,6 +159,7 @@ export function LookConstructor({
         description: data.description,
         palette: data.palette ?? [],
         items: data.items ?? [],
+        estimate: parseLookEstimate(data.estimate),
       });
       setState("idle");
       setOpen(null);

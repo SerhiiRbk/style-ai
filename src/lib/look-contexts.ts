@@ -128,7 +128,9 @@ export function lookOccasionIdFromContext(
   );
   if (exact) return exact.id;
   const lower = raw.toLowerCase();
-  if (/\bwork\b|\bmeeting/.test(lower)) return "work";
+  if (/\bwork\b|\bmeeting|\bon stage\b|\bclient\b/.test(lower)) return "work";
+  if (/\bdinner\b|\bdate night\b|\bevening/.test(lower)) return "dinner";
+  if (/\bsmart casual\b/.test(lower)) return "smart_casual";
   if (/\bformal\b/.test(lower)) return "formal";
   return null;
 }

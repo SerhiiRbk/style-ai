@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { LookShopAndTryOn } from "@/components/LookShopAndTryOn";
 import { LookConstructor } from "@/components/LookConstructor";
+import { LookEstimate, LookEstimateBody } from "@/components/LookEstimate";
 import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
 import { useCredits } from "@/components/CreditsContext";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
 import type { ShoppingItem } from "@/lib/report";
 import type { Currency } from "@/lib/currency";
+import type { StoredLookEstimate } from "@/lib/look-estimate";
 
 /**
  * One look in a set: image, constructor (owner), shop + try-on. Keeps local
@@ -19,6 +21,7 @@ import type { Currency } from "@/lib/currency";
 export function LookSetCard({
   setId,
   lookIndex,
+  occasionId,
   title: initialTitle,
   description: initialDescription,
   palette: initialPalette,
@@ -26,10 +29,13 @@ export function LookSetCard({
   imageTqSrc: initialImageTq,
   items: initialItems,
   isOwner,
+  canRevert: canRevertInitial = false,
+  initialEstimate = null,
   currency = "EUR",
 }: {
   setId: string;
   lookIndex: number;
+  occasionId?: string | null;
   title: string;
   description: string;
   palette: string[];
@@ -37,6 +43,9 @@ export function LookSetCard({
   imageTqSrc?: string | null;
   items: ShoppingItem[];
   isOwner: boolean;
+  /** True when this look was rebuilt and Carlo's original is stored. */
+  canRevert?: boolean;
+  initialEstimate?: StoredLookEstimate | null;
   currency?: Currency;
 }) {
   const [title, setTitle] = useState(initialTitle);
@@ -52,11 +61,80 @@ export function LookSetCard({
   const [tqBusy, setTqBusy] = useState(false);
   const [tqMsg, setTqMsg] = useState<string | null>(null);
   const [tryOnReset, setTryOnReset] = useState<string | undefined>();
+  const [canRevert, setCanRevert] = useState(canRevertInitial);
+  const [estimate, setEstimate] = useState<StoredLookEstimate | null>(
+    initialEstimate,
+  );
+  const [estimateLoading, setEstimateLoading] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [revertMsg, setRevertMsg] = useState<string | null>(null);
   const { balance, setBalance } = useCredits();
   const tqCost = CREDIT_COSTS.look_three_quarter;
   const tqInsufficient = balance !== null && balance < tqCost;
   const shownSrc = view === "tq" && imageTqSrc ? imageTqSrc : imageSrc;
-  const busy = applying || tqBusy;
+  const busy = applying || tqBusy || reverting;
+  const showEstimate = isOwner && (canRevert || Boolean(estimate?.opinion));
+
+  useEffect(() => {
+    if (!isOwner || !canRevert || estimate?.opinion) return;
+    let cancelled = false;
+    setEstimateLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch("/api/look-set/estimate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ setId, lookIndex }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !data.opinion) return;
+        setEstimate({
+          opinion: data.opinion,
+          fingerprint: "",
+          savedAt: new Date().toISOString(),
+        });
+      } catch {
+        /* keep the Estimate control visible */
+      } finally {
+        if (!cancelled) setEstimateLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwner, canRevert, estimate?.opinion, setId, lookIndex]);
+
+  async function revertToOriginal() {
+    if (!isOwner || !canRevert || busy) return;
+    setReverting(true);
+    setRevertMsg(null);
+    try {
+      const res = await fetch("/api/look-set/revert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setId, lookIndex }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRevertMsg(data.error ?? "Could not restore Carlo's look");
+        return;
+      }
+      setTitle(data.title ?? title);
+      setDescription(data.description ?? "");
+      setPalette(Array.isArray(data.palette) ? data.palette : []);
+      if (typeof data.image === "string") setImageSrc(data.image);
+      setImageTqSrc(typeof data.imageTq === "string" ? data.imageTq : null);
+      setView("front");
+      setItems(Array.isArray(data.items) ? data.items : []);
+      setTryOnReset(typeof data.image === "string" ? data.image : "revert");
+      setCanRevert(false);
+      setEstimate(null);
+    } catch {
+      setRevertMsg("Could not restore Carlo's look");
+    } finally {
+      setReverting(false);
+    }
+  }
 
   async function generateThreeQuarter() {
     if (!isOwner || imageTqSrc || tqBusy || applying || tqInsufficient) return;
@@ -90,16 +168,21 @@ export function LookSetCard({
       {busy ? (
         <div className="relative aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline bg-cream/40">
           <ReportImageGenerating
-            label={title || (tqBusy ? "3/4 view" : "Redrawing look")}
+            label={
+              title ||
+              (reverting ? "Restoring look" : tqBusy ? "3/4 view" : "Redrawing look")
+            }
             detail={
-              tqBusy
-                ? "Turning this look to a three-quarter angle"
-                : "Applying the new pieces to this look"
+              reverting
+                ? "Putting Carlo's original look back"
+                : tqBusy
+                  ? "Turning this look to a three-quarter angle"
+                  : "Applying the new pieces and getting Carlo's estimate"
             }
           />
         </div>
       ) : (
-        <div className="relative">
+        <div className="group relative">
           <ReportZoomImage
             src={shownSrc}
             alt={
@@ -110,6 +193,17 @@ export function LookSetCard({
             wrapperClassName="relative block aspect-[9/16] w-full overflow-hidden rounded-2xl border hairline"
             className="h-full w-full object-cover"
           />
+          {showEstimate ? (
+            estimate?.opinion ? (
+              <LookEstimate opinion={estimate.opinion} />
+            ) : (
+              <div className="absolute top-3 left-3 z-20">
+                <span className="inline-flex h-10 items-center rounded-full border border-paper/40 bg-ink/70 px-3 text-xs font-medium text-paper shadow-sm backdrop-blur-sm">
+                  {estimateLoading ? "Estimate…" : "Estimate"}
+                </span>
+              </div>
+            )
+          ) : null}
           {imageTqSrc ? (
             <button
               type="button"
@@ -131,6 +225,27 @@ export function LookSetCard({
       ) : null}
       {description ? (
         <p className="mt-1 text-sm text-stone">{description}</p>
+      ) : null}
+      {showEstimate ? (
+        <details
+          className="mt-3 rounded-2xl border hairline bg-cream/40 p-4"
+          open={Boolean(estimate?.opinion)}
+        >
+          <summary className="cursor-pointer text-sm font-medium text-ink">
+            Estimate
+          </summary>
+          <div className="mt-3">
+            {estimate?.opinion ? (
+              <LookEstimateBody opinion={estimate.opinion} />
+            ) : (
+              <p className="text-sm text-stone">
+                {estimateLoading
+                  ? "Carlo is reading this look…"
+                  : "Carlo's estimate will appear here."}
+              </p>
+            )}
+          </div>
+        </details>
       ) : null}
       {palette.length ? (
         <div className="mt-3 flex gap-1.5">
@@ -182,6 +297,7 @@ export function LookSetCard({
           key={description}
           setId={setId}
           lookIndex={lookIndex}
+          occasionId={occasionId}
           title={title}
           description={description}
           disabled={busy}
@@ -196,8 +312,26 @@ export function LookSetCard({
             setItems(look.items);
             setTryOnReset(look.image);
             setTqMsg(null);
+            setCanRevert(true);
+            setEstimate(look.estimate ?? null);
           }}
         />
+      ) : null}
+      {isOwner && canRevert ? (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => void revertToOriginal()}
+            disabled={busy}
+            className="inline-flex min-h-[2.25rem] items-center rounded-full border border-line px-4 py-2 text-sm text-stone transition-colors hover:border-ink/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Restore Carlo&apos;s look
+          </button>
+          <p className="mt-1 text-[11px] text-stone-soft">
+            Puts back the brief, image and shop from before the constructor.
+          </p>
+          {revertMsg ? <p className="mt-1 text-xs text-stone-soft">{revertMsg}</p> : null}
+        </div>
       ) : null}
       <LookShopAndTryOn
         key={`${lookIndex}-${description}`}

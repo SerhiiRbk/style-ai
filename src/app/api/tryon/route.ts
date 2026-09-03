@@ -22,11 +22,15 @@ import {
   InsufficientCreditsError,
 } from "@/lib/credits";
 import { signedAssetProxyUrl } from "@/lib/asset-token";
+import {
+  catalogTryOnGarmentsText,
+  pickTryOnGarments,
+  upgradeCatalogImageUrl,
+} from "@/lib/look-tryon";
+import { MAX_TRYON_GARMENTS } from "@/lib/tryon-limits";
 
 /** Image-model render / fal queue polling can exceed the default timeout. */
 export const maxDuration = 300;
-
-const MAX_TRYON_PRODUCTS = 4;
 
 function normalizeGarmentUrl(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -34,21 +38,8 @@ function normalizeGarmentUrl(raw: string | null | undefined): string | null {
   if (!trimmed) return null;
   if (trimmed.startsWith("//")) return `https:${trimmed}`;
   if (trimmed.startsWith("/")) return absoluteUrl(trimmed);
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return upgradeCatalogImageUrl(trimmed);
   return null;
-}
-
-function catalogStudioGarmentsText(garments: CatalogTryOnGarment[]): string {
-  const lines = garments.map((g, i) => {
-    const colour =
-      g.color && g.color !== "#CCCCCC" ? `, colour ${g.color}` : "";
-    return `${i + 1}. ${g.title} (${g.category.toLowerCase()}${colour})`;
-  });
-  return (
-    `Dress the person in these catalogue pieces:\n${lines.join("\n")}\n` +
-    `Wear every listed garment. Reproduce each catalogue garment faithfully — ` +
-    `exact colour, fabric, pattern and fit. `
-  );
 }
 
 /** Delete a catalogue try-on (report_id null) — storage object + row, owner only. */
@@ -127,7 +118,7 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
 
-  // Accept either a single productId or productIds (combined outfit, up to 4).
+  // Accept either a single productId or productIds (combined outfit, up to 6).
   const rawIds: unknown = body?.productIds;
   let productIds = Array.isArray(rawIds)
     ? rawIds.filter(
@@ -137,7 +128,7 @@ export async function POST(request: Request) {
   if (!productIds.length && typeof body?.productId === "string") {
     productIds = [body.productId];
   }
-  productIds = [...new Set(productIds)].slice(0, MAX_TRYON_PRODUCTS);
+  productIds = [...new Set(productIds)].slice(0, MAX_TRYON_GARMENTS);
   if (!productIds.length) {
     return NextResponse.json({ error: "Missing productId" }, { status: 400 });
   }
@@ -205,6 +196,7 @@ export async function POST(request: Request) {
   if (!garments.length) {
     return NextResponse.json({ error: "Products not found" }, { status: 404 });
   }
+  const renderGarments = pickTryOnGarments(garments, MAX_TRYON_GARMENTS);
 
   // Engine selection: TRYON_ENGINE=image (default, look-render pipeline with
   // layering + multi-garment) | fal (FASHN single-garment VTON). Fall back to
@@ -213,13 +205,13 @@ export async function POST(request: Request) {
   if (
     tryOnStyle !== "studio" &&
     env.tryonEngine === "fal" &&
-    garments.length === 1 &&
+    renderGarments.length === 1 &&
     hasVTON
   ) {
     mode = "fal";
   } else if (hasAI) {
     mode = "image";
-  } else if (garments.length === 1 && hasVTON) {
+  } else if (renderGarments.length === 1 && hasVTON) {
     mode = "fal";
   } else {
     return NextResponse.json(
@@ -228,7 +220,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (mode === "fal" && !garments[0].imageUrl) {
+  if (mode === "fal" && !renderGarments[0].imageUrl) {
     return NextResponse.json(
       { error: "Garment image unavailable for this product" },
       { status: 422 },
@@ -279,12 +271,12 @@ export async function POST(request: Request) {
   if (mode === "fal") {
     const r = await runTryOn({
       personImageUrl: photo.signedUrl,
-      garmentImageUrl: garments[0].imageUrl!,
+      garmentImageUrl: renderGarments[0].imageUrl!,
     });
     if (r.ok) render = { bytes: r.bytes, mediaType: r.mediaType };
     else renderError = r.error;
   } else if (tryOnStyle === "studio") {
-    const garmentImages = garments
+    const garmentImages = renderGarments
       .filter(
         (g): g is CatalogTryOnGarment & { imageUrl: string } =>
           Boolean(g.imageUrl && /^https?:\/\//i.test(g.imageUrl)),
@@ -296,7 +288,7 @@ export async function POST(request: Request) {
       }));
     render = await generateReportTryOnImage({
       personImageUrl: photo.signedUrl,
-      garmentsText: catalogStudioGarmentsText(garments),
+      garmentsText: catalogTryOnGarmentsText(renderGarments),
       garmentImageUrls: garmentImages.map((g) => g.url),
       garmentImages,
     });
@@ -304,7 +296,7 @@ export async function POST(request: Request) {
   } else {
     render = await generateCatalogTryOnImage({
       personImageUrl: photo.signedUrl,
-      garments,
+      garments: renderGarments,
     });
     if (!render) renderError = "Try-on failed — please try again";
   }

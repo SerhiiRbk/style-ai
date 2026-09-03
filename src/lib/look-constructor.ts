@@ -1,4 +1,5 @@
 import { decomposeLook } from "@/lib/style-extras";
+import { lookOccasionIsTailored } from "@/lib/look-occasion-fit";
 
 /** One editable garment slot in the look constructor. */
 export type ConstructorSlot = {
@@ -1132,19 +1133,26 @@ export function eyewearPromptDirective(description: string): string {
 }
 
 /** Prompt override so tucked / untucked shirts render as specified. */
-export function tuckPromptDirective(description: string): string {
+export function tuckPromptDirective(
+  description: string,
+  occasionId?: string | null,
+): string {
   const tuck = canonicalTuck(description);
-  if (!tuck) return "";
-  if (tuck === "in") {
+  // Work / formal: shirts stay tucked unless the look or constructor said otherwise.
+  const impliedIn = !tuck && lookOccasionIsTailored(occasionId);
+  if (tuck === "out") {
     return (
-      `CRITICAL hem: a shirt, oxford, tee, polo or henley listed as tucked in ` +
-      `has its hem inside the waistband of the trousers — not hanging over the belt. `
+      `CRITICAL hem: a shirt, oxford, tee, polo or henley listed as worn untucked ` +
+      `hangs over the trousers — do not tuck it in. `
     );
   }
-  return (
-    `CRITICAL hem: a shirt, oxford, tee, polo or henley listed as worn untucked ` +
-    `hangs over the trousers — do not tuck it in. `
-  );
+  if (tuck === "in" || impliedIn) {
+    return (
+      `CRITICAL hem: a shirt, oxford, tee, polo or henley is tucked in — ` +
+      `the hem sits inside the waistband of the trousers, not hanging over the belt. `
+    );
+  }
+  return "";
 }
 
 export const MAX_ACCESSORY_SLOTS = 3;
@@ -1279,7 +1287,11 @@ export function composeLookPalette(slots: ConstructorSlot[]): string[] {
 }
 
 /** Parse a look brief into constructor slots (description is the source of truth). */
-export function slotsFromLook(title: string, description: string): ConstructorSlot[] {
+export function slotsFromLook(
+  title: string,
+  description: string,
+  occasionId?: string | null,
+): ConstructorSlot[] {
   const garments = decomposeLook([title, description].filter(Boolean).join(", "));
   const seen = new Set<string>();
   const slots: ConstructorSlot[] = [];
@@ -1302,7 +1314,10 @@ export function slotsFromLook(title: string, description: string): ConstructorSl
       ? canonicalEyewearShape(g.clause, garment)
       : "";
     const shape = parsed ? coerceEyewearShape(garment, parsed) : "";
-    const tuck = isTuckable(garment) ? canonicalTuck(g.clause) : "";
+    const tuck = isTuckable(garment)
+      ? canonicalTuck(g.clause) ||
+        (lookOccasionIsTailored(occasionId) ? "in" : "")
+      : "";
     const tieType = isTie(garment) ? canonicalTieType(g.clause) : "";
     const hatType = isHat(garment) ? canonicalHatType(g.clause) : "";
     const material = isFabricOuterwear(garment)

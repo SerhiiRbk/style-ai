@@ -5,6 +5,7 @@ export const CREDIT_REASON_LABELS: Record<string, string> = {
   promo: "Promo redemption",
   report: "Report generated",
   tryon: "Try-on",
+  complete_look: "Complete the look",
   regen: "Re-render (hair / try-on)",
   premium_addon: "Grooming unlock / extra previews",
   look_extra: "Extra look generated",

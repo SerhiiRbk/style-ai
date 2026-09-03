@@ -48,7 +48,7 @@ import {
   getLatestFacePhotoPath,
   signPhotoPath,
 } from "@/lib/photo-tryon";
-import { Boldness, BodyType } from "@/lib/style-profile";
+import { Boldness, BodyType, type LookItem } from "@/lib/style-profile";
 import type { ReportContent, StyleProfile } from "@/lib/style-profile";
 import type { LookBriefSeason } from "@/lib/ai/look-brief";
 
@@ -106,6 +106,8 @@ type RenderedLook = {
   description: string;
   context: string;
   palette: string[];
+  /** Structured garment slots from generateExtraLook — feeds matchLookItems. */
+  items?: LookItem[];
   imagePath: string;
   charged: number;
 };
@@ -588,6 +590,7 @@ export async function POST(request: Request) {
             season,
             occasionId: ctx.id,
             lookIndex: i,
+            looksCount,
             styleId,
             existingTitles: titlesSoFar,
             colorRecipe: colorRecipes[i],
@@ -598,6 +601,7 @@ export async function POST(request: Request) {
             look,
             referenceImageUrl: refFullUrl,
             faceReferenceImageUrl: faceRefUrl,
+            occasionId: ctx.id,
           });
           if (!img) {
             console.error("[look-set] generateLookImage returned null", setId, i);
@@ -700,6 +704,7 @@ export async function POST(request: Request) {
         title: r.title,
         description: r.description,
         palette: r.palette,
+        items: r.items,
       })),
     } as unknown as ReportContent;
     // matchLookItems keys by position in content.looks (= position in

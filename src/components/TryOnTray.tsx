@@ -15,6 +15,10 @@ import {
   TryOnStyleToggle,
   type CatalogTryOnStyle,
 } from "./TryOnStyleToggle";
+import { useCompleteLook } from "./CompleteLookContext";
+import { EXTRA_LOOK_CONTEXTS } from "@/lib/look-contexts";
+import { MAX_COMPLETE_LOOK_ANCHORS } from "@/lib/complete-look";
+import { CREDIT_COSTS } from "@/lib/credit-costs";
 
 const VERDICT_STYLE: Record<TryOnVerdict, { dot: string; label: string }> = {
   great: { dot: "bg-emerald-400", label: "Strong match" },
@@ -24,7 +28,7 @@ const VERDICT_STYLE: Record<TryOnVerdict, { dot: string; label: string }> = {
 
 /**
  * Floating tray for the combined catalog try-on: shows the selected pieces
- * (up to 4) and renders them together on the user's photo in one credit.
+ * (up to 6) and renders them together on the user's photo in one credit.
  */
 export function TryOnTray({
   reportId,
@@ -37,6 +41,7 @@ export function TryOnTray({
   variant?: "report" | "catalog";
 }) {
   const selection = useTryOnSelection();
+  const completeLook = useCompleteLook();
   const { balance, setBalance } = useCredits();
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">(
     "idle",
@@ -119,13 +124,22 @@ export function TryOnTray({
     }
   }
 
+  const busy = state === "loading" || Boolean(completeLook?.loading);
+  const tooManyForComplete =
+    items.length > MAX_COMPLETE_LOOK_ANCHORS && variant === "catalog";
+
   return (
-    <div className="fixed inset-x-3 bottom-3 z-[90] sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[400px]">
-      <div className="rounded-2xl border border-paper/15 bg-ink/95 p-4 shadow-2xl backdrop-blur-md">
-        <div className="flex items-center justify-between">
-          <p className="text-xs uppercase tracking-wider text-brass-soft">
-            Outfit try-on · {items.length}/{MAX_TRYON_ITEMS}
-          </p>
+    <div className="fixed inset-x-3 bottom-3 z-[90] sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[26rem]">
+      <div className="max-h-[min(36rem,calc(100dvh-1.5rem))] overflow-y-auto rounded-2xl border hairline bg-paper p-4 shadow-[0_24px_56px_-24px_rgba(21,18,13,0.45)]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-brass">
+              Your selection · {items.length}/{MAX_TRYON_ITEMS}
+            </p>
+            <p className="mt-0.5 text-xs text-stone">
+              Tap × to remove a piece.
+            </p>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -137,27 +151,27 @@ export function TryOnTray({
               setOpinionState("idle");
               setOpinionNoProfile(false);
             }}
-            className="text-[11px] text-paper/40 transition-colors hover:text-paper"
+            className="shrink-0 text-xs text-stone-soft transition-colors hover:text-ink"
           >
             Clear
           </button>
         </div>
 
-        <div className="mt-3 flex gap-2">
+        <ul className="mt-3 flex gap-2 overflow-x-auto pb-0.5">
           {items.map((item) => (
-            <div key={item.productId} className="relative">
+            <li key={item.productId} className="relative w-16 shrink-0">
               {item.image ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={item.image}
                   alt={item.title}
                   title={item.title}
-                  className="h-14 w-11 rounded-md border border-paper/15 object-cover"
+                  className="h-20 w-16 rounded-lg border hairline object-cover"
                 />
               ) : (
                 <div
                   title={item.title}
-                  className="flex h-14 w-11 items-center justify-center rounded-md border border-paper/15 bg-ink-soft/60 px-1 text-center text-[8px] leading-tight text-paper/50"
+                  className="flex h-20 w-16 items-center justify-center rounded-lg border hairline bg-cream px-1 text-center text-[9px] leading-tight text-stone"
                 >
                   {item.title.slice(0, 18)}
                 </div>
@@ -166,54 +180,117 @@ export function TryOnTray({
                 type="button"
                 onClick={() => selection.remove(item.productId)}
                 aria-label={`Remove ${item.title}`}
-                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-paper text-[10px] leading-none text-ink"
+                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border hairline bg-paper text-[11px] leading-none text-ink shadow-sm"
               >
                 ×
               </button>
-            </div>
+              <p className="mt-1 line-clamp-2 text-[10px] leading-tight text-ink">
+                {item.title}
+              </p>
+            </li>
           ))}
-        </div>
+        </ul>
 
-        <div className="mt-3">
+        <div className="mt-4">
           <TryOnStyleToggle
             value={tryOnStyle}
             onChange={setTryOnStyle}
-            disabled={state === "loading"}
-            tone="dark"
+            disabled={busy}
+            tone="light"
           />
         </div>
+
+        {variant === "catalog" && completeLook ? (
+          <div className="mt-4 rounded-xl border hairline bg-cream/50 p-3">
+            <p className="text-[11px] uppercase tracking-wider text-brass">
+              Complete the look
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-stone">
+              {tooManyForComplete
+                ? `Keep ${MAX_COMPLETE_LOOK_ANCHORS} pieces — we fill the rest and render the outfit.`
+                : `We fill the missing pieces and render the outfit on you · ${CREDIT_COSTS.complete_look} credit.`}
+            </p>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {EXTRA_LOOK_CONTEXTS.map((ctx) => {
+                const active = completeLook.occasionId === ctx.id;
+                return (
+                  <button
+                    key={ctx.id}
+                    type="button"
+                    onClick={() => completeLook.setOccasionId(ctx.id)}
+                    disabled={completeLook.loading}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                      active
+                        ? "border-brass/40 bg-brass/15 text-ink"
+                        : "hairline text-stone hover:border-ink/20 hover:text-ink"
+                    }`}
+                  >
+                    {ctx.label}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                void completeLook.complete(
+                  items.map((i) => i.productId),
+                  { style: tryOnStyle },
+                )
+              }
+              disabled={
+                completeLook.loading ||
+                insufficient ||
+                items.length < 1 ||
+                tooManyForComplete
+              }
+              className="mt-3 inline-flex min-h-[2.25rem] w-full items-center justify-center rounded-full bg-ink px-4 py-2 text-sm text-paper transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {completeLook.loading ? (
+                <LuxeWorkingLabel message={WORKING.outfit} tone="paper" />
+              ) : tooManyForComplete ? (
+                `Deselect to ${MAX_COMPLETE_LOOK_ANCHORS} pieces`
+              ) : insufficient ? (
+                "Not enough credits"
+              ) : (
+                `Complete the look · ${CREDIT_COSTS.complete_look} credit`
+              )}
+            </button>
+            {completeLook.error ? (
+              <p className="mt-2 text-xs text-stone">{completeLook.error}</p>
+            ) : null}
+          </div>
+        ) : null}
 
         <button
           type="button"
           onClick={run}
-          disabled={state === "loading" || insufficient}
-          className="mt-3 w-full rounded-full bg-brass px-4 py-2 text-sm text-ink transition-opacity hover:opacity-90 disabled:opacity-50"
+          disabled={busy || insufficient}
+          className="mt-3 inline-flex min-h-[2.25rem] w-full items-center justify-center rounded-full border hairline bg-paper px-4 py-2 text-sm text-ink transition-colors hover:border-brass/50 hover:text-brass disabled:cursor-not-allowed disabled:opacity-50"
         >
           {state === "loading" ? (
             <LuxeWorkingLabel message={WORKING.outfit} tone="ink" />
           ) : state === "done" ? (
-            `Render again · ${cost} credit`
+            `Render these again · ${cost} credit`
           ) : (
-            `Try ${items.length === 1 ? "it" : `${items.length} pieces`} on me · ${cost} credit`
+            `Try ${items.length === 1 ? "this piece" : `these ${items.length}`} on me · ${cost} credit`
           )}
         </button>
 
         {creditsApply && insufficient && (
-          <p className="mt-2 text-[11px] text-paper/40">
+          <p className="mt-2 text-xs text-stone">
             Not enough credits ({balance} left).{" "}
-            <Link href="/pricing" className="text-brass-soft hover:text-paper">
+            <Link href="/pricing" className="text-brass hover:text-ink">
               Buy credits
             </Link>
           </p>
         )}
-        {msg && <p className="mt-2 text-xs text-paper/45">{msg}</p>}
+        {msg && <p className="mt-2 text-xs text-stone">{msg}</p>}
         {state === "done" && reportId && (
-          <p className="mt-2 text-[11px] text-paper/45">
-            Saved to your report below.
-          </p>
+          <p className="mt-2 text-xs text-stone">Saved to your report below.</p>
         )}
         {state === "done" && variant === "catalog" && (
-          <p className="mt-2 text-[11px] text-paper/45">
+          <p className="mt-2 text-xs text-stone">
             Preview only — not linked to a report.
           </p>
         )}
@@ -224,7 +301,7 @@ export function TryOnTray({
               <ReportZoomImage
                 src={`${url}&orig=1`}
                 alt="Combined outfit try-on"
-                className="block max-h-96 w-auto rounded-lg border border-paper/12"
+                className="block max-h-80 w-auto rounded-xl border hairline"
                 wrapperClassName="block"
               />
               <div className="absolute right-2 top-2 flex items-center gap-1.5 opacity-0 transition-opacity duration-200 group-hover/dl:opacity-100">
@@ -232,46 +309,43 @@ export function TryOnTray({
                 <ShareImageButton src={url} title="My Valetti try-on" />
               </div>
             </div>
-            <p className="mt-1.5 text-center text-[10px] text-paper/35">
+            <p className="mt-1.5 text-center text-[11px] text-stone-soft">
               Tap image for full size
             </p>
           </div>
         )}
 
         {state === "done" && opinionState === "loading" && (
-          <p className="mt-3 text-[11px]">
-            <LuxeWorkingLabel message="Carlo is taking a look…" tone="paper" />
+          <p className="mt-3 text-xs text-stone">
+            <LuxeWorkingLabel message="Carlo is taking a look…" tone="ink" />
           </p>
         )}
 
         {state === "done" && opinion && (
-          <div className="mt-3 rounded-xl border border-paper/12 bg-paper/[0.03] p-3">
+          <div className="mt-3 rounded-xl border hairline bg-cream/40 p-3">
             <div className="flex items-center gap-2">
               <span
                 className={`inline-block h-1.5 w-1.5 rounded-full ${VERDICT_STYLE[opinion.verdict].dot}`}
                 aria-hidden
               />
-              <span className="text-[10px] uppercase tracking-wider text-brass-soft">
+              <span className="text-[10px] uppercase tracking-wider text-brass">
                 Carlo · {VERDICT_STYLE[opinion.verdict].label}
               </span>
             </div>
-            <p className="mt-1.5 text-[13px] leading-snug text-paper">
+            <p className="mt-1.5 text-sm leading-snug text-ink">
               {opinion.headline}
             </p>
-            <p className="mt-1 text-[12px] leading-relaxed text-paper/70">
+            <p className="mt-1 text-xs leading-relaxed text-stone">
               {opinion.body}
             </p>
             {opinion.pairWith.length > 0 && (
               <div className="mt-2">
-                <p className="text-[10px] uppercase tracking-wider text-paper/40">
-                  Complete the look
+                <p className="text-[10px] uppercase tracking-wider text-stone-soft">
+                  Pair with
                 </p>
                 <ul className="mt-1 space-y-0.5">
                   {opinion.pairWith.map((p, i) => (
-                    <li
-                      key={i}
-                      className="text-[12px] leading-snug text-paper/70"
-                    >
+                    <li key={i} className="text-xs leading-snug text-stone">
                       · {p}
                     </li>
                   ))}
@@ -279,11 +353,11 @@ export function TryOnTray({
               </div>
             )}
             {opinionNoProfile && (
-              <p className="mt-2 border-t border-paper/10 pt-2 text-[11px] text-paper/45">
-                General guidance — {" "}
+              <p className="mt-2 border-t hairline pt-2 text-xs text-stone">
+                General guidance —{" "}
                 <Link
                   href="/start"
-                  className="text-brass underline-offset-2 hover:underline"
+                  className="text-brass underline-offset-2 hover:text-ink hover:underline"
                 >
                   create your style report
                 </Link>{" "}
