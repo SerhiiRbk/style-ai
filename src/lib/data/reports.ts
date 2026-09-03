@@ -69,7 +69,9 @@ import {
 import { resolveImagePromptVersion } from "@/lib/ai/look-prompt";
 import {
   accessoryPicksFor,
+  accessoryExtraPicksFor,
   headwearPicksFor,
+  headwearExtraPicksFor,
   capsuleMatrix,
   capsuleOutfitDescription,
   facialHairFor,
@@ -78,6 +80,7 @@ import {
   watchGuideFor,
   shoeGuideFor,
   FORMAL_CONTEXTS,
+  capsuleImageDirectives,
   lookItemsFromCell,
   type StyleExtras,
 } from "@/lib/style-extras";
@@ -472,7 +475,7 @@ async function generateHairImages(input: ImageJobInput) {
 
 /** Premium facial-hair & eyewear headshots — after hair, before look images. */
 async function generatePremiumGroomingImages(input: ImageJobInput) {
-  if (input.tier !== "premium") return;
+  if (input.tier !== "premium" && input.tier !== "lookbook") return;
 
   const admin = createAdminSupabase();
   const { reportId, userId, profile, photos } = input;
@@ -532,15 +535,42 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
   const existingAccessories = row?.accessories as AccessoryRec[] | null;
   const accessories: AccessoryRec[] =
     existingAccessories && existingAccessories.length > PREMIUM_ACCESSORY_GEN_LIMIT
-      ? existingAccessories
+      ? [
+          ...mergeByName(
+            existingAccessories.slice(0, PREMIUM_ACCESSORY_GEN_LIMIT),
+            pickAccessories(),
+          ),
+          ...mergeByName(
+            existingAccessories.slice(PREMIUM_ACCESSORY_GEN_LIMIT),
+            accessoryExtraPicksFor(profile).map((a) => ({
+              name: a.name,
+              why: a.why,
+              kind: a.kind,
+            })),
+          ),
+        ]
       : mergeByName(existingAccessories, pickAccessories());
-  // Headwear is included by default too — same "never shrink an add-on" rule.
   const existingHeadwear = row?.headwear as HeadwearRec[] | null;
   const headwear: HeadwearRec[] =
     existingHeadwear && existingHeadwear.length > PREMIUM_HEADWEAR_GEN_LIMIT
-      ? existingHeadwear
+      ? [
+          ...mergeByName(
+            existingHeadwear.slice(0, PREMIUM_HEADWEAR_GEN_LIMIT),
+            pickHeadwear(),
+          ),
+          ...mergeByName(
+            existingHeadwear.slice(PREMIUM_HEADWEAR_GEN_LIMIT),
+            headwearExtraPicksFor(profile).map((h) => ({
+              name: h.name,
+              why: h.why,
+              kind: h.kind,
+            })),
+          ),
+        ]
       : mergeByName(existingHeadwear, pickHeadwear());
 
+  const namesOf = (items: { name: string }[] | null | undefined) =>
+    (items ?? []).map((i) => i.name).join("|");
   const needsSeed =
     !row?.facial_hair ||
     !row?.eyewear ||
@@ -549,7 +579,10 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
     (row.facial_hair as FacialHairRec[]).length < PREMIUM_FACIAL_HAIR_GEN_LIMIT ||
     (row.eyewear as EyewearRec[]).length < PREMIUM_EYEWEAR_GEN_LIMIT ||
     (row.accessories as AccessoryRec[]).length < PREMIUM_ACCESSORY_GEN_LIMIT ||
-    (row.headwear as HeadwearRec[]).length < PREMIUM_HEADWEAR_GEN_LIMIT;
+    (row.headwear as HeadwearRec[]).length < PREMIUM_HEADWEAR_GEN_LIMIT ||
+    namesOf(row?.eyewear as EyewearRec[] | null) !== namesOf(eyewear) ||
+    namesOf(existingAccessories) !== namesOf(accessories) ||
+    namesOf(existingHeadwear) !== namesOf(headwear);
 
   if (needsSeed) {
     await admin
@@ -1111,13 +1144,19 @@ async function generateReportImages(input: ImageJobInput) {
             .join(" ") || undefined;
         const img = await generateLookImage({
           profile,
+          occasionId: lookOccasionIdFromContext(combo.context),
           look: {
             title: combo.context,
-            description: capsuleOutfitDescription(
-              combo.pieces,
-              colorByTitle,
-              colorNameByTitle,
-            ),
+            description: [
+              capsuleOutfitDescription(
+                combo.pieces,
+                colorByTitle,
+                colorNameByTitle,
+              ),
+              capsuleImageDirectives(combo.pieces),
+            ]
+              .filter(Boolean)
+              .join(" "),
             palette: combo.pieces
               .map((p) => colorByTitle.get(p))
               .filter((c): c is string => Boolean(c)),
@@ -1244,7 +1283,7 @@ export async function regenerateReportStyling(
   const admin = createAdminSupabase();
   const { data: row } = await admin
     .from("reports")
-    .select("id, user_id, tier, status, profile, colors")
+    .select("id, user_id, tier, status, profile, colors, language, shopping")
     .eq("id", reportId)
     .single();
   if (!row) return { ok: false, reason: "not-found" };
@@ -1258,17 +1297,66 @@ export async function regenerateReportStyling(
   if (!profile) return { ok: false, reason: "no-profile" };
   const userId = row.user_id as string;
 
+  const colors = (row.colors as {
+    best?: { name: string; hex?: string }[];
+    avoid?: { name: string; hex?: string }[];
+  } | null) ?? { best: [], avoid: [] };
+  let shopping = (row.shopping as ShoppingItem[] | null) ?? [];
+
   if (opts?.rematchShopping !== false) {
-    const colors =
-      (row.colors as { best: { name: string }[] } | null) ?? { best: [] };
     const content = {
-      colors: { best: colors.best ?? [], avoid: [] },
+      colors: {
+        best: colors.best ?? [],
+        avoid: colors.avoid ?? [],
+      },
       hair: { recommend: [], avoid: [] },
       looks: [],
     } as unknown as ReportContent;
     const matched = await matchShopping(profile, content);
     if (!isMockShopping(matched)) {
+      shopping = matched;
       await admin.from("reports").update({ shopping: matched }).eq("id", reportId);
+    }
+  }
+
+  // Keep Start here / buying plan in sync with the (possibly rematched) list.
+  // English reports compute extras live (`extras` stays null). Other languages
+  // persist a translated snapshot so the page/PDF do not flip back to English.
+  if (shopping.length) {
+    const extras = buildExtras(
+      assembleReport({
+        id: reportId,
+        tier,
+        profile,
+        content: {
+          colors: {
+            best: colors.best ?? [],
+            avoid: colors.avoid ?? [],
+          },
+          headline: "",
+          summary: "",
+          hair: { recommend: [], avoid: [] },
+          silhouette: { fit: "", rules: [] },
+          looks: [],
+          doList: [],
+          dontList: [],
+        } as unknown as ReportContent,
+        shopping,
+      }),
+    );
+    const language = normalizeLanguage(
+      (row as { language?: string | null }).language,
+    );
+    if (language === "en") {
+      // Persist the rebuilt extras so a rematch is visible before the next
+      // deploy (English otherwise recomputes live from whatever code is live).
+      await admin.from("reports").update({ extras }).eq("id", reportId);
+    } else {
+      const translated = await translateReportParts({ extras }, language);
+      await admin
+        .from("reports")
+        .update({ extras: translated.extras ?? extras })
+        .eq("id", reportId);
     }
   }
 

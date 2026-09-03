@@ -53,6 +53,23 @@ import {
   styleFitScore,
   styleIntentPhrase,
   isShortsTitle,
+  hitsAvoidPalette,
+  isWarmYellowNearFace,
+  isWarmCreamNearFace,
+  isNearFaceShoppingCategory,
+  isUnreliableColorBlockKnit,
+  bestPaletteFitScore,
+  colorMatchScore,
+  pickShoppingRolePair,
+  wantsPolishedFootwear,
+  wantsOutdoorJeans,
+  isCasualSummerShirtTitle,
+  isJeanTitle,
+  isSunglassesTitle,
+  isDarkAnchorPiece,
+  isDrawstringTitle,
+  isLoaferTitle,
+  CASUAL_OUTERWEAR_RE,
   type LookGarment,
 } from "@/lib/style-extras";
 import {
@@ -90,6 +107,7 @@ import {
   type RankedLookMatch,
 } from "@/lib/look-match-rank";
 import { attachLookItemAlts } from "@/lib/look-item-alts";
+import { capsuleWardrobeSlots } from "@/lib/capsule-wardrobe";
 
 export { attrFitScore } from "./catalog-attrfit";
 export {
@@ -735,6 +753,188 @@ function genderFilterFor(
 }
 
 /**
+ * Shop the capsule the way looks are shopped: colour + role first, then
+ * one catalogue row per slot. Category-nearest-neighbour is the fallback.
+ */
+async function matchShoppingByRecipe(
+  profile: StyleProfile,
+  content: ReportContent,
+): Promise<ShoppingItem[]> {
+  const best = (content.colors.best ?? []).filter((c) => c.hex);
+  if (!best.length) return [];
+  const avoid = content.colors.avoid ?? [];
+  const polished = wantsPolishedFootwear(profile);
+  const outdoorJeans = wantsOutdoorJeans(profile);
+  const recipe = capsuleWardrobeSlots(best, avoid, {
+    outdoorJeans,
+    polished,
+    cool: profile.physical.undertone === "cool",
+  });
+  if (!recipe.length) return [];
+
+  const sb = createAdminSupabase();
+  const market = marketForCurrency(profile.currency);
+  const country = profile.demographics.country;
+  const currency = profile.currency;
+  const gender = genderFilterFor(profile.demographics.genderPresentation);
+  const goal = profile.goals[0]?.toLowerCase() ?? "your goals";
+  const avoidText = avoid.map((c) => c.name).filter(Boolean).join(", ");
+  const items: ShoppingItem[] = [];
+  const seen = new Set<string>();
+
+  for (const slot of recipe) {
+    const query =
+      `${slot.query} ${profile.colorSeason} palette.` +
+      (avoidText ? ` Never ${avoidText}.` : "");
+    const { embedding } = await embed({ model: env.embedModel, value: query });
+    const pool = await loadMatchPool(sb, {
+      query_embedding: embedding,
+      match_count: 12,
+      filter_category: slot.category,
+      max_price: profile.budgetEur.max,
+      country,
+      currency,
+      market,
+      gender_filter: gender,
+      color: slot.color.name,
+    });
+    let ranked = pool
+      .map((p) => {
+        const title = formatCatalogProductTitle(p.brand, p.title);
+        const hex = swatchHex(p);
+        const hay = `${title} ${p.color ?? ""}`;
+        return {
+          p,
+          title,
+          hex,
+          hay,
+          score:
+            (p.similarity ?? 0) +
+            styleFitScore(title, profile.boldness) +
+            tagFitScore(p, profile.boldness) +
+            colorMatchScore(slot.color.name, hex, title) * 0.4,
+        };
+      })
+      .filter((r) => {
+        if (hitsAvoidPalette(r.hay, r.hex, avoid)) return false;
+        if (
+          isNearFaceShoppingCategory(slot.category) &&
+          (isWarmYellowNearFace(r.hay, r.hex) ||
+            (profile.physical.undertone === "cool" &&
+              slot.role === "shirt" &&
+              isWarmCreamNearFace(r.hay, r.hex)))
+        ) {
+          return false;
+        }
+        if (slot.category === "Knitwear" && isUnreliableColorBlockKnit(r.title)) {
+          return false;
+        }
+        if (slot.category === "Knitwear" && SHORT_SLEEVE_KNIT_RE.test(r.title)) {
+          return false;
+        }
+        if (slot.category === "Shirts" && isCasualSummerShirtTitle(r.title)) {
+          return false;
+        }
+        if (
+          slot.role === "shirt" &&
+          /\b(polo|pale\s+green|light\s+green)\b/i.test(r.hay)
+        ) {
+          return false;
+        }
+        if (slot.role === "darkTrouser") {
+          if (isShortsTitle(r.title) || isDrawstringTitle(r.title)) return false;
+          if (!isDarkAnchorPiece(r.title, new Map([[r.title, r.hex]]))) {
+            return false;
+          }
+        }
+        if (slot.role === "casualTrouser") {
+          if (isShortsTitle(r.title)) return false;
+          if (outdoorJeans && !isJeanTitle(r.title)) return false;
+        }
+        if (
+          (slot.role === "dressShoe" || slot.role === "loafer") &&
+          /\b(green|olive|yellow|apricot|lime)\b/i.test(r.hay) &&
+          /\b(navy|charcoal|grey|gray)\b/i.test(slot.color.name)
+        ) {
+          return false;
+        }
+        if (
+          (slot.role === "dressShoe" || slot.role === "loafer") &&
+          profile.physical.undertone === "cool" &&
+          /\b(brown|cognac|tan|camel|tobacco|chocolate)\b/i.test(r.title) &&
+          !/\b(grey|gray|navy|charcoal|black|blue)\b/i.test(r.title)
+        ) {
+          return false;
+        }
+        if (slot.role === "jacket" && CASUAL_OUTERWEAR_RE.test(r.title)) {
+          return false;
+        }
+        if (slot.role === "casualOuter" && !CASUAL_OUTERWEAR_RE.test(r.title)) {
+          return false;
+        }
+        if (slot.role === "dressShoe") {
+          if (
+            CASUAL_FOOTWEAR_RE.test(r.title) ||
+            SNEAKER_RE_LOCAL.test(r.title) ||
+            isLoaferTitle(r.title)
+          ) {
+            return false;
+          }
+          if (
+            !/\b(derb(?:y|ies)|oxfords?|brogues?|monk\s+straps?|cap-?toe|wholecuts?)\b/i.test(
+              r.title,
+            ) ||
+            /\bshirt\b/i.test(r.title)
+          ) {
+            return false;
+          }
+        }
+        if (slot.role === "loafer" && !/\bloafers?\b/i.test(r.title)) return false;
+        if (slot.role === "sneaker" && !/\b(sneakers?|trainers?)\b/i.test(r.title)) {
+          return false;
+        }
+        if (slot.role === "belt" && !/\bbelts?\b/i.test(r.title)) return false;
+        if (
+          slot.role === "bag" &&
+          !/\b(briefcase|messenger|bag)\b/i.test(r.title)
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => b.score - a.score);
+
+    const pick = ranked.find((r) => {
+      const titleKey = r.title.toLowerCase().replace(/\s+/g, " ").trim();
+      return !seen.has(r.p.id) && !seen.has(titleKey);
+    });
+    if (!pick) continue;
+    const titleKey = pick.title.toLowerCase().replace(/\s+/g, " ").trim();
+    seen.add(pick.p.id);
+    seen.add(titleKey);
+    items.push({
+      category: slot.category,
+      title: pick.title,
+      why: shoppingReason(slot.category, items.filter((i) => i.category === slot.category).length, profile, goal),
+      priceEur: Number(pick.p.price_eur ?? 0),
+      priceNative:
+        pick.p.price_native != null ? Number(pick.p.price_native) : undefined,
+      currency: pick.p.currency ?? undefined,
+      retailer: pick.p.brand ?? pick.p.source ?? "",
+      url: pick.p.deeplink ?? "#",
+      color: pick.hex,
+      ...(pick.p.color?.trim() ? { colorName: pick.p.color.trim() } : {}),
+      image: pick.p.image_url ?? undefined,
+      productId: pick.p.id,
+    });
+  }
+
+  return items.length ? await applyShoppingReasons(items, profile) : [];
+}
+
+const SNEAKER_RE_LOCAL = /\b(sneakers?|trainers?|plimsolls?|runners?)\b/i;
+
+/**
  * Semantic shopping list: for each category, embed a query built from the
  * profile + best colours and find the closest products via pgvector.
  * Falls back to the curated mock list when AI/catalogue is unavailable.
@@ -746,8 +946,14 @@ export async function matchShopping(
   if (!hasAI || !hasSupabaseAdmin) return mockShopping();
 
   try {
+    const recipeItems = await matchShoppingByRecipe(profile, content);
+    if (recipeItems.length >= 6) {
+      return recipeItems;
+    }
     const sb = createAdminSupabase();
     const palette = content.colors.best.map((c) => c.name).join(", ");
+    const avoid = content.colors.avoid ?? [];
+    const avoidText = avoid.map((c) => c.name).filter(Boolean).join(", ");
     const goal = profile.goals[0]?.toLowerCase() ?? "your goals";
     const market = marketForCurrency(profile.currency);
     const country = profile.demographics.country;
@@ -760,28 +966,44 @@ export async function matchShopping(
       const isFootwear = category === "Footwear";
       // Polished profiles: steer footwear queries to dress shoes so sandals/clogs
       // don't dominate the vector pool for warm palettes.
-      const footwearBias =
-        isFootwear && !isTrendForward(profile.boldness)
-          ? " Leather dress shoes: derbies, oxfords, loafers, monk straps or chelsea boots — not sandals, clogs, slides or flip-flops."
-          : "";
+      const polishedFeet = wantsPolishedFootwear(profile);
+      const footwearBias = isFootwear
+        ? polishedFeet
+          ? " One pair of leather derbies or oxfords, one pair of loafers, and one pair of clean leather sneakers — three different silhouettes, not two of the same shoe, not sandals, clogs, slides or flip-flops."
+          : !isTrendForward(profile.boldness)
+            ? " Leather dress shoes: derbies, oxfords, loafers, monk straps or chelsea boots — not sandals, clogs, slides or flip-flops."
+            : ""
+        : "";
       // Steer the "Shirts" pool toward proper button-down shirts — the category
       // is dominated by tees/polos, which otherwise win the vector match and end
       // up under blazers in the capsule.
+      const polishedShirt = wantsPolishedFootwear(profile);
+      const outdoorJeans = wantsOutdoorJeans(profile);
       const shirtBias =
         category === "Shirts"
-          ? " Button-down collared shirts: oxford, poplin, linen or flannel shirts — not t-shirts, tees, tank tops, polos or sweatshirts."
+          ? polishedShirt
+            ? " Long-sleeve oxford or poplin button-down shirts — not short-sleeve, not V-neck, not camp collar, not t-shirts, tees, tank tops or polos."
+            : " Button-down collared shirts: oxford, poplin, linen or flannel shirts — not t-shirts, tees, tank tops, polos or sweatshirts."
           : "";
       // Knitwear is a layering piece (worn over a shirt or on its own), so it
       // must be long-sleeve — steer away from short-sleeve sweatshirts/tees.
       const knitBias =
         category === "Knitwear"
-          ? " Long-sleeve knitwear: jumpers, sweaters, crewnecks, roll-necks or cardigans — not short-sleeve sweatshirts, t-shirts, tank tops or sleeveless knits."
+          ? ` Long-sleeve knitwear: a plain merino crewneck or fine-gauge roll-neck in ${palette} — jumpers, sweaters, crewnecks, roll-necks or cardigans. Not short-sleeve sweatshirts, t-shirts, tank tops, sleeveless knits or geometric colour-block knits.`
           : "";
       // Trousers under a blazer must be full-length — shorts in this category
       // otherwise win the summer vector and get worn as chopped dress trousers.
       const trousersBias =
         category === "Trousers"
-          ? " Full-length tailored trousers, wool trousers or chinos — not shorts, bermudas or cropped shorts."
+          ? outdoorJeans
+            ? " One pair of jeans or denim and one pair of full-length tailored trousers — not two linens, not shorts."
+            : " Full-length tailored trousers, wool trousers or chinos — not shorts, bermudas or cropped shorts."
+          : "";
+      const accessoryBias =
+        category === "Accessories"
+          ? polishedFeet
+            ? " A leather belt that matches dress shoes and a slim briefcase or messenger bag — not sunglasses, not novelty scarves."
+            : " A leather belt or a quiet tie — not two pairs of sunglasses."
           : "";
       const query =
         `${category} in ${palette}; ${profile.colorSeason} palette; ` +
@@ -790,13 +1012,21 @@ export async function matchShopping(
         footwearBias +
         shirtBias +
         knitBias +
-        trousersBias;
+        trousersBias +
+        accessoryBias +
+        (avoidText ? ` Never ${avoidText}.` : "");
       const { embedding } = await embed({ model: env.embedModel, value: query });
       const pool = await loadMatchPool(sb, {
         query_embedding: embedding,
         // Wider pool so archetype re-ranking (and the footwear hard-filter) has
         // room to demote trend/casual pieces; footwear needs extra headroom.
-        match_count: isFootwear ? 24 : 8,
+        match_count: isFootwear
+          ? 24
+          : category === "Knitwear"
+            ? 20
+            : category === "Trousers" && outdoorJeans
+              ? 16
+              : 8,
         filter_category: category,
         max_price: profile.budgetEur.max,
         country,
@@ -829,14 +1059,24 @@ export async function matchShopping(
             (r.p.similarity ?? 0) +
             styleFitScore(r.title, profile.boldness) +
             tagFitScore(r.p, profile.boldness) +
-            priceBias(r.p),
+            priceBias(r.p) +
+            (category === "Knitwear"
+              ? bestPaletteFitScore(swatchHex(r.p), r.title, content.colors.best) *
+                0.2
+              : 0) +
+            (category === "Trousers" && outdoorJeans && isJeanTitle(r.title)
+              ? 0.18
+              : 0),
         }))
         .sort((a, b) => b.score - a.score);
 
       // Polished/professional wardrobes should never be handed casual
       // warm-weather footwear (sandals, clogs, slides) as a recommended piece —
       // a soft penalty isn't enough, so hard-drop them unless nothing else fits.
-      if (category === "Footwear" && !isTrendForward(profile.boldness)) {
+      if (
+        category === "Footwear" &&
+        (!isTrendForward(profile.boldness) || polishedFeet)
+      ) {
         const dress = ranked.filter((r) => !CASUAL_FOOTWEAR_RE.test(r.title));
         if (dress.length) ranked = dress;
       }
@@ -849,6 +1089,12 @@ export async function matchShopping(
           (r) => !isNonButtonShirtTitle(r.title, r.p.garment_subtype),
         );
         if (buttonShirts.length) ranked = buttonShirts;
+        if (polishedShirt) {
+          const longSleeve = ranked.filter(
+            (r) => !isCasualSummerShirtTitle(r.title),
+          );
+          if (longSleeve.length) ranked = longSleeve;
+        }
       }
 
       // A layering knit must be long-sleeve — hard-drop short-sleeve sweatshirts
@@ -865,9 +1111,130 @@ export async function matchShopping(
       // Prefer full-length trousers whenever the pool has any — shorts may stay
       // as a fallback only if nothing else matched (capsule matrix still keeps
       // them off jackets).
+      if (category === "Accessories" && polishedFeet) {
+        const finishing = ranked.filter((r) => !isSunglassesTitle(r.title));
+        if (finishing.length) ranked = finishing;
+      }
       if (category === "Trousers") {
         const fullLength = ranked.filter((r) => !isShortsTitle(r.title));
         if (fullLength.length) ranked = fullLength;
+        if (outdoorJeans) {
+          const withJeans = ranked.filter((r) => isJeanTitle(r.title));
+          const tailored = ranked.filter((r) => !isJeanTitle(r.title));
+          if (withJeans.length && tailored.length) {
+            ranked = [withJeans[0]!, ...tailored, ...withJeans.slice(1)];
+          }
+        }
+      }
+
+      // Never put an avoid-palette colour on a report, especially a knit or
+      // shirt next to the face. Near-face slots skip rather than fall back.
+      const onPalette = ranked.filter((r) => {
+        const hex = swatchHex(r.p);
+        const colorHay = `${r.title} ${r.p.color ?? ""}`;
+        if (hitsAvoidPalette(colorHay, hex, avoid)) return false;
+        if (
+          isNearFaceShoppingCategory(category) &&
+          isWarmYellowNearFace(colorHay, hex)
+        ) {
+          return false;
+        }
+        if (category === "Knitwear" && isUnreliableColorBlockKnit(r.title)) {
+          return false;
+        }
+        return true;
+      });
+      if (onPalette.length) ranked = onPalette;
+      else if (isNearFaceShoppingCategory(category)) ranked = [];
+
+      // Outdoors briefs need a real jeans role. The mixed trousers query
+      // often returns linen/chinos only — fetch jeans on their own.
+      if (
+        category === "Trousers" &&
+        outdoorJeans &&
+        !ranked.some((r) => isJeanTitle(r.title))
+      ) {
+        const jeanQuery =
+          `Men's jeans or five-pocket denim jeans in ${palette}; straight or regular fit jeans — not cargos, not chinos, not shorts, not linen trousers.`;
+        const { embedding: jeanEmb } = await embed({
+          model: env.embedModel,
+          value: jeanQuery,
+        });
+        const jeanPool = await loadMatchPool(sb, {
+          query_embedding: jeanEmb,
+          match_count: 12,
+          filter_category: "Trousers",
+          max_price: profile.budgetEur.max,
+          country,
+          currency,
+          market,
+          gender_filter: gender,
+        });
+        const jeans = jeanPool
+          .map((p) => ({
+            p,
+            title: formatCatalogProductTitle(p.brand, p.title),
+            score: (p.similarity ?? 0) + 0.25,
+          }))
+          .filter(
+            (r) =>
+              isJeanTitle(r.title) &&
+              !hitsAvoidPalette(
+                `${r.title} ${r.p.color ?? ""}`,
+                swatchHex(r.p),
+                avoid,
+              ),
+          );
+        const classic = jeans.filter(
+          (r) => !/\b(ripped|distressed|skinny)\b/i.test(r.title),
+        );
+        const picked = (classic.length ? classic : jeans).slice(0, 2);
+        if (picked.length) ranked = [...picked, ...ranked];
+      }
+
+      // A capsule needs one dark trouser. After dropping olive / yellow-green
+      // the pool can collapse to two sage drawstrings — then dinner is a suit.
+      if (category === "Trousers") {
+        const darkMap = new Map(
+          ranked.map((r) => [r.title, swatchHex(r.p)] as const),
+        );
+        const hasDark = ranked.some((r) =>
+          isDarkAnchorPiece(r.title, darkMap),
+        );
+        if (!hasDark) {
+          const darkQuery =
+            `Men's navy or charcoal tailored trousers, wool trousers or dark chinos — full-length, not drawstring, not shorts, not olive, not sage, not yellow.`;
+          const { embedding: darkEmb } = await embed({
+            model: env.embedModel,
+            value: darkQuery,
+          });
+          const darkPool = await loadMatchPool(sb, {
+            query_embedding: darkEmb,
+            match_count: 12,
+            filter_category: "Trousers",
+            max_price: profile.budgetEur.max,
+            country,
+            currency,
+            market,
+            gender_filter: gender,
+          });
+          const darks = darkPool
+            .map((p) => ({
+              p,
+              title: formatCatalogProductTitle(p.brand, p.title),
+              score: (p.similarity ?? 0) + 0.3,
+            }))
+            .filter((r) => {
+              const hex = swatchHex(r.p);
+              const hay = `${r.title} ${r.p.color ?? ""}`;
+              if (hitsAvoidPalette(hay, hex, avoid)) return false;
+              return isDarkAnchorPiece(
+                r.title,
+                new Map([[r.title, hex]]),
+              );
+            });
+          if (darks[0]) ranked = [darks[0], ...ranked];
+        }
       }
 
       // A report should never surface two pairs of sandals: cap open/casual
@@ -876,10 +1243,28 @@ export async function matchShopping(
       const footwearHasClosed =
         isFootwear && ranked.some((r) => !CASUAL_FOOTWEAR_RE.test(r.title));
 
+      const rolePicks = pickShoppingRolePair(
+        category,
+        ranked.map((r) => ({
+          title: r.title,
+          color: swatchHex(r.p),
+          priceEur: Number(r.p.price_eur ?? 0),
+        })),
+        {
+          polishedFootwear: polishedFeet,
+          polishedShirt,
+          outdoorJeans,
+        },
+      );
+      const roleRanked = rolePicks
+        .map((pick) => ranked.find((r) => r.title === pick.title))
+        .filter((r): r is (typeof ranked)[number] => Boolean(r));
+      const toAdd = roleRanked.length ? roleRanked : ranked;
+
       let added = 0;
       let casualShoes = 0;
-      for (const { p, title } of ranked) {
-        if (added >= 2) break;
+      for (const { p, title } of toAdd) {
+        if (added >= (isFootwear ? 3 : 2)) break;
         // Dedup by product id AND by normalized model title, so the same model
         // in two colours can't take both slots (e.g. two "Leather Sandals").
         const titleKey = title.toLowerCase().replace(/\s+/g, " ").trim();
@@ -901,6 +1286,7 @@ export async function matchShopping(
           retailer: p.brand ?? p.source ?? "",
           url: p.deeplink ?? "#",
           color: swatchHex(p),
+          ...(p.color?.trim() ? { colorName: p.color.trim() } : {}),
           image: p.image_url ?? undefined,
           productId: p.id,
         });

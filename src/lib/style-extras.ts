@@ -11,6 +11,7 @@ import {
   type StyleProfile,
 } from "@/lib/style-profile";
 import { humanizeProductTitle } from "@/lib/product-title";
+import { capsuleLookLine } from "@/lib/capsule-wardrobe";
 
 export type FrameShapeId =
   | "rectangle"
@@ -868,6 +869,49 @@ export function shoeGuideFor(
   };
 }
 
+export type ShoeGuideCard = {
+  name: string;
+  color: string;
+  colorHex: string;
+  image?: string;
+};
+
+function shoeFitsVariant(title: string, variant: ShoeVariant): boolean {
+  const hay = `${variant.role} ${variant.style}`.toLowerCase();
+  if (/trainer|sneaker/.test(hay) || /everyday|travel/i.test(variant.role)) {
+    return SNEAKER_RE.test(title);
+  }
+  if (/\b(chelsea|trek(?:king)?|hiking|boots?)\b/.test(hay) && !/loafer/.test(hay)) {
+    return /\b(boots?|chelsea)\b/i.test(title) && !SNEAKER_RE.test(title);
+  }
+  if (/loafer|moccasin|penny|driving/.test(hay)) {
+    return isLoaferTitle(title) || /moccasin|driving/i.test(title);
+  }
+  return (
+    !SNEAKER_RE.test(title) &&
+    !isLoaferTitle(title) &&
+    !CASUAL_FOOTWEAR_RE.test(title)
+  );
+}
+
+/** Tiles for the details "Shoe guide" — same pairs as the footwear system. */
+export function shoeGuideCards(
+  guide: ShoeGuide,
+  shopping: ShoppingItem[] = [],
+): ShoeGuideCard[] {
+  const unused = shopping.filter((i) => i.category === "Footwear");
+  return guide.variants.map((v) => {
+    const idx = unused.findIndex((s) => shoeFitsVariant(s.title, v));
+    const item = idx >= 0 ? unused.splice(idx, 1)[0] : undefined;
+    return {
+      name: `${v.color} ${v.style}`,
+      color: v.color,
+      colorHex: v.colorHex,
+      image: item?.image,
+    };
+  });
+}
+
 /* --------------------------------- belts ---------------------------------- */
 
 /**
@@ -880,6 +924,7 @@ export function beltGuideFor(
   profile: StyleProfile,
   best: ColorRec[],
   avoid: ColorRec[] = [],
+  shopping: ShoppingItem[] = [],
 ): BeltGuide {
   const undertone = lc(profile.physical.undertone);
   const warm = undertone === "warm";
@@ -902,15 +947,36 @@ export function beltGuideFor(
   const charcoal = { name: "Charcoal", hex: "#3A3F47" };
   const black = { name: "Black", hex: blackFromBest?.hex ?? "#1A1A1A" };
 
-  // Formal belt = the dress-shoe leather: black if in palette, else warm → dark
-  // brown, cool → burgundy (dark brown otherwise).
-  const formalLeather = blackFromBest
-    ? black
-    : warm
-      ? darkBrown
-      : cool
-        ? burgundy
-        : darkBrown;
+  const dressShoe = shopping.find(
+    (i) =>
+      i.category === "Footwear" &&
+      !SNEAKER_RE.test(i.title) &&
+      !isLoaferTitle(i.title) &&
+      !CASUAL_FOOTWEAR_RE.test(i.title),
+  );
+  const shoeLeather = (() => {
+    if (!dressShoe) return null;
+    const hay = `${dressShoe.title} ${dressShoe.color ?? ""}`.toLowerCase();
+    if (/navy|blue|indigo|slate/i.test(hay) || dressShoe.color === "#28324A" || dressShoe.color === "#1e2a3a") {
+      return { name: "Navy / slate", hex: dressShoe.color && /^#/.test(dressShoe.color) ? dressShoe.color : "#2E3A4A" };
+    }
+    if (/burgundy|oxblood|wine/i.test(hay)) return burgundy;
+    if (/black/i.test(hay)) return black;
+    if (/brown|cognac|tan|chestnut/i.test(hay)) return darkBrown;
+    return null;
+  })();
+
+  // Formal belt = the dress-shoe leather: shopping first, else black if in
+  // palette, else warm → dark brown, cool → burgundy.
+  const formalLeather = shoeLeather
+    ? shoeLeather
+    : blackFromBest
+      ? black
+      : warm
+        ? darkBrown
+        : cool
+          ? burgundy
+          : darkBrown;
   // Casual belt = warm/neutral brown; if the palette rejects warm brown, a cool
   // charcoal reads cleaner than forcing tan.
   const casualLeather = avoidBrown ? (cool ? charcoal : darkBrown) : darkBrown;
@@ -1090,9 +1156,9 @@ function sunglassesFor(faceShape: string): FrameRec[] {
   if (f.includes("square")) {
     return [
       {
-        shape: "round",
-        name: "Round sunglasses",
-        why: "Soft curves balance a strong, angular jaw in bright light.",
+        shape: "wayfarer",
+        name: "Wayfarer sunglasses",
+        why: "A different silhouette from your optical frames — structured enough for town, still soft on a square jaw.",
       },
       {
         shape: "aviator",
@@ -1202,38 +1268,47 @@ export type AccessoryPick = {
 export function accessoryPicksFor(profile: StyleProfile): AccessoryPick[] {
   const climate = lc(profile.demographics.climate);
   const cold = /(cold|nordic|maritime|temperate)/.test(climate);
+  const summer = isSummerSeason(profile);
+  const quiet = wantsQuietFinishing(profile);
   const goals = profile.goals.map(lc).join(" ");
   const formal =
+    quiet ||
     /(work|office|business|promotion|professional|formal|interview|leadership|executive|client)/.test(
       goals,
     );
   const gender = lc(profile.demographics.genderPresentation);
 
-  const picks: AccessoryPick[] = [];
-
-  // 1) A scarf tuned to climate — the workhorse accessory.
-  picks.push(
-    cold
-      ? {
-          name: "Wool-blend scarf",
-          why: "A soft neutral scarf in your palette adds warmth and a finished, considered layer over coats and knitwear.",
-          kind: "scarf",
-        }
-      : {
-          name: "Lightweight cotton-silk scarf",
-          why: "A featherweight scarf adds an elegant accent at the neck without heat — easy to wear loosely looped.",
-          kind: "scarf",
-        },
-  );
-
-  // 2) A tie for formal goals, otherwise a softer neckwear option.
   if (formal) {
+    return [
+      {
+        name: "Silk grenadine tie",
+        why: "A textured, matte tie in your palette reads refined — the detail that elevates a jacket for work.",
+        kind: "tie",
+      },
+      {
+        name: "Knitted tie",
+        why: "A matte knitted tie with a square end reads relaxed-smart — ideal under a blazer.",
+        kind: "tie",
+      },
+    ];
+  }
+
+  const picks: AccessoryPick[] = [];
+  if (cold && !summer) {
     picks.push({
-      name: "Silk grenadine tie",
-      why: "A textured, matte tie in your palette reads refined — the detail that elevates a jacket for work.",
-      kind: "tie",
+      name: "Wool-blend scarf",
+      why: "A soft neutral scarf in your palette adds warmth and a finished, considered layer over coats and knitwear.",
+      kind: "scarf",
     });
-  } else if (gender === "female") {
+  } else {
+    picks.push({
+      name: "Lightweight cotton-silk scarf",
+      why: "A featherweight scarf adds an elegant accent at the neck without heat — easy to wear loosely looped.",
+      kind: "scarf",
+    });
+  }
+
+  if (gender === "female") {
     picks.push({
       name: "Silk neck-scarf",
       why: "A small silk scarf knotted at the neck adds colour and polish to an open collar.",
@@ -1264,6 +1339,20 @@ export function accessoryExtraPicksFor(profile: StyleProfile): AccessoryPick[] {
         name: "Twilly scarf",
         why: "A slim silk twilly tied at the collar or bag handle is an easy, elegant accent.",
         kind: "scarf",
+      },
+    ];
+  }
+  if (wantsQuietFinishing(profile)) {
+    return [
+      {
+        name: "Linen pocket square",
+        why: "A quiet square in your palette finishes a jacket pocket without another scarf at the neck.",
+        kind: "neckwear",
+      },
+      {
+        name: "Silk neckerchief",
+        why: "One optional neck accent for open-collar evenings — not a second winter scarf.",
+        kind: "neckwear",
       },
     ];
   }
@@ -1299,10 +1388,48 @@ export function headwearPicksFor(profile: StyleProfile): HeadwearPick[] {
   const f = lc(profile.physical.faceShape);
   const climate = lc(profile.demographics.climate);
   const cold = /(cold|nordic|maritime|temperate)/.test(climate);
+  const summer = isSummerSeason(profile);
+  const quiet = wantsQuietFinishing(profile);
+  const country = (profile.lifestyle ?? []).some((l) =>
+    /old money|country|heritage/i.test(l),
+  );
 
   const picks: HeadwearPick[] = [];
 
-  // 1) A brimmed hat tuned to face shape — the brim shapes the proportions.
+  if (quiet || country) {
+    picks.push({
+      name: "Wool flat cap",
+      why: "A wool flat cap reads smart-casual and pairs cleanly with overcoats and knitwear.",
+      kind: "cap",
+    });
+    if (country) {
+      picks.push({
+        name: "Soft-brim felt hat",
+        why: "A rounded, softer brim takes the edge off a strong jaw on a country weekend.",
+        kind: "hat",
+      });
+    } else if (summer) {
+      picks.push({
+        name: "Baseball cap",
+        why: "A structured cap in a palette neutral is the easy, versatile casual option for warmer days.",
+        kind: "cap",
+      });
+    } else if (cold) {
+      picks.push({
+        name: "Ribbed wool beanie",
+        why: "A fitted beanie in a neutral from your palette adds warmth and a clean, modern casual finish.",
+        kind: "beanie",
+      });
+    } else {
+      picks.push({
+        name: "Baseball cap",
+        why: "A structured cap in a palette neutral is the easy, versatile casual option for warmer days.",
+        kind: "cap",
+      });
+    }
+    return picks;
+  }
+
   if (f.includes("round")) {
     picks.push({
       name: "Structured fedora",
@@ -1335,9 +1462,8 @@ export function headwearPicksFor(profile: StyleProfile): HeadwearPick[] {
     });
   }
 
-  // 2) A casual cap or beanie tuned to climate.
   picks.push(
-    cold
+    cold && !summer
       ? {
           name: "Ribbed wool beanie",
           why: "A fitted beanie in a neutral from your palette adds warmth and a clean, modern casual finish.",
@@ -1357,8 +1483,29 @@ export function headwearPicksFor(profile: StyleProfile): HeadwearPick[] {
 export function headwearExtraPicksFor(profile: StyleProfile): HeadwearPick[] {
   const climate = lc(profile.demographics.climate);
   const cold = /(cold|nordic|maritime|temperate)/.test(climate);
+  const summer = isSummerSeason(profile);
+  if (wantsQuietFinishing(profile)) {
+    return [
+      summer
+        ? {
+            name: "Straw fedora",
+            why: "A light straw brim for summer days — quieter than a bandana, still on your palette.",
+            kind: "hat",
+          }
+        : {
+            name: "Soft-brim felt hat",
+            why: "A rounded brim for colder weekends — the country register without costume extras.",
+            kind: "hat",
+          },
+      {
+        name: "Unstructured linen cap",
+        why: "A soft cap for travel and outdoors that stays in the same register as the rest of the wardrobe.",
+        kind: "cap",
+      },
+    ];
+  }
   return [
-    cold
+    cold && !summer
       ? {
           name: "Wool flat cap",
           why: "A wool flat cap reads smart-casual and pairs cleanly with overcoats and knitwear.",
@@ -1821,32 +1968,77 @@ const CATEGORY_PRIORITY: Record<string, number> = {
   Accessories: 5,
 };
 
-function capsuleFrom(shopping: ShoppingItem[], profile: StyleProfile): CapsulePlan {
+export function capsuleFrom(shopping: ShoppingItem[], profile: StyleProfile): CapsulePlan {
   const count = (cats: string[]) =>
     shopping.filter((i) => cats.includes(i.category)).length;
 
-  // Build the outfit count from the *real* curated catalogue. Empty slots are
-  // filled with the same assumed wardrobe basics the matrix uses (2 bottoms,
-  // 1 shoe) — never silently padded with extra catalogue items.
-  const basics = assumedBasics(profile);
+  // Combinatorial estimate from purchased pieces only — assumed basics do
+  // not inflate "12 outfits from 10 pieces" when they are not in the plan.
   const realTops = count(["Knitwear", "Shirts"]);
-  const topsN = realTops + (count(["Outerwear"]) > 0 ? 1 : 0); // + a layer option
-  const realBottoms = count(["Trousers"]);
-  const bottomsN = realBottoms > 0 ? realBottoms : basics.bottoms.length;
-  const realShoes = count(["Footwear"]);
-  const shoesN = realShoes > 0 ? realShoes : basics.shoes.length;
-  const outfits = topsN > 0 ? Math.min(40, topsN * bottomsN * shoesN) : 0;
+  const topsN = realTops + (count(["Outerwear"]) > 0 ? 1 : 0);
+  const bottomsN = count(["Trousers"]);
+  const shoesN = count(["Footwear"]);
+  const outfits = topsN > 0 && bottomsN > 0 && shoesN > 0
+    ? Math.min(40, topsN * bottomsN * shoesN)
+    : 0;
 
-  const sorted = [...shopping].sort(
-    (a, b) =>
-      (CATEGORY_PRIORITY[a.category] ?? 9) - (CATEGORY_PRIORITY[b.category] ?? 9),
+  const hero = pickHero(shopping, profile.boldness);
+  const colorByTitle = new Map(shopping.map((i) => [i.title, i.color ?? ""]));
+  const tailoredMin = Math.min(
+    ...shopping
+      .filter(
+        (i) =>
+          i.category === "Outerwear" && !CASUAL_OUTERWEAR_RE.test(i.title),
+      )
+      .map((i) => i.priceEur ?? Number.POSITIVE_INFINITY),
   );
+  const score = (i: ShoppingItem): number => {
+    if (hero && i.title === hero.title) return 0;
+    const expensiveCasual =
+      i.category === "Outerwear" &&
+      CASUAL_OUTERWEAR_RE.test(i.title) &&
+      Number.isFinite(tailoredMin) &&
+      (i.priceEur ?? 0) > tailoredMin * 2.2;
+    if (expensiveCasual) return 80;
+    if (i.category === "Accessories") return 70;
+    if (i.category === "Shirts" && isLongSleeveShirtTitle(i.title)) return 1.5;
+    if (
+      i.category === "Trousers" &&
+      isDarkAnchorPiece(i.title, colorByTitle)
+    ) {
+      return 2;
+    }
+    if (
+      i.category === "Footwear" &&
+      !SNEAKER_RE.test(i.title) &&
+      !CASUAL_FOOTWEAR_RE.test(i.title)
+    ) {
+      return 2.5;
+    }
+    if (i.category === "Knitwear") return 3.5;
+    return (CATEGORY_PRIORITY[i.category] ?? 9) + 1;
+  };
+  const sorted = [...shopping].sort((a, b) => score(a) - score(b));
+  const now: ShoppingItem[] = [];
+  const taken = new Set<string>();
+  if (hero) {
+    now.push(hero);
+    taken.add(hero.title);
+  }
+  for (const i of sorted) {
+    if (now.length >= 3) break;
+    if (taken.has(i.title)) continue;
+    if (now.some((x) => x.category === i.category)) continue;
+    now.push(i);
+    taken.add(i.title);
+  }
+  const rest = sorted.filter((i) => !taken.has(i.title));
   return {
     pieces: shopping.length,
     outfits,
-    now: sorted.slice(0, 3),
-    next: sorted.slice(3, 5),
-    later: sorted.slice(5),
+    now,
+    next: rest.slice(0, 2),
+    later: rest.slice(2),
   };
 }
 
@@ -1994,12 +2186,18 @@ function tokenMatcher(tokens: string[]): RegExp {
 
 /** Casual, warm-weather footwear that reads wrong for a polished/professional wardrobe. */
 export const CASUAL_FOOTWEAR_RE =
-  /\b(sandal|sndls?|slides?|flip[-\s]?flop|espadrille|clog|havaianas|thong|pool slider)\b/i;
+  /\b(sandals?|sndls?|slides?|flip[-\s]?flop|espadrilles?|clog|havaianas|thong|pool slider|mules?)\b/i;
 /** Shorts / bermudas — not full-length trousers, never under a blazer. */
 export const SHORTS_TITLE_RE = /\bshorts\b|\bbermuda\b/i;
 
 export function isShortsTitle(title: string): boolean {
   return SHORTS_TITLE_RE.test(title);
+}
+
+/** Trousers / jeans / shorts — not a short-sleeve shirt. */
+export function isBottomTitle(title: string): boolean {
+  if (isShortsTitle(title)) return true;
+  return /\b(trousers?|chinos?|jeans?|slacks?)\b/i.test(title);
 }
 
 /** Oxfords, brogues, derbies and boots — never with shorts. Loafers/sneakers stay. */
@@ -2071,6 +2269,12 @@ export function capsuleColorWord(
 ): string {
   const named = colorName?.trim();
   if (named && !/^#?[0-9a-f]{6}$/i.test(named)) return named.toLowerCase();
+  // Catalogue hex often lies (a "navy" windbreaker tagged #CCCCCC). A named
+  // colour in the title wins when the swatch is a washed-out grey.
+  if (/\bnavy\b/i.test(title)) {
+    const parsedNavy = parseHexColor(hex ?? "");
+    if (!parsedNavy || hexToHsl(parsedNavy).l > 0.42) return "navy";
+  }
   const parsed = parseHexColor(hex ?? "");
   if (parsed) {
     const { h, s, l } = hexToHsl(parsed);
@@ -2082,6 +2286,8 @@ export function capsuleColorWord(
       return "off-white";
     }
     if (h >= 200 && h < 255 && l < 0.38) return "navy";
+    // Muted yellow-green hexes are olive, not the avoid-palette word "yellow".
+    if (h >= 40 && h < 80 && s < 0.38 && l >= 0.18 && l <= 0.55) return "olive";
     return familyFromHex(parsed) ?? "";
   }
   const fams = colorFamilies(title);
@@ -2096,20 +2302,7 @@ export function capsuleOutfitDescription(
   colorByTitle: Map<string, string>,
   colorNameByTitle?: Map<string, string>,
 ): string {
-  return pieces
-    .map((title) => {
-      const word = capsuleColorWord(
-        title,
-        colorByTitle.get(title),
-        colorNameByTitle?.get(title),
-      );
-      if (!word) return title;
-      if (new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(title)) {
-        return title;
-      }
-      return `${word} ${title}`;
-    })
-    .join(", ");
+  return capsuleLookLine(pieces, colorByTitle, colorNameByTitle);
 }
 
 function pieceLightness(title: string, colorByTitle: Map<string, string>): number | null {
@@ -2165,6 +2358,8 @@ export function isJacketTitle(title: string): boolean {
 
 export function isShoeTitle(title: string): boolean {
   if (/\bshirts?\b/i.test(title)) return false;
+  // Oxford sneakers / trainers are footwear even though the title says "oxford".
+  if (/\b(sneakers?|trainers?|plimsolls?|runners?)\b/i.test(title)) return true;
   // "light blue oxford" is a shirt; "oxfords" / "oxford shoes" are footwear.
   if (
     /\boxford\b/i.test(title) &&
@@ -2172,7 +2367,7 @@ export function isShoeTitle(title: string): boolean {
   ) {
     return false;
   }
-  return /\b(shoes?|loafers?|derb(?:y|ies)|oxfords?|brogues?|boots?|sneakers?|trainers?|sandals?|slides?)\b/i.test(
+  return /\b(shoes?|loafers?|derb(?:y|ies)|oxfords?|brogues?|boots?|sandals?|slides?)\b/i.test(
     title,
   );
 }
@@ -2224,7 +2419,14 @@ export function chromaticHeroClash(
   const ha = pieceHsl(a, colorByTitle);
   const hb = pieceHsl(b, colorByTitle);
   if (!ha || !hb) return false;
-  if (ha.s < 0.14 || hb.s < 0.14) return false;
+  // A navy / charcoal suit is one garment. A sage jacket on sage trousers
+  // (same mid hex, s≈0.14) is a tracksuit — catch identical swatches first.
+  const hexA = parseHexColor(colorByTitle.get(a) ?? "");
+  const hexB = parseHexColor(colorByTitle.get(b) ?? "");
+  if (hexA && hexB && hexA === hexB && !(ha.l <= 0.32 && hb.l <= 0.32)) {
+    return true;
+  }
+  if (ha.s < 0.1 || hb.s < 0.1) return false;
   if (ha.l <= 0.32 && hb.l <= 0.32) return false;
   return hueDist(ha.h, hb.h) < 30 && Math.abs(ha.l - hb.l) < 0.32;
 }
@@ -2261,6 +2463,26 @@ export function isDarkAnchorPiece(
  * One chromatic hero, shoes not cloning the jacket, and a dark anchor when
  * the shirt/knit and trousers are both mid-neutrals.
  */
+/** True when trousers and shoes are the same dark hue (navy-on-navy). */
+export function trousersCloneShoes(
+  bottom: string,
+  shoe: string,
+  colorByTitle: Map<string, string>,
+): boolean {
+  const b = pieceHsl(bottom, colorByTitle);
+  const s = pieceHsl(shoe, colorByTitle);
+  if (b && s) {
+    // Cream trousers + white sneakers are a classic casual pair, not a clone.
+    // The failure mode is navy-on-navy / charcoal-on-charcoal.
+    if (b.l > 0.55 || s.l > 0.55) return false;
+    return hueDist(b.h, s.h) < 30 && Math.abs(b.l - s.l) < 0.22;
+  }
+  return (
+    /\b(navy|charcoal|black|ink)\b/i.test(bottom) &&
+    /\b(navy|charcoal|black|ink)\b/i.test(shoe)
+  );
+}
+
 export function sanitizeLookHarmony(
   pieces: string[],
   colorByTitle: Map<string, string>,
@@ -2269,14 +2491,16 @@ export function sanitizeLookHarmony(
     bottoms?: string[];
     assumedDarkShoe?: string;
     assumedDarkBottom?: string;
+    /** Casual looks may swap a cloned dress shoe for sneakers. */
+    allowCasualShoeSwap?: boolean;
+    /** Keep the recipe bottom (chino / jean) — put the dark anchor on shoes. */
+    keepBottom?: boolean;
   },
 ): string[] {
   const next = [...pieces];
   const jacket = next.find(isJacketTitle);
   const shoeIdx = next.findIndex(isShoeTitle);
-  const bottomIdx = next.findIndex((t) =>
-    /\b(trousers?|chinos?|jeans?|shorts?|slacks?)\b/i.test(t),
-  );
+  const bottomIdx = next.findIndex((t) => isBottomTitle(t));
   const bottomIsShorts =
     bottomIdx >= 0 && isShortsTitle(next[bottomIdx]!);
   const topIdx = next.findIndex(
@@ -2284,7 +2508,7 @@ export function sanitizeLookHarmony(
       !isJacketTitle(t) &&
       !isShoeTitle(t) &&
       !isAccentOnlyTitle(t) &&
-      !/\b(trousers?|chinos?|jeans?|shorts?|slacks?)\b/i.test(t),
+      !isBottomTitle(t),
   );
 
   if (
@@ -2305,19 +2529,34 @@ export function sanitizeLookHarmony(
     chromaticHeroClash(jacket, next[bottomIdx]!, colorByTitle)
   ) {
     const alt = (opts?.bottoms ?? []).find(
-      (b) => !chromaticHeroClash(jacket, b, colorByTitle),
+      (b) =>
+        b !== next[bottomIdx] &&
+        !chromaticHeroClash(jacket, b, colorByTitle),
     );
-    if (alt) next[bottomIdx] = alt;
+    next[bottomIdx] =
+      alt ??
+      (opts?.assumedDarkBottom &&
+      !chromaticHeroClash(jacket, opts.assumedDarkBottom, colorByTitle)
+        ? opts.assumedDarkBottom
+        : next[bottomIdx]!);
   } else if (
     !bottomIsShorts &&
+    !opts?.keepBottom &&
     topIdx >= 0 &&
     bottomIdx >= 0 &&
     chromaticHeroClash(next[topIdx]!, next[bottomIdx]!, colorByTitle)
   ) {
     const alt = (opts?.bottoms ?? []).find(
-      (b) => !chromaticHeroClash(next[topIdx]!, b, colorByTitle),
+      (b) =>
+        b !== next[bottomIdx] &&
+        !chromaticHeroClash(next[topIdx]!, b, colorByTitle),
     );
-    if (alt) next[bottomIdx] = alt;
+    next[bottomIdx] =
+      alt ??
+      (opts?.assumedDarkBottom &&
+      !chromaticHeroClash(next[topIdx]!, opts.assumedDarkBottom, colorByTitle)
+        ? opts.assumedDarkBottom
+        : next[bottomIdx]!);
   }
 
   const hasDark = next.some((p) => isDarkAnchorPiece(p, colorByTitle));
@@ -2328,14 +2567,43 @@ export function sanitizeLookHarmony(
     isMidNeutralPiece(next[topIdx]!, colorByTitle) &&
     isMidNeutralPiece(next[bottomIdx]!, colorByTitle)
   ) {
-    if (shoeIdx >= 0 && opts?.assumedDarkShoe) {
+    const shoeIsSneaker = shoeIdx >= 0 && SNEAKER_RE.test(next[shoeIdx]!);
+    const darkBottom = (opts?.bottoms ?? []).find((b) =>
+      isDarkAnchorPiece(b, colorByTitle),
+    );
+    // Weekend / outdoors sneakers must stay sneakers — put the dark anchor
+    // on the trousers instead of swapping in a derby.
+    if (bottomIsShorts) {
+      // Shorts already forbid a derby — don't "fix" a mid-neutral column with one.
+    } else if (opts?.keepBottom && shoeIdx >= 0 && opts?.assumedDarkShoe) {
       next[shoeIdx] = opts.assumedDarkShoe;
-    } else if (!bottomIsShorts) {
-      const darkBottom = (opts?.bottoms ?? []).find((b) =>
-        isDarkAnchorPiece(b, colorByTitle),
-      );
-      if (darkBottom) next[bottomIdx] = darkBottom;
-      else if (opts?.assumedDarkBottom) next[bottomIdx] = opts.assumedDarkBottom;
+    } else if (shoeIsSneaker && darkBottom) {
+      next[bottomIdx] = darkBottom;
+    } else if (shoeIdx >= 0 && opts?.assumedDarkShoe) {
+      next[shoeIdx] = opts.assumedDarkShoe;
+    } else if (darkBottom) {
+      next[bottomIdx] = darkBottom;
+    } else if (opts?.assumedDarkBottom) {
+      next[bottomIdx] = opts.assumedDarkBottom;
+    }
+  }
+
+  if (
+    !bottomIsShorts &&
+    shoeIdx >= 0 &&
+    bottomIdx >= 0 &&
+    trousersCloneShoes(next[bottomIdx]!, next[shoeIdx]!, colorByTitle)
+  ) {
+    const alt = (opts?.shoes ?? []).find(
+      (s) =>
+        s !== next[shoeIdx] &&
+        !trousersCloneShoes(next[bottomIdx]!, s, colorByTitle) &&
+        (opts?.allowCasualShoeSwap || !SNEAKER_RE.test(s)),
+    );
+    if (alt) next[shoeIdx] = alt;
+    else if (opts?.allowCasualShoeSwap) {
+      const sneaker = (opts?.shoes ?? []).find((s) => SNEAKER_RE.test(s));
+      if (sneaker) next[shoeIdx] = sneaker;
     }
   }
 
@@ -2343,7 +2611,7 @@ export function sanitizeLookHarmony(
 }
 
 /** Casual outerwear that reads wrong in a boardroom / client-meeting context. */
-const CASUAL_OUTERWEAR_RE =
+export const CASUAL_OUTERWEAR_RE =
   /\b(field jacket|hood(?:ed|ie)?|bomber|parka|anorak|gilet|puffer|windbreaker|shacket|denim jacket|track(?:suit| jacket)?|cagoule|fleece)\b/i;
 /**
  * Soft / athleisure outerwear that must not fill a tailored blazer slot.
@@ -2507,10 +2775,15 @@ export function pickHero(
   if (!shopping.length) return undefined;
   const prices = shopping.map((i) => i.priceEur ?? 0);
   const maxPrice = Math.max(1, ...prices);
+  const hasTailored = shopping.some(
+    (i) =>
+      i.category === "Outerwear" && !CASUAL_OUTERWEAR_RE.test(i.title),
+  );
   const weight = (i: ShoppingItem) =>
     -styleFitScore(i.title, boldness) * SCORING.hero.fitWeight +
     (CATEGORY_PRIORITY[i.category] ?? 9) -
-    ((i.priceEur ?? 0) / maxPrice) * SCORING.hero.priceWeight;
+    ((i.priceEur ?? 0) / maxPrice) * SCORING.hero.priceWeight +
+    (hasTailored && CASUAL_OUTERWEAR_RE.test(i.title) ? 3 : 0);
   return [...shopping].sort((a, b) => weight(a) - weight(b))[0];
 }
 
@@ -3380,6 +3653,98 @@ export function familyFromHex(raw?: string | null): string | null {
   return "pink";
 }
 
+const CHROMATIC_AVOID_RE =
+  /yellow|orange|rust|mustard|gold|coral|olive|beige|camel|terracotta/;
+const WARM_YELLOW_TITLE_RE =
+  /\b(yellow|mustard|goldenrod|golden\s+yellow|gold(?:en)?)\b/i;
+/** Olive / khaki / lime read as mustard in renders when yellow is avoided. */
+const YELLOW_GREEN_TITLE_RE =
+  /\b(yellow|mustard|goldenrod|golden\s+yellow|gold(?:en)?|olive|khaki|chartreuse|lime|pistachio|mint|light\s+green|pale\s+green|apple\s+green)\b/i;
+
+export type AvoidSwatch = { name: string; hex?: string };
+
+/** True when a product is a chromatic avoid colour (not pure black / grey). */
+export function hitsAvoidPalette(
+  title: string,
+  hex: string | null | undefined,
+  avoid: AvoidSwatch[],
+): boolean {
+  if (!avoid.length) return false;
+  const productHex = parseHexColor(hex);
+  const productFam = productColorFamilies(hex ?? null, title, hex);
+  for (const a of avoid) {
+    const name = (a.name ?? "").toLowerCase();
+    if (!CHROMATIC_AVOID_RE.test(name)) continue;
+    if (/yellow|mustard|golden/.test(name) && YELLOW_GREEN_TITLE_RE.test(title)) {
+      return true;
+    }
+    if (/olive/.test(name) && /\b(olive|khaki)\b/i.test(title)) {
+      return true;
+    }
+    if (/orange/.test(name) && /\borange\b/i.test(title)) return true;
+    if (/rust/.test(name) && /\brust\b/i.test(title)) return true;
+    const aHex = parseHexColor(a.hex);
+    if (productHex && aHex) {
+      const q = hexToHsl(aHex);
+      const p = hexToHsl(productHex);
+      if (q.s >= 0.18 && p.s >= 0.16 && hueDist(q.h, p.h) < 28 && Math.abs(q.l - p.l) < 0.28) {
+        return true;
+      }
+    }
+    const avoidFams = productColorFamilies(a.hex ?? null, a.name, a.hex);
+    const warmHit =
+      [...avoidFams].some((f) => f === "yellow" || f === "orange") &&
+      (productFam.has("yellow") || productFam.has("orange"));
+    // Olive #6B6B47 is yellow-family at s≈0.20 — just under the old 0.22 cut
+    // — and capsule prompts then literally say "yellow trousers".
+    if (warmHit && productHex && hexToHsl(productHex).s >= 0.16) return true;
+  }
+  return false;
+}
+
+/** Saturated yellow-orange near the face — even when the catalogue says "beige". */
+export function isWarmYellowNearFace(
+  title: string,
+  hex?: string | null,
+): boolean {
+  if (WARM_YELLOW_TITLE_RE.test(title)) return true;
+  const parsed = parseHexColor(hex);
+  if (!parsed) return false;
+  const hsl = hexToHsl(parsed);
+  return hsl.s >= 0.28 && hsl.l <= 0.74 && hsl.h >= 28 && hsl.h < 72;
+}
+
+const WARM_CREAM_TITLE_RE =
+  /\b(cream|ivory|ecru|maize|butter|champagne|vanilla)\b/i;
+
+/** Light warm yellow that the saturated-yellow check misses (cream oxfords). */
+export function isWarmCreamNearFace(
+  title: string,
+  hex?: string | null,
+): boolean {
+  if (WARM_CREAM_TITLE_RE.test(title)) return true;
+  const parsed = parseHexColor(hex);
+  if (!parsed) return false;
+  const { h, s, l } = hexToHsl(parsed);
+  return l >= 0.72 && s >= 0.14 && h >= 28 && h < 72;
+}
+
+export function isNearFaceShoppingCategory(category: string): boolean {
+  return category === "Knitwear" || category === "Shirts";
+}
+
+/**
+ * Multi-colour / geometric knits rarely have a trustworthy swatch — the
+ * catalogue hex can say spruce while the garment is mustard. Without a
+ * colour word in the title, do not put them next to the face.
+ */
+export function isUnreliableColorBlockKnit(title: string): boolean {
+  if (!/\b(colou?r[- ]?block|geometric)\b/i.test(title)) return false;
+  return !/\b(navy|charcoal|slate|grey|gray|blue|mauve|plum|teal|spruce|white|black|olive|sage|burgundy|wine)\b/i.test(
+    title,
+  );
+}
+
 /** Families from title/colour words, or the hex swatch when words are missing. */
 export function productColorFamilies(
   color: string | null,
@@ -3545,6 +3910,24 @@ export function colorMatchScore(
     }
   }
   return word;
+}
+
+/** Highest colour-fit of a product against the client's BEST swatches (0–1). */
+export function bestPaletteFitScore(
+  productHex: string | undefined,
+  title: string,
+  best: ColorRec[],
+): number {
+  if (!best.length) return 0.5;
+  let top = 0;
+  for (const b of best) {
+    const s = colorMatchScore(b.name, productHex ?? "", title, {
+      queryHex: b.hex,
+      productHex,
+    });
+    if (s > top) top = s;
+  }
+  return top;
 }
 
 function extractGarmentFromClause(clause: string): LookGarment | null {
@@ -3795,6 +4178,246 @@ function assumedBasics(profile: StyleProfile): {
 /** Smart-casual footwear that suits relaxed contexts (not boardrooms). */
 const SNEAKER_RE = /\b(sneakers?|trainers?|plimsolls?|runners?)\b/i;
 
+/** Professional / speaking briefs should never spend a footwear slot on sandals. */
+export function wantsPolishedFootwear(profile: StyleProfile): boolean {
+  const hay =
+    `${profile.goals.join(" ")} ${(profile.lifestyle ?? []).join(" ")} ${profile.occupation ?? ""}`.toLowerCase();
+  return /profession|office|career|business|speak|stage|client|board|law|legal|interview|promot/.test(
+    hay,
+  );
+}
+
+export function wantsOutdoorJeans(profile: StyleProfile): boolean {
+  return (profile.lifestyle ?? []).some((l) => /outdoor|active/i.test(l));
+}
+
+/** Professional / speaking / old-money briefs — quiet finishing, no costume extras. */
+export function wantsQuietFinishing(profile: StyleProfile): boolean {
+  const hay =
+    `${profile.goals.join(" ")} ${(profile.lifestyle ?? []).join(" ")} ${profile.occupation ?? ""}`.toLowerCase();
+  return /profession|office|career|business|speak|stage|client|board|law|legal|old money|heritage/.test(
+    hay,
+  );
+}
+
+export function isSummerSeason(profile: StyleProfile): boolean {
+  return /summer/i.test(profile.colorSeason);
+}
+
+export function isBeltTitle(title: string): boolean {
+  return /\bbelts?\b/i.test(title);
+}
+
+export function isBagTitle(title: string): boolean {
+  return /\b(briefcase|messenger|satchel|tote|bags?)\b/i.test(title);
+}
+
+export function isTieTitle(title: string): boolean {
+  return /\b(ties?|grenadine)\b/i.test(title);
+}
+
+export function isSunglassesTitle(title: string): boolean {
+  return /\b(sun)?glasses\b|\bsunglasses\b/i.test(title);
+}
+
+/** Short-sleeve / V-neck / camp — not the professional shirt role. */
+export function isCasualSummerShirtTitle(title: string): boolean {
+  return /\b(short[- ]sleeves?|v-?neck|camp[- ]collar|stand-up\s+collar)\b/i.test(
+    title,
+  );
+}
+
+export function isLongSleeveShirtTitle(title: string): boolean {
+  if (isCasualSummerShirtTitle(title)) return false;
+  if (/\b(t-?shirts?|tees?)\b/i.test(title)) return false;
+  return /\b(oxford|poplin|long[- ]sleeves?|button[- ]downs?|shirts?)\b/i.test(
+    title,
+  );
+}
+
+export function isLoaferTitle(title: string): boolean {
+  return /\bloafers?\b/i.test(title);
+}
+
+export function isJeanTitle(title: string): boolean {
+  if (/\b(chinos?|cargos?)\b/i.test(title)) return false;
+  if (/\bjeans?\b/i.test(title)) return true;
+  return /\bdenim\s+(trousers|pants|joggers)\b/i.test(title);
+}
+
+export function isWinterLayerTitle(title: string): boolean {
+  return /\b(tweed|winter|autumn|fall|pea\s*coats?|overcoats?|heavy)\b/i.test(
+    title,
+  );
+}
+
+export function isHeavyWinterKnit(title: string): boolean {
+  return /\b(elbow\s+patches?|winter(?:time)?|chunky|cowichan|arn\b)\b/i.test(
+    title,
+  );
+}
+
+export function isLightBottomPiece(
+  title: string,
+  colorByTitle: Map<string, string>,
+): boolean {
+  if (isDarkAnchorPiece(title, colorByTitle)) return false;
+  if (
+    /\b(cream|ivory|white|off-?white|oat(?:meal)?|sand|beige|stone|khaki|champagne)\b/i.test(
+      title,
+    )
+  ) {
+    return true;
+  }
+  const hsl = pieceHsl(title, colorByTitle);
+  return Boolean(hsl && hsl.l >= 0.7);
+}
+
+export type ShoppingRoleCandidate = {
+  title: string;
+  color?: string;
+  priceEur?: number;
+};
+
+/**
+ * Pick up to two catalogue items that cover complementary wardrobe roles
+ * instead of the two nearest vector neighbours.
+ */
+export function pickShoppingRolePair(
+  category: string,
+  candidates: ShoppingRoleCandidate[],
+  opts?: {
+    polishedFootwear?: boolean;
+    polishedShirt?: boolean;
+    outdoorJeans?: boolean;
+  },
+): ShoppingRoleCandidate[] {
+  if (!candidates.length) return [];
+  const byTitle = new Map(candidates.map((c) => [c.title, c.color ?? ""]));
+  const take = (
+    preferred: ShoppingRoleCandidate[],
+    rest: ShoppingRoleCandidate[],
+    limit = 2,
+  ): ShoppingRoleCandidate[] => {
+    const out: ShoppingRoleCandidate[] = [];
+    const seen = new Set<string>();
+    for (const c of [...preferred, ...rest]) {
+      const key = c.title.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(c);
+      if (out.length >= limit) break;
+    }
+    return out;
+  };
+
+  if (category === "Accessories") {
+    const belts = candidates.filter((c) => isBeltTitle(c.title));
+    const bags = candidates.filter((c) => isBagTitle(c.title));
+    const ties = candidates.filter((c) => isTieTitle(c.title));
+    if (opts?.polishedFootwear) {
+      const preferred = [belts[0], bags[0] ?? ties[0]].filter(
+        (c): c is ShoppingRoleCandidate => Boolean(c),
+      );
+      return take(preferred, [...belts, ...bags, ...ties], 2);
+    }
+    const preferred = [belts[0], ties[0], bags[0]].filter(
+      (c): c is ShoppingRoleCandidate => Boolean(c),
+    );
+    return take(preferred.length ? preferred : candidates, candidates);
+  }
+
+  if (category === "Footwear") {
+    const closed = candidates.filter((c) => !CASUAL_FOOTWEAR_RE.test(c.title));
+    const pool =
+      opts?.polishedFootwear && closed.length ? closed : candidates;
+    const dress = pool.filter(
+      (c) => !CASUAL_FOOTWEAR_RE.test(c.title) && !SNEAKER_RE.test(c.title),
+    );
+    const sneakers = pool.filter((c) => SNEAKER_RE.test(c.title));
+    const loafers = dress.filter((c) => isLoaferTitle(c.title));
+    const lace = dress.filter((c) => !isLoaferTitle(c.title));
+    const secondLeather = loafers[0] ?? lace[1];
+    const preferred = [lace[0] ?? dress[0], secondLeather, sneakers[0]].filter(
+      (c): c is ShoppingRoleCandidate => Boolean(c),
+    );
+    return take(preferred, pool, 3);
+  }
+
+  if (category === "Outerwear") {
+    const tailored = candidates.filter((c) => !CASUAL_OUTERWEAR_RE.test(c.title));
+    const casual = candidates.filter((c) => CASUAL_OUTERWEAR_RE.test(c.title));
+    const tailoredPrice = tailored[0]?.priceEur;
+    const casualByPrice = [...casual].sort(
+      (a, b) => (a.priceEur ?? 9_999) - (b.priceEur ?? 9_999),
+    );
+    const casualPick =
+      tailoredPrice != null
+        ? casualByPrice.find((c) => (c.priceEur ?? 0) <= tailoredPrice * 2.2) ??
+          casualByPrice[0]
+        : casual[0];
+    const preferred = [tailored[0], casualPick].filter(
+      (c): c is ShoppingRoleCandidate => Boolean(c),
+    );
+    return take(preferred, candidates);
+  }
+
+  if (category === "Trousers") {
+    if (opts?.outdoorJeans) {
+      const jeans = candidates.filter((c) => isJeanTitle(c.title));
+      const tailored = candidates.filter((c) => !isJeanTitle(c.title));
+      const dark = tailored.filter((c) => isDarkAnchorPiece(c.title, byTitle));
+      const preferred = [jeans[0], dark[0] ?? tailored[0]].filter(
+        (c): c is ShoppingRoleCandidate => Boolean(c),
+      );
+      if (preferred.length) return take(preferred, candidates);
+    }
+    const dark = candidates.filter((c) => isDarkAnchorPiece(c.title, byTitle));
+    const light = candidates.filter((c) => isLightBottomPiece(c.title, byTitle));
+    const preferred = [dark[0], light[0]].filter(
+      (c): c is ShoppingRoleCandidate => Boolean(c),
+    );
+    return take(preferred, candidates);
+  }
+
+  if (category === "Shirts") {
+    const dress = candidates.filter(
+      (c) =>
+        isLongSleeveShirtTitle(c.title) && !isCasualSummerShirtTitle(c.title),
+    );
+    if (opts?.polishedShirt && dress.length) return take(dress, []);
+    return take(dress.length ? dress : candidates, candidates);
+  }
+
+  if (category === "Knitwear") {
+    const fine = candidates.filter((c) => !isHeavyWinterKnit(c.title));
+    return take(fine.length ? fine : candidates, []);
+  }
+
+  return candidates.slice(0, 2);
+}
+
+export function capsuleImageDirectives(pieces: string[]): string {
+  const hasKnit = pieces.some((p) =>
+    /\b(jumper|sweater|crewneck|knit|roll-?neck)\b/i.test(p),
+  );
+  const hasJacket = pieces.some(isJacketTitle);
+  const parts = [
+    "If a garment name includes navy, charcoal or cream, paint that named colour even when a swatch looks washed-out or light grey. ",
+  ];
+  if (hasKnit && hasJacket) {
+    parts.push(
+      "Do not copy elbow patches, cables or rib from the knit onto the jacket or windbreaker. ",
+    );
+  }
+  if (pieces.some((p) => isJeanTitle(p))) {
+    parts.push(
+      "Jeans must read as denim — indigo or blue-grey with a visible weave, not grey dress trousers. ",
+    );
+  }
+  return parts.join("");
+}
+
 /** Contexts that call for dress shoes rather than casual/warm-weather footwear. */
 export const FORMAL_CONTEXTS = new Set([
   "Boardroom",
@@ -3860,7 +4483,7 @@ type OutfitSlot = {
   layer: "formal" | "casual" | "none";
   top: "shirt" | "knit" | "polo" | "tee" | "any";
   bottom: "dress" | "chino" | "jean";
-  shoe: "dress" | "sneaker";
+  shoe: "dress" | "loafer" | "sneaker";
 };
 
 /**
@@ -3875,15 +4498,15 @@ const CAPSULE_RECIPES: Record<string, OutfitSlot> = {
   "Client meeting": { layer: "formal", top: "shirt", bottom: "dress", shoe: "dress" },
   Dinner: { layer: "formal", top: "knit", bottom: "dress", shoe: "dress" },
   "Date night": { layer: "none", top: "shirt", bottom: "dress", shoe: "dress" },
-  "Smart casual": { layer: "none", top: "knit", bottom: "chino", shoe: "dress" },
+  "Smart casual": { layer: "none", top: "shirt", bottom: "chino", shoe: "loafer" },
   Everyday: { layer: "none", top: "shirt", bottom: "chino", shoe: "sneaker" },
   Weekend: { layer: "casual", top: "polo", bottom: "jean", shoe: "sneaker" },
   "Travel day": { layer: "casual", top: "tee", bottom: "chino", shoe: "sneaker" },
   // Lifestyle-driven contexts (distinct silhouettes so images differ).
-  Outdoors: { layer: "casual", top: "tee", bottom: "chino", shoe: "sneaker" },
-  "On stage": { layer: "formal", top: "knit", bottom: "dress", shoe: "dress" },
-  "On camera": { layer: "none", top: "knit", bottom: "chino", shoe: "dress" },
-  "Country weekend": { layer: "casual", top: "knit", bottom: "chino", shoe: "dress" },
+  Outdoors: { layer: "casual", top: "tee", bottom: "jean", shoe: "sneaker" },
+  "On stage": { layer: "none", top: "knit", bottom: "dress", shoe: "loafer" },
+  "On camera": { layer: "none", top: "knit", bottom: "chino", shoe: "loafer" },
+  "Country weekend": { layer: "casual", top: "knit", bottom: "chino", shoe: "sneaker" },
   "Evening event": { layer: "formal", top: "shirt", bottom: "dress", shoe: "dress" },
 };
 const DEFAULT_CAPSULE_SLOT: OutfitSlot = {
@@ -3908,15 +4531,32 @@ export function capsuleMatrix(
     shopping.filter((i) => cats.includes(i.category)).map((i) => i.title);
   const basics = assumedBasics(profile);
   const owned = new Set<string>();
+  const shoppingTitles = new Set(shopping.map((i) => i.title));
+  const markOwned = (p: string) => {
+    if (p && !shoppingTitles.has(p)) owned.add(p);
+  };
 
   const layers = pick(["Outerwear"]);
   const knits = pick(["Knitwear"]);
-  const shirtsAll = pick(["Shirts"]);
+  const cool = profile.physical.undertone === "cool";
+  const shirtsAll = pick(["Shirts"]).filter((t) => {
+    if (!cool) return true;
+    const hex = shopping.find((i) => i.title === t)?.color;
+    return !isWarmCreamNearFace(t, hex);
+  });
   const anyTop = [...knits, ...shirtsAll];
   if (!anyTop.length && !layers.length) return [];
 
   const tees = shirtsAll.filter((t) => /\b(t-?shirt|tee)\b/i.test(t));
-  const dressShirts = shirtsAll.filter((t) => !/\b(t-?shirt|tee)\b/i.test(t));
+  const dressShirts = (() => {
+    const long = shirtsAll.filter(
+      (t) =>
+        !/\b(t-?shirt|tee|polo)\b/i.test(t) && !isCasualSummerShirtTitle(t),
+    );
+    return long.length
+      ? long
+      : shirtsAll.filter((t) => !/\b(t-?shirt|tee|polo)\b/i.test(t));
+  })();
   const polos = anyTop.filter((t) => /polo/i.test(t));
   // Novelty/patterned knits (argyle, fair isle, cable, prints) read casual and
   // dated under tailoring — keep a plain-knit pool for formal / jacket looks.
@@ -3937,11 +4577,13 @@ export function capsuleMatrix(
   const catTrousers = catTrousersAll.filter((t) => !isShortsTitle(t));
   // Prefer real catalogue chinos/jeans for those slots before falling back to
   // assumed basics, so purchasable trousers aren't crowded out by virtual ones.
-  const catJeans = catTrousers.filter((t) => /\b(jeans?|denim)\b/i.test(t));
+  const catJeans = catTrousers.filter(isJeanTitle);
   const catChinos = catTrousers.filter((t) => /\bchinos?\b/i.test(t));
   const catOtherTrousers = catTrousers.filter(
     (t) => !/\b(jeans?|denim|chinos?)\b/i.test(t),
   );
+  // Drawstring / jogger trousers are not a dinner or client-meeting trouser.
+  const catDressTrousers = catOtherTrousers.filter((t) => !isDrawstringTitle(t));
   const jeanBasic = basics.bottoms[0];
   const chinoBasic = basics.bottoms[1] ?? basics.bottoms[0];
 
@@ -3955,11 +4597,18 @@ export function capsuleMatrix(
   const dressShoes = shoes.filter(
     (s) => !CASUAL_FOOTWEAR_RE.test(s) && !SNEAKER_RE.test(s),
   );
-  const formalPool = dressShoes.length ? dressShoes : basics.shoes;
-  if (!dressShoes.length) basics.shoes.forEach((s) => owned.add(s));
+  const laceInCatalogue = dressShoes.filter((s) => !isLoaferTitle(s));
+  // A loafer is not a derby. If the catalogue only returned loafers, keep them
+  // for loafer contexts and fill lace-up slots with an assumed dress shoe.
+  if (!laceInCatalogue.length) basics.shoes.forEach((s) => markOwned(s));
+  const formalPool = laceInCatalogue.length
+    ? dressShoes
+    : dressShoes.length
+      ? [...basics.shoes, ...dressShoes]
+      : basics.shoes;
   const sneakers = shoes.filter((s) => SNEAKER_RE.test(s));
   const casualPool = sneakers.length ? sneakers : basics.casualShoes;
-  if (!sneakers.length) basics.casualShoes.forEach((s) => owned.add(s));
+  if (!sneakers.length) basics.casualShoes.forEach((s) => markOwned(s));
 
   // Round-robin picker so consecutive looks don't repeat the same piece.
   const counts = new Map<string, number>();
@@ -4007,6 +4656,84 @@ export function capsuleMatrix(
   const contexts = contextsForGoals(profile).slice(0, 6);
   const combos: OutfitCombo[] = [];
   const seen = new Set<string>();
+  const knitUses = new Map<string, number>();
+  const bottomUses = new Map<string, number>();
+  const shoeUses = new Map<string, number>();
+  const MAX_SAME_KNIT_LOOKS = 2;
+  const MAX_SAME_BOTTOM_LOOKS = 2;
+  const MAX_SAME_SHOE_LOOKS = 2;
+  const isLightBottom = (title: string): boolean =>
+    isLightBottomPiece(title, colorByTitle);
+  const jacketUses = new Map<string, number>();
+  const MAX_SAME_JACKET_LOOKS = 2;
+  const casualComboKeys = new Set<string>();
+  const casualBottoms = new Set<string>();
+  const freshJackets = (pool: string[]) =>
+    pool.filter((l) => (jacketUses.get(l) ?? 0) < MAX_SAME_JACKET_LOOKS);
+  const pickBottom = (
+    key: string,
+    pool: string[],
+    preferDark: boolean,
+  ): string | undefined => {
+    const clean = pool.filter(Boolean);
+    if (!clean.length) return undefined;
+    const fresh = clean.filter(
+      (t) => (bottomUses.get(t) ?? 0) < MAX_SAME_BOTTOM_LOOKS,
+    );
+    if (preferDark) {
+      const freshDark = fresh.filter((t) => !isLightBottom(t));
+      if (freshDark.length) return rot(key, freshDark);
+      const allDark = clean.filter((t) => !isLightBottom(t));
+      if (allDark.length) return rot(key, allDark);
+    }
+    if (fresh.length) return rot(key, fresh);
+    const dark = clean.filter((t) => !isLightBottom(t));
+    if (dark.length) return rot(key, dark);
+    return rot(key, clean);
+  };
+  const loafers = formalPool.filter(isLoaferTitle);
+  const laceDress = formalPool.filter((s) => !isLoaferTitle(s));
+  const pickShoe = (
+    context: string,
+    kind: OutfitSlot["shoe"],
+  ): string | undefined => {
+    const fresh = (pool: string[]) =>
+      pool.filter((s) => (shoeUses.get(s) ?? 0) < MAX_SAME_SHOE_LOOKS);
+    if (kind === "sneaker") {
+      const freshSneakers = fresh(casualPool);
+      if (freshSneakers.length) return rot("sneaker", freshSneakers);
+      const freshLeather = fresh(formalPool);
+      if (freshLeather.length) return rot("dress", freshLeather);
+      return rot("sneaker", casualPool);
+    }
+    // Chinos + lace-up oxfords without a jacket read as a half-suit.
+    // Reuse the loafer even past the mix-and-match cap.
+    if (kind === "loafer") {
+      if (loafers.length) {
+        const freshLoafers = fresh(loafers);
+        return rot("loafer", freshLoafers.length ? freshLoafers : loafers);
+      }
+      if (!FORMAL_CONTEXTS.has(context) && casualPool.length) {
+        const freshCasual = fresh(casualPool);
+        return rot("sneaker", freshCasual.length ? freshCasual : casualPool);
+      }
+    }
+    const preferred =
+      kind === "loafer"
+        ? [...loafers, ...laceDress]
+        : [...laceDress, ...loafers];
+    const freshPreferred = fresh(preferred);
+    if (freshPreferred.length) {
+      return rot(kind === "loafer" ? "loafer" : "dress", freshPreferred);
+    }
+    // Formal contexts keep closed leather even if the pair is reused — sneakers
+    // on Dinner / On stage / a client meeting read as the wrong register.
+    if (!FORMAL_CONTEXTS.has(context)) {
+      const freshCasual = fresh(casualPool);
+      if (freshCasual.length) return rot("sneaker", freshCasual);
+    }
+    return rot(kind === "loafer" ? "loafer" : "dress", preferred);
+  };
   for (const context of contexts) {
     const slot = CAPSULE_RECIPES[context] ?? DEFAULT_CAPSULE_SLOT;
     const pieces: string[] = [];
@@ -4016,7 +4743,11 @@ export function capsuleMatrix(
     // the wardrobe). This drives the top choice below.
     let wearingJacket = false;
     if (slot.layer === "formal") {
-      const l = rot("formalLayer", formalLayers);
+      // Formal contexts keep the suit jacket even after the mix-and-match cap —
+      // dropping Dinner because Client already used the only blazer twice is
+      // how one navy suit collapsed into three identical photos.
+      const l =
+        rot("formalLayer", freshJackets(formalLayers)) ?? formalLayers[0];
       if (l) {
         pieces.push(l);
         wearingJacket = true;
@@ -4024,9 +4755,9 @@ export function capsuleMatrix(
     } else if (slot.layer === "casual") {
       // Fall back to a formal layer (worn open) so a casual look isn't left
       // thin — better an unstructured blazer than no layer at all.
-      let l = rot("casualLayer", casualLayers);
+      let l = rot("casualLayer", freshJackets(casualLayers));
       if (!l) {
-        l = rot("casualLayerAlt", formalLayers);
+        l = rot("casualLayerAlt", freshJackets(formalLayers));
         if (l) wearingJacket = true; // the fallback is a tailored blazer
       }
       if (l) pieces.push(l);
@@ -4034,13 +4765,12 @@ export function capsuleMatrix(
 
     // Under a tailored jacket a SHIRT is the classic default and a fine knit the
     // variation. Alternate ONLY the loosely-specified jacket looks (recipe top of
-    // knit / tee / any) so a blazer is never uniformly a jumper (the "grey jumper
-    // under every blazer" complaint) nor uniformly a shirt. An explicit `shirt`
-    // recipe (Boardroom, Client meeting, Evening event) is a deliberate business
-    // choice and stays a shirt; a `polo` keeps its smart-casual recipe.
+    // tee / any) so a blazer is never uniformly a jumper nor uniformly a shirt.
+    // An explicit `shirt`, `polo`, or `knit` recipe (Dinner is knit-under-jacket)
+    // stays that silhouette.
     let topKind = slot.top;
     const alternatesUnderJacket =
-      slot.top !== "shirt" && slot.top !== "polo";
+      slot.top !== "shirt" && slot.top !== "polo" && slot.top !== "knit";
     if (wearingJacket && dressShirts.length && alternatesUnderJacket) {
       if (!knits.length) topKind = "shirt";
       else {
@@ -4055,40 +4785,101 @@ export function capsuleMatrix(
       topKind === "knit" &&
       (wearingJacket || FORMAL_CONTEXTS.has(context)) &&
       plainKnits.length > 0;
-    const top = preferPlainKnit ? rot("plainKnit", plainKnits) : topFor(topKind);
+    let top = preferPlainKnit ? rot("plainKnit", plainKnits) : topFor(topKind);
+    // One knit can mix-and-match, but the same jumper on 3+ looks reads as a
+    // uniform — fall back to a shirt once it has been used twice.
+    if (
+      top &&
+      knits.includes(top) &&
+      (knitUses.get(top) ?? 0) >= MAX_SAME_KNIT_LOOKS &&
+      slot.top !== "knit"
+    ) {
+      const shirt = topFor("shirt");
+      top = shirt && shirt !== top ? shirt : undefined;
+      if (top) topKind = "shirt";
+    }
     const topIndex = top ? pieces.push(top) - 1 : -1;
 
     let bottom: string | undefined;
-    if (slot.bottom === "jean") {
-      bottom = catJeans.length ? rot("catJean", catJeans) : jeanBasic;
-      if (!catJeans.length) owned.add(jeanBasic);
-    } else if (slot.bottom === "chino") {
+    const preferDarkBottom = FORMAL_CONTEXTS.has(context);
+    if (slot.bottom === "jean" && catJeans.length) {
+      bottom = rot("catJean", catJeans);
+    } else if (slot.bottom === "jean" || slot.bottom === "chino") {
       const layerInLook = pieces.some(isWarmLayerWithShorts);
       const knitTop = topKind === "knit";
-      if (catChinos.length) {
-        bottom = rot("catChino", catChinos);
+      const chinoPool = catChinos.length
+        ? catChinos
+        : catOtherTrousers.length
+          ? catOtherTrousers
+          : catTrousers;
+      if (chinoPool.length) {
+        bottom = pickBottom("catChino", chinoPool, preferDarkBottom);
       } else if (!layerInLook && !knitTop && catShorts.length) {
         bottom = rot("catShorts", catShorts);
       } else {
         bottom = chinoBasic;
-        owned.add(chinoBasic);
+        markOwned(chinoBasic);
       }
     } else {
-      // Dress slot: full-length tailored trousers only — never shorts.
-      const dressPool = catOtherTrousers.length ? catOtherTrousers : catTrousers;
-      bottom = dressPool.length ? rot("trousers", dressPool) : chinoBasic;
-      if (!dressPool.length) owned.add(chinoBasic);
+      // Dress slot: full-length tailored trousers only — never shorts or
+      // drawstring joggers under a blazer (reads as a tracksuit).
+      const dressPool = catDressTrousers;
+      if (dressPool.length) {
+        bottom = pickBottom("trousers", dressPool, preferDarkBottom);
+      } else {
+        bottom = chinoBasic;
+        markOwned(chinoBasic);
+      }
     }
-    if (wearingJacket && bottom && isShortsTitle(bottom)) {
-      bottom = chinoBasic;
-      owned.add(chinoBasic);
+    if (
+      wearingJacket &&
+      bottom &&
+      (isShortsTitle(bottom) || isDrawstringTitle(bottom))
+    ) {
+      const tailored =
+        catDressTrousers.find((t) => t !== bottom) ??
+        catTrousers.find(
+          (t) => !isDrawstringTitle(t) && !isShortsTitle(t) && t !== bottom,
+        );
+      if (tailored) bottom = tailored;
+      else {
+        bottom = chinoBasic;
+        markOwned(chinoBasic);
+      }
     }
     const bottomIndex = bottom ? pieces.push(bottom) - 1 : -1;
 
     // Footwear last — the image prompt derives its footwear directive from it.
-    const shoe =
-      slot.shoe === "dress" ? rot("dress", formalPool) : rot("sneaker", casualPool);
+    let shoe = pickShoe(context, slot.shoe);
     const shoeIndex = shoe ? pieces.push(shoe) - 1 : -1;
+    if (
+      !FORMAL_CONTEXTS.has(context) &&
+      bottom &&
+      shoe &&
+      casualComboKeys.has(`${bottom}|${shoe}`)
+    ) {
+      const keepJean = slot.bottom === "jean" && isJeanTitle(bottom);
+      const keepChino = slot.bottom === "chino" && /\bchinos?\b/i.test(bottom);
+      if (!keepJean && !keepChino) {
+        const otherBottom = [
+          ...catTrousers.filter((t) => !isJeanTitle(t)),
+          chinoBasic,
+        ].find((t) => t !== bottom && !casualComboKeys.has(`${t}|${shoe}`));
+        if (otherBottom && bottomIndex >= 0) {
+          if (otherBottom === chinoBasic) markOwned(otherBottom);
+          pieces[bottomIndex] = otherBottom;
+          bottom = otherBottom;
+        } else {
+          const otherShoe = [...casualPool, ...formalPool].find(
+            (s) => s !== shoe && !casualComboKeys.has(`${bottom}|${s}`),
+          );
+          if (otherShoe && shoeIndex >= 0) {
+            pieces[shoeIndex] = otherShoe;
+            shoe = otherShoe;
+          }
+        }
+      }
+    }
 
     // Enforce one-accent harmony: if the look carries more than one accent
     // (excluding footwear, whose leather tones read as neutral), swap the
@@ -4110,7 +4901,10 @@ export function capsuleMatrix(
     if (topIndex >= 0 && accentCount() === 0) {
       const [, pool] = poolForTop(topKind);
       const accentAlt = pool.find(
-        (t) => !isNeutralPiece(t) && !pieces.includes(t),
+        (t) =>
+          !isNeutralPiece(t) &&
+          !pieces.includes(t) &&
+          !(knits.includes(t) && (knitUses.get(t) ?? 0) >= MAX_SAME_KNIT_LOOKS),
       );
       if (accentAlt) pieces[topIndex] = accentAlt;
     }
@@ -4128,25 +4922,43 @@ export function capsuleMatrix(
           !pieces.includes(t) &&
           !capsuleColumnBlends(t, pieces[bottomIndex]!, colorByTitle),
       );
+      const lockedBottom =
+        (slot.bottom === "chino" && /\bchinos?\b/i.test(pieces[bottomIndex]!)) ||
+        (slot.bottom === "jean" && isJeanTitle(pieces[bottomIndex]!));
       if (topAlt) {
         pieces[topIndex] = topAlt;
-      } else {
+      } else if (!lockedBottom) {
+        const shoeForCombo = shoeIndex >= 0 ? pieces[shoeIndex] : undefined;
         const bottomAlts = [
           ...catOtherTrousers,
           ...catTrousers,
           ...catChinos,
-          jeanBasic,
           chinoBasic,
         ];
-        const bottomAlt = bottomAlts.find(
+        const unusedAlt = bottomAlts.find(
           (t) =>
             t !== pieces[bottomIndex] &&
-            !capsuleColumnBlends(pieces[topIndex]!, t, colorByTitle),
+            !capsuleColumnBlends(pieces[topIndex]!, t, colorByTitle) &&
+            !(shoeForCombo && casualComboKeys.has(`${t}|${shoeForCombo}`)),
         );
+        const bottomAlt =
+          unusedAlt ??
+          bottomAlts.find(
+            (t) =>
+              t !== pieces[bottomIndex] &&
+              !capsuleColumnBlends(pieces[topIndex]!, t, colorByTitle),
+          );
         if (bottomAlt) {
-          if (bottomAlt === jeanBasic || bottomAlt === chinoBasic) owned.add(bottomAlt);
+          if (bottomAlt === jeanBasic || bottomAlt === chinoBasic) markOwned(bottomAlt);
           pieces[bottomIndex] = bottomAlt;
         }
+      } else {
+        const shirtAlt = [...dressShirts, ...anyTop].find(
+          (t) =>
+            !pieces.includes(t) &&
+            !capsuleColumnBlends(t, pieces[bottomIndex]!, colorByTitle),
+        );
+        if (shirtAlt) pieces[topIndex] = shirtAlt;
       }
     }
 
@@ -4167,11 +4979,15 @@ export function capsuleMatrix(
         ...catOtherTrousers,
         ...catTrousers,
         ...catChinos,
-        jeanBasic,
         chinoBasic,
       ],
       assumedDarkShoe: darkShoe,
       assumedDarkBottom: darkBottom,
+      allowCasualShoeSwap: !FORMAL_CONTEXTS.has(context),
+      keepBottom:
+        (slot.bottom === "chino" &&
+          pieces.some((p) => /\bchinos?\b/i.test(p))) ||
+        (slot.bottom === "jean" && pieces.some((p) => isJeanTitle(p))),
     });
     if (harmonized.join("|") !== pieces.join("|")) {
       pieces.length = 0;
@@ -4183,7 +4999,7 @@ export function capsuleMatrix(
           basics.bottoms.includes(p) ||
           p === darkBottom
         ) {
-          owned.add(p);
+          markOwned(p);
         }
       }
     }
@@ -4197,13 +5013,270 @@ export function capsuleMatrix(
       pieces.length = 0;
       pieces.push(...cleaned);
       for (const p of cleaned) {
-        if (basics.casualShoes.includes(p) || basics.bottoms.includes(p)) owned.add(p);
+        if (basics.casualShoes.includes(p) || basics.bottoms.includes(p)) markOwned(p);
       }
     }
 
-    const key = pieces.join("|").toLowerCase();
-    if (!pieces.length || seen.has(key)) continue;
-    seen.add(key);
+    const topIdxNow = pieces.findIndex(
+      (t) =>
+        !isJacketTitle(t) &&
+        !isShoeTitle(t) &&
+        !isAccentOnlyTitle(t) &&
+        !isBottomTitle(t),
+    );
+    const bottomIdxNow = pieces.findIndex((p) => isBottomTitle(p));
+    if (
+      FORMAL_CONTEXTS.has(context) &&
+      topIdxNow >= 0 &&
+      bottomIdxNow >= 0 &&
+      isDarkAnchorPiece(pieces[topIdxNow]!, colorByTitle) &&
+      isDarkAnchorPiece(pieces[bottomIdxNow]!, colorByTitle)
+    ) {
+      const lighter = [...dressShirts, ...plainKnits, ...anyTop].find(
+        (t) =>
+          t !== pieces[topIdxNow] &&
+          !pieces.includes(t) &&
+          !isDarkAnchorPiece(t, colorByTitle),
+      );
+      if (lighter) pieces[topIdxNow] = lighter;
+    }
+    const winterJacket = pieces.find(
+      (p) => isJacketTitle(p) && isWinterLayerTitle(p),
+    );
+    const summerShirt = pieces.find((p) => isCasualSummerShirtTitle(p));
+    if (winterJacket && summerShirt) {
+      const altShirt = dressShirts.find(
+        (t) => !isCasualSummerShirtTitle(t) && !pieces.includes(t),
+      );
+      if (altShirt) {
+        const sIdx = pieces.indexOf(summerShirt);
+        if (sIdx >= 0) pieces[sIdx] = altShirt;
+      }
+    }
+
+    if (!pieces.length) continue;
+    if (!FORMAL_CONTEXTS.has(context)) {
+      const shoeHere = pieces.find(isShoeTitle);
+      const topHere = topIndex >= 0 ? pieces[topIndex] : undefined;
+      const bIdx = pieces.findIndex((p) => isBottomTitle(p));
+      const bottomHere = bIdx >= 0 ? pieces[bIdx] : undefined;
+      const reusedCasual =
+        Boolean(bottomHere) &&
+        (casualBottoms.has(bottomHere!) ||
+          Boolean(
+            shoeHere && casualComboKeys.has(`${bottomHere}|${shoeHere}`),
+          ));
+      if (reusedCasual && bIdx >= 0) {
+        const keepJean =
+          slot.bottom === "jean" && isJeanTitle(pieces[bIdx]!);
+        const keepChino =
+          slot.bottom === "chino" && /\bchinos?\b/i.test(pieces[bIdx]!);
+        const altBottom = keepJean || keepChino
+          ? undefined
+          : [...catTrousers.filter((t) => !isJeanTitle(t)), chinoBasic].find((t) => {
+          if (t === pieces[bIdx]) return false;
+          if (casualBottoms.has(t)) return false;
+          if (shoeHere && casualComboKeys.has(`${t}|${shoeHere}`)) return false;
+          if (
+            topHere &&
+            capsuleColumnBlends(topHere, t, colorByTitle) &&
+            // Assumed jeans have no swatch; denim still reads as a different
+            // silhouette from cream / navy catalogue trousers.
+            !(
+              /\bjeans?\b/i.test(t) &&
+              !colorByTitle.has(t)
+            )
+          ) {
+            return false;
+          }
+          const trial = pieces.map((p, i) => (i === bIdx ? t : p));
+          return !seen.has(trial.join("|").toLowerCase());
+        });
+        if (altBottom) {
+          pieces[bIdx] = altBottom;
+          if (altBottom === jeanBasic || altBottom === chinoBasic) {
+            markOwned(altBottom);
+          }
+        }
+      }
+    }
+    const shoeAt = pieces.findIndex(isShoeTitle);
+    if (shoeAt >= 0) {
+      const currentShoe = pieces[shoeAt]!;
+      const intendedPool =
+        slot.shoe === "sneaker"
+          ? casualPool
+          : slot.shoe === "loafer"
+            ? loafers.length
+              ? loafers
+              : laceDress
+            : [...laceDress, ...loafers];
+      const matchesRole =
+        slot.shoe === "sneaker"
+          ? SNEAKER_RE.test(currentShoe)
+          : slot.shoe === "loafer"
+            ? isLoaferTitle(currentShoe)
+            : !SNEAKER_RE.test(currentShoe) && !isLoaferTitle(currentShoe);
+      if (!matchesRole) {
+        const shortsHere = pieces.some(isShortsTitle);
+        const restore =
+          intendedPool.find((s) => {
+            if ((shoeUses.get(s) ?? 0) >= MAX_SAME_SHOE_LOOKS) return false;
+            if (slot.shoe === "dress" && isLoaferTitle(s)) return false;
+            if (shortsHere && isClassicShoeWithShorts(s)) return false;
+            return true;
+          }) ??
+          (shortsHere
+            ? casualPool[0]
+            : slot.shoe === "dress"
+              ? laceDress[0] ?? intendedPool[0]
+              : intendedPool[0]);
+        if (restore) pieces[shoeAt] = restore;
+      }
+    }
+    const chinoHere = pieces.some((p) => /\bchinos?\b/i.test(p));
+    const tailoredHere = pieces.some(
+      (p) => isJacketTitle(p) && !CASUAL_OUTERWEAR_RE.test(p),
+    );
+    const shoeNow = pieces.find(isShoeTitle);
+    if (
+      chinoHere &&
+      !tailoredHere &&
+      shoeNow &&
+      !isLoaferTitle(shoeNow) &&
+      !SNEAKER_RE.test(shoeNow)
+    ) {
+      const sIdx = pieces.indexOf(shoeNow);
+      const casualShoe = loafers[0] ?? casualPool[0];
+      if (sIdx >= 0 && casualShoe) pieces[sIdx] = casualShoe;
+    }
+    const belts = pick(["Accessories"]).filter(isBeltTitle);
+    if (
+      belts[0] &&
+      !pieces.some(isShortsTitle) &&
+      !pieces.some(isBeltTitle) &&
+      pieces.some(isBottomTitle) &&
+      pieces.some((p) => isShoeTitle(p) && !SNEAKER_RE.test(p))
+    ) {
+      pieces.push(belts[0]!);
+    }
+    const comboKey = (ps: string[]) => ps.join("|").toLowerCase();
+    const tryUnseen = (next: string[]): boolean => {
+      if (!next.length || seen.has(comboKey(next))) return false;
+      pieces.length = 0;
+      pieces.push(...next);
+      return true;
+    };
+    if (seen.has(comboKey(pieces))) {
+      const topIdx = pieces.findIndex(
+        (t) =>
+          !isJacketTitle(t) &&
+          !isShoeTitle(t) &&
+          !isAccentOnlyTitle(t) &&
+          !isBottomTitle(t),
+      );
+      const bottomIdx = pieces.findIndex((p) => isBottomTitle(p));
+      if (
+        slot.layer === "formal" &&
+        formalLayers[0] &&
+        !pieces.some((p) => isJacketTitle(p))
+      ) {
+        tryUnseen([formalLayers[0]!, ...pieces]);
+      }
+      if (seen.has(comboKey(pieces)) && topIdx >= 0) {
+        const altShirt = dressShirts.find(
+          (t) => t !== pieces[topIdx] && !pieces.includes(t),
+        );
+        if (altShirt) {
+          tryUnseen(pieces.map((p, i) => (i === topIdx ? altShirt : p)));
+        }
+      }
+      if (
+        seen.has(comboKey(pieces)) &&
+        topIdx >= 0 &&
+        (slot.top === "knit" || context === "Dinner") &&
+        knits.length
+      ) {
+        const altKnit = knits.find((t) => !pieces.includes(t)) ?? knits[0];
+        if (altKnit && altKnit !== pieces[topIdx]) {
+          tryUnseen(pieces.map((p, i) => (i === topIdx ? altKnit : p)));
+        }
+      }
+      if (seen.has(comboKey(pieces)) && bottomIdx >= 0) {
+        const lockedBottom =
+          (slot.bottom === "chino" &&
+            /\bchinos?\b/i.test(pieces[bottomIdx]!)) ||
+          (slot.bottom === "jean" && isJeanTitle(pieces[bottomIdx]!));
+        const topForBlend = topIdx >= 0 ? pieces[topIdx] : undefined;
+        const altBottom = lockedBottom
+          ? undefined
+          : [
+              ...catDressTrousers,
+              ...catChinos,
+              ...catTrousers,
+            ].find(
+              (t) =>
+                t !== pieces[bottomIdx] &&
+                !pieces.includes(t) &&
+                !(
+                  topForBlend &&
+                  capsuleColumnBlends(topForBlend, t, colorByTitle)
+                ),
+            );
+        if (altBottom) {
+          tryUnseen(pieces.map((p, i) => (i === bottomIdx ? altBottom : p)));
+        }
+      }
+      if (
+        seen.has(comboKey(pieces)) &&
+        topIdx >= 0 &&
+        knits.length &&
+        ((slot.bottom === "chino" &&
+          pieces.some((p) => /\bchinos?\b/i.test(p))) ||
+          (slot.bottom === "jean" && pieces.some((p) => isJeanTitle(p))))
+      ) {
+        const unusedKnit = knits.find(
+          (t) =>
+            !pieces.includes(t) &&
+            (knitUses.get(t) ?? 0) < MAX_SAME_KNIT_LOOKS,
+        );
+        if (unusedKnit && unusedKnit !== pieces[topIdx]) {
+          tryUnseen(pieces.map((p, i) => (i === topIdx ? unusedKnit : p)));
+        }
+      }
+      if (seen.has(comboKey(pieces))) continue;
+    }
+    seen.add(comboKey(pieces));
+    const finalBottom = pieces.find((p) => isBottomTitle(p));
+    const finalShoe = pieces.find(isShoeTitle);
+    if (!FORMAL_CONTEXTS.has(context) && finalBottom && finalShoe) {
+      casualComboKeys.add(`${finalBottom}|${finalShoe}`);
+      casualBottoms.add(finalBottom);
+    }
+    for (const p of pieces) {
+      if (knits.includes(p)) {
+        knitUses.set(p, (knitUses.get(p) ?? 0) + 1);
+      }
+      if (layers.includes(p)) {
+        jacketUses.set(p, (jacketUses.get(p) ?? 0) + 1);
+      }
+      if (
+        catTrousersAll.includes(p) ||
+        catTrousers.includes(p) ||
+        p === jeanBasic ||
+        p === chinoBasic
+      ) {
+        bottomUses.set(p, (bottomUses.get(p) ?? 0) + 1);
+      }
+      if (
+        formalPool.includes(p) ||
+        casualPool.includes(p) ||
+        basics.shoes.includes(p) ||
+        basics.casualShoes.includes(p)
+      ) {
+        shoeUses.set(p, (shoeUses.get(p) ?? 0) + 1);
+      }
+    }
     const ownedHere = pieces.filter((p) => owned.has(p));
     combos.push({
       context,
@@ -4293,7 +5366,12 @@ export function extrasForReport(report: StyleReport): StyleExtras {
         ? shoeGuideFor(report.profile, report.colors.best, report.colors.avoid)
         : report.extras.shoeGuide,
       beltGuide: beltStale
-        ? beltGuideFor(report.profile, report.colors.best, report.colors.avoid)
+        ? beltGuideFor(
+            report.profile,
+            report.colors.best,
+            report.colors.avoid,
+            report.shopping,
+          )
         : report.extras.beltGuide,
     };
   }
@@ -4321,6 +5399,11 @@ export function buildExtras(report: StyleReport): StyleExtras {
     fragrance: fragranceFor(profile),
     watchGuide: watchGuideFor(profile, report.colors.best),
     shoeGuide: shoeGuideFor(profile, report.colors.best, report.colors.avoid),
-    beltGuide: beltGuideFor(profile, report.colors.best, report.colors.avoid),
+    beltGuide: beltGuideFor(
+      profile,
+      report.colors.best,
+      report.colors.avoid,
+      report.shopping,
+    ),
   };
 }

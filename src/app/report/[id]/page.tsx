@@ -1271,7 +1271,11 @@ export default async function ReportPage({
               <FabricsGuide fabrics={extras.fabrics} lang={lang} />
             </div>
             <div className="mt-12">
-              <StyleDetails lang={lang} />
+              <StyleDetails
+                lang={lang}
+                shoeGuide={extras.shoeGuide}
+                shopping={report.shopping}
+              />
             </div>
           </div>
         </section>

@@ -5,6 +5,8 @@
 import { StaticFillImg } from "@/components/StyleGuides";
 import { makeT } from "@/lib/i18n/report";
 import type { ReportLanguage } from "@/lib/languages";
+import type { ShoppingItem } from "@/lib/report";
+import { shoeGuideCards, type ShoeGuide } from "@/lib/style-extras";
 
 const NAVY = "#27324A";
 const CREAM = "#EFE6D3";
@@ -148,14 +150,17 @@ const ACCESSORIES: { name: string; note: string; icon: React.ReactNode }[] = [
   },
 ];
 
-const SHOES: { name: string; image: string }[] = [
-  { name: "Cream sneakers", image: "/images/products/cream-sneakers.png" },
-  { name: "Suede chelsea boots", image: "/images/products/chelsea-boots.png" },
-  { name: "Derby shoes", image: "/images/products/brown-derbies.png" },
-];
-
-export function StyleDetails({ lang }: { lang?: ReportLanguage }) {
+export function StyleDetails({
+  lang,
+  shoeGuide,
+  shopping = [],
+}: {
+  lang?: ReportLanguage;
+  shoeGuide?: ShoeGuide | null;
+  shopping?: ShoppingItem[];
+}) {
   const tt = makeT(lang);
+  const shoes = shoeGuide ? shoeGuideCards(shoeGuide, shopping) : [];
   return (
     <div className="grid gap-12 lg:grid-cols-3">
       <div>
@@ -200,25 +205,35 @@ export function StyleDetails({ lang }: { lang?: ReportLanguage }) {
         </div>
       </div>
 
-      <div>
-        <h3 className="text-sm uppercase tracking-wider text-stone-soft">
-          {tt("Shoe guide")}
-        </h3>
-        <div className="mt-5 grid grid-cols-3 gap-3">
-          {SHOES.map((s) => (
-            <div key={s.name}>
-              <div className="relative aspect-square overflow-hidden rounded-xl border hairline bg-paper">
-                <StaticFillImg
-                  src={s.image}
-                  alt={s.name}
-                  sizes="(max-width: 640px) 33vw, 15vw"
-                />
+      {shoes.length ? (
+        <div>
+          <h3 className="text-sm uppercase tracking-wider text-stone-soft">
+            {tt("Shoe guide")}
+          </h3>
+          <div className="mt-5 grid grid-cols-3 gap-3">
+            {shoes.map((s) => (
+              <div key={s.name}>
+                <div className="relative aspect-square overflow-hidden rounded-xl border hairline bg-paper">
+                  {s.image ? (
+                    <StaticFillImg
+                      src={s.image}
+                      alt={s.name}
+                      sizes="(max-width: 640px) 33vw, 15vw"
+                    />
+                  ) : (
+                    <div
+                      className="h-full w-full"
+                      style={{ background: s.colorHex }}
+                      aria-hidden
+                    />
+                  )}
+                </div>
+                <div className="mt-2 text-center text-xs text-stone">{s.name}</div>
               </div>
-              <div className="mt-2 text-center text-xs text-stone">{tt(s.name)}</div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
