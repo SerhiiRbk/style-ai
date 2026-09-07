@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   composeLookBrief,
+  dinnerLayerMatchesSlot,
   LOOK_WEARABLE_RULE,
   partyJacketFabricDirective,
   partyJacketMatchesSlot,
@@ -262,6 +263,12 @@ test("wearable rule asks for one chromatic hero and a dark anchor on mid-neutral
   assert.match(LOOK_WEARABLE_RULE, /mid-neutral|greige|mushroom/i);
 });
 
+test("wearable rule keeps mauve off blazers and overcoats", () => {
+  assert.match(LOOK_WEARABLE_RULE, /mauve|rose|pink|lilac/i);
+  assert.match(LOOK_WEARABLE_RULE, /blazer|sport coat/i);
+  assert.match(LOOK_WEARABLE_RULE, /overcoat/i);
+});
+
 test("wearable rule keeps shorts off jackets, knits and classic shoes", () => {
   assert.match(LOOK_WEARABLE_RULE, /shorts|bermudas/i);
   assert.match(LOOK_WEARABLE_RULE, /oxfords|brogues|derbies|boots/i);
@@ -469,4 +476,39 @@ test("sanitizeLookItems rewrites a crewneck slot when the look also has a tie", 
     { garment: "knitted tie", color: "seafoam" },
     { garment: "trousers", color: "navy" },
   ]);
+});
+
+test("formal and wedding briefs state the dress-code exception; work does not", () => {
+  const formal = composeLookBrief("Sharp and occasion-appropriate.", { occasionId: "formal", boldness: "moderate" });
+  assert.match(formal, /dress code .* beats colour analysis/i);
+  assert.match(formal, /black or dark-brown dress shoes/i);
+  assert.match(formal, /tailored overcoat/i);
+  assert.match(formal, /keep black off the shirt/i);
+  const wedding = composeLookBrief("Celebratory.", { occasionId: "wedding_guest", boldness: "moderate" });
+  assert.match(wedding, /tailored overcoat/i);
+  const work = composeLookBrief("Office.", { occasionId: "work", boldness: "moderate" });
+  assert.doesNotMatch(work, /tailored overcoat/i);
+  // Omitting occasion leaves the brief untouched by the formal note.
+  assert.doesNotMatch(composeLookBrief("Plain."), /dress code/i);
+});
+
+test("dinner sets rotate an evening layer: blazer, textured jacket, then an evening top", () => {
+  const b0 = composeLookBrief("Dinner.", { occasionId: "dinner", boldness: "moderate", lookIndex: 0, looksCount: 3 });
+  const b1 = composeLookBrief("Dinner.", { occasionId: "dinner", boldness: "moderate", lookIndex: 1, looksCount: 3 });
+  const b2 = composeLookBrief("Dinner.", { occasionId: "dinner", boldness: "moderate", lookIndex: 2, looksCount: 3 });
+  assert.match(b0, /unstructured blazer or sport coat/i);
+  assert.match(b1, /overshirt|knitted blazer|chore jacket/i);
+  assert.match(b1, /Do NOT use a classic blazer/);
+  assert.match(b2, /may go jacket-free/i);
+  // A single extra look (no set index) and other occasions get no dinner rotation.
+  assert.doesNotMatch(composeLookBrief("Dinner.", { occasionId: "dinner", boldness: "moderate" }), /Evening layer for THIS look/);
+  assert.doesNotMatch(composeLookBrief("Work.", { occasionId: "work", lookIndex: 0, looksCount: 3 }), /Evening layer/);
+});
+
+test("dinnerLayerMatchesSlot demands a jacket-class layer on slots 0 and 1 only", () => {
+  assert.equal(dinnerLayerMatchesSlot("Soft teal merino crewneck, navy chinos, loafers", 0), false);
+  assert.equal(dinnerLayerMatchesSlot("Navy unstructured blazer, teal knit, chinos", 0), true);
+  assert.equal(dinnerLayerMatchesSlot("Suede overshirt, slate shirt, charcoal trousers", 1), true);
+  assert.equal(dinnerLayerMatchesSlot("Slate blue shirt, charcoal chinos, plum loafers", 1), false);
+  assert.equal(dinnerLayerMatchesSlot("Fine merino polo, greige trousers, loafers", 2), true);
 });

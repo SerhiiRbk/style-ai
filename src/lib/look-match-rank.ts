@@ -101,7 +101,7 @@ export type RankedLookMatch = {
 };
 
 const MIN_VECTOR_SIMILARITY = 0.68;
-const STRONG_COLOR_MATCH = 0.7;
+export const STRONG_COLOR_MATCH = 0.7;
 const MIN_LOOK_PICK_SCORE = 0.42;
 const LOOK_STYLE_FIT_WEIGHT = 0.1;
 const MIN_COLOR_WHEN_STRONG = 0.45;

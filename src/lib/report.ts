@@ -185,12 +185,19 @@ export type ShoppingItem = {
   /** Catalogue pick is stylistically close, not a guaranteed photo match. */
   similarPick?: boolean;
   /**
+   * Look-item matching only: the garment slot (vocabulary noun, English) this
+   * pick fills — lets the UI name the look garments that found no match.
+   */
+  garment?: string;
+  /**
    * Shop a Look: candidate is outside the shopper's selected budget band
    * (soft fallback when in-budget matches were scarce).
    */
   outsideBudget?: boolean;
   /** Bumped when look-matching heuristics change — triggers background refresh. */
   matchVersion?: number;
+  /** Bumped when shopping colour gates change — triggers background rematch. */
+  shoppingVersion?: number;
   /** Bumped when the Sonnet rerank prompt changes. Missing means version 1. */
   rerankVersion?: number;
   /** Set when the "why" was written by the reasons model (src/lib/ai/shopping-reasons). */
@@ -209,6 +216,8 @@ export type Look = {
   description: string;
   palette: string[];
   image: string;
+  /** Structured garment slots (English) — lets Shop the Look name unmatched garments. */
+  items?: { garment: string; color?: string | null }[];
   /** "On you" try-on rendered from the user's photo (proxy URL) — shown in the PDF. */
   tryOnImage?: string;
 };
@@ -605,7 +614,151 @@ export function hairGenerationPending(
   return false;
 }
 
+/**
+ * Should the hair cards show "Generating…" rather than the stock illustrations?
+ * Hair renders run AFTER the looks (cover → looks → hair → grooming → capsule),
+ * so "a look image exists" no longer means the hair batch is done — that old
+ * shortcut put the demo report's stock cuts on a fresh report for the minutes
+ * between the first look and the first haircut. While the report is fresh,
+ * pending follows the hair rows themselves; after PDF_STRICT_WINDOW_MS a batch
+ * that never completed stops blocking and the stock images stand in, so a
+ * failed render cannot leave the cards spinning forever.
+ */
+export function hairImagesPending(opts: {
+  hasReferencePhoto: boolean;
+  hair: { recommend: HairRec[]; avoid: HairRec[] };
+  tier?: Tier;
+  createdAt?: string | null;
+  anyLookImage: boolean;
+  now?: number;
+}): boolean {
+  if (!opts.hasReferencePhoto) return false;
+  if (!hairGenerationPending(opts.hair, opts.tier)) return false;
+  const created = opts.createdAt ? new Date(opts.createdAt).getTime() : NaN;
+  const fresh =
+    Number.isFinite(created) && (opts.now ?? Date.now()) - created < PDF_STRICT_WINDOW_MS;
+  return fresh || !opts.anyLookImage;
+}
+
 /** True when premium facial-hair / eyewear / accessory / headwear previews still await generation. */
+/**
+ * PDF gate — "fully generated" is stricter than the banner's pending phases:
+ * every look, hair and grooming image, the cover, every capsule slot and both
+ * boards must exist before the PDF can be downloaded. A partial PDF is a
+ * permanent artefact on the client's disk, so it must never be built early.
+ *
+ * The strict rule applies while the report is fresh; after
+ * PDF_STRICT_WINDOW_MS only a report still in `processing` (no content) blocks,
+ * so a permanently failed render or a legacy report without boards can't lock
+ * the download forever (the finish-reports cron keeps retrying gaps anyway).
+ */
+export const PDF_STRICT_WINDOW_MS = 3 * 60 * 60 * 1000;
+
+export type PdfReadinessReason =
+  | "processing"
+  | "cover"
+  | "looks"
+  | "hair"
+  | "grooming"
+  | "capsule"
+  | "boards"
+  | null;
+
+export type PdfReadiness = { ready: boolean; reason: PdfReadinessReason };
+
+type WithImage = { imagePath?: string | null; image?: string | null };
+const hasImg = (x: WithImage | null | undefined) => Boolean(x?.imagePath || x?.image);
+
+export type PdfReadinessInput = {
+  tier: Tier;
+  createdAt: string;
+  status?: string | null;
+  /** The banner's pending flag — always a hard block while true. */
+  generationPending: boolean;
+  /** No reference photo → no personal renders exist by design; only content gates. */
+  hasReferencePhoto: boolean;
+  looks: WithImage[];
+  coverImage?: string | null;
+  capsuleImages?: (string | null | undefined)[] | null;
+  hair: { recommend: (WithImage & { imagePathSide?: string; imageSide?: string })[]; avoid: WithImage[] };
+  facialHair?: WithImage[] | null;
+  eyewear?: WithImage[] | null;
+  accessories?: WithImage[] | null;
+  headwear?: WithImage[] | null;
+  watchImage?: string | null;
+  shoeImage?: string | null;
+};
+
+export function pdfReadiness(r: PdfReadinessInput, now = Date.now()): PdfReadiness {
+  if (r.status === "processing") return { ready: false, reason: "processing" };
+  if (r.generationPending) return { ready: false, reason: "looks" };
+  if (r.tier === "free") return { ready: true, reason: null };
+
+  const created = new Date(r.createdAt).getTime();
+  const fresh = Number.isNaN(created) ? true : now - created < PDF_STRICT_WINDOW_MS;
+  if (!fresh) return { ready: true, reason: null };
+
+  if (r.hasReferencePhoto) {
+    if (!r.coverImage) return { ready: false, reason: "cover" };
+    if (r.looks.length && r.looks.some((l) => !hasImg(l))) {
+      return { ready: false, reason: "looks" };
+    }
+    const dualAngle = HAIR_DUAL_ANGLE_TIERS.includes(r.tier);
+    const hairTargets = r.hair.recommend.slice(0, hairRecommendGenLimit(r.tier));
+    const hairMissing =
+      hairTargets.some((h) => !hasImg(h) || (dualAngle && !(h.imagePathSide || h.imageSide))) ||
+      r.hair.avoid.slice(0, HAIR_AVOID_GEN_LIMIT).some((h) => !hasImg(h));
+    if (hairMissing) return { ready: false, reason: "hair" };
+    if (r.tier === "lookbook" || r.tier === "premium") {
+      const grooming = [
+        ...(r.facialHair ?? []).slice(0, PREMIUM_FACIAL_HAIR_GEN_LIMIT),
+        ...(r.eyewear ?? []).slice(0, PREMIUM_EYEWEAR_GEN_LIMIT),
+        ...(r.accessories ?? []).slice(0, PREMIUM_ACCESSORY_GEN_LIMIT),
+        ...(r.headwear ?? []).slice(0, PREMIUM_HEADWEAR_GEN_LIMIT),
+      ];
+      if (grooming.some((g) => !hasImg(g))) return { ready: false, reason: "grooming" };
+    }
+  }
+  if (r.tier === "lookbook" || r.tier === "premium") {
+    const caps = r.capsuleImages ?? [];
+    if (!caps.length || caps.some((c) => !c)) return { ready: false, reason: "capsule" };
+    if (r.hasReferencePhoto && (!r.watchImage || !r.shoeImage)) {
+      return { ready: false, reason: "boards" };
+    }
+  }
+  return { ready: true, reason: null };
+}
+
+/** Adapter for an assembled StyleReport (page + PDF route). */
+export function pdfReadinessFromReport(report: StyleReport, now = Date.now()): PdfReadiness {
+  const anyPersonalRender =
+    Boolean(report.coverImage) ||
+    report.looks.some((l) => Boolean(l.image)) ||
+    [...report.hair.recommend, ...report.hair.avoid].some((h) => hasImg(h));
+  return pdfReadiness(
+    {
+      tier: report.tier,
+      createdAt: report.createdAt,
+      status: report.generation?.status,
+      generationPending: Boolean(report.generation?.pending),
+      // Early in generation nothing has rendered yet — `generationPending`
+      // carries the block then; once anything personal exists we know a photo was given.
+      hasReferencePhoto: anyPersonalRender,
+      looks: report.looks,
+      coverImage: report.coverImage,
+      capsuleImages: report.capsuleImages,
+      hair: report.hair,
+      facialHair: report.facialHair,
+      eyewear: report.eyewear,
+      accessories: report.accessories,
+      headwear: report.headwear,
+      watchImage: report.watchImage,
+      shoeImage: report.shoeImage,
+    },
+    now,
+  );
+}
+
 export function premiumGroomingPending(
   facialHair: FacialHairRec[] | null | undefined,
   eyewear: EyewearRec[] | null | undefined,
@@ -666,9 +819,31 @@ const PLACEHOLDER_URL_RE =
  * that predates ingest-time humanization. Each lets existing reports self-heal
  * on the next view via scheduleMatchRefresh (data/reports.ts).
  */
+/** Bumped with shopping colour-gate changes so existing reports rematch. */
+export const SHOPPING_VERSION = 2;
+
+/**
+ * A pre-SHOPPING_VERSION item that the colour gates could change: a black
+ * piece, or one whose swatch was unknown at match time (placeholder grey).
+ * Scoping the version bump to these keeps the self-heal rematch (and its
+ * Sonnet reasons pass) off reports the gates would leave untouched.
+ */
+function needsColourGateRematch(i: ShoppingItem): boolean {
+  if ((i.shoppingVersion ?? 0) >= SHOPPING_VERSION) return false;
+  if (/\bblack\b/i.test(`${i.title} ${i.colorName ?? ""}`)) return true;
+  const hex = (i.color ?? "").trim().toLowerCase();
+  if (hex === "#cccccc") return true;
+  const m = hex.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/);
+  if (!m) return false;
+  const [r, g, b] = [m[1], m[2], m[3]].map((c) => parseInt(c!, 16) / 255);
+  const l = (Math.max(r!, g!, b!) + Math.min(r!, g!, b!)) / 2;
+  return l < 0.12;
+}
+
 export function isStaleShoppingCopy(items: ShoppingItem[]): boolean {
   return items.some(
     (i) =>
+      needsColourGateRematch(i) ||
       /^A \S+ that fits your .+ palette and your goal to/.test(i.why) ||
       !i.url ||
       i.url === "#" ||

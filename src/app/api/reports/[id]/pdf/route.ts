@@ -7,6 +7,7 @@ import { isDemoReportId } from "@/lib/demo-report";
 import { getCachedReportPdf, putCachedReportPdf } from "@/lib/pdf/pdf-cache";
 import { buildReportPdf } from "@/lib/pdf/report-pdf";
 import { demoReport } from "@/lib/store";
+import { pdfReadinessFromReport } from "@/lib/report";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,21 @@ export async function GET(
         upgrade: "/pricing",
       },
       { status: 402, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // Never hand out a half-built PDF: the file lives on the client's disk
+  // forever, so it waits for every image (looks, hair, grooming, cover,
+  // capsule, boards). The button polls /status and unlocks itself.
+  const readiness = pdfReadinessFromReport(report);
+  if (!readiness.ready) {
+    return Response.json(
+      {
+        error: "Your report is still being generated — the PDF unlocks when every image is ready.",
+        code: "generating",
+        reason: readiness.reason,
+      },
+      { status: 409, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } },
     );
   }
 

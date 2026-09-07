@@ -1,0 +1,536 @@
+{
+  "slug": "cool-summer-6451",
+  "tier": "lookbook",
+  "createdAt": "2026-09-06T18:55:37.663621+00:00",
+  "profile": {
+    "goals": [
+      "Dating & social",
+      "Look younger / fresher"
+    ],
+    "version": "1.0",
+    "boldness": "statement",
+    "currency": "CZK",
+    "physical": {
+      "bodyType": "triangle",
+      "contrast": "medium",
+      "eyeColor": "brown",
+      "heightCm": 177,
+      "lighting": "warm-tint",
+      "skinTone": "medium neutral",
+      "weightKg": 79,
+      "faceShape": "oval",
+      "hairColor": "dark brown",
+      "undertone": "neutral"
+    },
+    "budgetEur": {
+      "max": 3000,
+      "min": 1000
+    },
+    "lifestyle": [
+      "Public speaking",
+      "Socialite"
+    ],
+    "occupation": "Software / IT",
+    "colorSeason": "summer",
+    "demographics": {
+      "age": 45,
+      "city": "",
+      "climate": "temperate",
+      "country": "Czechia",
+      "genderPresentation": "male"
+    },
+    "colorSubseason": "cool-summer"
+  },
+  "colors": {
+    "best": [
+      {
+        "name": "Navy grey",
+        "hex": "#303444"
+      },
+      {
+        "name": "Cool white",
+        "hex": "#e0e0d9"
+      },
+      {
+        "name": "Dusty blue",
+        "hex": "#6e8ca6"
+      },
+      {
+        "name": "Mauve",
+        "hex": "#9c6b84"
+      },
+      {
+        "name": "Spruce",
+        "hex": "#3a534d"
+      },
+      {
+        "name": "Cool rose",
+        "hex": "#865565"
+      },
+      {
+        "name": "Slate",
+        "hex": "#6d7e91"
+      },
+      {
+        "name": "Plum grey",
+        "hex": "#887393"
+      },
+      {
+        "name": "Charcoal grey",
+        "hex": "#373a42",
+        "role": "versatile"
+      },
+      {
+        "name": "Pearl grey",
+        "hex": "#c8cfd4",
+        "role": "versatile"
+      }
+    ],
+    "avoid": [
+      {
+        "name": "Pure Black",
+        "hex": "#000000"
+      },
+      {
+        "name": "Bright Orange",
+        "hex": "#FF6B35"
+      },
+      {
+        "name": "Golden Yellow",
+        "hex": "#F4C430"
+      },
+      {
+        "name": "Rust",
+        "hex": "#B7410E"
+      }
+    ]
+  },
+  "shopping": [
+    {
+      "category": "Outerwear",
+      "title": "Valmonti Men’s Textured Notch Lapel Relaxed Tailored Blazer",
+      "color": "#28324a",
+      "colorName": "Navy Blue",
+      "priceEur": 58.76,
+      "retailer": "Valmonti"
+    },
+    {
+      "category": "Outerwear",
+      "title": "Zara Textured Puffer Jacket",
+      "color": "#2f4b7c",
+      "colorName": "Blue / Grey",
+      "priceEur": 69.95,
+      "retailer": "ZARA"
+    },
+    {
+      "category": "Trousers",
+      "title": "Marks & Spencer Tailored Fit Pure Wool Twill Suit Trousers",
+      "color": "#36393b",
+      "colorName": "Charcoal",
+      "priceEur": 120,
+      "retailer": "Marks & Spencer"
+    },
+    {
+      "category": "Trousers",
+      "title": "Valmonti Men’s Relaxed Corduroy Trousers Drawstring Everyday Fit",
+      "color": "#ffffff",
+      "colorName": "White",
+      "priceEur": 47,
+      "retailer": "Valmonti"
+    },
+    {
+      "category": "Shirts",
+      "title": "COS Oxford Button-Down Shirt",
+      "color": "#ffffff",
+      "colorName": "White",
+      "priceEur": 45,
+      "retailer": "COS"
+    },
+    {
+      "category": "Shirts",
+      "title": "Zara Relaxed Fit Striped Shirt",
+      "color": "#8b8b8b",
+      "colorName": "Grey",
+      "priceEur": 39.95,
+      "retailer": "ZARA"
+    },
+    {
+      "category": "Knitwear",
+      "title": "Luciénte Pure Extra-Fine Merino Wool Two Tone Crewneck",
+      "color": "#2f4b7c",
+      "colorName": "Baby Blue",
+      "priceEur": 88.24,
+      "retailer": "Luciénte"
+    },
+    {
+      "category": "Footwear",
+      "title": "Gentleman Shoe Men's Brown Genuine Leather Oxford Shoes",
+      "color": "#c69b6d",
+      "colorName": "Tan Yellow",
+      "priceEur": 140,
+      "retailer": "Gentleman Shoe"
+    },
+    {
+      "category": "Footwear",
+      "title": "Gentleman Shoe Blue Ostrich Pattern Light Luxury Leather Loafers",
+      "color": "#2f4b7c",
+      "colorName": "Dark Blue",
+      "priceEur": 130,
+      "retailer": "Gentleman Shoe"
+    },
+    {
+      "category": "Footwear",
+      "title": "Zara Trainers With Contrast Sole",
+      "color": "#ffffff",
+      "colorName": "White",
+      "priceEur": 19.99,
+      "retailer": "ZARA"
+    },
+    {
+      "category": "Accessories",
+      "title": "Reserved Leather Belt With Buckle",
+      "color": "#4a2f23",
+      "colorName": "dark brown",
+      "priceEur": 37.99,
+      "retailer": "Reserved"
+    },
+    {
+      "category": "Accessories",
+      "title": "Zara Plain Crossbody Bag With Flap",
+      "color": "#6f4e37",
+      "colorName": "Brown",
+      "priceEur": 35.95,
+      "retailer": "ZARA"
+    }
+  ],
+  "lookItems": {
+    "0": [
+      {
+        "category": "Footwear",
+        "title": "Valmonti Men’s Suede Slip-On Loafers Smart Casual Driving Shoes",
+        "color": "#2F4B7C",
+        "colorName": "Blue Green",
+        "priceEur": 52.88,
+        "retailer": "Valmonti",
+        "garment": "loafers"
+      }
+    ],
+    "1": [
+      {
+        "category": "Knitwear",
+        "title": "Zara Ribbed Textured Jumper",
+        "color": "#E1A0A8",
+        "colorName": "Pink",
+        "priceEur": 49.95,
+        "retailer": "ZARA",
+        "garment": "crewneck"
+      },
+      {
+        "category": "Trousers",
+        "title": "Valmonti Men’s Slim Fit Chino Trousers Smart Casual Everyday Pants",
+        "color": "#8B8B8B",
+        "colorName": "Grey",
+        "priceEur": 47,
+        "retailer": "Valmonti",
+        "garment": "chinos"
+      },
+      {
+        "category": "Footwear",
+        "title": "Valmonti Men’s White Leather Trainers Cushioned Sole Everyday Street Sneakers",
+        "color": "#FFFFFF",
+        "colorName": "White",
+        "priceEur": 41.12,
+        "retailer": "Valmonti",
+        "garment": "sneakers"
+      }
+    ],
+    "2": [
+      {
+        "category": "Shirts",
+        "title": "COS Oxford Button-Down Shirt",
+        "color": "#FFFFFF",
+        "colorName": "White",
+        "priceEur": 45,
+        "retailer": "COS",
+        "garment": "oxford"
+      },
+      {
+        "category": "Trousers",
+        "title": "Zara Comfort Textured Chino Trousers",
+        "color": "#3A6B4E",
+        "colorName": "Dark green",
+        "priceEur": 22.99,
+        "retailer": "ZARA",
+        "garment": "chinos"
+      }
+    ],
+    "3": [
+      {
+        "category": "Shirts",
+        "title": "Reserved Regular Fit Plain Shirt",
+        "color": "#28324A",
+        "colorName": "pale blue",
+        "priceEur": 39.99,
+        "retailer": "Reserved",
+        "garment": "shirt"
+      },
+      {
+        "category": "Trousers",
+        "title": "Reserved Straight Chino Trousers",
+        "color": "#FFFFFF",
+        "colorName": "white",
+        "priceEur": 19.99,
+        "retailer": "Reserved",
+        "garment": "chinos"
+      }
+    ],
+    "4": [
+      {
+        "category": "Knitwear",
+        "title": "Zara Flecked Wool Blend Cardigan",
+        "color": "#E1A0A8",
+        "colorName": "Pink",
+        "priceEur": 47.96,
+        "retailer": "ZARA",
+        "garment": "cardigan"
+      },
+      {
+        "category": "Shirts",
+        "title": "Valmonti Men’s Breathable Casual T-Shirt – Lightweight Comfortable Stylish Everyday Summer Wear",
+        "color": "#FFFFFF",
+        "colorName": "White",
+        "priceEur": 47,
+        "retailer": "Valmonti",
+        "garment": "tee"
+      },
+      {
+        "category": "Trousers",
+        "title": "Zara Straight-Leg Denim Chinos",
+        "color": "#7796b1",
+        "colorName": "Light blue",
+        "priceEur": 39.95,
+        "retailer": "ZARA",
+        "garment": "chinos"
+      },
+      {
+        "category": "Footwear",
+        "title": "Zara Leather Loafers",
+        "color": "#8B8B8B",
+        "colorName": "Asphalt Grey",
+        "priceEur": 45.95,
+        "retailer": "ZARA",
+        "garment": "loafers"
+      }
+    ],
+    "5": [
+      {
+        "category": "Shirts",
+        "title": "Valmonti Men’s Short Sleeve Henley Collar Linen Summer Shirt",
+        "color": "#FFFFFF",
+        "colorName": "White",
+        "priceEur": 41.12,
+        "retailer": "Valmonti",
+        "garment": "henley"
+      },
+      {
+        "category": "Trousers",
+        "title": "Zara Comfort Textured Chino Trousers",
+        "color": "#b4b4b4",
+        "colorName": "Pearl grey",
+        "priceEur": 33.96,
+        "retailer": "ZARA",
+        "garment": "trousers"
+      }
+    ]
+  },
+  "looks": [
+    {
+      "idx": 0,
+      "context": "Dinner / date",
+      "title": "Approachable Evening Ease",
+      "description": "Dusty-blue unstructured blazer, cool-white poplin shirt, navy-grey chinos, spruce suede loafers, spruce leather belt, mauve linen pocket square",
+      "items": [
+        {
+          "color": "dusty-blue",
+          "garment": "blazer"
+        },
+        {
+          "color": "cool-white",
+          "garment": "shirt"
+        },
+        {
+          "color": "navy-grey",
+          "garment": "chinos"
+        },
+        {
+          "color": "spruce",
+          "garment": "loafers"
+        },
+        {
+          "color": "spruce",
+          "garment": "belt"
+        },
+        {
+          "color": "mauve",
+          "garment": "pocket square"
+        }
+      ]
+    },
+    {
+      "idx": 1,
+      "context": "Weekend",
+      "title": "Effortless Off-Duty",
+      "description": "Cool-rose crewneck knit, charcoal-grey chinos, cool-white leather sneakers, navy-grey leather belt, slate canvas tote",
+      "items": [
+        {
+          "color": "cool-rose",
+          "garment": "crewneck knit"
+        },
+        {
+          "color": "charcoal-grey",
+          "garment": "chinos"
+        },
+        {
+          "color": "cool-white",
+          "garment": "sneakers"
+        },
+        {
+          "color": "navy-grey",
+          "garment": "belt"
+        },
+        {
+          "color": "slate",
+          "garment": "tote"
+        }
+      ]
+    },
+    {
+      "idx": 2,
+      "context": "Business social",
+      "title": "Polished Approachability",
+      "description": "Mauve wool-blend blazer, cool-white oxford shirt, spruce chinos, slate leather loafers, navy-grey leather belt, cool-rose knit tie",
+      "items": [
+        {
+          "color": "mauve",
+          "garment": "blazer"
+        },
+        {
+          "color": "cool-white",
+          "garment": "shirt"
+        },
+        {
+          "color": "spruce",
+          "garment": "chinos"
+        },
+        {
+          "color": "slate",
+          "garment": "loafers"
+        },
+        {
+          "color": "navy-grey",
+          "garment": "belt"
+        },
+        {
+          "color": "cool-rose",
+          "garment": "tie"
+        }
+      ]
+    },
+    {
+      "idx": 3,
+      "context": "Work / meetings",
+      "title": "Quietly Authoritative",
+      "description": "Dusty-blue wool sport coat, light-blue poplin shirt, cool-white chinos, navy-grey leather oxfords, navy-grey leather belt, mauve silk pocket square, slate leather briefcase",
+      "items": [
+        {
+          "color": "dusty-blue",
+          "garment": "sport coat"
+        },
+        {
+          "color": "light-blue",
+          "garment": "shirt"
+        },
+        {
+          "color": "cool-white",
+          "garment": "chinos"
+        },
+        {
+          "color": "navy-grey",
+          "garment": "oxfords"
+        },
+        {
+          "color": "navy-grey",
+          "garment": "belt"
+        },
+        {
+          "color": "mauve",
+          "garment": "pocket square"
+        },
+        {
+          "color": "slate",
+          "garment": "briefcase"
+        }
+      ]
+    },
+    {
+      "idx": 4,
+      "context": "Smart casual",
+      "title": "Considered Middle Ground",
+      "description": "Cool-rose merino cardigan, cool-white crew-neck tee, dusty-blue chinos, charcoal-grey suede loafers, charcoal-grey leather belt",
+      "items": [
+        {
+          "color": "cool-rose",
+          "garment": "cardigan"
+        },
+        {
+          "color": "cool-white",
+          "garment": "tee"
+        },
+        {
+          "color": "dusty-blue",
+          "garment": "chinos"
+        },
+        {
+          "color": "charcoal-grey",
+          "garment": "loafers"
+        },
+        {
+          "color": "charcoal-grey",
+          "garment": "belt"
+        }
+      ]
+    },
+    {
+      "idx": 5,
+      "context": "Travel / transitional",
+      "title": "Layered Adaptability",
+      "description": "Mauve overshirt, cool-white henley, pearl-grey stretch trousers, navy-grey leather sneakers, navy-grey leather belt, slate backpack",
+      "items": [
+        {
+          "color": "mauve",
+          "garment": "overshirt"
+        },
+        {
+          "color": "cool-white",
+          "garment": "henley"
+        },
+        {
+          "color": "pearl-grey",
+          "garment": "trousers"
+        },
+        {
+          "color": "navy-grey",
+          "garment": "sneakers"
+        },
+        {
+          "color": "navy-grey",
+          "garment": "belt"
+        },
+        {
+          "color": "slate",
+          "garment": "backpack"
+        }
+      ]
+    }
+  ]
+}

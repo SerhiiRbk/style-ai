@@ -1464,13 +1464,22 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   }
   d.gap(2);
   d.subhead(tt("Patterns"), { keepWith: 14 });
-  d.text(tt("Solid · Fine stripe · Gingham check · Tartan"), { color: STONE });
+  d.text(
+    extras.patterns?.length
+      ? extras.patterns.map((p) => tt(p.name)).join(" · ")
+      : tt("Solid · Fine stripe"),
+    { color: STONE },
+  );
   d.gap(4);
   d.subhead(tt("Accessories"), { keepWith: 14 });
   d.text(
-    tt(
-      "Field watch (cream dial) · Leather belt matched to shoes · Warm tortoiseshell sunglasses · One minimal chain",
-    ),
+    extras.finishingAccessories?.length
+      ? extras.finishingAccessories
+          .map((a) => `${tt(a.name)} (${tt(a.note)})`)
+          .join(" · ")
+      : extras.watchGuide?.variants?.[1]
+        ? `${tt(extras.watchGuide.variants[1].type)} (${extras.watchGuide.variants[1].dial} ${tt("dial")}) · ${tt("Leather belt matched to shoes")}`
+        : tt("Leather belt matched to shoes"),
     { color: STONE, lineGap: 5 },
   );
   d.gap(4);

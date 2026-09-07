@@ -30,6 +30,14 @@ const nextConfig: NextConfig = {
       "./node_modules/sharp/**/*",
       "./node_modules/@img/**/*",
     ],
+    // Create-a-Look runs the vision analysis for sets without a report; the
+    // pixel colour measurement (lib/ai/photo-colour-measure) decodes the
+    // client's photos with sharp. Without the binaries it degrades to the
+    // model's read — with them it corrects for the light.
+    "/api/look-set/**": [
+      "./node_modules/sharp/**/*",
+      "./node_modules/@img/**/*",
+    ],
   },
   images: {
     localPatterns: [

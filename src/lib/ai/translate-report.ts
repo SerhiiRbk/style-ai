@@ -88,6 +88,12 @@ function trExtras(e: StyleExtras, tr: TranslateFn): StyleExtras {
       })),
     },
     fabrics: e.fabrics.map((f) => ({ name: tr(f.name), why: tr(f.why) })),
+    patterns: (e.patterns ?? []).map((p) => ({ ...p, name: tr(p.name) })),
+    finishingAccessories: (e.finishingAccessories ?? []).map((a) => ({
+      ...a,
+      name: tr(a.name),
+      note: tr(a.note),
+    })),
     capsule: {
       ...e.capsule,
       now: trShopping(e.capsule.now, tr),

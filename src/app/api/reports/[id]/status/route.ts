@@ -6,6 +6,7 @@ import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import {
   canShareReport,
+  pdfReadiness,
   type EyewearRec,
   type FacialHairRec,
   type AccessoryRec,
@@ -37,7 +38,7 @@ export async function GET(
   const adminDb = isAdmin && hasSupabaseAdmin ? createAdminSupabase() : null;
 
   const ownerCols =
-    "status, tier, capsule_images, hair, facial_hair, eyewear, accessories, headwear, user_id, is_public, headline, summary, colors";
+    "status, tier, capsule_images, hair, facial_hair, eyewear, accessories, headwear, user_id, is_public, headline, summary, colors, created_at, cover_image, watch_image, shoe_image";
   // Public view omits user_id (and intake) — read it for non-owners.
   const publicCols =
     "status, tier, capsule_images, hair, facial_hair, eyewear, accessories, headwear, is_public";
@@ -56,6 +57,10 @@ export async function GET(
     headline?: string | null;
     summary?: string | null;
     colors?: { best: unknown[]; avoid: unknown[] } | null;
+    created_at?: string | null;
+    cover_image?: string | null;
+    watch_image?: string | null;
+    shoe_image?: string | null;
   };
 
   let row: StatusRow | null = null;
@@ -108,6 +113,7 @@ export async function GET(
     .from("looks")
     .select("image_path")
     .eq("report_id", id);
+  const lookImages = (looks ?? []).map((l) => ({ imagePath: l.image_path as string | null }));
 
   let hasReferencePhoto = false;
   if (isOwner || isAdmin) {
@@ -152,5 +158,30 @@ export async function GET(
     state = { ...state, recovery };
   }
 
-  return NextResponse.json(state);
+  // PDF gate for the download button's own poll (owner / admin only — the
+  // public view lacks the cover / board columns).
+  const pdf =
+    (isOwner || isAdmin) && row.created_at
+      ? pdfReadiness({
+          tier: (row.tier as Tier) ?? "basic",
+          createdAt: row.created_at,
+          status: row.status,
+          generationPending: state.pending,
+          hasReferencePhoto,
+          looks: lookImages,
+          coverImage: row.cover_image,
+          capsuleImages: row.capsule_images,
+          hair: row.hair ?? { recommend: [], avoid: [] },
+          facialHair: row.facial_hair,
+          eyewear: row.eyewear,
+          accessories: row.accessories,
+          headwear: row.headwear,
+          watchImage: row.watch_image,
+          shoeImage: row.shoe_image,
+        })
+      : null;
+
+  return NextResponse.json(
+    pdf ? { ...state, pdfReady: pdf.ready, pdfReason: pdf.reason } : state,
+  );
 }

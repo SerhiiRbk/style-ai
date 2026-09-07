@@ -116,6 +116,34 @@ const PARTY_JACKET_FABRIC = [
   "Jacket fabric for THIS look: a wool hopsack, tweed or suede blazer. Do NOT use velvet or corduroy.",
 ] as const;
 
+/**
+ * Dinner / date is an evening occasion, not a smart-casual Tuesday: two of every
+ * three looks carry a jacket-class layer, the third may go jacket-free only
+ * with an evening top. Rotated by slot so a set is not three navy blazers.
+ */
+const DINNER_LAYER = [
+  "Evening layer for THIS look: an unstructured blazer or sport coat in navy, charcoal or a deep palette tone, worn over the top — the set's dinner anchor.",
+  "Evening layer for THIS look: a textured casual jacket — a suede or wool-flannel overshirt, a knitted blazer or a chore jacket — over a shirt or fine knit. Do NOT use a classic blazer here.",
+  "This look may go jacket-free, but then the top must carry the evening: a fine-gauge knit polo, a roll-neck, or a silk / fine-cotton shirt — never a plain crewneck-and-chinos daytime read.",
+] as const;
+
+export function dinnerLayerDirective(lookIndex: number): string {
+  return DINNER_LAYER[((lookIndex % 3) + 3) % 3]!;
+}
+
+const DINNER_LAYER_RE =
+  /\b(blazers?|sport\s*coats?|sportcoats?|overshirts?|shackets?|chore\s+jackets?|knitted\s+blazers?|jackets?|coats?)\b/i;
+
+/** True when the description carries the layer the dinner slot asked for. */
+export function dinnerLayerMatchesSlot(
+  description: string,
+  lookIndex: number,
+): boolean {
+  const slot = ((lookIndex % 3) + 3) % 3;
+  if (slot === 2) return true;
+  return DINNER_LAYER_RE.test(description);
+}
+
 export function partyJacketFabricDirective(lookIndex: number): string {
   return PARTY_JACKET_FABRIC[((lookIndex % 3) + 3) % 3]!;
 }
@@ -282,6 +310,14 @@ export function composeLookBrief(
     !lookStyleHasBrief(styleId)
       ? `${partyJacketFabricDirective(lookIndex)} `
       : "";
+  const dinnerNote =
+    occasionId === "dinner" &&
+    lookIndex != null &&
+    Number.isInteger(lookIndex) &&
+    (looksCount ?? 0) >= 2 &&
+    !lookStyleHasBrief(styleId)
+      ? `${dinnerLayerDirective(lookIndex)} `
+      : "";
   const workSlotNote =
     occasionId === "work" &&
     boldness &&
@@ -301,7 +337,17 @@ export function composeLookBrief(
         "Do not put a chromatic hero colour on the shirt. " +
         "Never a tote, shopper or canvas bag in the hand — empty hands, or a slim leather briefcase or messenger if a bag is needed. "
       : "";
-  return `${seasonNote}${strictnessNote}${occasionNote}${styleNote}${fabricNote}${workSlotNote}${varietyNote}${workShirtNote}${brief}`;
+  // Dress codes beat colour analysis for formal occasions: classic dress
+  // leather and one tailored black/charcoal overcoat are correct — black still
+  // stays off the shirt, knit and (outside black tie) the jacket itself.
+  const formalNote =
+    occasionId === "formal" || occasionId === "wedding_guest"
+      ? "Dress code for this occasion beats colour analysis in two places only: " +
+        "classic black or dark-brown dress shoes and belt are correct, and a black or " +
+        "charcoal tailored overcoat may top the look in cold weather. Keep black off the " +
+        "shirt, knit and the jacket itself unless the event is black tie. "
+      : "";
+  return `${seasonNote}${strictnessNote}${occasionNote}${styleNote}${fabricNote}${dinnerNote}${workSlotNote}${varietyNote}${workShirtNote}${formalNote}${brief}`;
 }
 
 /**
@@ -319,6 +365,8 @@ export const LOOK_WEARABLE_RULE =
   "Shoes must clearly contrast the trousers — different lightness or colour family. " +
   "Never pair mushroom, greige, taupe or beige trousers with matching greige/beige shoes. " +
   "One chromatic hero per look — jacket or knit or trousers or shoes may be the saturated colour; a second piece in that colour only as belt, tie or pocket square. " +
+  "Never put mauve, rose, pink or lilac on a blazer, sport coat or overcoat — those colours belong on a knit, square or tie. " +
+  "An overcoat is navy, charcoal, camel, stone or greige only. " +
   "Shoes must not match the jacket unless both are a dark navy or black formal set. " +
   "Never pair two mid-neutrals (greige, mushroom, taupe, stone, camel, beige, mid-grey) without a dark anchor — navy, charcoal, black or dark brown jacket or shoes. " +
   "Never pair a necktie with a closed crewneck, roll-neck or turtleneck — the tie sits on a collared shirt and shows in a V-neck or open cardigan, never on top of a jumper. " +

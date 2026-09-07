@@ -297,12 +297,19 @@ export type ColorRec = {
 /** How many trailing swatches in each subseason palette are versatile neutrals. */
 export const VERSATILE_NEUTRAL_COUNT = 2;
 
+/** True neutrals only. Chromatic muted hues (soft teal, sage) sit above this. */
+export const NEUTRAL_SAT_MAX = 0.2;
+
 /** Minimal hex → HSL for classifying a swatch's role (neutral / accent / depth). */
 export function hexToHsl(hex: string): { h: number; s: number; l: number } {
-  const m = hex.replace("#", "");
-  const r = parseInt(m.slice(0, 2), 16) / 255;
-  const g = parseInt(m.slice(2, 4), 16) / 255;
-  const b = parseInt(m.slice(4, 6), 16) / 255;
+  // The one HSL conversion for the whole app. Garbage in (a feed's "n/a", an
+  // empty swatch) reads as a mid-light neutral rather than NaN.
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex ?? "").trim());
+  if (!m) return { h: 0, s: 0, l: 0.6 };
+  const n = parseInt(m[1]!, 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const l = (max + min) / 2;
@@ -333,12 +340,30 @@ const UNDERTONE_ADJ: Record<Undertone, string> = {
   neutral: "balanced",
 };
 
+function swatchWhyFamily(
+  name: string,
+): "blue" | "green" | "rose" | "plum" | "greige" | "other" {
+  const n = name.toLowerCase();
+  if (/\b(rose|pink|blush|salmon)\b/.test(n)) return "rose";
+  if (/\b(plum|purple|violet|lavender|lilac|mauve)\b/.test(n)) return "plum";
+  if (/\b(teal|sage|green|olive|spruce|mint|emerald|jade)\b/.test(n)) {
+    return "green";
+  }
+  if (/\b(blue|navy|slate|denim|indigo|steel|periwinkle|denim)\b/.test(n)) {
+    return "blue";
+  }
+  if (/\b(greige|mushroom|taupe|beige|stone|oat|oatmeal)\b/.test(n)) {
+    return "greige";
+  }
+  return "other";
+}
+
 /**
  * Deterministic, on-voice rationale for a best-palette swatch. Derived from the
- * swatch's role (neutral / accent) and depth plus the client's undertone and
- * contrast — so the same colouring always yields the same copy (no LLM call).
+ * swatch's role (neutral / accent) and colour family plus the client's undertone
+ * and contrast — so the same colouring always yields the same copy (no LLM).
  */
-function whyForBestSwatch(
+export function whyForBestSwatch(
   swatch: PaletteSwatch,
   opts: {
     undertone: Undertone;
@@ -354,9 +379,26 @@ function whyForBestSwatch(
     return `A versatile, office-ready ${u} neutral tuned to your ${opts.label} colouring — a dependable base for suits and formal looks that adds depth while staying on your palette.`;
   }
   const isAccent = s >= 0.32;
-  const isNeutral = s < 0.2;
+  const isNeutral = s < NEUTRAL_SAT_MAX;
   const deep = l < 0.3;
   const light = l > 0.72;
+  const family = swatchWhyFamily(swatch.name);
+
+  if (family === "blue") {
+    return `A ${u} blue that sits quietly against your complexion — slate and navy depth without the harshness of black.`;
+  }
+  if (family === "green") {
+    return `A softened ${u} green that freshens the face; sage-family colour that stays in your ${opts.label} range.`;
+  }
+  if (family === "rose") {
+    return `A dusty ${u} rose that warms the complexion without tipping into a loud pink.`;
+  }
+  if (family === "plum") {
+    return `A muted plum that adds ${u} depth — characterful, not costume.`;
+  }
+  if (family === "greige") {
+    return `A ${u} greige-mushroom bridge tone — the quiet mixer that ties your ${opts.label} palette together.`;
+  }
 
   if (isAccent) {
     return `Your accent near the face — ${u} and clear, it lifts your complexion without shouting, sitting squarely in your ${opts.label} range.`;
@@ -383,7 +425,7 @@ const SEASON_AVOID: Record<Season, ColorRec[]> = {
     {
       name: "Pure Black",
       hex: "#000000",
-      why: "Too stark for soft, cool colouring — it overpowers your features and casts hard shadows on the face.",
+      why: "Too stark for soft, cool colouring as a garment — it overpowers your features and casts hard shadows on the face. Black dress shoes, belts and a matching briefcase are business etiquette — the one exception, kept away from the face.",
     },
     {
       name: "Bright Orange",
@@ -427,7 +469,7 @@ const SEASON_AVOID: Record<Season, ColorRec[]> = {
     {
       name: "Pure Black",
       hex: "#000000",
-      why: "Too heavy for warm, bright colouring — it overwhelms your natural glow.",
+      why: "Too heavy for warm, bright colouring as a garment — it overwhelms your natural glow. Black dress shoes, belts and a matching briefcase are business etiquette — the one exception, kept away from the face.",
     },
     {
       name: "Dusty Mauve",
@@ -449,7 +491,7 @@ const SEASON_AVOID: Record<Season, ColorRec[]> = {
     {
       name: "Pure Black",
       hex: "#000000",
-      why: "Too stark for warm, muted colouring — it drains the richness from your skin.",
+      why: "Too stark for warm, muted colouring as a garment — it drains the richness from your skin. Black dress shoes, belts and a matching briefcase are business etiquette — the one exception, kept away from the face.",
     },
     {
       name: "Icy Pink",
@@ -574,7 +616,8 @@ export function personalizeSwatches(
   });
 }
 
-function hueDist(a: number, b: number): number {
+/** Shortest distance between two hues on the 360° wheel. */
+export function hueDist(a: number, b: number): number {
   const d = Math.abs(a - b) % 360;
   return d > 180 ? 360 - d : d;
 }
@@ -745,6 +788,19 @@ export function assessHexTrust(opts: {
   hairHex?: string | null;
 }): HexTrust {
   const cast = opts.lighting ?? "neutral";
+  // Lightness barely moves under tinted light, so the contrast ↔ spread check
+  // runs before any cast handling — a photo under an orange bulb still tells
+  // fair-skin-dark-hair from blonde-on-fair.
+  const skin = parseSwatchHex(opts.skinHex);
+  const hair = parseSwatchHex(opts.hairHex);
+  let dropLightness = false;
+  if (skin && hair && opts.contrast) {
+    const spread = Math.abs(hexToHsl(skin).l - hexToHsl(hair).l);
+    // Fair skin + dark hair ≈ 0.5+; blonde-on-fair ≈ 0.1–0.2. Wide grey zone
+    // between the two bounds so only a clear contradiction drops lightness.
+    if (opts.contrast === "high" && spread < 0.18) dropLightness = true;
+    if (opts.contrast === "low" && spread > 0.5) dropLightness = true;
+  }
   if (
     cast === "mixed" &&
     skinHexContradictsUndertone(opts.skinHex, opts.undertone)
@@ -768,39 +824,35 @@ export function assessHexTrust(opts: {
       useForSeason: false,
       useForPalette: true,
       mixScale: 0.5,
-      dropLightness: false,
+      dropLightness,
       lightingWarning:
         `The light in this photo has ${LIGHTING_CAST_DESC[cast]}, so swatches ` +
         `are blended more gently from your features. For the sharpest match, ` +
         `retake in soft natural daylight.`,
     };
   }
-  const skin = parseSwatchHex(opts.skinHex);
-  const hair = parseSwatchHex(opts.hairHex);
-  if (skin && hair && opts.contrast) {
-    const spread = Math.abs(hexToHsl(skin).l - hexToHsl(hair).l);
-    // Fair skin + dark hair ≈ 0.5+; blonde-on-fair ≈ 0.1–0.2. Wide grey zone
-    // between the two bounds so only a clear contradiction drops lightness.
-    if (opts.contrast === "high" && spread < 0.18) {
-      return {
-        trustHexes: false,
-        useForSeason: false,
-        useForPalette: true,
-        mixScale: 1,
-        dropLightness: true,
-      };
-    }
-    if (opts.contrast === "low" && spread > 0.5) {
-      return {
-        trustHexes: false,
-        useForSeason: false,
-        useForPalette: true,
-        mixScale: 1,
-        dropLightness: true,
-      };
-    }
+  if (dropLightness) {
+    return {
+      trustHexes: false,
+      useForSeason: false,
+      useForPalette: true,
+      mixScale: 1,
+      dropLightness: true,
+    };
   }
   return TRUSTED;
+}
+
+/**
+ * Lighting to feed {@link assessHexTrust}: once the stored hexes were measured
+ * from pixels and cast-corrected, the photo's tint no longer applies to them.
+ * The raw `lighting` stays on the profile for the report's photo note.
+ */
+export function lightingForTrust(physical: {
+  lighting?: LightingCast | null;
+  hexesCorrected?: boolean | null;
+}): LightingCast | null | undefined {
+  return physical.hexesCorrected ? "neutral" : physical.lighting;
 }
 
 /** Apply {@link assessHexTrust} so report rebuild and `/colours` share one mix. */

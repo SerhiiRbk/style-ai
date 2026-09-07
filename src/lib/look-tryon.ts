@@ -1,5 +1,5 @@
 import type { ShoppingItem } from "@/lib/report";
-import { HOUSEHOLD_TEXTILE_RE } from "@/lib/style-extras";
+import { HOUSEHOLD_TEXTILE_RE, decomposeLook } from "@/lib/style-extras";
 import { hasJacketHost } from "@/lib/ai/look-brief";
 import { canonicalTuck } from "@/lib/look-constructor";
 import { lookOccasionIsTailored } from "@/lib/look-occasion-fit";
@@ -65,7 +65,26 @@ export type CatalogImageRef = {
   url: string;
   title: string;
   category: string;
+  /** "Similar" catalogue pick — the photo shows a stand-in, not the look's colour. */
+  similarPick?: boolean;
+  /** The look's own colour for this slot (from its description) when the pick is a stand-in. */
+  lookColour?: string | null;
 };
+
+/**
+ * Colour the LOOK gave a garment of this category ("Soft teal merino crewneck"
+ * → "soft teal" for Knitwear). A "Similar" catalogue pick is a type/texture
+ * stand-in; its photo colour (a pale-blue Luciénte for a teal look) must not
+ * become the rendered colour.
+ */
+export function describedGarmentColour(
+  lookDescription: string | null | undefined,
+  category: string,
+): string | null {
+  if (!lookDescription?.trim()) return null;
+  const hit = decomposeLook(lookDescription).find((g) => g.category === category);
+  return hit?.color?.trim() || null;
+}
 
 const HEX_COLOR_RE = /^#?[0-9a-f]{6}$/i;
 
@@ -218,23 +237,35 @@ export function catalogPromptFromItems(
     lookOccasionIsTailored(occasionId) &&
     canonicalTuck(lookDescription ?? "") !== "out";
   const lines = items.map((i) => {
-    const colour = promptColourLabel(i);
+    // A stand-in pick wears the LOOK's colour; the product photo only fixes type
+    // and texture. Otherwise the pale-blue photo of a "similar" jumper becomes
+    // a pale top on the customer instead of the look's teal.
+    const lookColour = i.similarPick
+      ? describedGarmentColour(lookDescription, i.category)
+      : null;
+    const cat = i.category.toLowerCase();
+    // "wearing a knitwear in soft teal (the look's colour)" vs "wearing a Beige trousers".
+    const head = lookColour
+      ? `wearing a ${cat} in ${lookColour} (the look's colour)`
+      : `wearing a ${promptColourLabel(i)}${cat}`;
     const note = i.similarPick
-      ? " (match the garment type and tone closely)"
+      ? lookColour
+        ? " — use this product for garment type and texture only; the colour comes from the look"
+        : " (match the garment type and tone closely)"
       : "";
     if (i.category === "Accessories" && isEyewearTitle(i.title)) {
-      return `- wearing on the face over the eyes (never held, never in a pocket): ${colour}${i.title}${note}`;
+      return `- wearing on the face over the eyes (never held, never in a pocket): ${promptColourLabel(i)}${i.title}${note}`;
     }
     if (
       i.category === "Accessories" &&
       /\b(pocket[\s-]?squares?|pochettes?)\b/i.test(i.title)
     ) {
-      return `- folded in the jacket breast pocket (never a trouser pocket): ${colour}${i.title}${note}`;
+      return `- folded in the jacket breast pocket (never a trouser pocket): ${promptColourLabel(i)}${i.title}${note}`;
     }
     if (i.category === "Shirts" && tuckShirt) {
-      return `- wearing a ${colour}${i.category.toLowerCase()} tucked into the trousers: ${i.title}${note}`;
+      return `- ${head} tucked into the trousers: ${i.title}${note}`;
     }
-    return `- wearing a ${colour}${i.category.toLowerCase()}: ${i.title}${note}`;
+    return `- ${head}: ${i.title}${note}`;
   });
 
   // A tie with no shirt in the list forces the model to invent a base layer; it
@@ -249,7 +280,17 @@ export function catalogPromptFromItems(
     (i) => i.category === "Accessories" && isEyewearTitle(i.title),
   );
   const hasShirt = items.some((i) => i.category === "Shirts");
+  const hasTop = items.some((i) =>
+    i.category === "Shirts" || i.category === "Knitwear" || i.category === "Outerwear",
+  );
   const hasTrousers = items.some((i) => i.category === "Trousers");
+  // The top the LOOK named (roll-neck, crewneck, shirt, overshirt…) — used when
+  // the catalogue matched nothing for the torso.
+  const describedTop = lookDescription
+    ? lookDescription.match(
+        /([^,]*\b(?:roll-?necks?|turtlenecks?|crew-?necks?|jumpers?|sweaters?|knits?|cardigans?|polos?|shirts?|oxfords?|tees?|t-shirts?|henleys?|blazers?|overshirts?|jackets?|coats?)\b[^,]*)/i,
+      )?.[1]?.trim()
+    : "";
   const describedShirt = lookDescription
     ? lookDescription.match(
         /([^,]*\b(?:camp-?collar\s+)?(?:linen\s+)?(?:oxford|shirt|polo|tee|henley)\b[^,]*)/i,
@@ -284,6 +325,17 @@ export function catalogPromptFromItems(
       `resting on the nose over the eyes. Do not hold them, fold them, put them ` +
       `in a pocket, or hang them from a shirt. `
     : "";
+  // Without a top in the list the model has nothing for the torso — and the
+  // rules below forbid inventing layers — so it renders a bare chest. Put the
+  // look's own top on the list, or at least a plain neutral one.
+  const topRule = !hasTop
+    ? describedTop
+      ? `\nThis catalogue list is missing the top. Wear the look's own top: ` +
+        `${describedTop}. The person is fully dressed — never a bare torso. `
+      : `\nThis catalogue list has no top garment. Wear one plain, neutral top from ` +
+        `the look's palette (fine knit or shirt) so the person is fully dressed — ` +
+        `never shirtless, never a bare chest. `
+    : "";
   const bottomsRule = !hasTrousers && describedTrousers
     ? `\nThis catalogue list is missing the trousers. Wear the look's own bottoms: ` +
       `${describedTrousers}. ` +
@@ -300,13 +352,15 @@ export function catalogPromptFromItems(
     `\nWear EVERY listed garment — do not drop the shirt, top, trousers or shoes ` +
     `to make room for an accessory. ` +
     `Reproduce each listed garment's type, colour and material faithfully. ` +
-    `Colours and materials come only from these catalogue titles and photos. ` +
+    `Colours and materials come only from these catalogue titles and photos — except a ` +
+    `garment marked as the look's colour, which keeps that colour over its photo. ` +
     `Do not add extra accessories that are not in this list. ` +
     `Wear the catalogue pieces above — do not substitute a different shirt, ` +
     `trouser, shoe or bag named only in a styling note, and do not swap the ` +
     `shirt colour or shoe finish for one named only in a look caption. ` +
     `Trouser pockets stay empty and lie flat — no cloth peeking out. ` +
     baseLayerRule +
+    topRule +
     bottomsRule +
     eyewearRule
   );
@@ -315,7 +369,7 @@ export function catalogPromptFromItems(
 /** Catalogue product photos to feed the image model, labelled for the prompt. */
 export function catalogImageRefsFromItems(
   items: ShoppingItem[],
-  opts?: { max?: number },
+  opts?: { max?: number; lookDescription?: string | null },
 ): CatalogImageRef[] {
   const selected = pickCatalogImageItems(
     itemsWithCatalogImages(items),
@@ -325,6 +379,12 @@ export function catalogImageRefsFromItems(
     url: i.image,
     title: i.title,
     category: i.category,
+    ...(i.similarPick
+      ? {
+          similarPick: true,
+          lookColour: describedGarmentColour(opts?.lookDescription, i.category),
+        }
+      : {}),
   }));
 }
 

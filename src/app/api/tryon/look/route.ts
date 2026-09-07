@@ -393,6 +393,8 @@ export async function POST(request: Request) {
       tryOnStyle === "editorial"
         ? MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT
         : MAX_CATALOG_REFERENCE_IMAGES,
+    // "Similar" picks render in the LOOK's colour; the photo fixes type only.
+    lookDescription: kind === "look" ? description : undefined,
   });
   const catalogImageUrls = catalogImages.map((r) => r.url);
 

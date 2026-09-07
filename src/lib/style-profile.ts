@@ -228,10 +228,53 @@ export function classifySubseason(opts: {
       if (muted) return "soft-summer";
       return "soft-summer";
     case "autumn":
-      if (depth === "deep" && !muted) return "deep-autumn";
+      // Deep colouring (near-black hair on light skin, dark hair + dark eyes)
+      // is Deep Autumn even when the chroma reads muted — Soft Autumn's dusty
+      // mid-tones are for low / medium contrast. "Soft" is a contrast axis.
+      if (depth === "deep") return "deep-autumn";
       if (depth === "light" || contrast === "low" || muted) return "soft-autumn";
       return "warm-autumn";
   }
+}
+
+/**
+ * When the pixel measurement overrules the model's undertone, the model's
+ * season — chosen from that same undertone — moves with it: a "warm autumn"
+ * whose skin measures cool is a Winter (deep colouring) or a Summer (soft),
+ * and the reverse for a cool read that measures warm. A neutral read keeps
+ * the model's family. Depth decides which cool / warm family.
+ */
+export function seasonForCorrectedUndertone(opts: {
+  season: z.infer<typeof ColorSeason>;
+  undertone: "warm" | "cool" | "neutral";
+  contrast: "low" | "medium" | "high";
+  hairColor?: string | null;
+  eyeColor?: string | null;
+}): z.infer<typeof ColorSeason> {
+  const { season, undertone } = opts;
+  if (undertone === "neutral") return season;
+  const warmSeason = season === "autumn" || season === "spring";
+  if ((undertone === "warm") === warmSeason) return season;
+  return seasonFromColouring({ ...opts, undertone });
+}
+
+/**
+ * Season family from temperature + depth alone — no model word involved.
+ * Used when the pixel measurement confirms the temperature with confidence:
+ * three runs of one client's photos gave Soft Autumn, Deep Autumn and Cool
+ * Summer because the model's season word moved; the measured colouring did not.
+ */
+export function seasonFromColouring(opts: {
+  undertone: "warm" | "cool";
+  contrast: "low" | "medium" | "high";
+  hairColor?: string | null;
+  eyeColor?: string | null;
+}): z.infer<typeof ColorSeason> {
+  const depth = depthFromColouring(opts.contrast, opts.hairColor, opts.eyeColor);
+  if (opts.undertone === "cool") {
+    return depth === "deep" || opts.contrast === "high" ? "winter" : "summer";
+  }
+  return depth === "light" || opts.contrast === "low" ? "spring" : "autumn";
 }
 
 export const Currency = z.enum(["EUR", "USD", "CZK", "PLN"]);
@@ -458,6 +501,34 @@ export const styleProfileSchema = z.object({
     eyeHex: z.string().optional(),
     /** Light cast on the analysis photos — tinted light weakens hex mix, never flips season. */
     lighting: z.enum(["neutral", "warm-tint", "cool-tint", "mixed"]).optional(),
+    /** skinHex / hairHex were measured from pixels and cast-corrected — trust them fully. */
+    hexesCorrected: z.boolean().optional(),
+    /** Pixel measurement behind undertone / contrast (see lib/photo-colour.ts). */
+    measured: z
+      .object({
+        undertone: z.enum(["warm", "cool", "neutral"]),
+        undertoneHueAngle: z.number(),
+        undertoneConfidence: z.number(),
+        contrastSpread: z.number().nullable(),
+        castStrength: z.number(),
+        castDirection: z.enum(["neutral", "warm", "cool"]),
+        bodySkinUsed: z.boolean(),
+        /** Why the full-length photo was not sampled, e.g. "different-shoot". */
+        bodySkinSkipped: z.string().optional(),
+        /** What the vision model said before reconciliation. */
+        modelUndertone: z.enum(["warm", "cool", "neutral"]),
+        modelContrast: z.enum(["low", "medium", "high"]),
+        /** Corrected skin samples that made the cut, and the ones thrown out — for audits. */
+        samples: z
+          .array(z.object({ region: z.string(), image: z.number(), hex: z.string() }))
+          .optional(),
+        rejected: z
+          .array(
+            z.object({ region: z.string(), image: z.number(), hex: z.string(), reason: z.string() }),
+          )
+          .optional(),
+      })
+      .optional(),
   }),
   colorSeason: ColorSeason,
   /** 12-subseason classification (optional — older reports may lack it). */

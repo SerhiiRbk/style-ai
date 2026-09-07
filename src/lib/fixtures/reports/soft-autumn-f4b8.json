@@ -1,0 +1,642 @@
+{
+  "slug": "soft-autumn-f4b8",
+  "tier": "lookbook",
+  "createdAt": "2026-09-04T18:34:16.214598+00:00",
+  "profile": {
+    "goals": [
+      "Dating & social",
+      "Look younger / fresher"
+    ],
+    "version": "1.0",
+    "boldness": "statement",
+    "currency": "CZK",
+    "physical": {
+      "bodyType": "triangle",
+      "contrast": "medium",
+      "eyeColor": "brown",
+      "heightCm": 176,
+      "lighting": "warm-tint",
+      "skinTone": "warm medium",
+      "weightKg": 79,
+      "faceShape": "oval",
+      "hairColor": "dark brown",
+      "undertone": "warm"
+    },
+    "budgetEur": {
+      "max": 3000,
+      "min": 1000
+    },
+    "lifestyle": [
+      "Public speaking",
+      "Socialite"
+    ],
+    "occupation": "Software / IT",
+    "colorSeason": "autumn",
+    "demographics": {
+      "age": 45,
+      "city": "",
+      "climate": "temperate",
+      "country": "Czechia",
+      "genderPresentation": "male"
+    },
+    "colorSubseason": "soft-autumn"
+  },
+  "colors": {
+    "best": [
+      {
+        "name": "Oatmeal",
+        "hex": "#e3d7c3"
+      },
+      {
+        "name": "Sage",
+        "hex": "#8a9166"
+      },
+      {
+        "name": "Soft rust",
+        "hex": "#bc7a54"
+      },
+      {
+        "name": "Warm taupe",
+        "hex": "#b49c7e"
+      },
+      {
+        "name": "Muted teal",
+        "hex": "#4e8079"
+      },
+      {
+        "name": "Camel",
+        "hex": "#ac814d"
+      },
+      {
+        "name": "Olive",
+        "hex": "#736b3e"
+      },
+      {
+        "name": "Soft brick",
+        "hex": "#a85c46"
+      },
+      {
+        "name": "Coffee",
+        "hex": "#45352a",
+        "role": "versatile"
+      },
+      {
+        "name": "Warm grey",
+        "hex": "#988e80",
+        "role": "versatile"
+      }
+    ],
+    "avoid": [
+      {
+        "name": "Pure Black",
+        "hex": "#000000"
+      },
+      {
+        "name": "Icy Pink",
+        "hex": "#F2C6D2"
+      },
+      {
+        "name": "Fuchsia",
+        "hex": "#B01455"
+      },
+      {
+        "name": "Cool Cobalt",
+        "hex": "#0E63C4"
+      }
+    ]
+  },
+  "shopping": [
+    {
+      "category": "Outerwear",
+      "title": "Valmonti Men’s Smart Casual Jacket – Lightweight Slim Blazer For Summer Days And Evenings",
+      "color": "#9aa588",
+      "colorName": "Sage Green",
+      "priceEur": 58.76,
+      "retailer": "Valmonti"
+    },
+    {
+      "category": "Outerwear",
+      "title": "Valmonti Men’s Warm Hooded Overshirt Jacket – Printed Quilted Layer For Outdoor Wear",
+      "color": "#8b8b8b",
+      "colorName": "Grey",
+      "priceEur": 64.65,
+      "retailer": "Valmonti"
+    },
+    {
+      "category": "Trousers",
+      "title": "Reserved Trousers With Tie Detail",
+      "color": "#4b3621",
+      "colorName": "coffee",
+      "priceEur": 12.99,
+      "retailer": "Reserved"
+    },
+    {
+      "category": "Trousers",
+      "title": "Marks & Spencer Tapered Fit Cotton Linen Blend Trousers",
+      "color": "#d6c9ae",
+      "colorName": "Oatmeal Mix",
+      "priceEur": 66,
+      "retailer": "Marks & Spencer"
+    },
+    {
+      "category": "Shirts",
+      "title": "COS Oxford Button-Down Shirt",
+      "color": "#ffffff",
+      "colorName": "White",
+      "priceEur": 45,
+      "retailer": "COS"
+    },
+    {
+      "category": "Shirts",
+      "title": "Valmonti Men’s Slim Fit Long Sleeve Button Up Casual Shirt",
+      "color": "#8b8b8b",
+      "colorName": "Grey",
+      "priceEur": 41.12,
+      "retailer": "Valmonti"
+    },
+    {
+      "category": "Knitwear",
+      "title": "Valmonti Men’s Textured Winter Sweater – Easy-Fit Crew Neck Knit For Everyday Layering",
+      "color": "#28324a",
+      "colorName": "Navy Blue",
+      "priceEur": 47,
+      "retailer": "Valmonti"
+    },
+    {
+      "category": "Footwear",
+      "title": "Zara Leather Derby Shoes",
+      "color": "#4a2f23",
+      "colorName": "Dark brown",
+      "priceEur": 91.96,
+      "retailer": "ZARA"
+    },
+    {
+      "category": "Footwear",
+      "title": "Reserved Leather Loafers",
+      "color": "#4a2f23",
+      "colorName": "dark brown",
+      "priceEur": 35.99,
+      "retailer": "Reserved"
+    },
+    {
+      "category": "Footwear",
+      "title": "Reserved Leather Rich Sneakers",
+      "color": "#d8c4a0",
+      "colorName": "nude",
+      "priceEur": 29.99,
+      "retailer": "Reserved"
+    },
+    {
+      "category": "Accessories",
+      "title": "Reserved Leather Belt With Buckle",
+      "color": "#4a2f23",
+      "colorName": "dark brown",
+      "priceEur": 19.99,
+      "retailer": "Reserved"
+    },
+    {
+      "category": "Accessories",
+      "title": "Zara Plain Crossbody Bag With Flap",
+      "color": "#6f4e37",
+      "colorName": "Brown",
+      "priceEur": 35.95,
+      "retailer": "ZARA"
+    }
+  ],
+  "lookItems": {
+    "0": [
+      {
+        "category": "Knitwear",
+        "title": "Tommy Hilfiger Tommy Hilfiger Lambswool Jumper",
+        "color": "#A6421E",
+        "colorName": "Rust",
+        "priceEur": 99.9,
+        "retailer": "Tommy Hilfiger",
+        "garment": "crewneck"
+      },
+      {
+        "category": "Trousers",
+        "title": "Zara Washed Relaxed Fit Cargo Trousers",
+        "color": "#2A5A63",
+        "colorName": "Petrol blue",
+        "priceEur": 59.95,
+        "retailer": "ZARA",
+        "garment": "chinos",
+        "similarPick": true
+      },
+      {
+        "category": "Footwear",
+        "title": "Gentleman Shoe Men's Genuine Leather Business Casual Top Layer Leather Loafers",
+        "color": "#4B3621",
+        "colorName": "Coffee",
+        "priceEur": 130,
+        "retailer": "Gentleman Shoe",
+        "garment": "loafers"
+      },
+      {
+        "category": "Accessories",
+        "title": "Reserved Combined Materials Belt",
+        "color": "#4B3621",
+        "colorName": "coffee",
+        "priceEur": 25.99,
+        "retailer": "Reserved",
+        "garment": "belt"
+      }
+    ],
+    "1": [
+      {
+        "category": "Shirts",
+        "title": "Zoreli Light Blue Teal Men's Shirt - Everyday Office Work",
+        "color": "#2C6E6A",
+        "colorName": "Teal",
+        "priceEur": 45.37,
+        "retailer": "Zoreli",
+        "garment": "shirt"
+      },
+      {
+        "category": "Trousers",
+        "title": "Reserved Chino Slim Trousers",
+        "color": "#4B3621",
+        "colorName": "coffee",
+        "priceEur": 32.99,
+        "retailer": "Reserved",
+        "garment": "chinos"
+      },
+      {
+        "category": "Footwear",
+        "title": "Reserved Sports Style Sneakers",
+        "color": "#D8C4A0",
+        "colorName": "beige",
+        "priceEur": 13.99,
+        "retailer": "Reserved",
+        "garment": "sneakers",
+        "similarPick": true
+      },
+      {
+        "category": "Accessories",
+        "title": "Reserved Combined Materials Belt",
+        "color": "#4B3621",
+        "colorName": "coffee",
+        "priceEur": 25.99,
+        "retailer": "Reserved",
+        "garment": "belt"
+      }
+    ],
+    "2": [
+      {
+        "category": "Outerwear",
+        "title": "Marks & Spencer Tailored Fit Linen Cotton Blend Herringbone Blazer",
+        "color": "#3A6B4E",
+        "colorName": "Green",
+        "priceEur": 115,
+        "retailer": "Marks & Spencer",
+        "garment": "blazer",
+        "similarPick": true
+      },
+      {
+        "category": "Shirts",
+        "title": "Valmonti Men’s Linen Button Shirt Relaxed Smart Casual Style",
+        "color": "#B8A78C",
+        "colorName": "Taupe",
+        "priceEur": 41.12,
+        "retailer": "Valmonti",
+        "garment": "shirt"
+      },
+      {
+        "category": "Trousers",
+        "title": "Marks & Spencer Tapered Fit Cotton Linen Blend Trousers",
+        "color": "#D6C9AE",
+        "colorName": "Oatmeal Mix",
+        "priceEur": 66,
+        "retailer": "Marks & Spencer",
+        "garment": "chinos"
+      },
+      {
+        "category": "Footwear",
+        "title": "Valmonti Men’s Suede Slip-On Loafers Casual Comfort Everyday Shoes",
+        "color": "#B8A78C",
+        "colorName": "Taupe",
+        "priceEur": 47,
+        "retailer": "Valmonti",
+        "garment": "loafers"
+      },
+      {
+        "category": "Accessories",
+        "title": "Reserved Combined Materials Belt",
+        "color": "#4B3621",
+        "colorName": "coffee",
+        "priceEur": 25.99,
+        "retailer": "Reserved",
+        "garment": "belt"
+      }
+    ],
+    "3": [
+      {
+        "category": "Shirts",
+        "title": "Zara Regular Fit Textured Oxford Shirt",
+        "color": "#bcc4e0",
+        "colorName": "Sky blue",
+        "priceEur": 25.95,
+        "retailer": "ZARA",
+        "garment": "oxford"
+      },
+      {
+        "category": "Trousers",
+        "title": "Marks & Spencer Tapered Fit Cotton Linen Blend Trousers",
+        "color": "#D6C9AE",
+        "colorName": "Oatmeal Mix",
+        "priceEur": 63,
+        "retailer": "Marks & Spencer",
+        "garment": "trousers"
+      },
+      {
+        "category": "Footwear",
+        "title": "Gentleman Shoe Men's Comfortable Casual Leather Oxford Shoes",
+        "color": "#6F4E37",
+        "colorName": "Brown",
+        "priceEur": 130,
+        "retailer": "Gentleman Shoe",
+        "garment": "oxfords",
+        "similarPick": true
+      },
+      {
+        "category": "Accessories",
+        "title": "Reserved Combined Materials Belt",
+        "color": "#4B3621",
+        "colorName": "coffee",
+        "priceEur": 25.99,
+        "retailer": "Reserved",
+        "garment": "belt"
+      },
+      {
+        "category": "Accessories",
+        "title": "Marks & Spencer Pure Silk Pocket Square",
+        "color": "#111111",
+        "colorName": "Black",
+        "priceEur": 14,
+        "retailer": "Marks & Spencer",
+        "garment": "pocket square",
+        "similarPick": true
+      }
+    ],
+    "4": [
+      {
+        "category": "Knitwear",
+        "title": "Zara Wool Blend Jumper",
+        "color": "#B8A78C",
+        "colorName": "Taupe grey",
+        "priceEur": 47.96,
+        "retailer": "ZARA",
+        "garment": "crewneck"
+      },
+      {
+        "category": "Trousers",
+        "title": "Reserved Chino Slim Trousers With Belt",
+        "color": "#4B3621",
+        "colorName": "coffee",
+        "priceEur": 35.99,
+        "retailer": "Reserved",
+        "garment": "trousers"
+      },
+      {
+        "category": "Footwear",
+        "title": "Gentleman Shoe Tassels Decor Solid Faux Suede Loafers",
+        "color": "#2C6E6A",
+        "colorName": "Teal",
+        "priceEur": 60,
+        "retailer": "Gentleman Shoe",
+        "garment": "loafers"
+      },
+      {
+        "category": "Accessories",
+        "title": "Reserved Combined Materials Belt",
+        "color": "#4B3621",
+        "colorName": "coffee",
+        "priceEur": 25.99,
+        "retailer": "Reserved",
+        "garment": "belt"
+      }
+    ],
+    "5": [
+      {
+        "category": "Shirts",
+        "title": "Zara Cotton Voile Shirt",
+        "color": "#b3a28d",
+        "colorName": "Taupe grey",
+        "priceEur": 29.95,
+        "retailer": "ZARA",
+        "garment": "shirt"
+      },
+      {
+        "category": "Trousers",
+        "title": "Marks & Spencer Tapered Fit Cotton Linen Blend Trousers",
+        "color": "#D6C9AE",
+        "colorName": "Oatmeal Mix",
+        "priceEur": 66,
+        "retailer": "Marks & Spencer",
+        "garment": "chinos"
+      },
+      {
+        "category": "Footwear",
+        "title": "Zara Trainers With Contrast Sole",
+        "color": "#3A6B4E",
+        "colorName": "Green",
+        "priceEur": 35.95,
+        "retailer": "ZARA",
+        "garment": "sneakers"
+      },
+      {
+        "category": "Accessories",
+        "title": "Zara 55l Sports Backpack",
+        "color": "#8B8B8B",
+        "colorName": "Grey",
+        "priceEur": 91.96,
+        "retailer": "ZARA",
+        "garment": "backpack"
+      },
+      {
+        "category": "Accessories",
+        "title": "Reserved Combined Materials Belt",
+        "color": "#4B3621",
+        "colorName": "coffee",
+        "priceEur": 25.99,
+        "retailer": "Reserved",
+        "garment": "belt"
+      }
+    ]
+  },
+  "looks": [
+    {
+      "idx": 0,
+      "context": "Dinner / date",
+      "title": "Soft-Rust Warmth",
+      "description": "Soft-rust crewneck knit, muted-teal chinos, coffee leather loafers, coffee leather belt",
+      "items": [
+        {
+          "color": "soft-rust",
+          "garment": "crewneck knit"
+        },
+        {
+          "color": "muted-teal",
+          "garment": "chinos"
+        },
+        {
+          "color": "coffee leather",
+          "garment": "loafers"
+        },
+        {
+          "color": "coffee leather",
+          "garment": "belt"
+        }
+      ]
+    },
+    {
+      "idx": 1,
+      "context": "Weekend",
+      "title": "Teal Ease",
+      "description": "Muted-teal cotton shirt, coffee chinos, oatmeal suede sneakers, coffee leather belt",
+      "items": [
+        {
+          "color": "muted-teal cotton",
+          "garment": "shirt"
+        },
+        {
+          "color": "coffee",
+          "garment": "chinos"
+        },
+        {
+          "color": "oatmeal suede",
+          "garment": "sneakers"
+        },
+        {
+          "color": "coffee leather",
+          "garment": "belt"
+        }
+      ]
+    },
+    {
+      "idx": 2,
+      "context": "Business social",
+      "title": "Sage Refinement",
+      "description": "Sage unstructured blazer, oatmeal poplin shirt, oatmeal chinos, camel suede loafers, coffee leather belt, camel linen pocket square",
+      "items": [
+        {
+          "color": "sage unstructured",
+          "garment": "blazer"
+        },
+        {
+          "color": "oatmeal poplin",
+          "garment": "shirt"
+        },
+        {
+          "color": "oatmeal",
+          "garment": "chinos"
+        },
+        {
+          "color": "camel suede",
+          "garment": "loafers"
+        },
+        {
+          "color": "coffee leather",
+          "garment": "belt"
+        },
+        {
+          "color": "camel linen",
+          "garment": "pocket square"
+        }
+      ]
+    },
+    {
+      "idx": 3,
+      "context": "Work / meetings",
+      "title": "Olive Authority",
+      "description": "Olive wool blazer, light-blue oxford shirt, oatmeal wool trousers, coffee leather oxfords, coffee leather belt, soft-rust pocket square, warm-grey leather briefcase",
+      "items": [
+        {
+          "color": "olive wool",
+          "garment": "blazer"
+        },
+        {
+          "color": "light-blue oxford",
+          "garment": "shirt"
+        },
+        {
+          "color": "oatmeal wool",
+          "garment": "trousers"
+        },
+        {
+          "color": "coffee leather",
+          "garment": "oxfords"
+        },
+        {
+          "color": "coffee leather",
+          "garment": "belt"
+        },
+        {
+          "color": "soft-rust",
+          "garment": "pocket square"
+        },
+        {
+          "color": "warm-grey leather",
+          "garment": "briefcase"
+        }
+      ]
+    },
+    {
+      "idx": 4,
+      "context": "Smart casual",
+      "title": "Warm-Taupe Anchor",
+      "description": "Warm-taupe merino crewneck, coffee moleskin trousers, muted-teal suede loafers, coffee leather belt",
+      "items": [
+        {
+          "color": "warm-taupe merino",
+          "garment": "crewneck"
+        },
+        {
+          "color": "coffee moleskin",
+          "garment": "trousers"
+        },
+        {
+          "color": "muted-teal suede",
+          "garment": "loafers"
+        },
+        {
+          "color": "coffee leather",
+          "garment": "belt"
+        }
+      ]
+    },
+    {
+      "idx": 5,
+      "context": "Travel / transitional",
+      "title": "Soft-Brick Journey",
+      "description": "Soft-brick quilted overshirt, oatmeal cotton shirt, oatmeal chinos, sage leather sneakers, coffee leather belt, warm-grey canvas backpack",
+      "items": [
+        {
+          "color": "soft-brick quilted",
+          "garment": "overshirt"
+        },
+        {
+          "color": "oatmeal cotton",
+          "garment": "shirt"
+        },
+        {
+          "color": "oatmeal",
+          "garment": "chinos"
+        },
+        {
+          "color": "sage leather",
+          "garment": "sneakers"
+        },
+        {
+          "color": "coffee leather",
+          "garment": "belt"
+        },
+        {
+          "color": "warm-grey canvas",
+          "garment": "backpack"
+        }
+      ]
+    }
+  ]
+}

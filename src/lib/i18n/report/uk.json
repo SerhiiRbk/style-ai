@@ -23,6 +23,8 @@
   "The direction — your moodboard": "Напрямок — ваш мудборд",
   "A quick visual summary of where we're taking your style: example looks on your photo, your colour palette, a hero piece, and the overall direction.": "Короткий візуальний підсумок того, куди ми рухаємо ваш стиль: приклади образів на вашому фото, ваша колірна палітра, ключова річ і загальний напрямок.",
   "Your colour story": "Ваша колірна історія",
+  "Your photo was lit with a colour cast. We measured your skin and hair from the pixels and corrected for it, but a photo in soft daylight would sharpen the match.": "На вашому фото був кольоровий відтінок освітлення. Ми виміряли колір шкіри та волосся за пікселями й скоригували його, але знімок у м’якому денному світлі зробив би підбір точнішим.",
+  "Your photo was lit with a colour cast, so we read your colours more cautiously. A photo in soft daylight would sharpen the match.": "На вашому фото був кольоровий відтінок освітлення, тому ми читали ваші кольори обережніше. Знімок у м’якому денному світлі зробив би підбір точнішим.",
   "Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works.": "М'які теплі нейтральні тони підкреслюють ваш низькоконтрастний колорит. Ось де розташована ваша палітра на колі — і чому працює кожен відтінок.",
   "Colours that work for you": "Кольори, що вам підходять",
   "Colours to avoid": "Кольори, яких варто уникати",
@@ -258,6 +260,9 @@
   "Fit comes first": "Посадка — на першому місці",
   "Tailoring the shoulders and hem changes everything.": "Підгонка плечей і довжини змінює все.",
   "Earthy, warm tones": "Земляні, теплі відтінки",
+  "Cool, muted tones": "Холодні, приглушені відтінки",
+  "Soft, balanced tones": "М’які, збалансовані відтінки",
+  "No close match yet:": "Поки немає близького варіанта:",
   "Let your palette lead; keep contrast soft.": "Нехай ваша палітра веде; контраст залишайте м'яким.",
   "Grooming is key": "Доглянутість — це ключ",
   "A sharp cut and tidy beard finish the whole look.": "Чітка стрижка й охайна борода завершують весь образ.",
@@ -292,5 +297,7 @@
   "Details": "Деталі",
   "Care": "Догляд",
   "Do / Don't": "Так / Ні",
-  "Your colours": "Ваші кольори"
+  "Your colours": "Ваші кольори",
+  "PDF unlocks when every image has finished rendering.": "PDF стане доступним, коли всі зображення будуть готові.",
+  "Your report is still being generated — the PDF unlocks when every image is ready.": "Звіт ще генерується — PDF стане доступним, коли всі зображення будуть готові."
 }

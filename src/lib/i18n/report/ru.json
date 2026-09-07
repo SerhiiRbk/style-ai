@@ -23,6 +23,8 @@
   "The direction — your moodboard": "Направление — ваш мудборд",
   "A quick visual summary of where we're taking your style: example looks on your photo, your colour palette, a hero piece, and the overall direction.": "Краткая визуальная сводка того, куда мы ведём ваш стиль: примеры образов на вашем фото, ваша цветовая палитра, ключевая вещь и общее направление.",
   "Your colour story": "Ваша цветовая история",
+  "Your photo was lit with a colour cast. We measured your skin and hair from the pixels and corrected for it, but a photo in soft daylight would sharpen the match.": "На вашем фото был цветной оттенок освещения. Мы измерили цвет кожи и волос по пикселям и скорректировали его, но снимок при мягком дневном свете сделал бы подбор точнее.",
+  "Your photo was lit with a colour cast, so we read your colours more cautiously. A photo in soft daylight would sharpen the match.": "На вашем фото был цветной оттенок освещения, поэтому мы читали ваши цвета осторожнее. Снимок при мягком дневном свете сделал бы подбор точнее.",
   "Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works.": "Мягкие тёплые нейтральные оттенки подчёркивают ваш низкоконтрастный колорит. Вот где ваша палитра расположена на круге — и почему каждый тон работает.",
   "Colours that work for you": "Цвета, которые вам подходят",
   "Colours to avoid": "Цвета, которых стоит избегать",
@@ -264,6 +266,9 @@
   "Fit comes first": "Посадка — прежде всего",
   "Tailoring the shoulders and hem changes everything.": "Подгонка плеч и длины меняет всё.",
   "Earthy, warm tones": "Землистые, тёплые тона",
+  "Cool, muted tones": "Холодные, приглушённые тона",
+  "Soft, balanced tones": "Мягкие, сбалансированные тона",
+  "No close match yet:": "Пока нет близкого варианта:",
   "Let your palette lead; keep contrast soft.": "Пусть палитра ведёт; контраст держите мягким.",
   "Grooming is key": "Уход — это ключ",
   "A sharp cut and tidy beard finish the whole look.": "Чёткая стрижка и ухоженная борода завершают весь образ.",
@@ -298,5 +303,7 @@
   "Details": "Детали",
   "Care": "Уход",
   "Do / Don't": "Да / Нет",
-  "Your colours": "Ваши цвета"
+  "Your colours": "Ваши цвета",
+  "PDF unlocks when every image has finished rendering.": "PDF станет доступен, когда все изображения будут готовы.",
+  "Your report is still being generated — the PDF unlocks when every image is ready.": "Отчёт ещё генерируется — PDF станет доступен, когда все изображения будут готовы."
 }

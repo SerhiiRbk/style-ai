@@ -46,6 +46,7 @@ import { DemoReportJsonLd } from "@/components/DemoReportJsonLd";
 import { absoluteUrl } from "@/lib/site-url";
 import {
   isMockShopping,
+  pdfReadinessFromReport,
   reportUpsellForTier,
   tierHasCapsule,
   PREMIUM_ACCESSORY_GEN_LIMIT,
@@ -243,6 +244,8 @@ export default async function ReportPage({
 
   const generation = report.generation;
   const imagesGenerating = Boolean(generation?.pending);
+  // PDF is a permanent file — gate it until every image has rendered.
+  const pdfLocked = !pdfReadinessFromReport(report).ready;
   const expectsCapsuleImages =
     report.tier === "lookbook" || report.tier === "premium";
   const capsuleGenerating =
@@ -309,13 +312,16 @@ export default async function ReportPage({
         </div>
       ) : null}
 
-      {/* Report header */}
-      <header className="border-b hairline bg-ink text-paper">
-        <div className="container-luxe flex h-16 items-center justify-between">
+      {/* Report header. On phones the action bar wraps: brand + primary CTA on
+          the first row, the secondary actions right-aligned on a second row —
+          a single non-wrapping row pushed "New report" past the viewport and
+          gave the whole page a horizontal scroll. */}
+      <header className="overflow-x-clip border-b hairline bg-ink text-paper">
+        <div className="container-luxe flex flex-wrap items-center gap-y-3 py-3 sm:h-16 sm:flex-nowrap sm:py-0">
           <Link href="/" className="font-display text-xl">
             {BRAND.name}
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 max-sm:order-3 max-sm:w-full max-sm:flex-wrap max-sm:justify-end max-sm:gap-2 sm:ml-auto">
             {!isOwner && isPublic ? (
               <span className="rounded-full border border-paper/20 px-3 py-1.5 text-xs text-paper/60">
                 {tr("Shared report")}
@@ -336,6 +342,7 @@ export default async function ReportPage({
               <DownloadPdfButton
                 reportId={report.id}
                 lang={lang}
+                locked={pdfLocked}
                 className="rounded-full border border-paper/25 px-5 py-2 text-sm text-paper/90 transition-colors hover:bg-paper hover:text-ink disabled:cursor-wait disabled:opacity-60"
               />
             )}
@@ -346,6 +353,8 @@ export default async function ReportPage({
                 redirectTo="/reports"
               />
             ) : null}
+          </div>
+          <div className="max-sm:order-2 max-sm:ml-auto sm:ml-3">
             {isOwner ? (
               <ButtonLink
                 href="/start"
@@ -504,6 +513,15 @@ export default async function ReportPage({
               )
             }
           />
+          {profile.physical.lighting && profile.physical.lighting !== "neutral" ? (
+            <p className="mt-6 max-w-2xl rounded-2xl border hairline bg-cream/40 px-5 py-4 text-sm leading-relaxed text-stone">
+              {tr(
+                profile.physical.hexesCorrected
+                  ? "Your photo was lit with a colour cast. We measured your skin and hair from the pixels and corrected for it, but a photo in soft daylight would sharpen the match."
+                  : "Your photo was lit with a colour cast, so we read your colours more cautiously. A photo in soft daylight would sharpen the match.",
+              )}
+            </p>
+          ) : null}
           <div className="mt-12 grid items-start gap-12 lg:grid-cols-[300px_1fr]">
             <div className="flex flex-col items-center rounded-3xl border hairline bg-cream/40 p-8">
               <ColorWheel best={report.colors.best} />
@@ -1041,6 +1059,7 @@ export default async function ReportPage({
                         ? report.lookItems[i]
                         : itemsForLook(look, report.shopping)
                     }
+                    lookItems={look.items}
                     currency={profile.currency}
                     lang={lang}
                     canTryOn={canTryOn}
@@ -1275,6 +1294,8 @@ export default async function ReportPage({
                 lang={lang}
                 shoeGuide={extras.shoeGuide}
                 shopping={report.shopping}
+                patterns={extras.patterns}
+                finishingAccessories={extras.finishingAccessories}
               />
             </div>
           </div>
@@ -1307,9 +1328,14 @@ export default async function ReportPage({
             <ListCard title={tr("Avoid")} items={report.dontList} />
           </div>
 
-          <TipsStrip lang={lang} />
+          <TipsStrip lang={lang} undertone={profile.physical.undertone} />
 
-          <ReportTierUpsell tier={report.tier} reportId={report.id} lang={lang} />
+          <ReportTierUpsell
+            tier={report.tier}
+            reportId={report.id}
+            lang={lang}
+            pdfLocked={pdfLocked}
+          />
 
           {isOwner && isLiveReport && !generation?.pending ? (
             <div className="mt-12 border-t hairline pt-8">
@@ -1395,10 +1421,13 @@ function ReportTierUpsell({
   tier,
   reportId,
   lang,
+  pdfLocked = false,
 }: {
   tier: Tier;
   reportId: string;
   lang?: ReportLanguage;
+  /** PDF stays locked until every image has rendered (see pdfReadinessFromReport). */
+  pdfLocked?: boolean;
 }) {
   const upsell = reportUpsellForTier(tier);
   if (!upsell) return null;
@@ -1421,6 +1450,7 @@ function ReportTierUpsell({
           <DownloadPdfButton
             reportId={reportId}
             lang={lang}
+            locked={pdfLocked}
             className="rounded-full border border-ink/25 px-7 py-3 text-sm text-ink transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-60"
           />
         )}
@@ -1462,7 +1492,15 @@ function UpgradeLock({
   );
 }
 
-const STYLE_TIPS: { title: string; desc: string; icon: React.ReactNode }[] = [
+/** The palette principle is per undertone — "Earthy, warm tones" on a cool palette was a bug. */
+function paletteTipTitle(undertone?: string | null): string {
+  const u = (undertone ?? "").toLowerCase();
+  if (/warm/.test(u)) return "Earthy, warm tones";
+  if (/cool/.test(u)) return "Cool, muted tones";
+  return "Soft, balanced tones";
+}
+
+const STYLE_TIPS: { title: string; desc: string; icon: React.ReactNode; palette?: true }[] = [
   {
     title: "Clean & simple",
     desc: "Fewer, better pieces beat a crowded wardrobe.",
@@ -1478,6 +1516,7 @@ const STYLE_TIPS: { title: string; desc: string; icon: React.ReactNode }[] = [
     ),
   },
   {
+    palette: true,
     title: "Earthy, warm tones",
     desc: "Let your palette lead; keep contrast soft.",
     icon: (
@@ -1496,7 +1535,13 @@ const STYLE_TIPS: { title: string; desc: string; icon: React.ReactNode }[] = [
   },
 ];
 
-function TipsStrip({ lang }: { lang?: ReportLanguage }) {
+function TipsStrip({
+  lang,
+  undertone,
+}: {
+  lang?: ReportLanguage;
+  undertone?: string | null;
+}) {
   const tt = makeT(lang);
   return (
     <div className="mt-14 rounded-3xl border hairline bg-cream/40 px-8 py-12">
@@ -1509,7 +1554,9 @@ function TipsStrip({ lang }: { lang?: ReportLanguage }) {
                 {t.icon}
               </svg>
             </div>
-            <div className="mt-4 font-display text-lg">{tt(t.title)}</div>
+            <div className="mt-4 font-display text-lg">
+              {tt(t.palette ? paletteTipTitle(undertone) : t.title)}
+            </div>
             <p className="mt-1.5 text-sm leading-relaxed text-stone">{tt(t.desc)}</p>
           </div>
         ))}

@@ -123,6 +123,69 @@ async function resolveReportPhotoRoles(
   );
 }
 
+/** Report row fields needed to scope photo lookups to one report of one owner. */
+async function ownedReport(
+  admin: AdminClient,
+  userId: string,
+  reportId: string,
+): Promise<{ createdAt: string } | null> {
+  const { data } = await admin
+    .from("reports")
+    .select("created_at, user_id")
+    .eq("id", reportId)
+    .maybeSingle();
+  if (!data || data.user_id !== userId) return null;
+  return { createdAt: data.created_at as string };
+}
+
+/**
+ * Does this report have a full-length photo of its own? Stored intake paths
+ * first, else the creation-time heuristic. `null` when the report is not the
+ * user's. Drives the "upload a full-length photo for this report" prompt on
+ * the try-on card — the user's library having one is not the question.
+ */
+export async function reportHasFullPhoto(
+  admin: AdminClient,
+  userId: string,
+  reportId: string,
+): Promise<boolean | null> {
+  const report = await ownedReport(admin, userId, reportId);
+  if (!report) return null;
+  const byRole = await resolveReportPhotoRoles(admin, userId, report.createdAt, reportId);
+  return byRole.has("full");
+}
+
+/**
+ * Attach an uploaded photo to the report's stored intake paths, replacing any
+ * earlier photo of the same role, so every later try-on and regeneration of
+ * this report uses it. Returns false when the report has no intake row
+ * (reports older than the intake table) — a partial intake must not be
+ * created there, the retry path treats the row as a complete questionnaire.
+ */
+export async function attachReportPhoto(
+  admin: AdminClient,
+  userId: string,
+  reportId: string,
+  photo: ReportPhotoPath,
+): Promise<boolean> {
+  const report = await ownedReport(admin, userId, reportId);
+  if (!report) return false;
+  const { data: row } = await admin
+    .from("report_intake")
+    .select("intake")
+    .eq("report_id", reportId)
+    .maybeSingle();
+  if (!row?.intake || typeof row.intake !== "object") return false;
+  const intake = row.intake as Record<string, unknown>;
+  const existing = (await getStoredReportPhotoPaths(admin, reportId)) ?? [];
+  const photoPaths = [...existing.filter((p) => p.role !== photo.role), photo];
+  const { error } = await admin
+    .from("report_intake")
+    .update({ intake: { ...intake, photoPaths } })
+    .eq("report_id", reportId);
+  return !error;
+}
+
 /**
  * Face + body paths the report's looks were rendered on. Same source as
  * generateReportImages / look-extra — never the user's later catalog default.
@@ -238,7 +301,7 @@ export async function resolveLookSetReferencePhotos(
 ): Promise<LookSetReferencePhotos> {
   let facePath = opts.facePath ?? null;
   let fullPath = opts.fullPath ?? null;
-  let profileUrl: string | null = null;
+  const profileUrl: string | null = null;
 
   let faceUrl = facePath ? await signPhotoPath(admin, facePath) : null;
   let fullUrl = fullPath ? await signPhotoPath(admin, fullPath) : null;
@@ -375,7 +438,13 @@ export async function getReportGroomingPhotoUrl(
 export async function getFullLengthPhotoUrl(
   admin: AdminClient,
   userId: string,
-  opts?: { reportCreatedAt?: string; reportId?: string },
+  /**
+   * Report scope. Both fields are required together: without `reportId` the
+   * paths persisted at submit time are never consulted and the lookup degrades
+   * to "latest full-length upload before the report" — a different photo
+   * whenever the library has several.
+   */
+  opts?: { reportCreatedAt: string; reportId: string },
 ): Promise<FullPhotoResult> {
   if (opts?.reportCreatedAt) {
     const refs = await getReportReferencePhotos(

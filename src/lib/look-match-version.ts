@@ -23,10 +23,9 @@ import { humanizeProductTitle } from "@/lib/product-title";
  *  v22: Work shirts drop relaxed/viscose/linen/camp unless named.
  *  v23: Work shirts read description for camp/stand-collar; leather tone lock.
  *  v24: typed subtype/material/fit/pattern; ingest columns over title.
- *  next: plum with no catalogue hit falls to navy/slate, not pastel pink;
- *        charcoal footwear stays grey, not dark teal/green.
+ *  v25: named-colour slots stay empty rather than take a Similar stand-in.
  */
-export const LOOK_MATCH_VERSION = 24;
+export const LOOK_MATCH_VERSION = 25;
 
 /**
  * Bump when the rerank prompt or candidate line format changes — that is the

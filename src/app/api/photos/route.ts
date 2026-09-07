@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
+import { isDemoReportId } from "@/lib/demo-report";
+import { attachReportPhoto, reportHasFullPhoto } from "@/lib/photo-tryon";
 
 type PhotoRow = {
   storage_path: string;
@@ -9,8 +11,11 @@ type PhotoRow = {
   is_default_tryon: boolean | null;
 };
 
-/** Which reference photos the signed-in user has on file (+ full-length list). */
-export async function GET() {
+/**
+ * Which reference photos the signed-in user has on file (+ full-length list).
+ * With `?reportId=` also whether THAT report has a full-length photo of its own.
+ */
+export async function GET(request: Request) {
   if (!hasSupabase) {
     return NextResponse.json({ error: "Requires live mode" }, { status: 501 });
   }
@@ -82,9 +87,16 @@ export async function GET() {
     roleList("profile"),
   ]);
 
+  const reportId = new URL(request.url).searchParams.get("reportId");
+  const reportHasFull =
+    reportId && !isDemoReportId(reportId)
+      ? await reportHasFullPhoto(admin, user.id, reportId)
+      : null;
+
   return NextResponse.json({
     roles,
     hasFull: roles.includes("full"),
+    reportHasFull,
     photos: photos.filter((p) => p.url),
     face,
     profile,
@@ -110,6 +122,11 @@ export async function POST(request: Request) {
   const storagePath =
     typeof body?.storagePath === "string" ? body.storagePath : "";
   const makeDefault = body?.makeDefault === true;
+  // Uploaded from a report's try-on card: the photo becomes that report's own.
+  const reportId: string | null =
+    typeof body?.reportId === "string" && !isDemoReportId(body.reportId)
+      ? body.reportId
+      : null;
 
   // Create-a-Look registers both a full-length (try-on model) and a face
   // (colour analysis + face anchor) reference photo, so accept either role.
@@ -146,7 +163,12 @@ export async function POST(request: Request) {
       .eq("storage_path", storagePath);
   }
 
-  return NextResponse.json({ ok: true }, { status: 201 });
+  const attachedToReport =
+    reportId && role === "full"
+      ? await attachReportPhoto(admin, user.id, reportId, { role, path: storagePath })
+      : false;
+
+  return NextResponse.json({ ok: true, attachedToReport }, { status: 201 });
 }
 
 /** Delete a reference photo (storage object + row). */

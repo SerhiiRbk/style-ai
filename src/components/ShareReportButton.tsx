@@ -81,7 +81,7 @@ export function ShareReportButton({
       </button>
 
       {open && isPublic ? (
-        <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-2xl border border-paper/15 bg-ink-soft p-4 text-left shadow-xl">
+        <div className="absolute top-full z-20 mt-2 w-80 max-w-[calc(100vw-3rem)] rounded-2xl border border-paper/15 bg-ink-soft p-4 text-left shadow-xl max-sm:left-0 sm:right-0">
           <p className="text-sm text-paper/80">
             Anyone with this link can view your report. They cannot edit it or
             use try-on.

@@ -3,43 +3,19 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import { env, hasAI } from "@/lib/env";
 import { captureWarning } from "@/lib/observability";
-import { pickHero } from "@/lib/style-extras";
+import { isUnknownSwatchHex, pickHero } from "@/lib/style-extras";
 import type { ShoppingItem } from "@/lib/report";
 import type { StyleProfile } from "@/lib/style-profile";
+import type { AvoidSwatch } from "@/lib/style-extras";
+// The deterministic guard lives in a dependency-light module (no "server-only")
+// so node:test can import it; re-exported here for existing callers.
+import { reasonIsSafe } from "@/lib/shopping-reason-guard";
+
+export { reasonIsSafe } from "@/lib/shopping-reason-guard";
 
 /** Bumped when the reasons prompt/guard change — lets a backfill target stale copy. */
-export const REASON_VERSION = 2;
+export const REASON_VERSION = 3;
 
-/**
- * Materials the model may only mention when they appear in the item's own
- * title/colour. "down" counts as a material only before jacket/coat/etc. so
- * ordinary copy like "dress it down" isn't rejected.
- */
-const MATERIAL_RE =
-  /\b(leather|suede|nubuck|wool|merino|cashmere|linen|silk|denim|corduroy|velvet|satin|fleece|down(?=[-\s](?:jacket|coat|vest|gilet|parka|puffer|fill(?:ed)?|padded|padding)))\b/gi;
-
-/** Internal marker tokens the model must never echo into user-facing prose. */
-const JARGON_RE = /\b(similar\s*pick|candidate\s*index|heroWhy|reasonVersion)\b/i;
-
-/**
- * Deterministic guard against hallucinated copy: a reason may not claim a
- * material absent from the item itself, must not leak an internal marker token,
- * and must stay one sentence-sized line. Failing reasons fall back to the
- * template "why" — no retry.
- */
-export function reasonIsSafe(
-  why: string,
-  item: { title: string; color?: string | null },
-): boolean {
-  const text = why.trim();
-  if (text.length < 40 || text.length > 260) return false;
-  if (JARGON_RE.test(text)) return false;
-  const known = `${item.title} ${item.color ?? ""}`.toLowerCase();
-  for (const m of text.matchAll(MATERIAL_RE)) {
-    if (!known.includes(m[0].toLowerCase())) return false;
-  }
-  return true;
-}
 
 const shoppingReasonsSchema = z.object({
   reasons: z.array(
@@ -71,13 +47,21 @@ function formatItem(i: number, item: ShoppingItem, heroIndex: number): string {
       : "";
   const similar = item.similarPick ? " [closest match, not exact]" : "";
   const hero = i === heroIndex ? " [hero]" : "";
-  return `[${i}] ${item.category} — ${item.title} · colour swatch ${item.color}${price}${similar}${hero}`;
+  // A placeholder swatch is not "light grey" — the model must not name a colour
+  // the feed never stated (it wrote "light grey blazer" about a beige one).
+  const colour = isUnknownSwatchHex(item.color)
+    ? item.colorName
+      ? `colour ${item.colorName}`
+      : "colour not stated by the retailer (do not name a colour)"
+    : `colour swatch ${item.color}${item.colorName ? ` (${item.colorName})` : ""}`;
+  return `[${i}] ${item.category} — ${item.title} · ${colour}${price}${similar}${hero}`;
 }
 
 function buildReasonsPrompt(
   items: ShoppingItem[],
   profile: StyleProfile,
   heroIndex: number,
+  avoid: AvoidSwatch[] = [],
 ): string {
   const heroRule =
     heroIndex >= 0
@@ -101,6 +85,11 @@ function buildReasonsPrompt(
     `- Tie each reason to ONE profile anchor (palette/season, undertone, ` +
     `contrast, build, or a goal); vary the anchors — no anchor on more than ` +
     `three items.\n` +
+    (avoid.length
+      ? `- Colours to avoid for clothing near the face: ${avoid.map((c) => c.name).filter(Boolean).join(", ")}. ` +
+        `Do not sell those as palette picks. Black or brown derbies, oxfords, loafers ` +
+        `and belts may be framed as classic business etiquette, never as a seasonal colour.\n`
+      : "") +
     `- An item tagged [closest match, not exact] is the nearest catalogue option, ` +
     `not a perfect one — acknowledge that honestly in plain words (e.g. "the ` +
     `closest match in your palette"). NEVER write bracketed tags or code-like ` +
@@ -129,6 +118,7 @@ export type ShoppingReasons = {
 export async function generateShoppingReasons(
   items: ShoppingItem[],
   profile: StyleProfile,
+  avoid: AvoidSwatch[] = [],
 ): Promise<ShoppingReasons | null> {
   if (!hasAI || !items.length) return null;
   const hero = pickHero(items, profile.boldness);
@@ -137,13 +127,13 @@ export async function generateShoppingReasons(
     const { output } = await generateText({
       model: env.modelReasoning,
       output: Output.object({ schema: shoppingReasonsSchema }),
-      prompt: buildReasonsPrompt(items, profile, heroIndex),
+      prompt: buildReasonsPrompt(items, profile, heroIndex, avoid),
     });
     const byIndex = new Map<number, string>();
     for (const r of output.reasons) {
       const item = items[r.index];
       if (!item || byIndex.has(r.index)) continue;
-      if (!reasonIsSafe(r.why, item)) {
+      if (!reasonIsSafe(r.why, item, avoid)) {
         captureWarning(
           "[shopping-reasons] reason failed safety guard — keeping template",
           { index: r.index, title: item.title, why: r.why },
@@ -155,7 +145,7 @@ export async function generateShoppingReasons(
     let heroWhy: string | null = null;
     const heroItem = heroIndex >= 0 ? items[heroIndex] : undefined;
     if (output.heroWhy && heroItem) {
-      if (reasonIsSafe(output.heroWhy, heroItem)) {
+      if (reasonIsSafe(output.heroWhy, heroItem, avoid)) {
         heroWhy = output.heroWhy.trim();
       } else {
         captureWarning(
@@ -183,9 +173,10 @@ export async function generateShoppingReasons(
 export async function applyShoppingReasons(
   items: ShoppingItem[],
   profile: StyleProfile,
+  avoid: AvoidSwatch[] = [],
 ): Promise<ShoppingItem[]> {
   if (!env.shoppingReasonsLLM || !hasAI || !items.length) return items;
-  const res = await generateShoppingReasons(items, profile);
+  const res = await generateShoppingReasons(items, profile, avoid);
   if (!res || (!res.byIndex.size && !res.heroWhy)) return items;
   return items.map((item, i) => {
     const why = res.byIndex.get(i);
