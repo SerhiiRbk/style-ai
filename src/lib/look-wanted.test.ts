@@ -64,6 +64,48 @@ test("wantedLookGarments: a mauve blazer with no pick is wanted (64510d11)", () 
   assert.deepEqual(wanted.map((w) => w.garment), ["blazer"]);
 });
 
+test("wantedLookGarments: a blazer pick covers knit blazer and sport coat", () => {
+  const wanted = wantedLookGarments(
+    [{ garment: "blazer" }, { garment: "chinos" }, { garment: "loafers" }],
+    [
+      { color: "navy", garment: "knit blazer" },
+      { color: "dusty-rose", garment: "chinos" },
+      { color: "muted-navy", garment: "loafers" },
+    ],
+  );
+  assert.deepEqual(wanted, []);
+
+  const sport = wantedLookGarments(
+    [{ garment: "blazer" }, { garment: "trousers" }],
+    [
+      { color: "navy", garment: "sport coat" },
+      { color: "soft-charcoal", garment: "trousers" },
+    ],
+  );
+  assert.deepEqual(sport, []);
+});
+
+test("wantedLookGarments: a wool coat does not cover a sport coat", () => {
+  const wanted = wantedLookGarments(
+    [{ garment: "coat" }, { garment: "trousers" }, { garment: "loafers" }],
+    [
+      { color: "navy", garment: "sport coat" },
+      { color: "soft-charcoal", garment: "trousers" },
+      { color: "muted-navy", garment: "loafers" },
+    ],
+  );
+  assert.deepEqual(wanted.map((w) => w.garment), ["sport coat"]);
+
+  const overcoat = wantedLookGarments(
+    [{ garment: "overcoat" }, { garment: "chinos" }],
+    [
+      { color: "navy", garment: "sport coat" },
+      { color: "greige", garment: "chinos" },
+    ],
+  );
+  assert.deepEqual(overcoat.map((w) => w.garment), ["sport coat"]);
+});
+
 test("wantedLookGarments: a descriptor filed under colour still covers the slot", () => {
   // Report f4b8e202: items said {color: "light-blue oxford", garment: "shirt"},
   // the matcher keyed the slot "oxford" — the shirt is matched, not wanted.

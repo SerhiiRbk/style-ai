@@ -28,6 +28,7 @@ import {
   lookOccasionAppliesToGarment,
   lookOccasionAppliesToShirt,
   lookOccasionAppliesToShoe,
+  lookOccasionIsTailored,
   clauseAsksLinen,
   prefersSuedeFootwear,
   prefersLoaferFootwear,
@@ -50,6 +51,7 @@ import {
   garmentTitleMatchScore,
   isBlazerGarment,
   isDrawstringTitle,
+  isSportFashionTitle,
   isTailoredBlazerTitle,
   prefersDrawstringSilhouette,
   silhouetteFitScore,
@@ -437,6 +439,13 @@ export function rankMatchRows(
   ranked = keepPlumWearable(ranked, colorCue);
   ranked = keepCharcoalWearable(ranked, colorCue);
 
+  if (lookOccasionIsTailored(occasionId)) {
+    ranked = ranked.filter(
+      (r) =>
+        !isSportFashionTitle(formatCatalogProductTitle(r.row.brand, r.row.title)),
+    );
+  }
+
   if (prefersDrawstringSilhouette(garment, clause)) {
     const drawstring = ranked.filter((r) =>
       isDrawstringTitle(formatCatalogProductTitle(r.row.brand, r.row.title), {
@@ -716,6 +725,31 @@ export function pickBestMatch(
   styleId?: string | null,
   occasionId?: string | null,
 ): { row: LookMatchRow; similarPick: boolean } | null {
+  return pickAdmittedMatch(
+    rows,
+    color,
+    garment,
+    boldness,
+    clause,
+    styleId,
+    occasionId,
+  );
+}
+
+/**
+ * Same ranking as {@link pickBestMatch}, but skip rows the caller rejects
+ * (wrong colour family) instead of emptying the slot.
+ */
+export function pickAdmittedMatch(
+  rows: LookMatchRow[],
+  color: string | null,
+  garment: string,
+  boldness: string,
+  clause?: string | null,
+  styleId?: string | null,
+  occasionId?: string | null,
+  keep?: (row: LookMatchRow) => boolean,
+): { row: LookMatchRow; similarPick: boolean } | null {
   if (!rows.length) return null;
   const ranked = rankMatchRows(
     rows,
@@ -726,10 +760,13 @@ export function pickBestMatch(
     styleId,
     occasionId,
   ).sort((a, b) => b.score - a.score);
-  const best = ranked[0];
-  if (!best || best.score < MIN_LOOK_PICK_SCORE) return null;
-  if (best.garmentScore < 0.5 && best.colorScore < 0.45) return null;
-  return { row: best.row, similarPick: best.similarPick };
+  for (const best of ranked) {
+    if (best.score < MIN_LOOK_PICK_SCORE) continue;
+    if (best.garmentScore < 0.5 && best.colorScore < 0.45) continue;
+    if (keep && !keep(best.row)) continue;
+    return { row: best.row, similarPick: best.similarPick };
+  }
+  return null;
 }
 
 export function topRankedCandidates(

@@ -79,14 +79,7 @@ export function reportUpsellForTier(tier: Tier): ReportUpsell | null {
         ctaHref: "/pricing",
       };
     case "lookbook":
-      return {
-        title: "Want the deepest report?",
-        body:
-          `Upgrade to Premium for ${lookCountForTier("premium")} photorealistic looks, personalized facial-hair and eyewear previews on your photo, ` +
-          `and deeper grooming guidance — the most personal report we offer.`,
-        ctaLabel: "Upgrade to Premium",
-        ctaHref: "/pricing",
-      };
+      return null;
     case "premium":
       return {
         title: "Ready for another Premium report?",
@@ -297,6 +290,13 @@ export const climateFor = (country: string): string => {
   if (/(sweden|norway|finland|denmark)/.test(c)) return "cold nordic";
   return "temperate";
 };
+
+/** Wool overcoat belongs in the shopping recipe for cool / temperate cities. */
+export function climateNeedsCoat(climate?: string | null): boolean {
+  return /(cold|nordic|maritime|temperate|continental)/.test(
+    (climate ?? "").toLowerCase(),
+  );
+}
 
 /** Deterministic mock Style Profile — used in demo mode and as AI fallback. */
 export function mockStyleProfile(intake: Intake): StyleProfile {

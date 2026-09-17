@@ -23,6 +23,30 @@ test("drawstring trousers do not fill the casual slot unless the brief is outdoo
   );
 });
 
+test("the coat slot takes a wool overcoat and rejects a puffer", () => {
+  const coat: RecipePoolSlot = {
+    role: "coat",
+    category: "Outerwear",
+    color: { name: "Navy grey", hex: "#303444" },
+  };
+  assert.equal(
+    recipePoolRejection(
+      coat,
+      { title: "Reiss Wool Overcoat", hay: "Reiss Wool Overcoat Navy", hex: "#303444" },
+      ctx(),
+    ),
+    null,
+  );
+  assert.equal(
+    recipePoolRejection(
+      coat,
+      { title: "Zara Textured Puffer Jacket", hay: "Zara Textured Puffer Jacket Blue", hex: "#2f4b7c" },
+      ctx(),
+    ),
+    "coat-casual-outerwear",
+  );
+});
+
 test("a tote fills the bag slot; a backpack does not", () => {
   const bag: RecipePoolSlot = { role: "bag", category: "Accessories", color: { name: "Navy grey", hex: "#303444" } };
   assert.equal(recipePoolRejection(bag, { title: "Zara Leather Tote", hay: "Zara Leather Tote Navy", hex: "#303444" }, ctx()), null);

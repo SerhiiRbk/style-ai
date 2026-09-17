@@ -1,3 +1,6 @@
+import { colorFamilies, familyFromHex } from "@/lib/colour-rules";
+import { hexToHsl } from "@/lib/colour-palette";
+
 /**
  * Occasion formality for catalogue matching.
  * Work / formal trousers and shirts must not fall to holiday linen or relaxed
@@ -102,27 +105,47 @@ export function lookOccasionAppliesToGarment(
   const key = garment.trim().toLowerCase();
   return (
     TROUSER_GARMENTS.has(key) ||
-    SHIRT_GARMENTS.has(key) ||
-    BELT_GARMENTS.has(key) ||
-    SHOE_GARMENTS.has(key) ||
-    BAG_GARMENTS.has(key)
+    /\b(trousers?|chinos?|pants|slacks|shorts)\b/.test(key) ||
+    lookOccasionAppliesToShirt(garment) ||
+    lookOccasionAppliesToBelt(garment) ||
+    lookOccasionAppliesToShoe(garment) ||
+    lookOccasionAppliesToBag(garment)
   );
 }
 
 export function lookOccasionAppliesToBag(garment: string): boolean {
-  return BAG_GARMENTS.has(garment.trim().toLowerCase());
+  const key = garment.trim().toLowerCase();
+  if (BAG_GARMENTS.has(key)) return true;
+  return /\b(bags?|messenger|tote|briefcase|satchel|shopper)\b/.test(key);
 }
 
 export function lookOccasionAppliesToShirt(garment: string): boolean {
-  return SHIRT_GARMENTS.has(garment.trim().toLowerCase());
+  const key = garment.trim().toLowerCase();
+  if (SHIRT_GARMENTS.has(key)) return true;
+  if (/\boxfords?\b/.test(key) && /\b(shoes?|brogues?|derb)/.test(key)) {
+    return false;
+  }
+  return /\b(shirts?|oxford)\b/.test(key) && !/\boxfords\b/.test(key);
 }
 
 export function lookOccasionAppliesToBelt(garment: string): boolean {
-  return BELT_GARMENTS.has(garment.trim().toLowerCase());
+  const key = garment.trim().toLowerCase();
+  if (BELT_GARMENTS.has(key)) return true;
+  return /\bbelts?\b/.test(key);
 }
 
 export function lookOccasionAppliesToShoe(garment: string): boolean {
-  return SHOE_GARMENTS.has(garment.trim().toLowerCase());
+  const key = garment.trim().toLowerCase();
+  if (SHOE_GARMENTS.has(key)) return true;
+  if (
+    /\b(shirts?|poplin|oxford\s+shirt)\b/.test(key) &&
+    !/\b(shoes?|brogues?|derb)/.test(key)
+  ) {
+    return false;
+  }
+  return /\b(derb(?:y|ies)|oxfords|oxford\s+shoes?|loafers?|brogues?|boots?|chelsea|chukka|shoes?)\b/.test(
+    key,
+  );
 }
 
 const NON_BUTTON_SUBTYPES = new Set([
@@ -404,6 +427,98 @@ const LIGHT_TROUSER_RE =
  * Business default shirt: light blue on light trousers, white on dark / brown
  * (coffee, chocolate, navy, charcoal…). Hex lightness breaks ties.
  */
+const WORK_SHIRT_COLOUR_RE =
+  /\b(white|ivory|ecru|blue|pink|lilac|stripe|striped|chambray)\b/i;
+/** Named dark pigments the look asked for — do not snap to white / light blue. */
+const WORK_KEEP_PIGMENT_RE =
+  /\b(charcoal|graphite|anthracite|asphalt|gunmetal|navy|ink|midnight)\b/i;
+
+function workShirtKeepsNamedPigment(cue: string): boolean {
+  if (WORK_SHIRT_COLOUR_RE.test(cue) || WORK_KEEP_PIGMENT_RE.test(cue)) return true;
+  return /\bslate\b/i.test(cue) && !/\bslate\s*-?\s*blue\b/i.test(cue);
+}
+
+function pieceFamilies(piece: WorkShirtPiece): Set<string> {
+  const fams = colorFamilies(`${piece.color ?? ""} ${piece.title ?? ""}`);
+  const hexFam = familyFromHex(piece.hex ?? piece.color);
+  if (hexFam) fams.add(hexFam);
+  return fams;
+}
+
+function jacketIsBlueFamily(jacketColor?: string | null): boolean {
+  if (!jacketColor?.trim()) return false;
+  return pieceFamilies({ color: jacketColor }).has("blue");
+}
+
+export type WorkShirtPiece = {
+  color?: string | null;
+  hex?: string | null;
+  title?: string | null;
+};
+
+function asPiece(
+  piece: string | WorkShirtPiece | null | undefined,
+): WorkShirtPiece {
+  if (piece == null) return {};
+  if (typeof piece === "string") return { color: piece };
+  return piece;
+}
+
+/** Work / formal shop colour: keep a named pigment, snap vague fashion greys. */
+export function workShirtSearchColor(
+  slotColor: string | null | undefined,
+  trouserColor?: string | null,
+  trouserHex?: string | null,
+): string {
+  const cue = (slotColor ?? "").trim();
+  if (cue && workShirtKeepsNamedPigment(cue)) return cue;
+  return workDefaultShirtColor(trouserColor, trouserHex);
+}
+
+/**
+ * When a named charcoal oxford is missing: dark grey, then navy unless the
+ * jacket is already blue, then white. Never light blue under a blue jacket.
+ */
+export function workShirtFallbackColors(
+  slotColor: string | null | undefined,
+  jacketColor?: string | null,
+): string[] {
+  const cue = (slotColor ?? "").trim();
+  if (!/\b(charcoal|graphite|anthracite|asphalt|gunmetal)\b/i.test(cue)) {
+    return [];
+  }
+  const out = ["dark grey"];
+  if (!jacketIsBlueFamily(jacketColor)) out.push("navy");
+  out.push("white");
+  return out;
+}
+
+/** Same blue family as the jacket — or a navy shirt under slate-blue. */
+export function workShirtClashesJacket(
+  shirt: string | WorkShirtPiece | null | undefined,
+  jacket: string | WorkShirtPiece | null | undefined,
+): boolean {
+  const s = asPiece(shirt);
+  const j = asPiece(jacket);
+  const shirtFams = pieceFamilies(s);
+  const jacketFams = pieceFamilies(j);
+  if (shirtFams.has("blue") && jacketFams.has("blue")) return true;
+  if (shirtFams.has("grey") && jacketFams.has("grey")) {
+    const sl = workShirtPieceLightness(s);
+    const jl = workShirtPieceLightness(j);
+    if (sl != null && jl != null && Math.abs(sl - jl) < 0.22) return true;
+  }
+  return false;
+}
+
+function workShirtPieceLightness(piece: WorkShirtPiece): number | null {
+  const raw = piece.hex ?? piece.color;
+  if (raw && /^#?[0-9a-f]{6}$/i.test(raw.trim())) {
+    return hexToHsl(raw.trim()).l;
+  }
+  return null;
+}
+
 export function workDefaultShirtColor(
   trouserColor?: string | null,
   trouserHex?: string | null,

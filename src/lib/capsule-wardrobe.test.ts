@@ -21,6 +21,27 @@ function byRole(slots: CapsuleWardrobeSlot[], role: CapsuleWardrobeSlot["role"])
   return slots.find((s) => s.role === role);
 }
 
+test("a cold or temperate climate adds a wool overcoat slot", () => {
+  const slots = capsuleWardrobeSlots(SUMMER_BEST, SUMMER_AVOID, {
+    polished: true,
+    cool: true,
+    coat: true,
+  });
+  const coat = byRole(slots, "coat");
+  assert.ok(coat, "missing coat slot");
+  assert.equal(coat!.category, "Outerwear");
+  assert.match(coat!.query, /overcoat|topcoat/i);
+  assert.match(coat!.query, /not a puffer/i);
+});
+
+test("without coat:true the wardrobe has no overcoat slot", () => {
+  const slots = capsuleWardrobeSlots(SUMMER_BEST, SUMMER_AVOID, {
+    polished: true,
+    cool: true,
+  });
+  assert.equal(byRole(slots, "coat"), undefined);
+});
+
 test("soft-summer wardrobe requires a dark trouser that is not the jacket", () => {
   const slots = capsuleWardrobeSlots(SUMMER_BEST, SUMMER_AVOID, {
     outdoorJeans: false,

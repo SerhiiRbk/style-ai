@@ -1,7 +1,7 @@
 /**
- * Look garments that found no catalogue match — shown as "No close match yet"
- * chips beside Shop the Look, so an empty hero slot reads as a deliberate gap,
- * not a missing feature. Pure; no server imports.
+ * Look garments that found no catalogue match. Used in audits and regression
+ * fixtures — the shop UI no longer lists empty slots as "No close match yet".
+ * Pure; no server imports.
  */
 export type LookSlotLike = { garment: string; color?: string | null };
 
@@ -17,6 +17,27 @@ function normalise(text: string): string {
 
 function escapeRe(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Blazer / sport coat vs winter coat. `\bcoat\b` matches "sport coat", so a
+ * wool-coat pick must not silence a sport-coat chip, and a blazer pick should
+ * cover knit blazer and sport coat.
+ */
+function slotOuterFamily(text: string): "blazer" | "coat" | null {
+  const n = normalise(text);
+  if (/\bsport\s*coat/.test(n) || n.includes("sportcoat")) return "blazer";
+  if (/\bblazer\b/.test(n)) return "blazer";
+  if (/\b(over\s*coat|top\s*coat)\b/.test(n) || /\bcoat\b/.test(n)) return "coat";
+  return null;
+}
+
+function shopCoversLookSlot(shopGarment: string, lookPhrase: string): boolean {
+  const shopFam = slotOuterFamily(shopGarment);
+  const lookFam = slotOuterFamily(lookPhrase);
+  if (shopFam && lookFam && shopFam !== lookFam) return false;
+  if (shopFam === "blazer" && lookFam === "blazer") return true;
+  return new RegExp(`\\b${escapeRe(shopGarment)}\\b`).test(lookPhrase);
 }
 
 /**
@@ -44,6 +65,6 @@ export function wantedLookGarments(
     // ("oxford") — so test the whole phrase, not the noun alone.
     const g = normalise(`${li.color ?? ""} ${li.garment}`);
     if (!normalise(li.garment)) return false;
-    return !covered.some((c) => new RegExp(`\\b${escapeRe(c)}\\b`).test(g));
+    return !covered.some((c) => shopCoversLookSlot(c, g));
   });
 }

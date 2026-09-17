@@ -3,6 +3,8 @@ import { createHash } from "crypto";
 import { env } from "@/lib/env";
 import { checkLimit } from "@/lib/rate-limit";
 import { logEvent } from "@/lib/events";
+import { compactAttribution, isClientFunnelEvent } from "@/lib/funnel";
+import { attributionFromRequest } from "@/lib/funnel-context";
 
 export const maxDuration = 10;
 
@@ -11,7 +13,7 @@ export const maxDuration = 10;
  * whitelist + per-IP cap so it can't become an open write sink. Server-side
  * events (rate_limited, colours_result, email_captured) are logged directly.
  */
-const ALLOWED = new Set([
+const ALLOWED = new Set<string>([
   "colours_started",
   "quiz_started",
   "quiz_result",
@@ -49,7 +51,7 @@ function sanitizeProps(raw: unknown): Record<string, unknown> {
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name : "";
-  if (!ALLOWED.has(name)) {
+  if (!ALLOWED.has(name) && !isClientFunnelEvent(name)) {
     return NextResponse.json({ error: "Unknown event" }, { status: 400 });
   }
 
@@ -68,6 +70,13 @@ export async function POST(request: Request) {
   const anonId =
     typeof body?.anonId === "string" && body.anonId ? body.anonId.slice(0, 64) : null;
 
-  await logEvent({ name, anonId, props: sanitizeProps(body?.props) });
+  await logEvent({
+    name,
+    anonId,
+    props: {
+      ...compactAttribution(attributionFromRequest(request)),
+      ...sanitizeProps(body?.props),
+    },
+  });
   return NextResponse.json({ ok: true });
 }

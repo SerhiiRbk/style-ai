@@ -543,3 +543,40 @@ export const styleProfileSchema = z.object({
   budgetEur: z.object({ min: z.number(), max: z.number() }),
 });
 export type StyleProfile = z.infer<typeof styleProfileSchema>;
+
+/**
+ * Temperature extras and shopping should follow the season, not a blended
+ * "neutral" label. Cool Summer stored as `undertone: "neutral"` still wants
+ * steel, not soft gold.
+ */
+export function effectiveUndertone(profile: {
+  colorSeason?: string | null;
+  colorSubseason?: string | null;
+  physical?: { undertone?: string | null };
+}): "warm" | "cool" | "neutral" {
+  const sub = (profile.colorSubseason ?? "").toLowerCase();
+  const season = (profile.colorSeason ?? "").toLowerCase();
+  const fromName = `${sub} ${season}`;
+  if (/(summer|winter)/.test(fromName) && !/(spring|autumn|fall)/.test(fromName)) {
+    return "cool";
+  }
+  if (/(spring|autumn|fall)/.test(fromName) && !/(summer|winter)/.test(fromName)) {
+    return "warm";
+  }
+  const stored = (profile.physical?.undertone ?? "").toLowerCase();
+  if (stored === "cool" || stored === "warm" || stored === "neutral") return stored;
+  return "neutral";
+}
+
+/** Copy of the profile whose `physical.undertone` matches {@link effectiveUndertone}. */
+export function withEffectiveUndertone<
+  T extends {
+    colorSeason?: string | null;
+    colorSubseason?: string | null;
+    physical: { undertone?: string | null };
+  },
+>(profile: T): T {
+  const tone = effectiveUndertone(profile);
+  if (profile.physical.undertone === tone) return profile;
+  return { ...profile, physical: { ...profile.physical, undertone: tone } };
+}

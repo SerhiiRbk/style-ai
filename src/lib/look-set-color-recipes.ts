@@ -439,7 +439,7 @@ function snapGarmentColour<T extends LookLike>(
   const clause = (look.description ?? "").split(/,\s*/).find((c) => garmentRe.test(c));
   const fromClause = clause
     ? (clause.match(
-        /\b(mauve|rose|pink|blush|lilac|lavender|dusty[\s-]?blue|navy[\s-]?grey|charcoal|camel|stone|greige|spruce|slate)\b/i,
+        /\b(soft[\s-]?teal|teal|mauve|rose|pink|blush|lilac|lavender|dusty[\s-]?blue|navy[\s-]?grey|charcoal|camel|stone|greige|spruce|slate)\b/i,
       )?.[0] ?? "")
     : "";
   const oldColour = fromItem || fromClause;
@@ -465,18 +465,23 @@ function snapGarmentColour<T extends LookLike>(
 }
 
 /**
- * Mauve / rose belong on a knit or square, not a blazer. An overcoat is a
+ * Fashion hues belong on a knit or square, not a blazer. An overcoat is
  * navy / charcoal / camel / stone / greige only. Snaps the slot; leaves a
- * mauve cardigan alone.
+ * mauve or teal cardigan alone. Burgundy jackets stay off work looks.
+ * Plum jackets stay on party statement / experimental only.
  */
 export function enforceRecipeJacketColour<T extends LookLike>(
   look: T,
   recipe: Pick<LookColorRecipe, "hero" | "neutrals"> & { bottom?: ColorRec },
+  occasionId?: string | null,
+  boldness?: string | null,
 ): T {
+  const jacketOk = (name: string) =>
+    isTailoredJacketSafeName(name, occasionId, boldness);
   const jacket =
     firstSafeSwatch(
       [recipe.hero, recipe.neutrals[1], recipe.neutrals[0], recipe.bottom],
-      isTailoredJacketSafeName,
+      jacketOk,
       { name: "Navy grey", hex: "#2B3A4E", why: "" },
     );
   const coat =
@@ -488,7 +493,7 @@ export function enforceRecipeJacketColour<T extends LookLike>(
   const afterJacket = snapGarmentColour(
     look,
     TAILORED_JACKET_RE,
-    (color) => !isTailoredJacketSafeName(color),
+    (color) => !jacketOk(color),
     jacket,
   );
   return snapGarmentColour(
@@ -800,9 +805,13 @@ export function formatLookColorRecipePrompt(
       `Shoes must not match the jacket unless both are a dark navy or black formal set.\n` +
       beltLine +
       `- Shared neutrals (bag, other trims): ${recipe.neutrals.map(swatch).join(", ")}\n`;
-  const jacketLine = isPinkFamilyName(recipe.hero.name)
+  const jacketLine = !isTailoredJacketSafeName(
+    recipe.hero.name,
+    mood?.occasionId,
+    mood?.boldness,
+  )
     ? `- Put ${recipe.hero.name} on a knit, cardigan, square or tie — never on a blazer, sport coat or overcoat.\n`
-    : `- Never put mauve, rose, pink or lilac on a blazer, sport coat or overcoat. An overcoat is navy, charcoal, camel, stone or greige only.\n`;
+    : `- A blazer is navy, charcoal, grey, black, dusty-blue, camel, beige, cream, brown, olive or burgundy only — never teal, sage, mint, mauve or powder-blue. Burgundy jackets are dinner, party, formal or wedding only, not work. A plum velvet jacket is party statement or experimental only. An overcoat is navy, charcoal, camel, stone or greige only.\n`;
   const harmony =
     `One chromatic hero — do not repeat ${recipe.hero.name} on the shoes or a second main garment. ` +
     `If the shirt and trousers are both mid-neutrals (greige, mushroom, taupe, stone, camel, beige, mid-grey), add a dark anchor.\n`;

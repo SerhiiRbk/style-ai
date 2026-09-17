@@ -28,6 +28,7 @@ import {
   isNearFaceShoppingCategory,
   isShortsTitle,
   isSportsBagTitle,
+  isTailoredOvercoat,
   isUnreliableColorBlockKnit,
   silhouetteRejectsTop,
   silhouetteRejectsTrousers,
@@ -159,6 +160,10 @@ export function recipePoolRejection(
   }
   if (role === "bag" && isSportsBagTitle(title)) return "bag-sports";
   if (role === "jacket" && CASUAL_OUTERWEAR_RE.test(title)) return "jacket-casual-outerwear";
+  if (role === "coat") {
+    if (CASUAL_OUTERWEAR_RE.test(title)) return "coat-casual-outerwear";
+    if (!isTailoredOvercoat(title)) return "coat-not-overcoat";
+  }
   if (role === "casualOuter" && !CASUAL_OUTERWEAR_RE.test(title)) return "casual-outer-not-casual";
   if (role === "dressShoe") {
     if (CASUAL_FOOTWEAR_RE.test(title) || SNEAKER_RE.test(title) || isLoaferTitle(title)) {

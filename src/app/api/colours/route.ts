@@ -6,6 +6,7 @@ import { env, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { checkLimit } from "@/lib/rate-limit";
 import { logEvent } from "@/lib/events";
+import { logRequestEvent } from "@/lib/funnel-context";
 import type { ColourAnalysisResult } from "@/lib/colour-palette";
 
 export const maxDuration = 60;
@@ -91,6 +92,14 @@ export async function POST(request: Request) {
         .download(cachePath(hash));
       if (blob) {
         const cached = JSON.parse(await blob.text()) as ColourAnalysisResult;
+        await logRequestEvent(request, {
+          name: "colours_result",
+          anonId,
+          props: {
+            subseason: cached.subseason,
+            cached: true,
+          },
+        });
         return NextResponse.json({ result: cached, cached: true });
       }
     } catch {
@@ -187,6 +196,11 @@ export async function POST(request: Request) {
       );
     }
     const result = analysis.result;
+    await logRequestEvent(request, {
+      name: "colours_result",
+      anonId,
+      props: { subseason: result.subseason, cached: false },
+    });
     // Cache the result (not the photo) so a repeat upload is free.
     if (admin) {
       try {

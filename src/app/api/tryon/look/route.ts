@@ -387,6 +387,7 @@ export async function POST(request: Request) {
     catalogItems,
     kind === "look" ? description : undefined,
     occasionId,
+    profile.boldness,
   );
   const catalogImages = catalogImageRefsFromItems(catalogItems, {
     max:
@@ -466,6 +467,7 @@ export async function POST(request: Request) {
           garmentImageUrls: catalogImageUrls,
           garmentImages: catalogImages,
           occasionId,
+          boldness: profile.boldness,
         })
       : await generateLookImage({
           profile,

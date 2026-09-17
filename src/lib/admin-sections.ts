@@ -26,6 +26,11 @@ export const ADMIN_SECTIONS = [
     description: "Create promo codes, credit grants, and invite links.",
   },
   {
+    href: "/admin/funnel",
+    title: "Launch funnel",
+    description: "Visit → colours → signup → report → pay, last seven days.",
+  },
+  {
     href: "/investors",
     title: "Investor deck",
     description: "Confidential overview, unit economics, and deck download.",

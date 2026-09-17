@@ -577,6 +577,93 @@ test("enforceRecipeJacketColour snaps a mauve blazer and overcoat, leaves a mauv
   assert.doesNotMatch(coat.items?.find((i) => i.garment === "overcoat")?.color ?? "", /mauve|rose|pink/i);
 });
 
+test("enforceRecipeJacketColour snaps a teal sport coat, leaves a teal knit", () => {
+  const recipe = {
+    hero: { name: "Soft teal", hex: "#5F8C86", why: "" },
+    neutrals: [
+      { name: "Greige", hex: "#DAD3C6", why: "" },
+      { name: "Navy grey", hex: "#2B3A4E", why: "" },
+    ] as [ColorRec, ColorRec],
+  };
+  const look = {
+    description:
+      "Soft-teal sport coat, slate-blue crewneck knit, soft-charcoal wool trousers, muted-navy loafers",
+    items: [
+      { garment: "sport coat", color: "soft-teal" },
+      { garment: "crewneck knit", color: "slate-blue" },
+      { garment: "trousers", color: "soft-charcoal" },
+    ],
+  };
+  const fixed = enforceRecipeJacketColour(look, recipe);
+  assert.match(fixed.items?.find((i) => i.garment === "sport coat")?.color ?? "", /navy/i);
+  assert.doesNotMatch(fixed.items?.find((i) => i.garment === "sport coat")?.color ?? "", /teal/i);
+  assert.match(fixed.description, /navy[\s-]*grey sport coat|navy sport coat/i);
+  assert.doesNotMatch(fixed.description, /teal sport coat/i);
+  assert.match(fixed.description, /slate-blue crewneck knit/i);
+});
+
+test("enforceRecipeJacketColour snaps sage and a work burgundy jacket", () => {
+  const recipe = {
+    hero: { name: "Sage", hex: "#8A9A7B", why: "" },
+    neutrals: [
+      { name: "Cool white", hex: "#F1F1EF", why: "" },
+      { name: "Navy grey", hex: "#2B3A4E", why: "" },
+    ] as [ColorRec, ColorRec],
+  };
+  const sage = enforceRecipeJacketColour(
+    {
+      description: "Sage wool-blend blazer, white oxford shirt, charcoal trousers",
+      items: [
+        { garment: "blazer", color: "sage" },
+        { garment: "shirt", color: "white" },
+        { garment: "trousers", color: "charcoal" },
+      ],
+    },
+    recipe,
+  );
+  assert.match(sage.items?.find((i) => i.garment === "blazer")?.color ?? "", /navy/i);
+  assert.doesNotMatch(sage.description, /sage wool-blend blazer/i);
+  const burgundyRecipe = {
+    hero: { name: "Burgundy", hex: "#6B2D3C", why: "" },
+    neutrals: recipe.neutrals,
+  };
+  const look = {
+    description: "Burgundy velvet blazer, white oxford shirt, charcoal trousers",
+    items: [
+      { garment: "blazer", color: "burgundy" },
+      { garment: "shirt", color: "white" },
+      { garment: "trousers", color: "charcoal" },
+    ],
+  };
+  const dinner = enforceRecipeJacketColour(look, burgundyRecipe, "dinner");
+  assert.match(dinner.items?.find((i) => i.garment === "blazer")?.color ?? "", /burgundy/i);
+  const work = enforceRecipeJacketColour(look, burgundyRecipe, "work");
+  assert.match(work.items?.find((i) => i.garment === "blazer")?.color ?? "", /navy/i);
+  assert.doesNotMatch(work.description, /burgundy velvet blazer/i);
+});
+
+test("enforceRecipeJacketColour keeps plum on party statement, snaps it on work", () => {
+  const plumRecipe = {
+    hero: { name: "Plum", hex: "#7A6577", why: "" },
+    neutrals: [
+      { name: "Cool white", hex: "#F1F1EF", why: "" },
+      { name: "Navy grey", hex: "#2B3A4E", why: "" },
+    ] as [ColorRec, ColorRec],
+  };
+  const look = {
+    description: "Plum velvet blazer, white dress shirt, black trousers",
+    items: [
+      { garment: "blazer", color: "plum" },
+      { garment: "shirt", color: "white" },
+      { garment: "trousers", color: "black" },
+    ],
+  };
+  const party = enforceRecipeJacketColour(look, plumRecipe, "party", "statement");
+  assert.match(party.items?.find((i) => i.garment === "blazer")?.color ?? "", /plum/i);
+  const work = enforceRecipeJacketColour(look, plumRecipe, "work", "statement");
+  assert.match(work.items?.find((i) => i.garment === "blazer")?.color ?? "", /navy/i);
+});
+
 test("enforceRecipeBelt turns a spruce belt into the recipe's leather, leaves leather belts alone", () => {
   const recipe = { belt: { name: "Soft charcoal", hex: "#464b54", why: "" } };
   const look = {

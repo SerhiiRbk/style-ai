@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifySubseason, seasonForCorrectedUndertone, seasonFromColouring } from "./style-profile";
+import {
+  classifySubseason,
+  effectiveUndertone,
+  seasonForCorrectedUndertone,
+  seasonFromColouring,
+} from "./style-profile";
 
 test("deep colouring is Deep Autumn even when the chroma reads muted", () => {
   // Report f4b8e202: near-black hair, brown eyes, light skin — the old rule
@@ -60,4 +65,29 @@ test("seasonFromColouring: temperature + depth alone decide the family", () => {
   assert.equal(seasonFromColouring({ undertone: "warm", contrast: "low", hairColor: "light blonde", eyeColor: "blue" }), "spring");
   assert.equal(seasonFromColouring({ undertone: "cool", contrast: "high", hairColor: "black", eyeColor: "brown" }), "winter");
   assert.equal(seasonFromColouring({ undertone: "cool", contrast: "medium", hairColor: "dark blonde", eyeColor: "grey" }), "summer");
+});
+
+test("effectiveUndertone follows Cool Summer, not a stored neutral label", () => {
+  assert.equal(
+    effectiveUndertone({
+      colorSeason: "summer",
+      colorSubseason: "cool-summer",
+      physical: { undertone: "neutral" },
+    }),
+    "cool",
+  );
+  assert.equal(
+    effectiveUndertone({
+      colorSeason: "autumn",
+      colorSubseason: "soft-autumn",
+      physical: { undertone: "neutral" },
+    }),
+    "warm",
+  );
+  assert.equal(
+    effectiveUndertone({
+      physical: { undertone: "cool" },
+    }),
+    "cool",
+  );
 });

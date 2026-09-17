@@ -44,6 +44,7 @@ export function Footer() {
         <FooterCol
           title="Company"
           items={[
+            ["Trust", "/trust"],
             ["Privacy", "/privacy"],
             ["Terms", "/terms"],
             ["Sitemap", "/sitemap"],

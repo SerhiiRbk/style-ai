@@ -24,3 +24,13 @@ export function parseVerticalFormat(
 ): VerticalFormat | null {
   return value === "story" || value === "pin" || value === "feed" ? value : null;
 }
+
+export const COLOURS_SOCIAL_FORMATS = [
+  { format: "story" as const, label: "Stories · 9:16", filenameSuffix: "story" },
+  { format: "pin" as const, label: "Pinterest · 2:3", filenameSuffix: "pin" },
+  {
+    format: "feed" as const,
+    label: "Facebook / Instagram · 4:5",
+    filenameSuffix: "feed",
+  },
+] as const;

@@ -72,6 +72,8 @@ import {
   pickShoppingRolePair,
   trousersCloneShoes,
   capsuleImageDirectives,
+  isSportFashionTitle,
+  isOvershirtTitle,
   isCasualSummerShirtTitle,
   wantsOutdoorJeans,
   capsuleFrom,
@@ -897,6 +899,70 @@ test("formal looks keep dress shoes when the same derby is already used twice", 
   }
 });
 
+test("isOvershirtTitle: overshirt and shacket, not a blazer", () => {
+  assert.equal(isOvershirtTitle("ZARA Regular Fit Denim Overshirt"), true);
+  assert.equal(isOvershirtTitle("Marks & Spencer Shacket"), true);
+  assert.equal(isOvershirtTitle("Navy Tailored Blazer"), false);
+});
+
+test("isSportFashionTitle: sport blazer is out, sport coat is not", () => {
+  assert.equal(isSportFashionTitle("Reserved Sport Blazer"), true);
+  assert.equal(isSportFashionTitle("Zara Sport Jacket"), true);
+  assert.equal(isSportFashionTitle("Adidas Sports Polo"), true);
+  assert.equal(isSportFashionTitle("Reiss Wool Sport Coat"), false);
+  assert.equal(isSportFashionTitle("Reiss Wool Sports Coat"), false);
+  assert.equal(isSportFashionTitle("Navy unstructured blazer"), false);
+});
+
+test("capsule meeting looks do not wear a sport blazer", () => {
+  const shopping = [
+    item("Outerwear", "Reserved Sport Blazer", "#c3c3c3"),
+    item("Outerwear", "Navy tailored blazer", "#28324A"),
+    item("Shirts", "White oxford shirt", "#F5F5F5"),
+    item("Trousers", "Dark navy suit trousers", "#28324A"),
+    item("Footwear", "Black leather derbies", "#1a1a1a"),
+  ];
+  const combos = capsuleMatrix(
+    shopping,
+    testProfile({
+      goals: ["Look more professional"],
+      lifestyle: ["Office & remote"],
+    }),
+  );
+  const meeting = combos.filter(
+    (c) => c.context === "Client meeting" || c.context === "Boardroom",
+  );
+  assert.ok(
+    meeting.length,
+    `missing meeting look: ${combos.map((c) => c.context).join(", ")}`,
+  );
+  for (const look of meeting) {
+    assert.equal(
+      look.pieces.some((p) => /sport blazer/i.test(p)),
+      false,
+      `${look.context} wore sport: ${look.pieces.join(" + ")}`,
+    );
+    assert.ok(
+      look.pieces.some((p) => /navy tailored blazer/i.test(p)),
+      `${look.context} should take the tailored blazer: ${look.pieces.join(" + ")}`,
+    );
+  }
+});
+
+test("pickHero will not invest-label a cheap jacket when the budget is high", () => {
+  const shopping = [
+    item("Outerwear", "Valmonti Textured Notch Lapel Relaxed Tailored Blazer", "#28324A"),
+    item("Trousers", "Marks & Spencer Tailored Fit Pure Wool Twill Suit Trousers", "#36393b"),
+    item("Footwear", "Dark brown leather oxfords", "#4A3526"),
+  ];
+  shopping[0]!.priceEur = 59;
+  shopping[1]!.priceEur = 120;
+  shopping[2]!.priceEur = 140;
+  const hero = pickHero(shopping, "experimental", { budgetMaxEur: 3000 });
+  assert.ok(hero, "expected a hero");
+  assert.doesNotMatch(hero!.title, /valmonti/i);
+});
+
 test("pickHero prefers a tailored jacket over a technical windbreaker", () => {
   const shopping = [
     item("Outerwear", "Navy technical windbreaker", "#28324A"),
@@ -1550,6 +1616,21 @@ test("capsuleColorWord calls olive olive, not yellow", () => {
   assert.equal(capsuleColorWord("Double Pleat Trousers", "#6B6B47"), "olive");
 });
 
+test("capsuleImageDirectives forbid bomber cuffs on a blazer", () => {
+  const d = capsuleImageDirectives([
+    "Valmonti Men’s Textured Notch Lapel Relaxed Tailored Blazer",
+    "Zara Regular Fit Oxford Shirt",
+    "Navy trousers",
+  ]);
+  assert.match(d, /open sleeve cuff|straight open/i);
+  assert.match(d, /never elastic/i);
+  const coatOnly = capsuleImageDirectives([
+    "Reserved Wool Coat",
+    "Grey trousers",
+  ]);
+  assert.doesNotMatch(coatOnly, /open sleeve cuff|elastic/i);
+});
+
 test("capsuleImageDirectives forbid copying knit elbow patches onto a jacket", () => {
   const d = capsuleImageDirectives([
     "Grey tweed jacket",
@@ -1658,6 +1739,60 @@ test("capsule matrix skips assumed jeans when shopping has no denim", () => {
   );
 });
 
+test("on stage does not clone a jacket-free client meeting", () => {
+  const shopping = [
+    item("Outerwear", "Reserved Sport Blazer", "#c3c3c3"),
+    item("Outerwear", "Reserved Shacket With Collar", "#c3c3c3"),
+    item("Trousers", "Check Suit Trousers", "#28324a"),
+    item("Trousers", "Slim Fit Chinos", "#c3c3c3"),
+    item("Shirts", "White oxford shirt", "#ffffff"),
+    item("Shirts", "Dusty rose cotton shirt", "#c99ba0"),
+    item("Knitwear", "Navy knit cardigan", "#28324a"),
+    item("Footwear", "Leather derby shoes", "#6f4e37"),
+    item("Footwear", "Suede tassel loafers", "#2c6e6a"),
+    item("Footwear", "Grey leather sneakers", "#8b8b8b"),
+    item("Accessories", "Leather belt", "#4a2f23"),
+  ];
+  const combos = capsuleMatrix(
+    shopping,
+    testProfile({
+      goals: ["Dating & social", "Look younger / fresher"],
+      lifestyle: ["Public speaking", "Socialite"],
+      boldness: "statement",
+    }),
+  );
+  const onStage = combos.find((c) => c.context === "On stage");
+  const meeting = combos.find((c) => c.context === "Client meeting");
+  const dump = combos.map((c) => `${c.context}: ${c.pieces.join(" + ")}`).join(" | ");
+  assert.ok(onStage && meeting, `missing looks: ${dump}`);
+  const coreOf = (pieces: string[]) => {
+    const bottom = pieces.find((p) => isBottomTitle(p)) ?? "";
+    const top =
+      pieces.find(
+        (p) =>
+          !isBottomTitle(p) &&
+          !isShoeTitle(p) &&
+          !isBeltTitle(p) &&
+          !/\b(blazer|shacket|jacket|coat)\b/i.test(p),
+      ) ?? "";
+    return `${top}|${bottom}`.toLowerCase();
+  };
+  assert.notEqual(
+    coreOf(onStage!.pieces),
+    coreOf(meeting!.pieces),
+    `On stage cloned Client meeting (same top + trousers): ${dump}`,
+  );
+  assert.ok(
+    onStage!.pieces.some((p) => /cardigan|knit/i.test(p)),
+    `On stage should keep the knit, not steal the meeting shirt: ${dump}`,
+  );
+  assert.equal(
+    meeting!.pieces.some((p) => /sport blazer/i.test(p)),
+    false,
+    `meeting wore sport fashion: ${dump}`,
+  );
+});
+
 test("on stage keeps a lighter top against navy trousers", () => {
   const shopping = [
     item("Outerwear", "Grey tweed jacket", "#8B8B8B"),
@@ -1670,13 +1805,17 @@ test("on stage keeps a lighter top against navy trousers", () => {
   const combos = capsuleMatrix(shopping, varietyProfile());
   const onStage = combos.find((c) => c.context === "On stage");
   assert.ok(onStage, "expected On stage");
+  const onStageDump = onStage!.pieces.join(" + ");
   assert.ok(
-    onStage!.pieces.some((p) => /oxford|shirt/i.test(p)),
-    `On stage should contrast at the face: ${onStage!.pieces.join(" + ")}`,
+    onStage!.pieces.some((p) => /chino|oxford|shirt/i.test(p)),
+    `On stage should break the navy column: ${onStageDump}`,
+  );
+  const navyPieces = onStage!.pieces.filter(
+    (p) => /navy/i.test(p) && !isShoeTitle(p),
   );
   assert.ok(
-    !onStage!.pieces.every((p) => /navy/i.test(p) || isShoeTitle(p) === false && /navy/i.test(p)),
-    `On stage still a navy column: ${onStage!.pieces.join(" + ")}`,
+    navyPieces.length < 2,
+    `On stage still a navy column: ${onStageDump}`,
   );
 });
 
@@ -2007,6 +2146,31 @@ test("messenger titles do not match a crossbody bag", () => {
   );
   assert.equal(
     garmentTitleMatchScore("messenger", "Zara Leather Messenger Bag"),
+    1,
+  );
+});
+
+test("sport coat is a blazer slot, not a winter coat", () => {
+  assert.equal(
+    lookGarmentsFromItems([{ garment: "sport coat", color: "navy" }])[0]?.garment,
+    "sport coat",
+  );
+  const fromProse = decomposeLook(
+    "Navy sport coat, soft-charcoal wool trousers, muted-navy loafers",
+  );
+  assert.equal(fromProse[0]?.garment, "sport coat");
+  assert.equal(garmentTitleMatchScore("sport coat", "Reserved Wool Coat"), 0);
+  assert.equal(garmentTitleMatchScore("sport coat", "Zara Slim Fit Blazer"), 1);
+  assert.equal(garmentTitleMatchScore("sport coat", "Reiss Wool Sport Coat"), 1);
+});
+
+test("brogues accept a derby or oxford lace-up", () => {
+  assert.equal(
+    garmentTitleMatchScore("brogues", "Valmonti Suede-Look Derby Shoes"),
+    1,
+  );
+  assert.equal(
+    garmentTitleMatchScore("brogues", "Valmonti Leather Derby Shoes"),
     1,
   );
 });
@@ -2779,8 +2943,63 @@ test("capsuleColumnBlends with the palette: same-value neutrals of different fam
   assert.equal(capsuleColumnBlends("Soft teal crewneck", "Greige chinos", colors, REPORT_BEST_PALETTE), false);
   // A true white shirt over stone chinos is a classic, never a mush.
   assert.equal(capsuleColumnBlends("White oxford shirt", "Greige chinos", colors, REPORT_BEST_PALETTE), false);
+  // White + white / ivory is a high-key column — the white exemption must not
+  // cover both sides being pale (f369 On camera: COS oxford + Zara white chino).
+  const paleColors = new Map([
+    ...colors,
+    ["White chino trousers", "#ffffff"],
+    ["Ivory pleated chinos", "#f3eadc"],
+  ]);
+  assert.equal(
+    capsuleColumnBlends("White oxford shirt", "White chino trousers", paleColors, REPORT_BEST_PALETTE),
+    true,
+  );
+  assert.equal(
+    capsuleColumnBlends("White oxford shirt", "Ivory pleated chinos", paleColors, REPORT_BEST_PALETTE),
+    true,
+  );
+  assert.equal(
+    capsuleColumnBlends("White oxford shirt", "White chino trousers", paleColors),
+    true,
+  );
   // Dark on dark is a deliberate column.
   assert.equal(capsuleColumnBlends("Soft charcoal crewneck", "Muted navy trousers", colors, REPORT_BEST_PALETTE), false);
+});
+
+test("capsule matrix: On camera does not pair a white shirt with white trousers (f369)", () => {
+  const shopping = [
+    { ...item("Outerwear", "Navy tailored blazer", "#28324a"), priceEur: 60 },
+    { ...item("Trousers", "Charcoal wool trousers", "#36393b"), priceEur: 120 },
+    { ...item("Trousers", "Zara Wide-Leg Pleated Chino Trousers", "#ffffff"), priceEur: 50 },
+    { ...item("Shirts", "COS Oxford Button-Down Shirt", "#ffffff"), priceEur: 45 },
+    { ...item("Shirts", "Grey striped shirt", "#8b8b8b"), priceEur: 40 },
+    { ...item("Knitwear", "Mauve quarter-zip knit", "#7a6577"), priceEur: 40 },
+    { ...item("Footwear", "Brown leather derbies", "#6f4e37"), priceEur: 66 },
+    { ...item("Footwear", "Navy leather loafers", "#28324a"), priceEur: 130 },
+    { ...item("Accessories", "Dark brown leather belt", "#4a2f23"), priceEur: 20 },
+  ];
+  const combos = capsuleMatrix(
+    shopping,
+    testProfile({
+      goals: ["Look younger / fresher"],
+      lifestyle: ["Public speaking", "Creator / blog"],
+      boldness: "experimental",
+    }),
+    REPORT_BEST_PALETTE,
+  );
+  const dump = combos.map((c) => `${c.context}: ${c.pieces.join(" + ")}`).join(" | ");
+  for (const c of combos) {
+    const whiteShirt = c.pieces.some((p) => /Oxford Button-Down/i.test(p));
+    const whiteChino = c.pieces.some((p) => /Wide-Leg Pleated Chino/i.test(p));
+    assert.ok(
+      !(whiteShirt && whiteChino),
+      `high-key column (${c.context}): ${dump}`,
+    );
+  }
+  assert.ok(
+    combos.some((c) => c.context === "On camera"),
+    `expected an On camera slot: ${dump}`,
+  );
 });
 
 test("isDarkAnchorPiece with the palette: a piece on the anchor swatch counts even above the fixed cut", () => {

@@ -206,3 +206,69 @@ ${p(
     text: `You still have ${opts.balance} credit(s) on your Valetti account.\n\nUse them: ${opts.ctaUrl}\n\nUnsubscribe: ${opts.unsubscribeUrl}`,
   };
 }
+
+/** Day 0 — what 6 credits buy, and why Lookbook is the next step. */
+export function welcomeEmail(opts: {
+  ctaUrl: string;
+  lookbookUrl: string;
+}): EmailContent {
+  const bodyHtml = `
+${h1("Your 6 credits are ready")}
+${p("A new Valetti account starts with 6 credits. That covers a Starter Report (5) and one try-on on your photo (1). The report reads your colours and shows one look — it is not a Lookbook.")}
+${p("Lookbook is the paid step: six looks on you, a capsule, and a shopping list. Start with Starter so you can see the quality on your own face.")}
+<div style="margin:20px 0 8px;">${button(opts.ctaUrl, "Create my Starter Report")}</div>
+<p style="margin:16px 0 0;font-size:13px;line-height:1.6;color:${C.stone};"><a href="${opts.lookbookUrl}" style="color:${C.stone};">See Lookbook and Premium →</a></p>
+`;
+  return {
+    subject: "Your 6 Valetti credits — Starter Report plus one try-on",
+    html: layout({
+      preheader: "6 credits: Starter Report + one try-on. Lookbook is paid.",
+      bodyHtml,
+    }),
+    text: `Your 6 credits are ready.\n\nStarter Report uses 5 credits. One try-on uses 1. Lookbook is paid.\n\nCreate your Starter Report: ${opts.ctaUrl}\nPricing: ${opts.lookbookUrl}`,
+  };
+}
+
+/** Photo exists, no finished report — two minutes left. */
+export function abandonedIntakeEmail(opts: {
+  ctaUrl: string;
+  unsubscribeUrl: string;
+}): EmailContent {
+  const bodyHtml = `
+${h1("Two minutes left")}
+${p("You already uploaded a photo. The Starter Report still needs the short intake — then Carlo can put your colours on you.")}
+${p("Your credits are waiting. Nothing is charged until the report is generated.")}
+<div style="margin:20px 0 8px;">${button(opts.ctaUrl, "Finish my report")}</div>
+`;
+  return {
+    subject: "Your Valetti report — two minutes left",
+    html: layout({
+      preheader: "You uploaded a photo. Finish the intake to get your report.",
+      bodyHtml,
+      unsubscribeUrl: opts.unsubscribeUrl,
+    }),
+    text: `Two minutes left. You uploaded a photo — finish the intake to get your report.\n\n${opts.ctaUrl}\n\nUnsubscribe: ${opts.unsubscribeUrl}`,
+  };
+}
+
+/** Day 3 after a ready report — three looks and try-on. */
+export function day3AfterReportEmail(opts: {
+  reportUrl: string;
+  unsubscribeUrl: string;
+}): EmailContent {
+  const bodyHtml = `
+${h1("Try three looks on you")}
+${p("Your report has been waiting. Open it, pick three looks, and spend the leftover credit on a try-on — that is what the 6-credit start is for.")}
+${p("If a look feels right, Lookbook adds the rest of the wardrobe and a shopping list.")}
+<div style="margin:20px 0 8px;">${button(opts.reportUrl, "Open my report")}</div>
+`;
+  return {
+    subject: "Three looks from your Valetti report",
+    html: layout({
+      preheader: "Open your report and try a look on your photo.",
+      bodyHtml,
+      unsubscribeUrl: opts.unsubscribeUrl,
+    }),
+    text: `Try three looks on you. Open your report and use the leftover credit on a try-on.\n\n${opts.reportUrl}\n\nUnsubscribe: ${opts.unsubscribeUrl}`,
+  };
+}

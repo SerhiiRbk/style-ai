@@ -14,3 +14,9 @@
  * `as boolean` keeps the paused-state code paths reachable for type-checking.
  */
 export const COLOURS_ENABLED = true as boolean;
+
+/**
+ * Launch boundary: /colours is diagnosis only. Shop, looks and PDF stay
+ * behind /start. Flip to re-enable the anonymous shop block.
+ */
+export const COLOURS_FREE_SHOWS_SHOP = false as boolean;

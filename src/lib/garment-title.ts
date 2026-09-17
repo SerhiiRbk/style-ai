@@ -60,6 +60,21 @@ export const CASUAL_OUTERWEAR_RE =
   /\b(field jacket|hood(?:ed|ie)?|bomber|parka|anorak|gilet|puffer|windbreaker|shacket|denim jacket|track(?:suit| jacket)?|cagoule|fleece)\b/i;
 
 /**
+ * Athleisure "sport" in a catalogue title. The tailored synonym "sport coat"
+ * is stripped first so a real sport coat still belongs in work / meetings.
+ */
+export function isSportFashionTitle(title: string): boolean {
+  const hay = title.toLowerCase().replace(/[\u2010-\u2015]/g, "-");
+  const withoutCoat = hay.replace(/\bsports?[\s-]*coats?\b/g, " ");
+  return /\bsports?\b/.test(withoutCoat);
+}
+
+/** Catalogue overshirt / shacket / shirt jacket — not a tailored blazer. */
+export function isOvershirtTitle(title: string): boolean {
+  return /\b(overshirts?|shackets?|shirt\s+jackets?)\b/i.test(title);
+}
+
+/**
  * Soft / athleisure outerwear that must not fill a tailored blazer slot.
  * "Sport coat" stays allowed (classic synonym); "sport blazer" is usually a
  * stretch jersey zip piece and is excluded.

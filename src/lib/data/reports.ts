@@ -20,6 +20,7 @@ import {
   sendReportReadyEmail,
   // sendReportFailedEmail, // PAUSED: "generation failed" email is disabled.
 } from "@/lib/email/send";
+import { logEvent } from "@/lib/events";
 import {
   parseGarmentsJson,
   type SavedOutfitTryOn,
@@ -884,6 +885,11 @@ async function notifyReportReady(
       .select("id, headline")
       .maybeSingle();
     if (!claimed) return; // already sent by another run
+    await logEvent({
+      name: "report_ready",
+      userId,
+      props: { report_id: reportId },
+    });
     const ok = await sendReportReadyEmail(email, {
       reportId,
       headline: (claimed.headline as string | null) ?? null,

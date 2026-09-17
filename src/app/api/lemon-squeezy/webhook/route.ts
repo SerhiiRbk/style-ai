@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { hasLemonSqueezy, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { grantCreditsExternal } from "@/lib/credits";
+import { logEvent } from "@/lib/events";
 import { captureError, captureWarning } from "@/lib/observability";
 import {
   verifyLemonWebhookSignature,
@@ -89,6 +90,11 @@ export async function POST(request: Request) {
       amount: credits,
       reason: "purchase",
       refExt: `ls_${orderId}`,
+    });
+    await logEvent({
+      name: "credits_purchased",
+      userId,
+      props: { credits, provider: "lemon_squeezy", ref_ext: `ls_${orderId}` },
     });
     return NextResponse.json({ received: true, granted: credits, balance });
   } catch (e) {

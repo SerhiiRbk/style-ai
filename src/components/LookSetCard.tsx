@@ -10,7 +10,6 @@ import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
 import { useCredits } from "@/components/CreditsContext";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
 import type { ShoppingItem } from "@/lib/report";
-import type { LookSlotLike } from "@/lib/look-wanted";
 import type { Currency } from "@/lib/currency";
 import type { StoredLookEstimate } from "@/lib/look-estimate";
 
@@ -29,7 +28,6 @@ export function LookSetCard({
   imageSrc: initialImage,
   imageTqSrc: initialImageTq,
   items: initialItems,
-  lookItems,
   isOwner,
   canRevert: canRevertInitial = false,
   initialEstimate = null,
@@ -44,8 +42,6 @@ export function LookSetCard({
   imageSrc: string;
   imageTqSrc?: string | null;
   items: ShoppingItem[];
-  /** Structured garment slots of the look (names unmatched pieces in Shop the Look). */
-  lookItems?: LookSlotLike[] | null;
   isOwner: boolean;
   /** True when this look was rebuilt and Carlo's original is stored. */
   canRevert?: boolean;
@@ -340,7 +336,6 @@ export function LookSetCard({
       <LookShopAndTryOn
         key={`${lookIndex}-${description}`}
         items={items}
-        lookItems={lookItems}
         currency={currency}
         canTryOn={isOwner}
         setId={isOwner ? setId : undefined}

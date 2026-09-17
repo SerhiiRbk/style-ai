@@ -39,9 +39,9 @@ export function WelcomeScreen({
           {name ? `Welcome, ${name}` : `Welcome to ${BRAND.name}`}
         </h1>
         <p className="mt-4 max-w-lg text-base leading-relaxed text-stone">
-          Your private style atelier is ready. Choose how you&apos;d like to
-          begin — most people start with a Starter Report using their welcome
-          credits.
+          Six credits cover a Starter Report and one try-on on your photo.
+          Lookbook — six looks, capsule and shopping list — is paid. Most
+          people start with Starter.
         </p>
 
         <div className="mt-8 inline-flex items-center gap-3 rounded-full border border-brass/30 bg-brass/5 px-5 py-3">

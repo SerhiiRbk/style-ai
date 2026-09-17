@@ -79,7 +79,6 @@ export default async function LookSetPage({
               look.imagePathTq ? signedAssetProxyUrl(look.imagePathTq) : null
             }
             items={set.lookItems?.[look.idx] ?? []}
-            lookItems={look.items}
             isOwner={isOwner}
             canRevert={lookDiffersFromOriginal(
               {

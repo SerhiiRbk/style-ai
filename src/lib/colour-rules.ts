@@ -325,6 +325,9 @@ const SHADE_WORDS: Record<string, Shade> = {
   dark: "dark", deep: "dark",
 };
 
+/** Fashion "soft charcoal" is desaturated dark grey, not light grey. */
+const SATURATION_ONLY_MODS = new Set(["soft", "muted", "dusty"]);
+
 /** Colour words used to qualify a garment query (not garments themselves). */
 export const COLOR_WORDS = new Set<string>([
   ...Object.keys(COLOR_FAMILY),
@@ -385,6 +388,7 @@ function parseColorTokens(text: string): { families: Set<string>; shade?: Shade 
   const families = new Set<string>();
   let hueShade: Shade | undefined; // lightness implied by a hue word (e.g. navy → dark)
   let modShade: Shade | undefined; // explicit modifier (e.g. soft/light/deep)
+  let satOnly = false;
   for (const w of normalizeCompoundColors(text.toLowerCase())
     .split(/\s+/)
     .filter(Boolean)) {
@@ -394,7 +398,10 @@ function parseColorTokens(text: string): { families: Set<string>; shade?: Shade 
       if (fam.shade) hueShade = fam.shade;
     }
     const mod = SHADE_WORDS[w];
-    if (mod) modShade = mod;
+    if (mod) {
+      modShade = mod;
+      satOnly = SATURATION_ONLY_MODS.has(w);
+    }
   }
   // Catalogue often stores only a hex ("#FFFFFF") — infer a family so white
   // does not score as a neutral 0.5 against teal / sage.
@@ -417,9 +424,11 @@ function parseColorTokens(text: string): { families: Set<string>; shade?: Shade 
       }
     }
   }
-  // An explicit lightness word always wins, regardless of token order, so
-  // "soft slate blue" reads light even though "slate" alone implies dark.
-  return { families, shade: modShade ?? hueShade };
+  // "light" / "pale" still win. "soft" / "muted" / "dusty" only change
+  // saturation — soft charcoal stays dark, muted navy stays navy.
+  const shade =
+    satOnly && hueShade ? hueShade : (modShade ?? hueShade);
+  return { families, shade };
 }
 
 /** Hue families named in free text (product colour, title, or look clause). */
@@ -1103,28 +1112,141 @@ export function colorMatchScore(
   return word;
 }
 
-/** A named look slot may only take a catalogue row at this colour-fit or above. */
+/** A named look slot may only take a neighbour-family row at this fit or above. */
 export const SLOT_COLOUR_MIN = 0.7;
 
 /**
+ * Same hue family (charcoal↔grey, navy↔slate-blue) may fill even when the
+ * shade is a step off. Neighbours still need {@link SLOT_COLOUR_MIN} so
+ * oatmeal cannot stand in for cool-white.
+ */
+export const SAME_FAMILY_SLOT_MIN = 0.3;
+
+function colourFamiliesOverlap(
+  query: string,
+  productColor: string | null | undefined,
+  title: string,
+): boolean {
+  const q = colorFamilies(query);
+  const p = colorFamilies(`${productColor ?? ""} ${title}`);
+  for (const f of q) {
+    if (p.has(f)) return true;
+  }
+  // Greige is grey-beige: a dove/grey bag or coat may fill, navy may not.
+  if (/\bgreige\b/i.test(query) && p.has("grey") && !p.has("blue") && !p.has("black")) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Empty slot beats a wrong colour: a cool-white shirt must not become oatmeal.
+ * Same-family neutrals (grey for charcoal, navy for slate-blue) fill the shop.
  * No colour cue → anything is admitted (the slot has no colour opinion).
  */
 export function slotColourAdmitted(
   slotColor: string | null | undefined,
   title: string,
-  opts?: { productColor?: string | null; productHex?: string | null; clause?: string | null },
+  opts?: {
+    productColor?: string | null;
+    productHex?: string | null;
+    clause?: string | null;
+    category?: string | null;
+  },
 ): boolean {
   const cue = lookColorCue(slotColor, opts?.clause);
   if (!cue) return true;
-  // No swatch and no colour in the feed: a word in the title ("Cario Grey")
-  // is not evidence of colour. The slot stays empty rather than take it.
-  if (isUnknownSwatchHex(opts?.productHex) && !opts?.productColor?.trim()) return false;
-  return (
-    colorMatchScore(cue, opts?.productColor ?? null, title, {
-      productHex: opts?.productHex,
-    }) >= SLOT_COLOUR_MIN
-  );
+  const knownHex = isUnknownSwatchHex(opts?.productHex)
+    ? undefined
+    : opts?.productHex;
+  if (
+    knownHex === undefined &&
+    !opts?.productColor?.trim() &&
+    colorFamilies(title).size === 0
+  ) {
+    return false;
+  }
+  if (classicLeatherFillsFashionNeutral(cue, title, knownHex ?? undefined, opts?.category)) {
+    return true;
+  }
+  if (opts?.category === "Shirts" && lookAsksCharcoal(cue)) {
+    const productText = `${opts.productColor ?? ""} ${title}`;
+    const fams = colorFamilies(productText);
+    const hexFam = knownHex ? familyFromHex(knownHex) : null;
+    if (hexFam) fams.add(hexFam);
+    if (fams.has("blue") && !fams.has("grey")) return false;
+    if (knownHex) {
+      if (hexToHsl(knownHex).l > 0.48) return false;
+    } else if (colorShade(productText) === "light") {
+      return false;
+    }
+  }
+  if (pastelStandsInForDusty(cue, title, opts?.productColor, knownHex ?? undefined)) {
+    return false;
+  }
+  const score = colorMatchScore(cue, opts?.productColor ?? null, title, {
+    productHex: knownHex,
+  });
+  if (colourFamiliesOverlap(cue, opts?.productColor, title)) {
+    return score >= SAME_FAMILY_SLOT_MIN;
+  }
+  return score >= SLOT_COLOUR_MIN;
+}
+
+const DUSTY_CUE_RE = /\b(dusty|muted|mauve|plum|cool[- ]?rose)\b/i;
+const CHROMATIC_CUE_FAMILIES = new Set(["blue", "pink", "purple", "red", "green"]);
+
+/** Sky blue / candy pink / lilac must not fill a dusty-blue / cool-rose / mauve slot. */
+function pastelStandsInForDusty(
+  cue: string,
+  title: string,
+  productColor?: string | null,
+  productHex?: string,
+): boolean {
+  const chromatic = [...colorFamilies(cue)].some((f) => CHROMATIC_CUE_FAMILIES.has(f));
+  if (!chromatic) return false;
+  const qHex = namedColorHex(cue);
+  const pHex = parseHexColor(productHex) ?? namedColorHex(productColor ?? null);
+  if (qHex && pHex) {
+    const q = hexToHsl(qHex);
+    const p = hexToHsl(pHex);
+    if (p.l > q.l + 0.16 && p.l >= 0.55) return true;
+    if (p.s > q.s + 0.22 && p.l >= 0.5) return true;
+  }
+  const productText = `${productColor ?? ""} ${title}`;
+  if (DUSTY_CUE_RE.test(cue) && isCoolPastelNearFace(productText, productHex)) {
+    return true;
+  }
+  // Placeholder swatch + "white blue" in the title is not dusty-blue.
+  if (
+    DUSTY_CUE_RE.test(cue) &&
+    colorFamilies(cue).has("blue") &&
+    /\bwhite\b/i.test(productText)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Fashion-neutral leather slots may take black or brown dress leather. */
+function classicLeatherFillsFashionNeutral(
+  cue: string,
+  title: string,
+  hex: string | undefined,
+  category?: string | null,
+): boolean {
+  const isBelt = /\bbelts?\b/i.test(title);
+  const leatherSlot =
+    category === "Footwear" ||
+    isBelt ||
+    (category === "Accessories" &&
+      /\b(briefcase|messenger|satchel|tote|shopper)\b/i.test(title));
+  if (!leatherSlot) return false;
+  if (!isClassicLeatherColour(`${title} ${cue}`, hex)) return false;
+  const fams = colorFamilies(cue);
+  if (fams.has("grey") || /\bgreige\b/i.test(cue)) return true;
+  // Navy / slate belts: etiquette dress leather, not a seasonal ban.
+  return isBelt && (fams.has("blue") || /\b(navy|slate)\b/i.test(cue));
 }
 
 /** Highest colour-fit of a product against the client's BEST swatches (0–1). */
@@ -1191,12 +1313,52 @@ export function isPinkFamilyName(name: string): boolean {
 }
 
 /**
- * A blazer or sport coat in this colour is something a man can actually buy.
- * Dusty-blue and spruce exist; mauve and lilac almost never do.
+ * Buyable blazer / sport-coat colours. A check is a pattern, not a colour —
+ * navy check passes, teal check does not. Burgundy is dinner / party / formal
+ * / wedding only; omitted occasion leaves it on (image sanitiser / capsule).
+ * Plum / aubergine is party × statement or experimental only — not soft plum.
  */
-export function isTailoredJacketSafeName(name: string): boolean {
-  if (isPinkFamilyName(name)) return false;
-  return !/\b(yellow|mustard|gold)\b/i.test(name);
+const JACKET_FASHION_HUE_RE =
+  /\b(teal|turquoise|sage|mint|yellow|mustard|gold)\b/i;
+
+const JACKET_LIGHT_BLUE_RE =
+  /\b(powder|baby|ice|icy|sky|pale|light)[\s-]+blue\b/i;
+
+const JACKET_SAFE_COLOUR_RE =
+  /\b(navy|charcoal|grey|gray|black|slate|ink|midnight|indigo|denim|greige|taupe|steel[\s-]?blue|dusty[\s-]?blue|mid[\s-]?blue|blue|camel|stone|beige|sand|khaki|cream|ivory|white|off[\s-]?white|brown|tobacco|tan|chocolate|espresso|olive|spruce|hunter|forest)\b/i;
+
+const JACKET_RED_RE = /\b(burgundy|oxblood|wine|bordeaux|cordovan)\b/i;
+
+const JACKET_RED_OCCASIONS = new Set([
+  "dinner",
+  "party",
+  "formal",
+  "wedding_guest",
+]);
+
+const JACKET_PLUM_RE = /\b(plum|aubergine|eggplant)\b/i;
+const JACKET_SOFT_PLUM_RE = /\bsoft[\s-]?plum\b/i;
+const JACKET_PLUM_BOLDNESS = new Set(["statement", "experimental"]);
+
+export function isTailoredJacketSafeName(
+  name: string,
+  occasionId?: string | null,
+  boldness?: string | null,
+): boolean {
+  const text = name.trim();
+  if (!text) return false;
+  if (isPinkFamilyName(text)) return false;
+  if (JACKET_FASHION_HUE_RE.test(text)) return false;
+  if (JACKET_LIGHT_BLUE_RE.test(text)) return false;
+  if (JACKET_SOFT_PLUM_RE.test(text)) return false;
+  if (JACKET_PLUM_RE.test(text)) {
+    return occasionId === "party" && JACKET_PLUM_BOLDNESS.has(boldness ?? "");
+  }
+  if (JACKET_RED_RE.test(text)) {
+    if (!occasionId) return true;
+    return JACKET_RED_OCCASIONS.has(occasionId);
+  }
+  return JACKET_SAFE_COLOUR_RE.test(text);
 }
 
 /** Men's overcoat colours: navy, charcoal, camel, stone, greige — never a hero. */

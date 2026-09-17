@@ -504,7 +504,7 @@ export type LookGarment = {
 
 /** Garment keyword → catalogue CATEGORY. Mirrors catalog.ts CATEGORIES. */
 const GARMENT_CATEGORY: Record<string, string> = {
-  blazer: "Outerwear", jacket: "Outerwear", coat: "Outerwear", overcoat: "Outerwear",
+  blazer: "Outerwear", "sport coat": "Outerwear", jacket: "Outerwear", coat: "Outerwear", overcoat: "Outerwear",
   overshirt: "Outerwear", trench: "Outerwear", parka: "Outerwear", bomber: "Outerwear",
   peacoat: "Outerwear", suit: "Outerwear",
   sweater: "Knitwear", hoodie: "Knitwear", vest: "Knitwear", shacket: "Outerwear",
@@ -584,6 +584,7 @@ const HIGH_NECK_TERMS = [
 const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   // No bare "jacket" — knit/zip/sport jackets were scoring as full blazer hits.
   blazer: ["blazer", "sport coat"],
+  "sport coat": ["blazer", "sport coat"],
   jacket: ["jacket", "blazer"],
   coat: ["coat", "overcoat"],
   overshirt: ["overshirt", "shacket", "shirt jacket"],
@@ -620,10 +621,10 @@ const GARMENT_TITLE_SYNONYMS: Record<string, string[]> = {
   derbies: ["derby", "derbies", "oxford", "oxfords"],
   derby: ["derby", "derbies", "oxford", "oxfords"],
   oxfords: ["oxford", "oxfords", "derby", "derbies"],
-  brogues: ["brogue", "brogues"],
+  brogues: ["brogue", "brogues", "derby", "derbies", "oxford", "oxfords"],
   belt: ["belt"],
-  tote: ["tote", "tote bag"],
-  "tote bag": ["tote", "tote bag"],
+  tote: ["tote", "tote bag", "shopper"],
+  "tote bag": ["tote", "tote bag", "shopper"],
   messenger: ["messenger", "satchel"],
   "messenger bag": ["messenger", "satchel"],
   briefcase: ["briefcase"],
@@ -1018,7 +1019,7 @@ function preferProseFootwear(
 function slotKind(g: LookGarment): string {
   if (g.category === "Footwear") return footwearKind(g.garment);
   const raw = g.garment.toLowerCase();
-  if (/\bblazer\b/.test(raw)) return "blazer";
+  if (/\bblazer\b/.test(raw) || /\bsport\s*coats?\b/.test(raw)) return "blazer";
   if (/\b(jacket|coat|trench)\b/.test(raw)) return "jacket";
   return raw.replace(/^(linen|cotton|wool|suede|leather|woven)\s+/, "").trim();
 }
@@ -1062,9 +1063,12 @@ export function priceOutlierThreshold(otherPrices: number[]): number {
   return Math.max(median * PRICE_OUTLIER_FACTOR, PRICE_OUTLIER_MIN_EUR);
 }
 
+/** Structured look shop: enough for jacket + shirt + trousers + shoes + belt + bag + square. */
+export const LOOK_SHOP_MAX_SLOTS = 8;
+
 export function selectLookGarmentSlots(
   garments: LookGarment[],
-  max = 6,
+  max = LOOK_SHOP_MAX_SLOTS,
 ): LookGarment[] {
   const hasJacket = garments.some(
     (g) =>
@@ -1251,7 +1255,11 @@ export function pickShoppingRolePair(
 /** True when the target garment is a tailored blazer / sport coat. */
 export function isBlazerGarment(garment: string): boolean {
   const key = normalizeGarmentKey(garment);
-  return key === "blazer" || /\b(blazer|sport\s*coat)\b/.test(garment.toLowerCase());
+  return (
+    key === "blazer" ||
+    key === "sport coat" ||
+    /\b(blazer|sport\s*coat)\b/.test(garment.toLowerCase())
+  );
 }
 
 /** True when the look clause asks for drawstring / elasticated trousers. */

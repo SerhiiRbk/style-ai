@@ -77,6 +77,11 @@ import {
   type LookPromptParts,
 } from "@/lib/ai/look-prompt";
 import {
+  faceReattachRole,
+  shouldReattachFacePortrait,
+} from "@/lib/ai/identity-refs";
+import { bodyTypeLock, bodyTypeSubjectClause } from "@/lib/ai/body-lock";
+import {
   blazerTypePromptDirective,
   eyewearPromptDirective,
   fabricPromptDirective,
@@ -839,7 +844,11 @@ export async function recommend(
   // model ignored the colour instruction above.
   output.looks = (output.looks ?? []).map((l, i) => {
     const occasionId = lookOccasionIdFromContext(l.context) ?? plan[i]?.id ?? null;
-    let description = sanitizeLookDescription(l.description ?? "", occasionId);
+    let description = sanitizeLookDescription(
+      l.description ?? "",
+      occasionId,
+      intake.boldness,
+    );
     let items = l.items;
     // Work / formal looks wear the recipe's dress leather — the model's greige
     // oxfords under charcoal trousers are snapped back to it (no retry budget
@@ -852,6 +861,8 @@ export async function recommend(
           recipe,
         ),
         recipe,
+        occasionId,
+        intake.boldness,
       );
       description = fixed.description ?? description;
       items = fixed.items ?? undefined;
@@ -1057,7 +1068,13 @@ export async function generateExtraLook(opts: {
   // The belt is leather, never a colour: a spruce belt under spruce loafers is
   // the model ignoring the recipe's belt line.
   if (colorRecipe) output = enforceRecipeBelt(output, colorRecipe);
-  if (colorRecipe) output = enforceRecipeJacketColour(output, colorRecipe);
+  if (colorRecipe)
+    output = enforceRecipeJacketColour(
+      output,
+      colorRecipe,
+      occasionId,
+      boldness ?? intake.boldness,
+    );
 
   // Guarantee the returned palette is on-report even if the model drifted; the
   // look image is prompted from this palette. A set recipe wins over the model.
@@ -1068,6 +1085,7 @@ export async function generateExtraLook(opts: {
   const description = sanitizeLookDescription(
     output.description ?? "",
     occasionId,
+    boldness ?? intake.boldness,
   );
   return {
     ...output,
@@ -1133,8 +1151,8 @@ function catalogImageScopeNote(g: {
 }): string {
   const cat = (g.category || "garment").toLowerCase();
   return (
-    `Take ONLY the ${cat} from this photo — ignore any other garment, the model ` +
-    `and the background in it. ` +
+    `Take ONLY the ${cat} from this photo — ignore any other garment, the model's ` +
+    `body and face, and the background in it. ` +
     (g.similarPick && g.lookColour
       ? `Use it for garment type and texture only; the ${cat} is ${g.lookColour} — ` +
         `the look's colour, not the photo's. `
@@ -1219,6 +1237,7 @@ export async function generateLookImage(opts: {
     const wearableDescription = sanitizeLookDescription(
       look.description,
       opts.occasionId,
+      opts.profile.boldness,
     );
     // Catalogue SKUs own materials and colours. The look caption used to leak
     // "suede derbies" / "teal poplin" into these directives and beat the shop.
@@ -1263,7 +1282,8 @@ export async function generateLookImage(opts: {
 
     const subject =
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
-      `${profile.physical.bodyType} build. Soft natural light, neutral studio backdrop, ` +
+      bodyTypeSubjectClause(profile.physical.bodyType) +
+      `Soft natural light, neutral studio backdrop, ` +
       `confident relaxed pose, sharp focus, magazine quality. ` +
       `Vertical 9:16 framing, full body head to shoes visible. ` +
       (isThreeQuarter
@@ -1301,9 +1321,12 @@ export async function generateLookImage(opts: {
     // exactly the "grey jumper under every blazer" artefact.
     const layeringRule =
       `Render ONLY the garments listed above — do not add any layer that is not ` +
-      `listed (no extra jumper, knit, waistcoat or shirt) — with ONE exception: the ` +
+      `listed (no extra jumper, knit, waistcoat or shirt) — with two exceptions: the ` +
       `person is always fully dressed, so if no top garment is listed at all, wear one ` +
-      `plain neutral top; never shirtless, never a bare chest. A knit may be worn on ` +
+      `plain neutral top; never shirtless, never a bare chest. And if a blazer, sport ` +
+      `coat, jacket or coat is listed without a shirt, polo or knit (a knit blazer is a ` +
+      `jacket, not a knit worn alone), wear a plain collared shirt under it — never open ` +
+      `a jacket on a bare chest. A jumper, crewneck or polo may be worn on ` +
       `its own with a bare neckline — only show a shirt under a knit if a shirt is ` +
       `listed; never add an unlisted shirt beneath a knit. When BOTH a knit and a ` +
       `shirt are listed, the knit is worn OVER the shirt (a long-sleeve knit over a ` +
@@ -1355,8 +1378,10 @@ export async function generateLookImage(opts: {
       imgIdx += 1;
       imageRoles +=
         (faceImageCount > 0
-          ? `The ${ordinal(imgIdx)} image is a full-length photo of the same person — use for ` +
-            `body proportions and pose only. `
+          ? `The ${ordinal(imgIdx)} image is a full-length photo of the same person — this is the ` +
+            `AUTHORITATIVE body. Copy this exact shoulder-to-hip ratio, waist, torso length, ` +
+            `arm and leg thickness and posture. Do not athleticise, add a V-taper, or take ` +
+            `physique from any catalogue model. Use this photo for body and pose only. `
           : `The ${ordinal(imgIdx)} image shows the person — preserve their face, hair and ` +
             `identity exactly. `) +
         // The selfie's clothes must not leak into the render (a flat-lay knit
@@ -1396,24 +1421,27 @@ export async function generateLookImage(opts: {
       // When garment product photos share the prompt with the person's photos,
       // the model tends to blend faces from the product shots and lose likeness.
       // Make identity fidelity to the portrait override the garment references.
-      // Only fires when BOTH exist — report look renders pass no catalogue images,
-      // so their (good) likeness is untouched.
       if (personImageCount > 0) {
         imageRoles +=
-          `CRITICAL identity rule: the person's face, bone structure, skin tone and hair ` +
-          `come ONLY from ${faceImageCount > 0 ? "the portrait photo(s)" : "the person photo"} — ` +
-          `reproduce them at maximum fidelity. The catalogue images are clothing swatches ` +
-          `only: copy the garments, and take NOTHING facial, body or pose-related from them. `;
+          `CRITICAL identity and body rule: the person's face, bone structure, skin tone, hair ` +
+          `AND body proportions come ONLY from ${faceImageCount > 0 ? "the portrait photo(s) and the full-length photo" : "the person photo"} — ` +
+          `reproduce them at maximum fidelity. Keep their ${profile.physical.bodyType} build from the full-length photo` +
+          (profile.physical.heightCm && profile.physical.weightKg
+            ? ` (${profile.physical.heightCm}cm, ${profile.physical.weightKg}kg)`
+            : "") +
+          `. ` +
+          `The catalogue images are clothing swatches only: copy the garments, and take NOTHING ` +
+          `facial, bodily or pose-related from them — never the catalogue model's shoulders, ` +
+          `waist, chest, legs or V-taper. `;
       }
     }
-    // Product shots drown the portrait when they come last. Re-attach the face
-    // after the swatches so identity is the final visual token.
-    if (hasFace && catalogImages.length) {
+    // Full-length, profile, outfit and swatches all follow the first face.
+    // Re-attach the close-up last so identity is the final visual token —
+    // same lock looks, cover and capsule already get when catalogue shots exist.
+    const reattachFace = shouldReattachFacePortrait(hasFace, imgIdx - (hasFace ? 1 : 0));
+    if (reattachFace) {
       imgIdx += 1;
-      imageRoles +=
-        `The ${ordinal(imgIdx)} image is the SAME close-up front portrait again — ` +
-        `after the garment swatches, lock the face, bone structure, skin tone, hairline ` +
-        `and hairstyle to this photo. This is the person, not a fashion model. `;
+      imageRoles += faceReattachRole(ordinal(imgIdx));
     }
 
     // Text anchor for the face. The model regenerates the whole scene, so a
@@ -1447,6 +1475,7 @@ export async function generateLookImage(opts: {
         `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
         `what the reference photo shows. ` +
         `The result must be recognisably this same person, not a similar-looking model. ` +
+        bodyTypeLock(profile.physical.bodyType, profile.physical) +
         eyewearBlock;
     }
     if (!personImageCount && !catalogImageUrls.length) {
@@ -1510,8 +1539,8 @@ export async function generateLookImage(opts: {
     // negatives out of the descriptive blocks into one trailing Constraints
     // group; `layeringOrder` is the positive-only remainder of `layeringRule`.
     const layeringOrder =
-      `A knit may be worn on its own with a bare neckline — only show a shirt ` +
-      `under a knit if a shirt is listed. When both a knit and a shirt are worn, ` +
+      `A jumper, crewneck or polo may be worn on its own with a bare neckline — only show a shirt ` +
+      `under a knit if a shirt is listed. A knit blazer is a jacket and is never worn on bare skin. When both a knit and a shirt are worn, ` +
       `a long-sleeve knit goes OVER a long-sleeve shirt (only the shirt's collar ` +
       `and cuffs peek out); a roll-neck or turtleneck is never worn with a collared ` +
       `shirt — it replaces the shirt. A blazer, overshirt or coat is always the outermost ` +
@@ -1521,9 +1550,10 @@ export async function generateLookImage(opts: {
       `A necktie is never worn on top of a jumper — it sits on the shirt under a V-neck knit or open cardigan. `;
     const constraints = [
       `render EXACTLY the garments listed — do not add any layer that is not ` +
-        `listed (no extra jumper, knit, waistcoat or shirt); the one exception is that ` +
+        `listed (no extra jumper, knit, waistcoat or shirt); exceptions: ` +
         `the person is always fully dressed — if no top is listed at all, wear one plain ` +
-        `neutral top, never shirtless`,
+        `neutral top, never shirtless; if a blazer, jacket or coat is listed without a ` +
+        `shirt, polo or knit, wear a plain collared shirt under it — never a jacket on a bare chest`,
       `the person is fully clothed head to toe — a top over the torso, trousers, shoes; ` +
         `never a bare chest`,
       `trousers described as "suit", "tailored" or "dress" trousers, or chinos, ` +
@@ -1536,6 +1566,7 @@ export async function generateLookImage(opts: {
       `hands stay empty unless a listed tote, backpack, briefcase or messenger is carried — no wallet, cardholder, phone or other handheld prop`,
       `trouser pockets stay empty and lie flat — no cloth peeking out`,
       `a listed backpack is held in one hand or slung on one shoulder — never worn on both shoulders`,
+      `keep the client's ${profile.physical.bodyType} build from the full-length photo — never copy a catalogue model's athletic V-taper, shoulders or waist`,
     ];
     if (eyewearBlock) {
       constraints.push(
@@ -1626,7 +1657,7 @@ export async function generateLookImage(opts: {
         // Skip malformed product URLs rather than failing the whole render.
       }
     }
-    if (faceReferenceImageUrl && catalogImages.length) {
+    if (reattachFace && faceReferenceImageUrl) {
       content.push({ type: "image", image: new URL(faceReferenceImageUrl) });
     }
 
@@ -1699,10 +1730,20 @@ export async function generateCoverImage(opts: {
       const ord = imgIdx === 1 ? "FIRST" : imgIdx === 2 ? "SECOND" : "THIRD";
       imageRoles +=
         hasFace || hasProfile
-          ? `The ${ord} image is a full-length photo of the same person — use only for body ` +
-            `proportions. `
+          ? `The ${ord} image is a full-length photo of the same person — this is the ` +
+            `AUTHORITATIVE body. Copy this exact shoulder-to-hip ratio, waist and posture. ` +
+            `Do not athleticise or take physique from a fashion model. Use only for body proportions. `
           : `The ${ord} image is a photo of the person — preserve their face, hair, skin tone ` +
             `and identity exactly; this is that same person. `;
+    }
+    const coverOrdinals = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH"];
+    const reattachCoverFace = shouldReattachFacePortrait(
+      hasFace,
+      imgIdx - (hasFace ? 1 : 0),
+    );
+    if (reattachCoverFace) {
+      imgIdx += 1;
+      imageRoles += faceReattachRole(coverOrdinals[imgIdx - 1] ?? `${imgIdx}TH`);
     }
 
     // Text anchor for the face. The cover regenerates the whole scene, so a
@@ -1732,14 +1773,16 @@ export async function generateCoverImage(opts: {
         `Do NOT age the person — no added wrinkles, and do not make them look older or younger. ` +
         `Do NOT change the hair colour. ` +
         `Do NOT add or increase facial hair — no extra beard, stubble or moustache beyond ` +
-        `what the reference photo shows. Render the face at maximum fidelity to the portrait. `;
+        `what the reference photo shows. Render the face at maximum fidelity to the portrait. ` +
+        bodyTypeLock(profile.physical.bodyType, profile.physical);
     }
 
     const prompt =
       `Cover photograph for a luxury men's style magazine — a single full-length ` +
       `editorial hero shot in a bright, airy, high-key style. ` +
       `Subject: ${profile.demographics.genderPresentation}, around age ${profile.demographics.age}, ` +
-      `${profile.physical.bodyType} build, dressed in refined, well-tailored clothing` +
+      bodyTypeSubjectClause(profile.physical.bodyType) +
+      `dressed in refined, well-tailored clothing` +
       (palette.length ? ` in a ${palette.join(", ")} colour palette. ` : ". ") +
       (nearFaceHex
         ? `Put a DEEP tone from the palette on the garment closest to the face ` +
@@ -1778,6 +1821,9 @@ export async function generateCoverImage(opts: {
     }
     if (referenceImageUrl) {
       content.push({ type: "image", image: new URL(referenceImageUrl) });
+    }
+    if (reattachCoverFace && faceReferenceImageUrl) {
+      content.push({ type: "image", image: new URL(faceReferenceImageUrl) });
     }
 
     return await renderImage(content);
@@ -2024,6 +2070,8 @@ export async function generateReportTryOnImage(opts: {
   }[];
   /** Work / formal default the shirt hem tucked in. */
   occasionId?: string | null;
+  /** Party × statement may keep a plum velvet jacket. */
+  boldness?: string | null;
 }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   if (!hasAI) return null;
   try {
@@ -2048,6 +2096,7 @@ export async function generateReportTryOnImage(opts: {
     const garmentsText = sanitizeLookDescription(
       opts.garmentsText,
       opts.occasionId,
+      opts.boldness,
     );
     const eyewearBlock = eyewearPromptDirective(garmentsText);
     const tuckBlock = tuckPromptDirective(garmentsText, opts.occasionId);
@@ -2097,8 +2146,9 @@ export async function generateReportTryOnImage(opts: {
         : ``) +
       garmentsText +
       `Layering — follow strictly: outerwear (jackets, blazers, coats, overshirts, ` +
-      `cardigans) is always worn OVER a base layer, never on bare skin. The torso is ` +
-      `never bare — a listed top, or a plain neutral one when none is listed. A knit may ` +
+      `cardigans) is always worn OVER a base layer, never on bare skin. A knit blazer is ` +
+      `a jacket, not a knit worn alone. The torso is ` +
+      `never bare — a listed top, or a plain neutral one when none is listed. A jumper, crewneck or polo may ` +
       `be worn on its own; only show a shirt under a knit if a shirt is listed, and ` +
       `then a long-sleeve knit goes OVER a long-sleeve shirt (collar and cuffs peek ` +
       `out), never a shirt over a knit. A necktie is never worn on top of a jumper — ` +

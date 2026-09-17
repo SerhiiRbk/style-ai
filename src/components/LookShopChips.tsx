@@ -7,7 +7,6 @@ import { makeT } from "@/lib/i18n/report";
 import type { ReportLanguage } from "@/lib/languages";
 import type { ShoppingItem } from "@/lib/report";
 import { lookItemKey } from "@/lib/look-item-alts";
-import { wantedLookGarments, type LookSlotLike } from "@/lib/look-wanted";
 import { StaticFillImg } from "./StyleGuides";
 
 function Thumb({ item, size = "sm" }: { item: ShoppingItem; size?: "sm" | "md" }) {
@@ -29,7 +28,6 @@ function Thumb({ item, size = "sm" }: { item: ShoppingItem; size?: "sm" | "md" }
 
 export function LookShopChips({
   items,
-  lookItems,
   currency,
   lang,
   selectable = false,
@@ -41,8 +39,6 @@ export function LookShopChips({
   onChooseAlternative,
 }: {
   items: ShoppingItem[];
-  /** Structured look garments — the unmatched ones render as "No close match yet". */
-  lookItems?: LookSlotLike[] | null;
   currency: Currency;
   lang?: ReportLanguage;
   selectable?: boolean;
@@ -55,10 +51,9 @@ export function LookShopChips({
   onChooseAlternative?: (fromId: string, alt: ShoppingItem) => void | Promise<void>;
 }) {
   const tt = makeT(lang);
-  const wanted = wantedLookGarments(items, lookItems);
-  if (!items.length && !wanted.length) return null;
+  if (!items.length) return null;
   const showAlternativesNote =
-    items.some((it) => it.similarPick) || items.length < 3 || wanted.length > 0;
+    items.some((it) => it.similarPick) || items.length < 3;
   return (
     <div className="mt-4 border-t hairline pt-4">
       <div className="text-[11px] uppercase tracking-wider text-stone-soft">
@@ -101,19 +96,6 @@ export function LookShopChips({
             />
           );
         })}
-        {wanted.map((w) => (
-          <span
-            key={`wanted-${w.garment}`}
-            className="flex items-center gap-1.5 rounded-full border border-dashed border-line px-3 py-1.5 text-xs text-stone-soft"
-          >
-            <span className="uppercase tracking-wide text-[10px]">
-              {tt("No close match yet:")}
-            </span>
-            <span className="text-ink/70">
-              {[w.color, w.garment].filter(Boolean).join(" ")}
-            </span>
-          </span>
-        ))}
       </div>
     </div>
   );

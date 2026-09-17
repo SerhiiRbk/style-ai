@@ -3,6 +3,7 @@ import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase/server";
 import { isDemoReportId } from "@/lib/demo-report";
 import { attachReportPhoto, reportHasFullPhoto } from "@/lib/photo-tryon";
+import { logRequestEvent } from "@/lib/funnel-context";
 
 type PhotoRow = {
   storage_path: string;
@@ -167,6 +168,12 @@ export async function POST(request: Request) {
     reportId && role === "full"
       ? await attachReportPhoto(admin, user.id, reportId, { role, path: storagePath })
       : false;
+
+  await logRequestEvent(request, {
+    name: "photo_uploaded",
+    userId: user.id,
+    props: { role, attachedToReport },
+  });
 
   return NextResponse.json({ ok: true, attachedToReport }, { status: 201 });
 }

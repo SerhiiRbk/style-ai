@@ -30,6 +30,8 @@ import { ReportImageGenerating } from "@/components/luxe/ReportImageGenerating";
 import { isGeneratedReportImage } from "@/lib/asset-url";
 import { ReportZoomImage } from "@/components/ReportZoomImage";
 import { ShareReportButton } from "@/components/ShareReportButton";
+import { SharePaletteButton } from "@/components/SharePaletteButton";
+import { logPageEvent } from "@/lib/funnel-context";
 import { DeleteReportButton } from "@/components/DeleteReportButton";
 import { GenerateMoreButton } from "@/components/GenerateMoreButton";
 import { GenerateLookButton } from "@/components/GenerateLookButton";
@@ -199,6 +201,11 @@ export default async function ReportPage({
   if (!view) notFound();
 
   const { report, isOwner, isPublic, isAdmin, ownerFeedback } = view;
+  if (!isOwner && isPublic) {
+    await logPageEvent("shared_report_view", {
+      props: { report_id: report.id, referrer_report_id: report.id },
+    });
+  }
   const { profile } = report;
   const lang = report.language;
   const tr = makeT(lang);
@@ -513,6 +520,17 @@ export default async function ReportPage({
               )
             }
           />
+          {profile.colorSubseason ? (
+            <SharePaletteButton
+              subseason={profile.colorSubseason}
+              subseasonLabel={
+                SUBSEASON_LABELS[profile.colorSubseason] ??
+                profile.colorSubseason
+              }
+              undertone={profile.physical.undertone}
+              contrast={profile.physical.contrast}
+            />
+          ) : null}
           {profile.physical.lighting && profile.physical.lighting !== "neutral" ? (
             <p className="mt-6 max-w-2xl rounded-2xl border hairline bg-cream/40 px-5 py-4 text-sm leading-relaxed text-stone">
               {tr(
@@ -1059,7 +1077,6 @@ export default async function ReportPage({
                         ? report.lookItems[i]
                         : itemsForLook(look, report.shopping)
                     }
-                    lookItems={look.items}
                     currency={profile.currency}
                     lang={lang}
                     canTryOn={canTryOn}

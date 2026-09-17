@@ -5,6 +5,7 @@ import {
   pdfReadiness,
   PDF_STRICT_WINDOW_MS,
   SHOPPING_VERSION,
+  reportUpsellForTier,
   type PdfReadinessInput,
   type ShoppingItem,
   hairImagesPending,
@@ -22,6 +23,12 @@ function item(over: Partial<ShoppingItem>): ShoppingItem {
     ...over,
   };
 }
+
+test("a paid lookbook is not sold Premium at the footer", () => {
+  assert.equal(reportUpsellForTier("lookbook"), null);
+  assert.ok(reportUpsellForTier("basic"));
+  assert.ok(reportUpsellForTier("premium"));
+});
 
 test("pre-version shopping is stale only where the colour gates could change it", () => {
   // Grey chinos with a real swatch: the gates would not touch them — no rematch.

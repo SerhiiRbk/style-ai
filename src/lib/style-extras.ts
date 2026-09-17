@@ -17,6 +17,7 @@ import type { ColorRec, ShoppingItem, StyleReport } from "@/lib/report";
 import {
   classifySubseason,
   SUBSEASON_LABELS,
+  withEffectiveUndertone,
   type StyleProfile,
 } from "@/lib/style-profile";
 import { NEUTRAL_SAT_MAX } from "@/lib/colour-palette";
@@ -2167,7 +2168,9 @@ function priorityMoves(
   shopping: ShoppingItem[],
 ): PriorityMove[] {
   const goal = profile.goals[0]?.toLowerCase() ?? "look more polished";
-  const heroItem = pickHero(shopping, profile.boldness);
+  const heroItem = pickHero(shopping, profile.boldness, {
+    budgetMaxEur: profile.budgetEur?.max,
+  });
   const hero = heroItem?.title ?? "one excellent jacket";
   // Undertone-aware so a cool Soft Summer isn't told to build on "warm neutrals"
   // with gold metals. Names the primary metal from the same source as the
@@ -2348,14 +2351,18 @@ export function isSummerSeason(profile: StyleProfile): boolean {
  * (non-English reports) and otherwise computes them live in English.
  */
 export function extrasForReport(report: StyleReport): StyleExtras {
-  if (!report.extras) return buildExtras(report);
+  const reportForExtras = {
+    ...report,
+    profile: withEffectiveUndertone(report.profile),
+  };
+  if (!report.extras) return buildExtras(reportForExtras);
   // Older stored snapshots may lack `watchGuide` entirely (pre-watch section) or
   // carry an early version without the `type`/`shape`/`shapeNote` fields. Backfill
   // in both cases so premium/lookbook renders never read undefined. The backfill
   // is computed in English; new reports translate it in `trExtras`.
   const wg = report.extras.watchGuide;
   const shoeGuideNow = shoeGuideFor(
-    report.profile,
+    reportForExtras.profile,
     report.colors.best,
     report.colors.avoid,
   );
@@ -2398,7 +2405,7 @@ export function extrasForReport(report: StyleReport): StyleExtras {
   const finishingStale = !report.extras.finishingAccessories?.length;
   const fabricsStale =
     !report.extras.fabrics?.length ||
-    (lc(report.profile.physical.undertone) === "cool" &&
+    (lc(reportForExtras.profile.physical.undertone) === "cool" &&
       report.extras.fabrics.some((f) => /warm brown/i.test(f.why)));
   if (
     watchStale ||
@@ -2409,7 +2416,7 @@ export function extrasForReport(report: StyleReport): StyleExtras {
     fabricsStale
   ) {
     const watchGuide = watchStale
-      ? watchGuideFor(report.profile, report.colors.best, {
+      ? watchGuideFor(reportForExtras.profile, report.colors.best, {
           dressLeather: dressLeatherNow,
         })
       : report.extras.watchGuide;
@@ -2417,24 +2424,24 @@ export function extrasForReport(report: StyleReport): StyleExtras {
       ...report.extras,
       watchGuide,
       shoeGuide: shoeStale
-        ? shoeGuideFor(report.profile, report.colors.best, report.colors.avoid)
+        ? shoeGuideFor(reportForExtras.profile, report.colors.best, report.colors.avoid)
         : report.extras.shoeGuide,
       beltGuide: beltStale
         ? beltGuideFor(
-            report.profile,
+            reportForExtras.profile,
             report.colors.best,
             report.colors.avoid,
             report.shopping,
           )
         : report.extras.beltGuide,
       patterns: patternsStale
-        ? patternsFor(report.profile)
+        ? patternsFor(reportForExtras.profile)
         : report.extras.patterns,
       finishingAccessories: finishingStale
-        ? finishingAccessoriesFor(report.profile, watchGuide)
+        ? finishingAccessoriesFor(reportForExtras.profile, watchGuide)
         : report.extras.finishingAccessories,
       fabrics: fabricsStale
-        ? fabricsFor(report.profile)
+        ? fabricsFor(reportForExtras.profile)
         : report.extras.fabrics,
     };
   }
@@ -2442,7 +2449,7 @@ export function extrasForReport(report: StyleReport): StyleExtras {
 }
 
 export function buildExtras(report: StyleReport): StyleExtras {
-  const { profile } = report;
+  const profile = withEffectiveUndertone(report.profile);
   const shoeGuide = shoeGuideFor(profile, report.colors.best, report.colors.avoid);
   const watchGuide = watchGuideFor(profile, report.colors.best, {
     dressLeather: leatherTargetsFromGuide(shoeGuide).dress,

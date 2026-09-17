@@ -1,6 +1,6 @@
 import type { ShoppingItem } from "@/lib/report";
 import { HOUSEHOLD_TEXTILE_RE, decomposeLook } from "@/lib/style-extras";
-import { hasJacketHost } from "@/lib/ai/look-brief";
+import { hasJacketHost, sanitizeLookDescription } from "@/lib/ai/look-brief";
 import { canonicalTuck } from "@/lib/look-constructor";
 import { lookOccasionIsTailored } from "@/lib/look-occasion-fit";
 import { MAX_TRYON_GARMENTS } from "@/lib/tryon-limits";
@@ -218,10 +218,16 @@ export function catalogPromptFromItems(
   items: ShoppingItem[],
   lookDescription?: string,
   occasionId?: string | null,
+  boldness?: string | null,
 ): string | undefined {
   items = items.filter((i) => !HOUSEHOLD_TEXTILE_RE.test(i.title));
+  lookDescription = sanitizeLookDescription(
+    lookDescription ?? "",
+    occasionId,
+    boldness,
+  );
   const jacketHost =
-    hasJacketHost(lookDescription ?? "") ||
+    hasJacketHost(lookDescription) ||
     items.some((i) => i.category === "Outerwear");
   items = items.filter((i) => {
     if (
@@ -235,7 +241,7 @@ export function catalogPromptFromItems(
   if (!items.length) return undefined;
   const tuckShirt =
     lookOccasionIsTailored(occasionId) &&
-    canonicalTuck(lookDescription ?? "") !== "out";
+    canonicalTuck(lookDescription) !== "out";
   const lines = items.map((i) => {
     // A stand-in pick wears the LOOK's colour; the product photo only fixes type
     // and texture. Otherwise the pale-blue photo of a "similar" jumper becomes
@@ -280,6 +286,8 @@ export function catalogPromptFromItems(
     (i) => i.category === "Accessories" && isEyewearTitle(i.title),
   );
   const hasShirt = items.some((i) => i.category === "Shirts");
+  const hasKnit = items.some((i) => i.category === "Knitwear");
+  const hasOuter = items.some((i) => i.category === "Outerwear");
   const hasTop = items.some((i) =>
     i.category === "Shirts" || i.category === "Knitwear" || i.category === "Outerwear",
   );
@@ -319,7 +327,10 @@ export function catalogPromptFromItems(
       : !hasShirt && describedShirt
         ? `\nThis catalogue list is missing the shirt. Wear the look's own shirt: ` +
           `${describedShirt}. Do not invent a different shirt colour. `
-        : "";
+        : hasOuter && !hasShirt && !hasKnit
+          ? `\nThis list has a jacket but no shirt or knit — wear a plain collared shirt ` +
+            `under the jacket, never on a bare chest. `
+          : "";
   const eyewearRule = hasEyewear
     ? `\nSunglasses or glasses from this list are already on the person's face, ` +
       `resting on the nose over the eyes. Do not hold them, fold them, put them ` +

@@ -10,6 +10,7 @@ export type CapsuleSwatch = { name: string; hex: string };
 
 export type CapsuleWardrobeRole =
   | "jacket"
+  | "coat"
   | "casualOuter"
   | "darkTrouser"
   | "casualTrouser"
@@ -37,6 +38,8 @@ export type LeatherTargets = {
 export type CapsuleRecipeOpts = {
   outdoorJeans?: boolean;
   polished?: boolean;
+  /** Temperate / cold climate: add a wool overcoat slot. */
+  coat?: boolean;
   cool?: boolean;
   /** Warm undertone: cream / ecru is the right white, optic white is not. */
   warm?: boolean;
@@ -284,6 +287,18 @@ export function capsuleWardrobeSlots(
         `Men's ${jacket.name} unstructured blazer or sport coat — tailored, single-breasted, ` +
         `not a bomber unless no blazer exists. Colour ${jacket.name} ${jacket.hex}.`,
     },
+    ...(opts?.coat
+      ? [
+          {
+            category: "Outerwear",
+            role: "coat" as const,
+            color: jacket,
+            query:
+              `Men's ${jacket.name} wool overcoat or topcoat — tailored, knee-length, ` +
+              `not a puffer, not a parka, not a bomber. Colour ${jacket.name} ${jacket.hex}.`,
+          },
+        ]
+      : []),
     {
       category: "Outerwear",
       role: "casualOuter",

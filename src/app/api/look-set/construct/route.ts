@@ -296,6 +296,7 @@ export async function POST(request: Request) {
   const description = sanitizeLookDescription(
     composeLookDescription(slots),
     occasionId,
+    profile?.boldness,
   );
   const palette = composeLookPalette(slots);
   const title = lookRow.title ?? "Look";

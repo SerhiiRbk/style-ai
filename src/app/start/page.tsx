@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { countryNameFromCode } from "@/lib/countries";
 import { getCreditBalance } from "@/lib/credits";
 import { logEvent } from "@/lib/events";
+import { logPageEvent } from "@/lib/funnel-context";
 import { hasSupabase, hasSupabaseAdmin } from "@/lib/env";
 import { getGeoPrefill } from "@/lib/geo";
 import { applyWelcomeCredits } from "@/lib/welcome-credits";
@@ -46,6 +47,8 @@ export default async function StartPage({
       await logEvent({ name: "wizard_viewed", anonId });
     }
   }
+
+  await logPageEvent("intake_started", { userId });
 
   const geo = await getGeoPrefill();
   // Saved profile seeds the wizard (defaults the client can tweak per report).

@@ -377,3 +377,28 @@ test("a list with no top puts the look's own top on it — never a bare torso", 
   )!;
   assert.match(bare, /never shirtless/i);
 });
+
+test("a blazer with no shirt or knit gets a base layer — never a bare chest", () => {
+  const prompt = catalogPromptFromItems(
+    [
+      tryItem({ category: "Outerwear", title: "Mango Soft Knit Blazer", colorName: "Teal" }),
+      tryItem({ category: "Trousers", title: "Dusty Rose Chinos" }),
+      tryItem({ category: "Footwear", title: "Navy Loafers" }),
+    ],
+    "Soft-teal knit blazer, dusty-rose chinos, muted-navy loafers",
+    "dinner",
+  )!;
+  assert.match(prompt, /plain collared shirt|missing the shirt|base layer/i);
+  assert.match(prompt, /blazer/i);
+  assert.doesNotMatch(
+    catalogPromptFromItems(
+      [
+        tryItem({ category: "Outerwear", title: "Navy Wool Blazer" }),
+        tryItem({ category: "Shirts", title: "White Oxford Shirt" }),
+        tryItem({ category: "Trousers", title: "Charcoal Trousers" }),
+      ],
+      "Navy wool blazer, white oxford shirt, charcoal trousers",
+    )!,
+    /missing the shirt|plain collared shirt|base layer/i,
+  );
+});

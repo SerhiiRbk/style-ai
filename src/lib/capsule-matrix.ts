@@ -32,6 +32,7 @@ import {
   isDrawstringTitle,
   isJacketTitle,
   isJeanTitle,
+  isSportFashionTitle,
   isLoaferTitle,
   isLongSleeveShirtTitle,
   isShoeTitle,
@@ -41,6 +42,7 @@ import {
 import {
   assumedBasics,
   decomposeLook,
+  LOOK_SHOP_MAX_SLOTS,
   isClassicShoeWithShorts,
   isWarmLayerWithShorts,
   jacketClonesShoes,
@@ -97,13 +99,17 @@ export function capsuleFrom(shopping: ShoppingItem[], profile: StyleProfile): Ca
     ? Math.min(40, topsN * bottomsN * shoesN)
     : 0;
 
-  const hero = pickHero(shopping, profile.boldness);
+  const hero = pickHero(shopping, profile.boldness, {
+    budgetMaxEur: profile.budgetEur?.max,
+  });
   const colorByTitle = new Map(shopping.map((i) => [i.title, i.color ?? ""]));
   const tailoredMin = Math.min(
     ...shopping
       .filter(
         (i) =>
-          i.category === "Outerwear" && !CASUAL_OUTERWEAR_RE.test(i.title),
+          i.category === "Outerwear" &&
+          !CASUAL_OUTERWEAR_RE.test(i.title) &&
+          !isSportFashionTitle(i.title),
       )
       .map((i) => i.priceEur ?? Number.POSITIVE_INFINITY),
   );
@@ -111,7 +117,7 @@ export function capsuleFrom(shopping: ShoppingItem[], profile: StyleProfile): Ca
     if (hero && i.title === hero.title) return 0;
     const expensiveCasual =
       i.category === "Outerwear" &&
-      CASUAL_OUTERWEAR_RE.test(i.title) &&
+      (CASUAL_OUTERWEAR_RE.test(i.title) || isSportFashionTitle(i.title)) &&
       Number.isFinite(tailoredMin) &&
       (i.priceEur ?? 0) > tailoredMin * 2.2;
     if (expensiveCasual) return 80;
@@ -209,6 +215,9 @@ export function capsuleOutfitDescription(
  * sage). Dark-on-dark (charcoal knit, navy trousers) is a deliberate column
  * and passes.
  */
+/** Both garments this light read as one washed-out column (white + ivory). */
+export const HIGH_KEY_COLUMN_MIN_L = 0.88;
+
 export function capsuleColumnBlends(
   top: string,
   bottom: string,
@@ -216,10 +225,22 @@ export function capsuleColumnBlends(
   best?: ColorRec[],
 ): boolean {
   if (greyColumnBlends(top, bottom, colorByTitle)) return true;
+  const thEarly = pieceHsl(top, colorByTitle);
+  const bhEarly = pieceHsl(bottom, colorByTitle);
+  // White-on-white / ivory-on-cream — even without a report palette. The
+  // true-white exemption below is only for white + stone, not two pale pieces.
+  if (
+    thEarly &&
+    bhEarly &&
+    thEarly.l >= HIGH_KEY_COLUMN_MIN_L &&
+    bhEarly.l >= HIGH_KEY_COLUMN_MIN_L
+  ) {
+    return true;
+  }
   const palette = (best ?? []).filter((c) => c.hex);
   if (!palette.length) return false;
-  const th = pieceHsl(top, colorByTitle);
-  const bh = pieceHsl(bottom, colorByTitle);
+  const th = thEarly;
+  const bh = bhEarly;
   if (!th || !bh) return false;
   const topHex = parseHexColor(colorByTitle.get(top) ?? "")!;
   const bottomHex = parseHexColor(colorByTitle.get(bottom) ?? "")!;
@@ -290,7 +311,7 @@ export function itemsForLook(look: Look, shopping: ShoppingItem[]): ShoppingItem
     const seen = new Set<string>();
     const items: ShoppingItem[] = [];
     for (const g of garments) {
-      if (items.length >= 6) break;
+      if (items.length >= LOOK_SHOP_MAX_SLOTS) break;
       const candidates = shopping.filter((it) => it.category === g.category);
       if (!candidates.length) continue;
       const ranked = [...candidates].sort(
@@ -337,6 +358,11 @@ export function capsuleImageDirectives(pieces: string[]): string {
   if (pieces.some((p) => isJeanTitle(p))) {
     parts.push(
       "Jeans must read as denim — indigo or blue-grey with a visible weave, not grey dress trousers. ",
+    );
+  }
+  if (pieces.some((p) => /\b(blazer|sport\s*coat)\b/i.test(p))) {
+    parts.push(
+      "A blazer or sport coat has a straight open sleeve cuff with buttons — never elastic, gathered or ribbed at the wrist. ",
     );
   }
   return parts.join("");
@@ -546,8 +572,12 @@ export function capsuleMatrix(
       ),
   );
 
-  const formalLayers = layers.filter((l) => !CASUAL_OUTERWEAR_RE.test(l));
-  const casualLayers = layers.filter((l) => CASUAL_OUTERWEAR_RE.test(l));
+  const formalLayers = layers.filter(
+    (l) => !CASUAL_OUTERWEAR_RE.test(l) && !isSportFashionTitle(l),
+  );
+  const casualLayers = layers.filter(
+    (l) => CASUAL_OUTERWEAR_RE.test(l) || isSportFashionTitle(l),
+  );
 
   const catTrousersAll = pick(["Trousers"]);
   const catShorts = catTrousersAll.filter(isShortsTitle);
@@ -657,6 +687,8 @@ export function capsuleMatrix(
   const contexts = capFormalContexts(allContexts, formalLayers.length);
   const combos: OutfitCombo[] = [];
   const seen = new Set<string>();
+  /** Jacket-free top + trousers — shoes/belt do not make two looks distinct. */
+  const seenSilhouettes = new Set<string>();
   const knitUses = new Map<string, number>();
   const shirtUses = new Map<string, number>();
   const bottomUses = new Map<string, number>();
@@ -1047,16 +1079,32 @@ export function capsuleMatrix(
       isDarkAnchorPiece(pieces[topIdxNow]!, colorByTitle, palette) &&
       isDarkAnchorPiece(pieces[bottomIdxNow]!, colorByTitle, palette)
     ) {
-      const lighterOk = (t: string) =>
-        t !== pieces[topIdxNow] &&
-        !pieces.includes(t) &&
-        !isDarkAnchorPiece(t, colorByTitle, palette);
-      const lighterPool = [...dressShirts, ...plainKnits, ...anyTop];
-      // Under the caps first — a swap here must not turn one shirt into a uniform.
-      const lighter =
-        lighterPool.find((t) => lighterOk(t) && !shirtAtCap(t) && !knitAtCap(t)) ??
-        lighterPool.find(lighterOk);
-      if (lighter) pieces[topIdxNow] = lighter;
+      const knitHere = knits.includes(pieces[topIdxNow]!);
+      // A knit recipe that steals the only light shirt clones the next formal
+      // look (On stage and Client meeting both become oxford + dress trousers).
+      // Break the navy column at the bottom first.
+      if (knitHere) {
+        const lighterBottom = [
+          ...catChinos,
+          ...catTrousers.filter((t) => !isDrawstringTitle(t) && !isShortsTitle(t)),
+        ].find(
+          (t) =>
+            t !== pieces[bottomIdxNow] &&
+            !isDarkAnchorPiece(t, colorByTitle, palette),
+        );
+        if (lighterBottom) pieces[bottomIdxNow] = lighterBottom;
+      } else {
+        const lighterOk = (t: string) =>
+          t !== pieces[topIdxNow] &&
+          !pieces.includes(t) &&
+          !isDarkAnchorPiece(t, colorByTitle, palette);
+        const lighterPool = [...dressShirts, ...plainKnits, ...anyTop];
+        // Under the caps first — a swap here must not turn one shirt into a uniform.
+        const lighter =
+          lighterPool.find((t) => lighterOk(t) && !shirtAtCap(t) && !knitAtCap(t)) ??
+          lighterPool.find(lighterOk);
+        if (lighter) pieces[topIdxNow] = lighter;
+      }
     }
     const winterJacket = pieces.find(
       (p) => isJacketTitle(p) && isWinterLayerTitle(p),
@@ -1154,7 +1202,10 @@ export function capsuleMatrix(
     }
     const chinoHere = pieces.some((p) => /\bchinos?\b/i.test(p));
     const tailoredHere = pieces.some(
-      (p) => isJacketTitle(p) && !CASUAL_OUTERWEAR_RE.test(p),
+      (p) =>
+        isJacketTitle(p) &&
+        !CASUAL_OUTERWEAR_RE.test(p) &&
+        !isSportFashionTitle(p),
     );
     const shoeNow = pieces.find(isShoeTitle);
     if (
@@ -1179,13 +1230,32 @@ export function capsuleMatrix(
       pieces.push(belts[0]!);
     }
     const comboKey = (ps: string[]) => ps.join("|").toLowerCase();
+    /** Jacket-free looks that share a top + trousers read as the same photo. */
+    const jacketFreeSilhouette = (ps: string[]): string | null => {
+      if (ps.some((p) => isJacketTitle(p))) return null;
+      const bottom = ps.find((p) => isBottomTitle(p)) ?? "";
+      const top =
+        ps.find(
+          (p) =>
+            !isJacketTitle(p) &&
+            !isShoeTitle(p) &&
+            !isAccentOnlyTitle(p) &&
+            !isBottomTitle(p),
+        ) ?? "";
+      return `${top}|${bottom}`.toLowerCase();
+    };
+    const lookSeen = (ps: string[]) => {
+      if (seen.has(comboKey(ps))) return true;
+      const sil = jacketFreeSilhouette(ps);
+      return Boolean(sil && seenSilhouettes.has(sil));
+    };
     const tryUnseen = (next: string[]): boolean => {
-      if (!next.length || seen.has(comboKey(next))) return false;
+      if (!next.length || lookSeen(next)) return false;
       pieces.length = 0;
       pieces.push(...next);
       return true;
     };
-    if (seen.has(comboKey(pieces))) {
+    if (lookSeen(pieces)) {
       const topIdx = pieces.findIndex(
         (t) =>
           !isJacketTitle(t) &&
@@ -1201,7 +1271,7 @@ export function capsuleMatrix(
       ) {
         tryUnseen([formalLayers[0]!, ...pieces]);
       }
-      if (seen.has(comboKey(pieces)) && topIdx >= 0) {
+      if (lookSeen(pieces) && topIdx >= 0) {
         const altOk = (t: string) => t !== pieces[topIdx] && !pieces.includes(t);
         // The de-dupe swap was how one shirt reached a third outfit: prefer a
         // shirt still under its cap, fall back to any other shirt.
@@ -1212,7 +1282,7 @@ export function capsuleMatrix(
         }
       }
       if (
-        seen.has(comboKey(pieces)) &&
+        lookSeen(pieces) &&
         topIdx >= 0 &&
         (slot.top === "knit" || context === "Dinner") &&
         knits.length
@@ -1225,7 +1295,7 @@ export function capsuleMatrix(
           tryUnseen(pieces.map((p, i) => (i === topIdx ? altKnit : p)));
         }
       }
-      if (seen.has(comboKey(pieces)) && bottomIdx >= 0) {
+      if (lookSeen(pieces) && bottomIdx >= 0) {
         const lockedBottom =
           (slot.bottom === "chino" &&
             /\bchinos?\b/i.test(pieces[bottomIdx]!)) ||
@@ -1241,6 +1311,7 @@ export function capsuleMatrix(
               (t) =>
                 t !== pieces[bottomIdx] &&
                 !pieces.includes(t) &&
+                !(FORMAL_CONTEXTS.has(context) && isLightBottom(t)) &&
                 !(
                   topForBlend &&
                   capsuleColumnBlends(topForBlend, t, colorByTitle, palette)
@@ -1251,7 +1322,7 @@ export function capsuleMatrix(
         }
       }
       if (
-        seen.has(comboKey(pieces)) &&
+        lookSeen(pieces) &&
         topIdx >= 0 &&
         knits.length &&
         ((slot.bottom === "chino" &&
@@ -1333,7 +1404,14 @@ export function capsuleMatrix(
         }
       }
     }
+    if (FORMAL_CONTEXTS.has(context)) {
+      for (let i = pieces.length - 1; i >= 0; i--) {
+        if (isSportFashionTitle(pieces[i]!)) pieces.splice(i, 1);
+      }
+    }
     seen.add(comboKey(pieces));
+    const sil = jacketFreeSilhouette(pieces);
+    if (sil) seenSilhouettes.add(sil);
     const finalBottom = pieces.find((p) => isBottomTitle(p));
     const finalShoe = pieces.find(isShoeTitle);
     if (!FORMAL_CONTEXTS.has(context) && finalBottom && finalShoe) {
@@ -1424,18 +1502,27 @@ export function priceTiersFrom(shopping: ShoppingItem[]): PriceTier[] {
 export function pickHero(
   shopping: ShoppingItem[],
   boldness: string,
+  opts?: { budgetMaxEur?: number },
 ): ShoppingItem | undefined {
   if (!shopping.length) return undefined;
   const prices = shopping.map((i) => i.priceEur ?? 0);
   const maxPrice = Math.max(1, ...prices);
   const hasTailored = shopping.some(
     (i) =>
-      i.category === "Outerwear" && !CASUAL_OUTERWEAR_RE.test(i.title),
+      i.category === "Outerwear" &&
+      !CASUAL_OUTERWEAR_RE.test(i.title) &&
+      !isSportFashionTitle(i.title),
   );
+  const investFloor =
+    opts?.budgetMaxEur != null && opts.budgetMaxEur >= 1000 ? 100 : null;
   const weight = (i: ShoppingItem) =>
     -styleFitScore(i.title, boldness) * SCORING.hero.fitWeight +
     (CATEGORY_PRIORITY[i.category] ?? 9) -
     ((i.priceEur ?? 0) / maxPrice) * SCORING.hero.priceWeight +
-    (hasTailored && CASUAL_OUTERWEAR_RE.test(i.title) ? 3 : 0);
+    (hasTailored &&
+    (CASUAL_OUTERWEAR_RE.test(i.title) || isSportFashionTitle(i.title))
+      ? 3
+      : 0) +
+    (investFloor != null && (i.priceEur ?? 0) < investFloor ? 4 : 0);
   return [...shopping].sort((a, b) => weight(a) - weight(b))[0];
 }

@@ -121,7 +121,9 @@ export async function generateShoppingReasons(
   avoid: AvoidSwatch[] = [],
 ): Promise<ShoppingReasons | null> {
   if (!hasAI || !items.length) return null;
-  const hero = pickHero(items, profile.boldness);
+  const hero = pickHero(items, profile.boldness, {
+    budgetMaxEur: profile.budgetEur?.max,
+  });
   const heroIndex = hero ? items.indexOf(hero) : -1;
   try {
     const { output } = await generateText({

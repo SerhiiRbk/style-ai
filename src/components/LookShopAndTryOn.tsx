@@ -7,7 +7,6 @@ import type { ShoppingItem } from "@/lib/report";
 import type { Currency } from "@/lib/currency";
 import type { ReportLanguage } from "@/lib/languages";
 import { lookItemKey } from "@/lib/look-item-alts";
-import type { LookSlotLike } from "@/lib/look-wanted";
 
 /**
  * Per-look "Shop a look like this" + "Try it on me", sharing selection state:
@@ -17,7 +16,6 @@ import type { LookSlotLike } from "@/lib/look-wanted";
  */
 export function LookShopAndTryOn({
   items,
-  lookItems,
   currency,
   lang,
   canTryOn,
@@ -30,8 +28,6 @@ export function LookShopAndTryOn({
   resetStoredTryOn = false,
 }: {
   items: ShoppingItem[];
-  /** The look's structured garment slots — names the ones that found no match. */
-  lookItems?: LookSlotLike[] | null;
   currency: Currency;
   lang?: ReportLanguage;
   canTryOn: boolean;
@@ -95,7 +91,6 @@ export function LookShopAndTryOn({
     <>
       <LookShopChips
         items={shopItems}
-        lookItems={lookItems}
         currency={currency}
         lang={lang}
         selectable={selectable}

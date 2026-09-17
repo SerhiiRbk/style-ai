@@ -26,6 +26,9 @@ import {
   isLoaferTitle,
   clauseAsksLinen,
   workDefaultShirtColor,
+  workShirtSearchColor,
+  workShirtFallbackColors,
+  workShirtClashesJacket,
   prefersChinoTrousers,
   prefersWoolTrousers,
   isChinoTitle,
@@ -46,6 +49,8 @@ test("work and formal are tailored occasions", () => {
   assert.equal(lookOccasionIsTailored("weekend"), false);
   assert.equal(lookOccasionAppliesToGarment("work", "chinos"), true);
   assert.equal(lookOccasionAppliesToGarment("work", "shirt"), true);
+  assert.equal(lookOccasionAppliesToShirt("oxford shirt"), true);
+  assert.equal(lookOccasionAppliesToShirt("oxfords"), false);
   assert.equal(lookOccasionAppliesToGarment("work", "belt"), true);
   assert.equal(lookOccasionAppliesToGarment("work", "derby"), true);
   assert.equal(lookOccasionAppliesToGarment("work", "messenger bag"), true);
@@ -59,6 +64,14 @@ test("work and formal are tailored occasions", () => {
   assert.equal(lookOccasionAppliesToShirt("chinos"), false);
   assert.equal(lookOccasionAppliesToBag("messenger bag"), true);
   assert.equal(lookOccasionAppliesToBag("chinos"), false);
+  assert.equal(lookOccasionAppliesToBelt("leather belt"), true);
+  assert.equal(lookOccasionAppliesToShoe("suede loafers"), true);
+  assert.equal(lookOccasionAppliesToShoe("oxford shirt"), false);
+  assert.equal(lookOccasionAppliesToBag("leather briefcase"), true);
+  assert.equal(lookOccasionAppliesToBag("greige tote"), true);
+  assert.equal(lookOccasionAppliesToGarment("work", "leather belt"), true);
+  assert.equal(lookOccasionAppliesToGarment("work", "suede loafers"), true);
+  assert.equal(lookOccasionAppliesToGarment("work", "tailored trousers"), true);
 });
 
 test("linen relaxed trousers are casual unless the look asked for them", () => {
@@ -176,6 +189,48 @@ test("work default shirt is blue on light trousers and white on dark brown", () 
   assert.equal(workDefaultShirtColor("camel"), "white");
   assert.equal(workDefaultShirtColor(null, "#e3d7c3"), "light blue");
   assert.equal(workDefaultShirtColor(null, "#453529"), "white");
+  assert.equal(workShirtSearchColor("light blue", "greige"), "light blue");
+  assert.equal(workShirtSearchColor("soft-charcoal", "greige"), "soft-charcoal");
+  assert.equal(workShirtSearchColor("soft-charcoal", "navy"), "soft-charcoal");
+  assert.equal(workShirtSearchColor("navy", "greige"), "navy");
+  assert.equal(workShirtSearchColor("greige", "greige"), "light blue");
+  assert.equal(workShirtSearchColor("grey", "greige"), "light blue");
+  assert.equal(workShirtSearchColor("mushroom", "oatmeal"), "light blue");
+});
+
+test("work shirt fallbacks prefer dark grey, skip navy under a blue jacket", () => {
+  assert.deepEqual(workShirtFallbackColors("soft-charcoal", "slate-blue"), [
+    "dark grey",
+    "white",
+  ]);
+  assert.deepEqual(workShirtFallbackColors("soft-charcoal", "camel"), [
+    "dark grey",
+    "navy",
+    "white",
+  ]);
+  assert.deepEqual(workShirtFallbackColors("charcoal", "greige"), [
+    "dark grey",
+    "navy",
+    "white",
+  ]);
+  assert.deepEqual(workShirtFallbackColors("light blue", "greige"), []);
+  assert.deepEqual(workShirtFallbackColors("greige", "navy"), []);
+});
+
+test("work shirt clashes with a blue jacket, not with charcoal under slate-blue", () => {
+  assert.equal(workShirtClashesJacket("light blue", "slate-blue"), true);
+  assert.equal(
+    workShirtClashesJacket(
+      { color: "oxford", hex: "#bcc4e0", title: "Textured Oxford Shirt" },
+      { color: "slate-blue" },
+    ),
+    true,
+  );
+  assert.equal(workShirtClashesJacket("soft-charcoal", "slate-blue"), false);
+  assert.equal(workShirtClashesJacket("navy", "slate-blue"), true);
+  assert.equal(workShirtClashesJacket("navy", "camel"), false);
+  assert.equal(workShirtClashesJacket("white", "slate-blue"), false);
+  assert.equal(workShirtClashesJacket("dark grey", "slate-blue"), false);
 });
 
 test("relaxed viscose shirts are casual unless the look asked for them", () => {
