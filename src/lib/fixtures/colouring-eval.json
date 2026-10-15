@@ -1,0 +1,48 @@
+{
+  "_readme": "Real reports used to evaluate season stability and accuracy. `expected` holds the label the eval scores against (undertone / contrast / season / subseason; any field may be omitted). `labelSource` says who set it: \"stylist\" is ground truth, \"proposed\" is Claude's read from the photos and needs a stylist's confirmation before it is treated as truth. The eval prints agreement across runs and hits against `expected`.",
+  "cases": [
+    {
+      "reportId": "21c3c99f-9189-46de-ad34-b35aedf55e3d",
+      "label": "dark-chestnut hair, brown eyes, medium skin with a slight cool lean (portrait hue 46.8–49.2° on three shoots); production gave soft autumn / deep autumn / cool summer on three runs",
+      "expected": {
+        "undertone": "neutral",
+        "season": "summer",
+        "subseason": "cool-summer"
+      },
+      "labelSource": "stylist",
+      "note": "Stylist 2026-09-06: Cool Summer. Skin pink-neutral without peach or olive; cheek and nose redness is vascular flush, not autumn warmth. Hair dark chestnut, ashy, greying at the temples — no mahogany or golden glint. Eye whites white, not cream. Not Soft Summer (too deep and contrasty for oatmeal / dusty rose as a base), not Deep Winter (chroma is greyed, not clear — Black / Ruby / Snow would be a costume), not Autumn (camel / rust / mustard / warm olive would yellow the face; navy grey, slate, spruce, dusty blue, charcoal sit right). The model's warm/autumn read comes from room light and flush; the 66.6° warm measurement in production came from forearms of another shoot. Contrast deliberately unlabelled until the hair measurement is stable — Cool Summer holds with medium or high given dark hair and brown eyes."
+    },
+    {
+      "reportId": "96748e55-d42e-4c24-be25-b74dc5f960ed",
+      "label": "same client, second run (deep autumn in production)",
+      "expected": {
+        "undertone": "neutral",
+        "season": "summer",
+        "subseason": "cool-summer"
+      },
+      "labelSource": "stylist",
+      "note": "Same client as 21c3c99f — see that note. Report mixes two shoots; the body photo is skipped."
+    },
+    {
+      "reportId": "f4b8e202-d36b-49c2-b4ac-902619474aa7",
+      "label": "same client, first run (soft autumn in production)",
+      "expected": {
+        "undertone": "neutral",
+        "season": "summer",
+        "subseason": "cool-summer"
+      },
+      "labelSource": "stylist",
+      "note": "Same client as 21c3c99f — see that note. One shoot; body samples used."
+    },
+    {
+      "reportId": "a111db4d-9b82-48fc-b39a-e0a976d1098a",
+      "label": "medium-brown hair, blue eyes, cool skin (hue 52°); soft summer in production",
+      "expected": {
+        "undertone": "cool",
+        "season": "summer"
+      },
+      "labelSource": "proposed",
+      "note": "Soft vs Cool Summer hinges on the contrast threshold (spread ≥ 0.38 = high); left open until a stylist decides."
+    }
+  ]
+}

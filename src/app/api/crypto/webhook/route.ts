@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { hasNowPaymentsKeys, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { grantCreditsExternal } from "@/lib/credits";
+import { logEvent } from "@/lib/events";
 import { captureError, captureWarning } from "@/lib/observability";
 import { verifyIpnSignature, type NowPaymentsIpn } from "@/lib/crypto-pay";
 
@@ -128,6 +129,15 @@ export async function POST(request: Request) {
       amount: payment.credits,
       reason: "purchase",
       refExt: `np_${orderId}`,
+    });
+    await logEvent({
+      name: "credits_purchased",
+      userId: payment.user_id,
+      props: {
+        credits: payment.credits,
+        provider: "crypto",
+        ref_ext: `np_${orderId}`,
+      },
     });
     await admin
       .from("crypto_payments")

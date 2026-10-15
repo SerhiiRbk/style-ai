@@ -18,6 +18,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/how-it-works", priority: 0.7, freq: "monthly" },
     { path: "/report/valetti-style-prospect-demo", priority: 0.6, freq: "monthly" },
     { path: "/privacy", priority: 0.4, freq: "monthly" },
+    { path: "/trust", priority: 0.5, freq: "monthly" },
     { path: "/terms", priority: 0.4, freq: "monthly" },
   ];
 

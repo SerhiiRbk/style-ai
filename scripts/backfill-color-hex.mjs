@@ -31,7 +31,7 @@ let unresolved = 0;
 for (;;) {
   let q = sb
     .from("products")
-    .select("id, color, color_hex")
+    .select("id, color, color_hex, title, slug")
     .order("id", { ascending: true })
     .limit(PAGE);
   if (cursor) q = q.gt("id", cursor);
@@ -47,9 +47,13 @@ for (;;) {
 
   for (const row of data) {
     if (!all && row.color_hex) continue; // already tagged
-    const norm = normalizeColor(row.color, row.color_hex);
+    // The feed's own colour field is authoritative. The title only fills a
+    // gap — brand / line names carry colour words ("Blue Harbour", "White
+    // Stuff", "Black Label") and must never override a stated colour.
+    const fromField = normalizeColor(row.color, row.color_hex);
+    const norm = fromField ?? normalizeColor(row.title ?? row.slug, null);
     if (!norm) {
-      if (row.color) unresolved++;
+      if (row.color || row.title) unresolved++;
       continue;
     }
     if (row.color_hex === norm.hex && !all) continue;

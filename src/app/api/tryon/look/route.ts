@@ -387,12 +387,15 @@ export async function POST(request: Request) {
     catalogItems,
     kind === "look" ? description : undefined,
     occasionId,
+    profile.boldness,
   );
   const catalogImages = catalogImageRefsFromItems(catalogItems, {
     max:
       tryOnStyle === "editorial"
         ? MAX_CATALOG_REFERENCE_IMAGES_WITH_PORTRAIT
         : MAX_CATALOG_REFERENCE_IMAGES,
+    // "Similar" picks render in the LOOK's colour; the photo fixes type only.
+    lookDescription: kind === "look" ? description : undefined,
   });
   const catalogImageUrls = catalogImages.map((r) => r.url);
 
@@ -464,6 +467,7 @@ export async function POST(request: Request) {
           garmentImageUrls: catalogImageUrls,
           garmentImages: catalogImages,
           occasionId,
+          boldness: profile.boldness,
         })
       : await generateLookImage({
           profile,

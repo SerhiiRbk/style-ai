@@ -23,6 +23,8 @@
   "The direction — your moodboard": "La dirección — tu moodboard",
   "A quick visual summary of where we're taking your style: example looks on your photo, your colour palette, a hero piece, and the overall direction.": "Un resumen visual rápido de hacia dónde llevamos tu estilo: looks de ejemplo sobre tu foto, tu paleta de colores, una pieza clave y la dirección general.",
   "Your colour story": "Tu historia de color",
+  "Your photo was lit with a colour cast. We measured your skin and hair from the pixels and corrected for it, but a photo in soft daylight would sharpen the match.": "Tu foto tenía una dominante de color. Medimos el tono de piel y cabello a partir de los píxeles y lo corregimos, pero una foto con luz natural suave afinaría la coincidencia.",
+  "Your photo was lit with a colour cast, so we read your colours more cautiously. A photo in soft daylight would sharpen the match.": "Tu foto tenía una dominante de color, así que leímos tus colores con más cautela. Una foto con luz natural suave afinaría la coincidencia.",
   "Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works.": "Los neutros suaves y cálidos favorecen tu coloración de bajo contraste. Aquí es donde se sitúa tu paleta en el círculo — y exactamente por qué funciona cada tono.",
   "Colours that work for you": "Colores que te favorecen",
   "Colours to avoid": "Colores a evitar",
@@ -258,6 +260,9 @@
   "Fit comes first": "El ajuste es lo primero",
   "Tailoring the shoulders and hem changes everything.": "Ajustar los hombros y el dobladillo lo cambia todo.",
   "Earthy, warm tones": "Tonos cálidos y terrosos",
+  "Cool, muted tones": "Tonos fríos y apagados",
+  "Soft, balanced tones": "Tonos suaves y equilibrados",
+  "No close match yet:": "Aún sin una opción cercana:",
   "Let your palette lead; keep contrast soft.": "Deja que tu paleta lidere; mantén el contraste suave.",
   "Grooming is key": "El aseo es clave",
   "A sharp cut and tidy beard finish the whole look.": "Un corte preciso y una barba cuidada completan todo el look.",
@@ -292,5 +297,7 @@
   "Details": "Detalles",
   "Care": "Cuidado",
   "Do / Don't": "Sí / No",
-  "Your colours": "Tus colores"
+  "Your colours": "Tus colores",
+  "PDF unlocks when every image has finished rendering.": "El PDF se desbloqueará cuando todas las imágenes estén listas.",
+  "Your report is still being generated — the PDF unlocks when every image is ready.": "Tu informe aún se está generando: el PDF se desbloqueará cuando todas las imágenes estén listas."
 }

@@ -31,6 +31,7 @@ import {
   type ReportLanguage,
 } from "@/lib/languages";
 import { REPORT_COST, CREDIT_COSTS, SIGNUP_BONUS } from "@/lib/credit-costs";
+import { FREE_PAID_BOUNDARY } from "@/lib/launch-copy";
 import {
   type DraftAnswers,
   saveDraftAnswers,
@@ -902,6 +903,9 @@ export function StartForm({
         ) : (
           <>
         <Stepper step={step} />
+        <p className="mt-6 text-sm leading-relaxed text-stone">
+          {FREE_PAID_BOUNDARY}
+        </p>
 
         <div className="mt-10 min-h-[380px]">
           {step === 1 && (

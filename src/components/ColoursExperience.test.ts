@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { COLOURS_SOCIAL_FORMATS } from "./ColoursExperience";
+import { COLOURS_SOCIAL_FORMATS } from "@/lib/og/formats";
 import {
   buildColoursSwatchSvg,
   buildFabricStripeSvg,

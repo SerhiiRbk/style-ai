@@ -1,5 +1,6 @@
 import "server-only";
 import { ensureSignupBonus } from "@/lib/credits";
+import { notifyWelcomeEmail } from "@/lib/email/lifecycle";
 import {
   PENDING_PROMO_COOKIE,
   redeemPromotion,
@@ -24,6 +25,11 @@ export async function applyWelcomeCredits(
   if (pendingPromoCode) {
     try {
       await redeemPromotion(admin, userId, pendingPromoCode);
+      try {
+        await notifyWelcomeEmail(admin, userId);
+      } catch {
+        /* welcome mail is best-effort */
+      }
       return "promo";
     } catch {
       // Invalid/expired invite code — fall back to the standard signup bonus.
@@ -35,5 +41,10 @@ export async function applyWelcomeCredits(
   }
 
   await ensureSignupBonus(admin, userId);
+  try {
+    await notifyWelcomeEmail(admin, userId);
+  } catch {
+    /* welcome mail is best-effort */
+  }
   return "signup";
 }

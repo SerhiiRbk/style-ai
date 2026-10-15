@@ -4,6 +4,7 @@ import { env, hasStripe, hasSupabaseAdmin } from "@/lib/env";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
 import { grantCreditsExternal } from "@/lib/credits";
+import { logEvent } from "@/lib/events";
 import { captureError, captureWarning } from "@/lib/observability";
 
 export const runtime = "nodejs";
@@ -100,6 +101,11 @@ export async function POST(request: Request) {
       amount: credits,
       reason: "purchase",
       refExt,
+    });
+    await logEvent({
+      name: "credits_purchased",
+      userId,
+      props: { credits, provider: "stripe", ref_ext: refExt },
     });
     return NextResponse.json({ received: true, granted: credits, balance });
   } catch (e) {

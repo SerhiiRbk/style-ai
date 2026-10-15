@@ -23,6 +23,8 @@
   "The direction — your moodboard": "Yön — mood board'unuz",
   "A quick visual summary of where we're taking your style: example looks on your photo, your colour palette, a hero piece, and the overall direction.": "Stilinizi nereye götürdüğümüze dair hızlı bir görsel özet: fotoğrafınızda örnek görünümler, renk paletiniz, bir hero parça ve genel yön.",
   "Your colour story": "Renk hikayeniz",
+  "Your photo was lit with a colour cast. We measured your skin and hair from the pixels and corrected for it, but a photo in soft daylight would sharpen the match.": "Fotoğrafınızın ışığında renk sapması vardı. Cilt ve saç tonunu piksellerden ölçüp düzelttik, ancak yumuşak gün ışığında çekilmiş bir fotoğraf eşleşmeyi daha da netleştirir.",
+  "Your photo was lit with a colour cast, so we read your colours more cautiously. A photo in soft daylight would sharpen the match.": "Fotoğrafınızın ışığında renk sapması vardı, bu yüzden renklerinizi daha temkinli okuduk. Yumuşak gün ışığında çekilmiş bir fotoğraf eşleşmeyi netleştirir.",
   "Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works.": "Yumuşak, sıcak nötrler düşük kontrastlı tonlarınıza yakışıyor. Paletinizin çarkta nerede durduğu — ve her tonun neden işe yaradığı.",
   "Colours that work for you": "Size uygun renkler",
   "Colours to avoid": "Kaçınılması gereken renkler",
@@ -258,6 +260,9 @@
   "Fit comes first": "Kesim her şeyden önce gelir",
   "Tailoring the shoulders and hem changes everything.": "Omuz ve etek kesimini ayarlamak her şeyi değiştirir.",
   "Earthy, warm tones": "Toprak tonları, sıcak renkler",
+  "Cool, muted tones": "Soğuk, yumuşak tonlar",
+  "Soft, balanced tones": "Yumuşak, dengeli tonlar",
+  "No close match yet:": "Henüz yakın bir eşleşme yok:",
   "Let your palette lead; keep contrast soft.": "Paletiniz yol göstersin; kontrast yumuşak kalsın.",
   "Grooming is key": "Bakım anahtardır",
   "A sharp cut and tidy beard finish the whole look.": "Keskin bir kesim ve düzenli sakal bütün görünümü tamamlar.",
@@ -292,5 +297,7 @@
   "Details": "Detaylar",
   "Care": "Bakım",
   "Do / Don't": "Yapın / Yapmayın",
-  "Your colours": "Renkleriniz"
+  "Your colours": "Renkleriniz",
+  "PDF unlocks when every image has finished rendering.": "Tüm görseller hazır olduğunda PDF indirilebilir olur.",
+  "Your report is still being generated — the PDF unlocks when every image is ready.": "Raporunuz hâlâ oluşturuluyor — tüm görseller hazır olduğunda PDF açılır."
 }

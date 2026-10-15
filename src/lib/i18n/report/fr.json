@@ -23,6 +23,8 @@
   "The direction — your moodboard": "La direction — votre planche d'inspiration",
   "A quick visual summary of where we're taking your style: example looks on your photo, your colour palette, a hero piece, and the overall direction.": "Un résumé visuel rapide de l'orientation que nous donnons à votre style : exemples de tenues sur votre photo, votre palette de couleurs, une pièce phare et la direction générale.",
   "Your colour story": "Votre histoire chromatique",
+  "Your photo was lit with a colour cast. We measured your skin and hair from the pixels and corrected for it, but a photo in soft daylight would sharpen the match.": "Votre photo présentait une dominante colorée. Nous avons mesuré la peau et les cheveux à partir des pixels et corrigé l’écart, mais une photo en lumière du jour douce affinerait encore le résultat.",
+  "Your photo was lit with a colour cast, so we read your colours more cautiously. A photo in soft daylight would sharpen the match.": "Votre photo présentait une dominante colorée, nous avons donc lu vos couleurs avec plus de prudence. Une photo en lumière du jour douce affinerait le résultat.",
   "Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works.": "Des neutres doux et chauds flattent votre colorimétrie à faible contraste. Voici où se situe votre palette sur le cercle — et exactement pourquoi chaque ton fonctionne.",
   "Colours that work for you": "Couleurs qui vous vont",
   "Colours to avoid": "Couleurs à éviter",
@@ -258,6 +260,9 @@
   "Fit comes first": "La coupe avant tout",
   "Tailoring the shoulders and hem changes everything.": "Ajuster les épaules et l'ourlet change tout.",
   "Earthy, warm tones": "Tons terreux et chauds",
+  "Cool, muted tones": "Tons froids et doux",
+  "Soft, balanced tones": "Tons doux et équilibrés",
+  "No close match yet:": "Pas encore d’équivalent proche :",
   "Let your palette lead; keep contrast soft.": "Laissez votre palette guider ; gardez les contrastes doux.",
   "Grooming is key": "Le grooming est essentiel",
   "A sharp cut and tidy beard finish the whole look.": "Une coupe nette et une barbe soignée parachèvent l'ensemble.",
@@ -292,5 +297,7 @@
   "Details": "Détails",
   "Care": "Entretien",
   "Do / Don't": "À faire / À éviter",
-  "Your colours": "Vos couleurs"
+  "Your colours": "Vos couleurs",
+  "PDF unlocks when every image has finished rendering.": "Le PDF sera disponible une fois toutes les images générées.",
+  "Your report is still being generated — the PDF unlocks when every image is ready.": "Votre rapport est encore en cours de génération — le PDF sera disponible une fois toutes les images prêtes."
 }

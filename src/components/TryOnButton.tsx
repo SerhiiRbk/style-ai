@@ -56,19 +56,27 @@ export function TryOnButton({
   const needsFullPhoto =
     errorCode === "needs_full_photo" || hasFull === false;
 
+  // Inside a report the question is whether THIS report has a full-length
+  // photo — the library having one from another session does not count.
   useEffect(() => {
     if (!LIVE) return;
     void (async () => {
       try {
-        const res = await fetch("/api/photos");
+        const res = await fetch(
+          reportId ? `/api/photos?reportId=${encodeURIComponent(reportId)}` : "/api/photos",
+        );
         if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
-        if (typeof data.hasFull === "boolean") setHasFull(data.hasFull);
+        if (reportId && typeof data.reportHasFull === "boolean") {
+          setHasFull(data.reportHasFull);
+        } else if (typeof data.hasFull === "boolean") {
+          setHasFull(data.hasFull);
+        }
       } catch {
         /* ignore */
       }
     })();
-  }, []);
+  }, [reportId]);
 
   async function uploadFullPhoto(file: File) {
     if (!LIVE) return;
@@ -101,16 +109,20 @@ export function TryOnButton({
       const res = await fetch("/api/photos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "full", storagePath }),
+        body: JSON.stringify({ role: "full", storagePath, reportId }),
       });
+      const saved = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Could not save photo");
+        throw new Error(saved.error ?? "Could not save photo");
       }
 
       setHasFull(true);
       setErrorCode(null);
-      setMsg("Full-length photo saved — tap Try this on again.");
+      setMsg(
+        saved.attachedToReport
+          ? "Full-length photo attached to this report — tap Try this on again."
+          : "Full-length photo saved — tap Try this on again.",
+      );
       setState("idle");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Upload failed");
@@ -223,8 +235,18 @@ export function TryOnButton({
       {needsFullPhoto && LIVE && (
         <div className="mt-2 rounded-lg border border-paper/12 bg-paper/5 p-3">
           <p className="text-[11px] leading-relaxed text-paper/55">
-            Try-on needs a <strong className="font-normal text-paper/80">full-length</strong> photo
-            (head to toe, arms visible, plain background). A portrait alone will not work.
+            {reportId ? (
+              <>
+                This report has no <strong className="font-normal text-paper/80">full-length</strong> photo
+                of its own. Upload one (head to toe, arms visible, plain background) — it is attached to
+                this report and used for every try-on here.
+              </>
+            ) : (
+              <>
+                Try-on needs a <strong className="font-normal text-paper/80">full-length</strong> photo
+                (head to toe, arms visible, plain background). A portrait alone will not work.
+              </>
+            )}
           </p>
           <input
             ref={fileRef}

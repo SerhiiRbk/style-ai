@@ -13,6 +13,7 @@ import {
   ensureSignupBonus,
   InsufficientCreditsError,
 } from "@/lib/credits";
+import { logRequestEvent } from "@/lib/funnel-context";
 
 const TIERS: Tier[] = ["free", "basic", "lookbook", "premium"];
 
@@ -128,6 +129,12 @@ export async function POST(request: Request) {
       photoPaths,
       biometricConsent: photoPaths.length ? biometricConsent : undefined,
       consentVersion: photoPaths.length ? consentVersion : undefined,
+    });
+
+    await logRequestEvent(request, {
+      name: "intake_completed",
+      userId,
+      props: { report_id: id, tier },
     });
 
     return NextResponse.json({ id, tier }, { status: 201 });

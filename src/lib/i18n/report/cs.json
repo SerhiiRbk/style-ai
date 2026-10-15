@@ -23,6 +23,8 @@
   "The direction — your moodboard": "Směr — vaše nástěnka",
   "A quick visual summary of where we're taking your style: example looks on your photo, your colour palette, a hero piece, and the overall direction.": "Rychlý vizuální souhrn, kam míříme s vaším stylem: vzorové outfity na vaší fotce, vaše barevná paleta, klíčový kus a celkový směr.",
   "Your colour story": "Váš barevný příběh",
+  "Your photo was lit with a colour cast. We measured your skin and hair from the pixels and corrected for it, but a photo in soft daylight would sharpen the match.": "Vaše fotografie byla nasvícena s barevným nádechem. Odstín kůže a vlasů jsme změřili z pixelů a korigovali, ale snímek v měkkém denním světle by shodu ještě zpřesnil.",
+  "Your photo was lit with a colour cast, so we read your colours more cautiously. A photo in soft daylight would sharpen the match.": "Vaše fotografie byla nasvícena s barevným nádechem, proto jsme vaše barvy četli opatrněji. Snímek v měkkém denním světle by shodu zpřesnil.",
   "Soft, warm neutrals flatter your low-contrast colouring. Here's where your palette sits on the wheel — and exactly why each tone works.": "Jemné, teplé neutrály lichotí vašemu málo kontrastnímu ladění. Tady vidíte, kde vaše paleta leží na barevném kruhu — a přesně proč každý tón funguje.",
   "Colours that work for you": "Barvy, které vám jdou",
   "Colours to avoid": "Barvy k vyhnutí",
@@ -258,6 +260,9 @@
   "Fit comes first": "Střih je na prvním místě",
   "Tailoring the shoulders and hem changes everything.": "Úprava ramen a délky změní vše.",
   "Earthy, warm tones": "Zemité, teplé tóny",
+  "Cool, muted tones": "Chladné, tlumené tóny",
+  "Soft, balanced tones": "Jemné, vyvážené tóny",
+  "No close match yet:": "Zatím bez blízké shody:",
   "Let your palette lead; keep contrast soft.": "Nechte vést paletu; udržte kontrast jemný.",
   "Grooming is key": "Péče je klíčová",
   "A sharp cut and tidy beard finish the whole look.": "Ostré střihy a upravený vous dotvoří celkový vzhled.",
@@ -292,5 +297,7 @@
   "Details": "Detaily",
   "Care": "Péče",
   "Do / Don't": "Doporučení / Nedoporučení",
-  "Your colours": "Vaše barvy"
+  "Your colours": "Vaše barvy",
+  "PDF unlocks when every image has finished rendering.": "PDF se odemkne, až budou všechny obrázky vygenerované.",
+  "Your report is still being generated — the PDF unlocks when every image is ready.": "Report se ještě generuje – PDF se odemkne, až budou všechny obrázky hotové."
 }

@@ -16,7 +16,9 @@
     "grant:credits": "node --env-file=.env.local scripts/grant-credits.mjs",
     "eval:colours": "node --env-file=.env.local --import tsx scripts/eval-colours-model.ts",
     "test:match": "node --import tsx --test src/lib/look-match-version.test.ts src/lib/ai/look-item-rerank-cache.test.ts src/lib/look-match-regression.test.ts src/lib/look-item-alts.test.ts",
-    "deck:pptx": "node scripts/generate-investor-pptx.mjs"
+    "deck:pptx": "node scripts/generate-investor-pptx.mjs",
+    "test:reports": "node --import tsx --test src/lib/report-regression.test.ts",
+    "eval:season": "NODE_PATH=./scripts/stubs node --env-file=.env.local --import tsx scripts/eval-season.ts"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",

@@ -129,13 +129,19 @@ function ShopChip({
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [alts, setAlts] = useState(item.alternatives ?? []);
+  // Alternatives fetched on demand override the ones the item arrived with;
+  // the parent keys each chip by product id, so a new item is a fresh mount.
+  const [fetched, setFetched] = useState<ShoppingItem[] | null>(null);
+  const alts = fetched ?? item.alternatives ?? [];
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-
+  const alive = useRef(true);
   useEffect(() => {
-    setAlts(item.alternatives ?? []);
-  }, [id, item.alternatives]);
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -153,26 +159,23 @@ function ShopChip({
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open || alts.length || !onNeedAlternatives) return;
-    let cancelled = false;
+  /** Open the picker; fetch alternatives the first time it opens empty. */
+  function toggleOpen() {
+    const next = !open;
+    setOpen(next);
+    if (!next || alts.length || fetched || !onNeedAlternatives) return;
     setLoading(true);
     onNeedAlternatives(item)
-      .then((next) => {
-        if (!cancelled) setAlts(next);
+      .then((list) => {
+        if (alive.current) setFetched(list);
       })
       .catch(() => {
-        if (!cancelled) setAlts([]);
+        if (alive.current) setFetched([]);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (alive.current) setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
-    // Fetch once when the picker opens — parent callbacks are not stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }
 
   return (
     <div ref={rootRef} className="relative">
@@ -204,7 +207,7 @@ function ShopChip({
             type="button"
             aria-expanded={open}
             aria-controls={panelId}
-            onClick={() => setOpen((v) => !v)}
+            onClick={toggleOpen}
             className="flex items-center gap-2 text-left"
           >
             <Thumb item={item} />

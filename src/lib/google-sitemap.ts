@@ -5,6 +5,7 @@ export const GOOGLE_SITEMAP_PATHS = [
   "/catalog",
   "/shop-a-look",
   "/how-it-works",
+  "/trust",
   "/colours",
   "/colours/deep-winter",
   "/colours/cool-winter",

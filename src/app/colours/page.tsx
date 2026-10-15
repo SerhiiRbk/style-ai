@@ -5,11 +5,13 @@ import { ColoursExperience } from "@/components/ColoursExperience";
 import { absoluteUrl } from "@/lib/site-url";
 import { notFound } from "next/navigation";
 import { COLOURS_ENABLED } from "@/lib/colours-feature";
+import { FREE_PAID_BOUNDARY } from "@/lib/launch-copy";
+import { logPageEvent } from "@/lib/funnel-context";
 
 export const metadata: Metadata = {
   title: "Free colour analysis for men — find your colours | Valetti",
   description:
-    "Discover your seasonal colour palette free in 20 seconds. Upload one selfie and Carlo reads your undertone, contrast and colours — no signup. Built for men.",
+    "Discover your seasonal colour palette free in 20 seconds. Upload one selfie — no signup. A report puts the colours on you and tells you what to buy.",
   alternates: { canonical: absoluteUrl("/colours") },
   openGraph: {
     title: "Find your colours — free | Valetti",
@@ -19,11 +21,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ColoursPage() {
+export default async function ColoursPage() {
   // PAUSED — the "colours" (free colour analysis) initiative is on hold, so this
   // route returns 404 while all page code below is kept intact. The same flag
   // guards `POST /api/colours`; flip it in one place to re-enable both.
   if (!COLOURS_ENABLED) notFound();
+  await logPageEvent("colours_view");
 
   return (
     <>
@@ -39,7 +42,10 @@ export default function ColoursPage() {
             <p className="mt-5 max-w-xl text-lg leading-relaxed text-stone">
               One selfie and <span className="text-ink">Carlo</span> reads your
               undertone, contrast and seasonal palette in about 20 seconds. No
-              signup, no payment — just your colours and what to wear.
+              signup.
+            </p>
+            <p className="mt-4 max-w-xl text-sm leading-relaxed text-stone">
+              {FREE_PAID_BOUNDARY}
             </p>
           </div>
         </section>

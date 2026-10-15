@@ -4,6 +4,7 @@ import {
   CONSTRUCTOR_TYPES,
   TIE_TYPES,
   backpackPromptDirective,
+  blazerTypePromptDirective,
   canonicalTieType,
   composeLookDescription,
   slotsFromLook,
@@ -119,4 +120,20 @@ test("work looks default the shirt tucked in", () => {
     /untucked/i,
   );
   assert.equal(tuckPromptDirective("Sage linen shirt, grey chinos", "weekend"), "");
+});
+
+test("blazerTypePromptDirective forbids bomber cuffs on any blazer", () => {
+  const unnamed = blazerTypePromptDirective("Navy blazer, white oxford, charcoal trousers");
+  assert.match(unnamed, /CRITICAL blazer/i);
+  assert.match(unnamed, /open cuff/i);
+  assert.match(unnamed, /never elastic|gathered|ribbed/i);
+  assert.doesNotMatch(unnamed, /DOUBLE-BREASTED|SINGLE-BREASTED|UNSTRUCTURED/);
+
+  const single = blazerTypePromptDirective(
+    "Single-breasted navy blazer, white oxford",
+  );
+  assert.match(single, /SINGLE-BREASTED/i);
+  assert.match(single, /open cuff/i);
+
+  assert.equal(blazerTypePromptDirective("Navy overcoat, grey trousers"), "");
 });

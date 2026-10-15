@@ -13,6 +13,8 @@ import { createLemonCheckout, variantIdFor } from "@/lib/lemon-squeezy";
 import { createStripeCheckout } from "@/lib/stripe";
 import { createCryptoInvoice, packagePriceEur } from "@/lib/crypto-pay";
 import { captureError } from "@/lib/observability";
+import { logEvent } from "@/lib/events";
+import { logRequestEvent } from "@/lib/funnel-context";
 import type { CreditPackage } from "@/lib/credit-costs";
 
 export const runtime = "nodejs";
@@ -128,6 +130,11 @@ export async function POST(request: Request) {
             successUrl: `${origin}/pricing?checkout=success&pack=${pkg.id}`,
           });
 
+    await logRequestEvent(request, {
+      name: "checkout_started",
+      userId: user.id,
+      props: { package_id: pkg.id, credits, provider: env.paymentProvider },
+    });
     return NextResponse.json({ url });
   } catch (e) {
     return NextResponse.json(
@@ -178,6 +185,11 @@ async function startCryptoCheckout(opts: {
       ipnCallbackUrl: `${origin}/api/crypto/webhook`,
       successUrl: `${origin}/pricing?checkout=crypto_pending&payment=${row.id}`,
       cancelUrl: `${origin}/pricing?checkout=cancel`,
+    });
+    await logEvent({
+      name: "checkout_started",
+      userId,
+      props: { package_id: pkg.id, credits, provider: "crypto" },
     });
 
     await admin

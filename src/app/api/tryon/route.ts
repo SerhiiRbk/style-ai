@@ -10,7 +10,7 @@ import {
 import {
   getFullLengthPhotoUrl,
   getCatalogTryOnPhoto,
-  getDefaultTryOnPhoto,
+  getStoredReportPhotoPaths,
   tryOnErrorCode,
 } from "@/lib/photo-tryon";
 import { absoluteUrl } from "@/lib/site-url";
@@ -239,22 +239,38 @@ export async function POST(request: Request) {
     }
   }
 
-  // Reference photo of the person. Inside a report we keep the report-scoped
-  // photo (unchanged); catalogue try-on uses the user's pinned default (falling
-  // back to their latest full-length). If a report has no full-length photo, we
-  // fall back to the user's default so try-on still works.
+  // Reference photo of the person. Inside a report we render on the report's
+  // own full-length photo — the paths persisted at submit time, the same body
+  // the looks were rendered on. A report without one gets a "upload for this
+  // report" error, never a silent swap to a photo from another session; the
+  // try-on card attaches the upload to the report. Only reports older than
+  // the intake table (nothing to attach to) fall back to the catalogue photo.
+  // Catalogue try-on uses the user's pinned default, else their latest.
   let photo:
     | { ok: true; signedUrl: string }
     | { ok: false; error: string; code: "no_photos" | "needs_full_photo" };
-  if (reportId) {
+  if (reportId && reportCreatedAt) {
     const scoped = await getFullLengthPhotoUrl(admin, user.id, {
       reportCreatedAt,
+      reportId,
     });
     if (scoped.ok) {
       photo = scoped;
+    } else if (scoped.code === "needs_full_photo") {
+      const stored = await getStoredReportPhotoPaths(admin, reportId);
+      if (stored) {
+        photo = {
+          ok: false,
+          code: "needs_full_photo",
+          error:
+            "This report was made without a full-length photo. Upload one from the try-on card — it is attached to this report and used for every try-on here.",
+        };
+      } else {
+        const fallback = await getCatalogTryOnPhoto(admin, user.id);
+        photo = fallback.ok ? fallback : scoped;
+      }
     } else {
-      const fallback = await getDefaultTryOnPhoto(admin, user.id);
-      photo = fallback ?? scoped;
+      photo = scoped;
     }
   } else {
     photo = await getCatalogTryOnPhoto(admin, user.id);

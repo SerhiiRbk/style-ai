@@ -4,6 +4,7 @@ import type { ShoppingItem } from "@/lib/report";
 import {
   catalogImageRefsFromItems,
   catalogPromptFromItems,
+  describedGarmentColour,
   catalogTryOnGarmentsText,
   footwearTryOnHint,
   mergeSelectedLookItems,
@@ -287,4 +288,117 @@ test("selectLookCatalogItems keeps ticked IDs and does not fill rematched SKUs",
   assert.equal(merged[1]?.productId, "buff-chinos");
   assert.ok(!merged.some((i) => i.productId === "beige-shirt"));
   assert.ok(!merged.some((i) => i.productId === "wool"));
+});
+
+const TEAL_LOOK =
+  "Soft teal merino crewneck, greige cotton trousers, slate blue leather belt, soft charcoal suede loafers";
+
+function tryItem(over: Partial<ShoppingItem> & { category: string; title: string }): ShoppingItem {
+  return {
+    why: "",
+    priceEur: 50,
+    retailer: "X",
+    url: "https://shop.example/p",
+    color: "#CCCCCC",
+    image: "https://cdn.example/p.jpg",
+    ...over,
+  };
+}
+
+test("describedGarmentColour reads the look's colour for a category", () => {
+  assert.match(describedGarmentColour(TEAL_LOOK, "Knitwear") ?? "", /teal/i);
+  assert.match(describedGarmentColour(TEAL_LOOK, "Trousers") ?? "", /greige/i);
+  assert.equal(describedGarmentColour(TEAL_LOOK, "Outerwear"), null);
+  assert.equal(describedGarmentColour("", "Knitwear"), null);
+});
+
+test("a Similar knit is prompted in the LOOK's colour; the photo fixes type only", () => {
+  const prompt = catalogPromptFromItems(
+    [
+      tryItem({
+        category: "Knitwear",
+        title: "Luciénte Pure Extra-Fine Merino Wool Classic Crewneck",
+        similarPick: true,
+        colorName: "Light blue",
+      }),
+      tryItem({ category: "Trousers", title: "Zara Comfort Wool Blend Suit Trousers", colorName: "Beige" }),
+    ],
+    TEAL_LOOK,
+    "dinner",
+  )!;
+  assert.match(prompt, /wearing a knitwear in soft teal \(the look's colour\)/i);
+  assert.match(prompt, /colour comes from the look/);
+  assert.doesNotMatch(prompt, /Light blue/);
+  // Non-similar items keep their own catalogue colour.
+  assert.match(prompt, /wearing a Beige trousers: Zara Comfort Wool Blend Suit Trousers/);
+});
+
+test("catalogue image refs carry the look colour for Similar picks only", () => {
+  const refs = catalogImageRefsFromItems(
+    [
+      tryItem({ category: "Knitwear", title: "Luciénte Crewneck", similarPick: true }),
+      tryItem({ category: "Trousers", title: "Zara Suit Trousers", image: "https://cdn.example/t.jpg" }),
+    ],
+    { lookDescription: TEAL_LOOK },
+  );
+  assert.equal(refs.length, 2);
+  assert.equal(refs[0]!.similarPick, true);
+  assert.match(refs[0]!.lookColour ?? "", /teal/i);
+  assert.equal(refs[1]!.similarPick, undefined);
+  assert.equal(refs[1]!.lookColour, undefined);
+});
+
+test("a list with no top puts the look's own top on it — never a bare torso", () => {
+  const prompt = catalogPromptFromItems(
+    [
+      tryItem({ category: "Trousers", title: "Zara Comfort Wool Blend Suit Trousers", colorName: "Greige" }),
+      tryItem({ category: "Accessories", title: "Reserved Leather Belt With Buckle", similarPick: true }),
+      tryItem({ category: "Footwear", title: "Gentleman Shoe Suede Tassel Loafers", similarPick: true }),
+    ],
+    "Soft teal merino roll-neck, greige wool trousers, soft charcoal leather belt, soft charcoal suede loafers",
+    "dinner",
+  )!;
+  assert.match(prompt, /missing the top/i);
+  assert.match(prompt, /Soft teal merino roll-neck/);
+  assert.match(prompt, /never a bare torso/i);
+  // With a top present the rule stays silent.
+  const withTop = catalogPromptFromItems(
+    [
+      tryItem({ category: "Knitwear", title: "Luciénte Merino Roll-Neck" }),
+      tryItem({ category: "Trousers", title: "Zara Suit Trousers" }),
+    ],
+    "Soft teal merino roll-neck, greige wool trousers",
+  )!;
+  assert.doesNotMatch(withTop, /missing the top/i);
+  // No top in the list AND none in the description → still a neutral top.
+  const bare = catalogPromptFromItems(
+    [tryItem({ category: "Trousers", title: "Zara Suit Trousers" }), tryItem({ category: "Footwear", title: "Loafers" })],
+    "greige wool trousers, suede loafers",
+  )!;
+  assert.match(bare, /never shirtless/i);
+});
+
+test("a blazer with no shirt or knit gets a base layer — never a bare chest", () => {
+  const prompt = catalogPromptFromItems(
+    [
+      tryItem({ category: "Outerwear", title: "Mango Soft Knit Blazer", colorName: "Teal" }),
+      tryItem({ category: "Trousers", title: "Dusty Rose Chinos" }),
+      tryItem({ category: "Footwear", title: "Navy Loafers" }),
+    ],
+    "Soft-teal knit blazer, dusty-rose chinos, muted-navy loafers",
+    "dinner",
+  )!;
+  assert.match(prompt, /plain collared shirt|missing the shirt|base layer/i);
+  assert.match(prompt, /blazer/i);
+  assert.doesNotMatch(
+    catalogPromptFromItems(
+      [
+        tryItem({ category: "Outerwear", title: "Navy Wool Blazer" }),
+        tryItem({ category: "Shirts", title: "White Oxford Shirt" }),
+        tryItem({ category: "Trousers", title: "Charcoal Trousers" }),
+      ],
+      "Navy wool blazer, white oxford shirt, charcoal trousers",
+    )!,
+    /missing the shirt|plain collared shirt|base layer/i,
+  );
 });

@@ -23,10 +23,20 @@ import { humanizeProductTitle } from "@/lib/product-title";
  *  v22: Work shirts drop relaxed/viscose/linen/camp unless named.
  *  v23: Work shirts read description for camp/stand-collar; leather tone lock.
  *  v24: typed subtype/material/fit/pattern; ingest columns over title.
- *  next: plum with no catalogue hit falls to navy/slate, not pastel pink;
- *        charcoal footwear stays grey, not dark teal/green.
+ *  v25: named-colour slots stay empty rather than take a Similar stand-in.
+ *  v26: same-family neutrals (grey for charcoal, navy for slate-blue) fill
+ *       again; empty only for a different colour family (oatmeal ≠ white).
+ *  v27: skip a wrong-colour top hit instead of emptying the slot; work shirts
+ *       snap off charcoal; charcoal/greige leather may take dress leather.
+ *  v28: walk rerank candidates after a colour miss; 8 shop slots; sport coat
+ *       is not a winter coat; navy belt and greige tote may take dress leather.
+ *  v29: Work / Formal drop catalogue titles with "sport" (sport coat stays).
+ *  v30: overshirt and messenger slots SQL-fill on every occasion, not only Work.
+ *  v31: keep named work-shirt pigments (charcoal/navy); charcoal oxfords reject
+ *       light blue / light grey; fallback dark grey → navy (unless the jacket
+ *       is blue) → white; drop a shop shirt that clashes with the jacket.
  */
-export const LOOK_MATCH_VERSION = 24;
+export const LOOK_MATCH_VERSION = 31;
 
 /**
  * Bump when the rerank prompt or candidate line format changes — that is the

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { hasSupabase } from "@/lib/env";
 import { canShareReport, type Tier } from "@/lib/report";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { logRequestEvent } from "@/lib/funnel-context";
 
 export async function PATCH(
   request: Request,
@@ -69,6 +70,14 @@ export async function PATCH(
 
   if (error || !data) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (data.is_public) {
+    await logRequestEvent(request, {
+      name: "report_shared",
+      userId: user.id,
+      props: { report_id: id },
+    });
   }
 
   return NextResponse.json({ isPublic: data.is_public as boolean });

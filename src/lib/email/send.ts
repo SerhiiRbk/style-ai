@@ -9,6 +9,9 @@ import {
   paletteEmail,
   capAckEmail,
   creditsReminderEmail,
+  welcomeEmail,
+  abandonedIntakeEmail,
+  day3AfterReportEmail,
 } from "@/lib/email/templates";
 import {
   paletteForSubseason,
@@ -103,6 +106,40 @@ export function sendCreditsReminderEmail(
   const { subject, html, text } = creditsReminderEmail({
     balance,
     ctaUrl: absoluteUrl("/start"),
+    unsubscribeUrl: unsub,
+  });
+  return sendEmail({ to, subject, html, text });
+}
+
+/** Day 0 — transactional (account created). No unsubscribe required. */
+export function sendWelcomeEmail(to: string): Promise<boolean> {
+  const { subject, html, text } = welcomeEmail({
+    ctaUrl: absoluteUrl("/start?welcome=1"),
+    lookbookUrl: absoluteUrl("/pricing"),
+  });
+  return sendEmail({ to, subject, html, text });
+}
+
+/** Abandoned intake — lifecycle. */
+export function sendAbandonedIntakeEmail(to: string): Promise<boolean> {
+  const unsub = unsubscribeUrl(to);
+  if (!unsub) return Promise.resolve(false);
+  const { subject, html, text } = abandonedIntakeEmail({
+    ctaUrl: absoluteUrl("/start"),
+    unsubscribeUrl: unsub,
+  });
+  return sendEmail({ to, subject, html, text });
+}
+
+/** Day 3 after a ready report — lifecycle. */
+export function sendDay3AfterReportEmail(
+  to: string,
+  reportId: string,
+): Promise<boolean> {
+  const unsub = unsubscribeUrl(to);
+  if (!unsub) return Promise.resolve(false);
+  const { subject, html, text } = day3AfterReportEmail({
+    reportUrl: absoluteUrl(`/report/${reportId}`),
     unsubscribeUrl: unsub,
   });
   return sendEmail({ to, subject, html, text });

@@ -1,0 +1,708 @@
+{
+  "slug": "deep-autumn-9674",
+  "tier": "lookbook",
+  "createdAt": "2026-09-04T21:46:31.73752+00:00",
+  "profile": {
+    "goals": [
+      "Dating & social",
+      "Look younger / fresher"
+    ],
+    "version": "1.0",
+    "boldness": "statement",
+    "currency": "CZK",
+    "physical": {
+      "bodyType": "triangle",
+      "contrast": "low",
+      "eyeColor": "brown",
+      "heightCm": 177,
+      "lighting": "warm-tint",
+      "skinTone": "warm medium",
+      "weightKg": 79,
+      "faceShape": "oblong",
+      "hairColor": "dark brown",
+      "undertone": "warm"
+    },
+    "budgetEur": {
+      "max": 3000,
+      "min": 1000
+    },
+    "lifestyle": [
+      "Public speaking",
+      "Socialite"
+    ],
+    "occupation": "Software / IT",
+    "colorSeason": "autumn",
+    "demographics": {
+      "age": 46,
+      "city": "",
+      "climate": "temperate",
+      "country": "Czechia",
+      "genderPresentation": "male"
+    },
+    "colorSubseason": "deep-autumn"
+  },
+  "colors": {
+    "best": [
+      {
+        "name": "Espresso",
+        "hex": "#42352d"
+      },
+      {
+        "name": "Olive",
+        "hex": "#6b6b47"
+      },
+      {
+        "name": "Rust",
+        "hex": "#9e5c3c"
+      },
+      {
+        "name": "Camel",
+        "hex": "#7e674b"
+      },
+      {
+        "name": "Deep navy",
+        "hex": "#323949"
+      },
+      {
+        "name": "Mustard",
+        "hex": "#c9a24b"
+      },
+      {
+        "name": "Chocolate",
+        "hex": "#503f35"
+      },
+      {
+        "name": "Cream",
+        "hex": "#dccbb4"
+      },
+      {
+        "name": "Warm charcoal",
+        "hex": "#3d3a34",
+        "role": "versatile"
+      },
+      {
+        "name": "Taupe",
+        "hex": "#8e7c6a",
+        "role": "versatile"
+      }
+    ],
+    "avoid": [
+      {
+        "name": "Pure Black",
+        "hex": "#000000"
+      },
+      {
+        "name": "Icy Pink",
+        "hex": "#F2C6D2"
+      },
+      {
+        "name": "Fuchsia",
+        "hex": "#B01455"
+      },
+      {
+        "name": "Cool Cobalt",
+        "hex": "#0E63C4"
+      }
+    ]
+  },
+  "shopping": [
+    {
+      "category": "Outerwear",
+      "title": "Valmonti Men’s Textured Notch Lapel Relaxed Tailored Blazer",
+      "color": "#6f4e37",
+      "colorName": "Brown",
+      "priceEur": 58.76,
+      "retailer": "Valmonti"
+    },
+    {
+      "category": "Outerwear",
+      "title": "Valmonti Men’s Warm Hooded Overshirt Jacket – Printed Quilted Layer For Outdoor Wear",
+      "color": "#8b8b8b",
+      "colorName": "Grey",
+      "priceEur": 64.65,
+      "retailer": "Valmonti"
+    },
+    {
+      "category": "Trousers",
+      "title": "Marks & Spencer Tailored Fit Pure Wool Check Suit Trousers",
+      "color": "#28324a",
+      "colorName": "Dark Navy",
+      "priceEur": 115,
+      "retailer": "Marks & Spencer"
+    },
+    {
+      "category": "Trousers",
+      "title": "Zara Wide-Leg Pleated Chino Trousers",
+      "color": "#ffffff",
+      "colorName": "white",
+      "priceEur": 49.95,
+      "retailer": "ZARA"
+    },
+    {
+      "category": "Shirts",
+      "title": "Zara Cotton Voile Shirt",
+      "color": "#b3a28d",
+      "colorName": "Taupe grey",
+      "priceEur": 29.95,
+      "retailer": "ZARA"
+    },
+    {
+      "category": "Shirts",
+      "title": "COS Oxford Button-Down Shirt",
+      "color": "#ffffff",
+      "colorName": "White",
+      "priceEur": 45,
+      "retailer": "COS"
+    },
+    {
+      "category": "Knitwear",
+      "title": "Luciénte Pure Extra-Fine Merino Wool Classic Crewneck",
+      "color": "#a7c4db",
+      "colorName": "Light Blue",
+      "priceEur": 82.35,
+      "retailer": "Luciénte"
+    },
+    {
+      "category": "Footwear",
+      "title": "Gentleman Shoe Men's Brown Genuine Leather Oxford Shoes",
+      "color": "#111111",
+      "colorName": "Black",
+      "priceEur": 140,
+      "retailer": "Gentleman Shoe"
+    },
+    {
+      "category": "Footwear",
+      "title": "Reserved Leather Loafers",
+      "color": "#4a2f23",
+      "colorName": "dark brown",
+      "priceEur": 35.99,
+      "retailer": "Reserved"
+    },
+    {
+      "category": "Footwear",
+      "title": "Valmonti Men’s Smooth Leather Elastic Lace Thick Sole Sneakers",
+      "color": "#ffffff",
+      "colorName": "White",
+      "priceEur": 58.76,
+      "retailer": "Valmonti"
+    },
+    {
+      "category": "Accessories",
+      "title": "Reserved Leather Belt With Buckle",
+      "color": "#4a2f23",
+      "colorName": "dark brown",
+      "priceEur": 37.99,
+      "retailer": "Reserved"
+    },
+    {
+      "category": "Accessories",
+      "title": "Zara Plain Crossbody Bag With Flap",
+      "color": "#6f4e37",
+      "colorName": "Brown",
+      "priceEur": 35.95,
+      "retailer": "ZARA"
+    }
+  ],
+  "lookItems": {
+    "0": [
+      {
+        "category": "Knitwear",
+        "title": "Zara Brushed Cable-Knit Textured Jumper",
+        "color": "#EAD98A",
+        "colorName": "Butter",
+        "priceEur": 89.95,
+        "retailer": "ZARA",
+        "garment": "crewneck",
+        "similarPick": true
+      },
+      {
+        "category": "Trousers",
+        "title": "Reserved Chino Slim Trousers",
+        "color": "#4B3621",
+        "colorName": "coffee",
+        "priceEur": 32.99,
+        "retailer": "Reserved",
+        "garment": "chinos"
+      },
+      {
+        "category": "Footwear",
+        "title": "Valmonti Men’s Suede Slip-On Loafers Casual Comfort Everyday Shoes",
+        "color": "#28324A",
+        "colorName": "Navy Blue",
+        "priceEur": 47,
+        "retailer": "Valmonti",
+        "garment": "loafers"
+      },
+      {
+        "category": "Accessories",
+        "title": "Zara Leather Tote Bag",
+        "color": "#936f50",
+        "colorName": "Sand Brown",
+        "priceEur": 91.96,
+        "retailer": "ZARA",
+        "garment": "tote",
+        "similarPick": true
+      },
+      {
+        "category": "Accessories",
+        "title": "Zara Split Suede Leather Belt",
+        "color": "#28324A",
+        "colorName": "Navy blue",
+        "priceEur": 47.96,
+        "retailer": "ZARA",
+        "garment": "belt"
+      }
+    ],
+    "1": [
+      {
+        "category": "Outerwear",
+        "title": "Marks & Spencer Pure Cotton Herringbone Overshirt​",
+        "color": "#A6421E",
+        "colorName": "Rust",
+        "priceEur": 60,
+        "retailer": "Marks & Spencer",
+        "garment": "overshirt"
+      },
+      {
+        "category": "Shirts",
+        "title": "Reserved Comfort Fit T-Shirt",
+        "color": "#F3EAD3",
+        "colorName": "cream",
+        "priceEur": 12.99,
+        "retailer": "Reserved",
+        "garment": "tee"
+      },
+      {
+        "category": "Trousers",
+        "title": "Reserved Chino Slim Fit Trousers",
+        "color": "#F3EAD3",
+        "colorName": "cream",
+        "priceEur": 29.99,
+        "retailer": "Reserved",
+        "garment": "chinos"
+      },
+      {
+        "category": "Footwear",
+        "title": "Untamed Street Soho Cocoa-Brown Patina Sneakers.",
+        "color": "#6F4E37",
+        "colorName": "Cocoa Brown",
+        "priceEur": 356.48,
+        "retailer": "Untamed Street",
+        "garment": "sneakers",
+        "similarPick": true
+      },
+      {
+        "category": "Accessories",
+        "title": "Reserved Combined Materials Belt",
+        "color": "#4B3621",
+        "colorName": "coffee",
+        "priceEur": 25.99,
+        "retailer": "Reserved",
+        "garment": "belt",
+        "similarPick": true
+      }
+    ],
+    "2": [
+      {
+        "category": "Outerwear",
+        "title": "Reserved Regular Fit Blazer With Linen Blend",
+        "color": "#6B6B47",
+        "colorName": "light olive",
+        "priceEur": 69.99,
+        "retailer": "Reserved",
+        "garment": "blazer",
+        "similarPick": true
+      },
+      {
+        "category": "Shirts",
+        "title": "ASOS Design Slim Oxford Shirt",
+        "color": "#F3EAD3",
+        "colorName": "Cream",
+        "priceEur": 37.65,
+        "retailer": "ASOS DESIGN",
+        "garment": "oxford"
+      },
+      {
+        "category": "Trousers",
+        "title": "Porto Richezze Parma High Waisted Trousers",
+        "color": "#4B3621",
+        "colorName": "Coffee",
+        "priceEur": 79.95,
+        "retailer": "Porto Richezze",
+        "garment": "trousers"
+      },
+      {
+        "category": "Footwear",
+        "title": "Gentleman Shoe Men's Genuine Leather Business Casual Top Layer Leather Loafers",
+        "color": "#4B3621",
+        "colorName": "Coffee",
+        "priceEur": 130,
+        "retailer": "Gentleman Shoe",
+        "garment": "loafers",
+        "similarPick": true
+      },
+      {
+        "category": "Accessories",
+        "title": "Reserved Leather Belt With Buckle",
+        "color": "#4A2F23",
+        "colorName": "dark brown",
+        "priceEur": 19.99,
+        "retailer": "Reserved",
+        "garment": "belt",
+        "similarPick": true
+      }
+    ],
+    "3": [
+      {
+        "category": "Outerwear",
+        "title": "Zara Wool Blend Textured Suit Blazer",
+        "color": "#84736b",
+        "colorName": "camel",
+        "priceEur": 89.95,
+        "retailer": "ZARA",
+        "garment": "blazer"
+      },
+      {
+        "category": "Shirts",
+        "title": "Marks & Spencer Cotton Rich Oxford Shirt",
+        "color": "#FFFFFF",
+        "colorName": "White",
+        "priceEur": 29,
+        "retailer": "Marks & Spencer",
+        "garment": "shirt"
+      },
+      {
+        "category": "Trousers",
+        "title": "Marks & Spencer Regular Fit Smart Trousers",
+        "color": "#36393B",
+        "colorName": "Charcoal",
+        "priceEur": 28,
+        "retailer": "Marks & Spencer",
+        "garment": "trousers"
+      },
+      {
+        "category": "Footwear",
+        "title": "Gentleman Shoe Men Are Genuine Leather Oxford Shoes",
+        "color": "#2F4B7C",
+        "colorName": "Blue",
+        "priceEur": 120,
+        "retailer": "Gentleman Shoe",
+        "garment": "oxfords"
+      },
+      {
+        "category": "Accessories",
+        "title": "Zara Split Suede Leather Belt",
+        "color": "#28324A",
+        "colorName": "Navy blue",
+        "priceEur": 47.96,
+        "retailer": "ZARA",
+        "garment": "belt"
+      },
+      {
+        "category": "Accessories",
+        "title": "Marks & Spencer Pure Silk Pocket Square",
+        "color": "#111111",
+        "colorName": "Black",
+        "priceEur": 14,
+        "retailer": "Marks & Spencer",
+        "garment": "pocket square",
+        "similarPick": true
+      }
+    ],
+    "4": [
+      {
+        "category": "Shirts",
+        "title": "Reserved Regular Fit Shirt",
+        "color": "#F3EAD3",
+        "colorName": "cream",
+        "priceEur": 35.99,
+        "retailer": "Reserved",
+        "garment": "shirt"
+      },
+      {
+        "category": "Trousers",
+        "title": "Marks & Spencer Regular Fit Thermal Technical Chinos",
+        "color": "#8E8E90",
+        "colorName": "Dark Pewter",
+        "priceEur": 56,
+        "retailer": "Marks & Spencer",
+        "garment": "chinos"
+      },
+      {
+        "category": "Footwear",
+        "title": "Zara Casual Leather Loafers",
+        "color": "#302217",
+        "colorName": "Chocolate",
+        "priceEur": 49.95,
+        "retailer": "ZARA",
+        "garment": "loafers"
+      },
+      {
+        "category": "Accessories",
+        "title": "Zara Leather Belt With Appliqué",
+        "color": "#4A2F23",
+        "colorName": "Chocolate",
+        "priceEur": 33.96,
+        "retailer": "ZARA",
+        "garment": "belt"
+      },
+      {
+        "category": "Knitwear",
+        "title": "Zara Basic Faded Crewneck Sweatshirt",
+        "color": "#C1913A",
+        "colorName": "pink gold",
+        "priceEur": 19.99,
+        "retailer": "ZARA",
+        "garment": "v neck",
+        "similarPick": true
+      }
+    ],
+    "5": [
+      {
+        "category": "Outerwear",
+        "title": "Marks & Spencer Pure Cotton Herringbone Overshirt​",
+        "color": "#A6421E",
+        "colorName": "Rust",
+        "priceEur": 60,
+        "retailer": "Marks & Spencer",
+        "garment": "overshirt"
+      },
+      {
+        "category": "Knitwear",
+        "title": "Zara Textured Cotton Jumper",
+        "color": "#f3e3d2",
+        "colorName": "Ecru",
+        "priceEur": 39.95,
+        "retailer": "ZARA",
+        "garment": "crewneck"
+      },
+      {
+        "category": "Trousers",
+        "title": "Marks & Spencer Regular Fit Wool Blend Trousers",
+        "color": "#36393B",
+        "colorName": "Charcoal Mix",
+        "priceEur": 63,
+        "retailer": "Marks & Spencer",
+        "garment": "trousers"
+      },
+      {
+        "category": "Footwear",
+        "title": "Marks & Spencer Slimline Leather Trainers",
+        "color": "#F3EAD3",
+        "colorName": "Natural Mix",
+        "priceEur": 78,
+        "retailer": "Marks & Spencer",
+        "garment": "sneakers"
+      },
+      {
+        "category": "Accessories",
+        "title": "Zara Textured Backpack",
+        "color": "#6F4E37",
+        "colorName": "Brown",
+        "priceEur": 47.96,
+        "retailer": "ZARA",
+        "garment": "backpack",
+        "similarPick": true
+      },
+      {
+        "category": "Accessories",
+        "title": "Zara Leather Belt With Appliqué",
+        "color": "#4A2F23",
+        "colorName": "Chocolate",
+        "priceEur": 33.96,
+        "retailer": "ZARA",
+        "garment": "belt"
+      }
+    ]
+  },
+  "looks": [
+    {
+      "idx": 0,
+      "context": "Dinner / date",
+      "title": "Confident Warmth",
+      "description": "Mustard crewneck knit, espresso chinos, deep-navy suede loafers, deep-navy leather belt, taupe canvas tote",
+      "items": [
+        {
+          "color": "mustard",
+          "garment": "crewneck knit"
+        },
+        {
+          "color": "espresso",
+          "garment": "chinos"
+        },
+        {
+          "color": "deep-navy",
+          "garment": "loafers"
+        },
+        {
+          "color": "deep-navy",
+          "garment": "belt"
+        },
+        {
+          "color": "taupe",
+          "garment": "tote bag"
+        }
+      ]
+    },
+    {
+      "idx": 1,
+      "context": "Weekend",
+      "title": "Relaxed Ease",
+      "description": "Rust overshirt, cream cotton tee, cream chinos, espresso leather sneakers, espresso leather belt",
+      "items": [
+        {
+          "color": "rust",
+          "garment": "overshirt"
+        },
+        {
+          "color": "cream",
+          "garment": "tee"
+        },
+        {
+          "color": "cream",
+          "garment": "chinos"
+        },
+        {
+          "color": "espresso",
+          "garment": "sneakers"
+        },
+        {
+          "color": "espresso",
+          "garment": "belt"
+        }
+      ]
+    },
+    {
+      "idx": 2,
+      "context": "Business social",
+      "title": "Approachable Authority",
+      "description": "Olive unstructured blazer, cream oxford shirt, espresso flat-front trousers, warm-charcoal leather loafers, warm-charcoal leather belt, mustard linen pocket square, taupe leather briefcase",
+      "items": [
+        {
+          "color": "olive",
+          "garment": "blazer"
+        },
+        {
+          "color": "cream",
+          "garment": "shirt"
+        },
+        {
+          "color": "espresso",
+          "garment": "trousers"
+        },
+        {
+          "color": "warm-charcoal",
+          "garment": "loafers"
+        },
+        {
+          "color": "warm-charcoal",
+          "garment": "belt"
+        },
+        {
+          "color": "mustard",
+          "garment": "pocket square"
+        },
+        {
+          "color": "taupe",
+          "garment": "briefcase"
+        }
+      ]
+    },
+    {
+      "idx": 3,
+      "context": "Work / meetings",
+      "title": "Polished Presence",
+      "description": "Camel wool blazer, white poplin shirt, warm-charcoal wool trousers, deep-navy leather oxfords, deep-navy leather belt, rust silk pocket square, cream leather briefcase",
+      "items": [
+        {
+          "color": "camel",
+          "garment": "blazer"
+        },
+        {
+          "color": "white",
+          "garment": "shirt"
+        },
+        {
+          "color": "warm-charcoal",
+          "garment": "trousers"
+        },
+        {
+          "color": "deep-navy",
+          "garment": "oxfords"
+        },
+        {
+          "color": "deep-navy",
+          "garment": "belt"
+        },
+        {
+          "color": "rust",
+          "garment": "pocket square"
+        },
+        {
+          "color": "cream",
+          "garment": "briefcase"
+        }
+      ]
+    },
+    {
+      "idx": 4,
+      "context": "Smart casual",
+      "title": "Refined Versatility",
+      "description": "Mustard merino V-neck, cream linen shirt, warm-charcoal chinos, chocolate suede loafers, chocolate leather belt",
+      "items": [
+        {
+          "color": "mustard",
+          "garment": "V-neck"
+        },
+        {
+          "color": "cream",
+          "garment": "shirt"
+        },
+        {
+          "color": "warm-charcoal",
+          "garment": "chinos"
+        },
+        {
+          "color": "chocolate",
+          "garment": "loafers"
+        },
+        {
+          "color": "chocolate",
+          "garment": "belt"
+        }
+      ]
+    },
+    {
+      "idx": 5,
+      "context": "Travel / transitional",
+      "title": "Adaptable Comfort",
+      "description": "Rust wool overshirt, cream crewneck knit, warm-charcoal flat-front trousers, cream leather sneakers, espresso leather belt, taupe canvas backpack",
+      "items": [
+        {
+          "color": "rust",
+          "garment": "overshirt"
+        },
+        {
+          "color": "cream",
+          "garment": "crewneck knit"
+        },
+        {
+          "color": "warm-charcoal",
+          "garment": "trousers"
+        },
+        {
+          "color": "cream",
+          "garment": "sneakers"
+        },
+        {
+          "color": "espresso",
+          "garment": "belt"
+        },
+        {
+          "color": "taupe",
+          "garment": "backpack"
+        }
+      ]
+    }
+  ]
+}

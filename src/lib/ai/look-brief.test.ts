@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   composeLookBrief,
+  dinnerLayerMatchesSlot,
   LOOK_WEARABLE_RULE,
   partyJacketFabricDirective,
   partyJacketMatchesSlot,
@@ -262,6 +263,15 @@ test("wearable rule asks for one chromatic hero and a dark anchor on mid-neutral
   assert.match(LOOK_WEARABLE_RULE, /mid-neutral|greige|mushroom/i);
 });
 
+test("wearable rule keeps mauve off blazers and overcoats", () => {
+  assert.match(LOOK_WEARABLE_RULE, /navy|charcoal|grey/i);
+  assert.match(LOOK_WEARABLE_RULE, /burgundy|olive/i);
+  assert.match(LOOK_WEARABLE_RULE, /teal|mauve|sage/i);
+  assert.match(LOOK_WEARABLE_RULE, /plum velvet/i);
+  assert.match(LOOK_WEARABLE_RULE, /blazer|sport coat/i);
+  assert.match(LOOK_WEARABLE_RULE, /overcoat/i);
+});
+
 test("wearable rule keeps shorts off jackets, knits and classic shoes", () => {
   assert.match(LOOK_WEARABLE_RULE, /shorts|bermudas/i);
   assert.match(LOOK_WEARABLE_RULE, /oxfords|brogues|derbies|boots/i);
@@ -271,6 +281,12 @@ test("wearable rule keeps shorts off jackets, knits and classic shoes", () => {
 test("wearable rule forbids a necktie on a closed crewneck", () => {
   assert.match(LOOK_WEARABLE_RULE, /necktie|tie/i);
   assert.match(LOOK_WEARABLE_RULE, /crewneck|roll-neck|V-neck/i);
+});
+
+test("wearable rule forbids a jacket on a bare chest", () => {
+  assert.match(LOOK_WEARABLE_RULE, /bare chest|bare skin/i);
+  assert.match(LOOK_WEARABLE_RULE, /blazer|sport coat/i);
+  assert.match(LOOK_WEARABLE_RULE, /shirt|polo|knit/i);
 });
 
 test("withWearableLookRule appends the wearable rule and keeps the brief", () => {
@@ -422,6 +438,108 @@ test("sanitizeLookDescription leaves a crewneck alone when there is no tie", () 
   );
 });
 
+const BARE_KNIT_BLAZER_LOOK =
+  "Soft-teal knit blazer, dusty-rose chinos, muted-navy loafers, muted-navy belt, " +
+  "slate-blue pocket square, greige leather tote";
+
+test("sanitizeLookDescription puts a shirt under a blazer that has no base layer", () => {
+  const out = sanitizeLookDescription(BARE_KNIT_BLAZER_LOOK);
+  assert.match(out, /knit blazer/i);
+  assert.match(out, /plain collared shirt/i);
+  assert.match(out, /dusty-rose chinos/i);
+  assert.match(out, /pocket square/i);
+});
+
+test("sanitizeLookDescription snaps a teal sport coat to navy and leaves a teal knit", () => {
+  const out = sanitizeLookDescription(
+    "Soft-teal sport coat, slate-blue crewneck knit, soft-charcoal wool trousers, muted-navy loafers",
+  );
+  assert.match(out, /navy sport coat/i);
+  assert.doesNotMatch(out, /teal sport coat|teal knit blazer/i);
+  assert.match(out, /teal|slate-blue crewneck/i);
+  assert.match(
+    sanitizeLookDescription(
+      "Navy unstructured blazer, teal merino crewneck, greige chinos, loafers",
+    ),
+    /teal merino crewneck/i,
+  );
+});
+
+test("sanitizeLookDescription snaps a sage blazer and a work burgundy jacket", () => {
+  const sage = sanitizeLookDescription(
+    "Sage wool-blend blazer, white oxford shirt, charcoal trousers",
+  );
+  assert.match(sage, /navy(?: wool-blend)? blazer/i);
+  assert.doesNotMatch(sage, /sage/i);
+  const dinner = sanitizeLookDescription(
+    "Burgundy velvet blazer, white dress shirt, black trousers",
+    "dinner",
+  );
+  assert.match(dinner, /burgundy velvet blazer/i);
+  const work = sanitizeLookDescription(
+    "Burgundy velvet blazer, white oxford shirt, charcoal trousers",
+    "work",
+  );
+  assert.match(work, /navy velvet blazer/i);
+  assert.doesNotMatch(work, /burgundy velvet blazer/i);
+});
+
+test("sanitizeLookDescription keeps a plum velvet jacket on party statement only", () => {
+  const party = sanitizeLookDescription(
+    "Plum velvet blazer, white dress shirt, black trousers",
+    "party",
+    "statement",
+  );
+  assert.match(party, /plum velvet blazer/i);
+  const wool = sanitizeLookDescription(
+    "Plum wool-blend blazer, white dress shirt, black trousers",
+    "party",
+    "experimental",
+  );
+  assert.match(wool, /plum velvet blazer/i);
+  assert.doesNotMatch(wool, /wool-blend/i);
+  const moderate = sanitizeLookDescription(
+    "Plum velvet blazer, white dress shirt, black trousers",
+    "party",
+    "moderate",
+  );
+  assert.match(moderate, /navy velvet blazer/i);
+  const dinner = sanitizeLookDescription(
+    "Plum velvet blazer, white dress shirt, black trousers",
+    "dinner",
+    "statement",
+  );
+  assert.match(dinner, /navy velvet blazer/i);
+});
+
+test("sanitizeLookDescription leaves a blazer that already has a shirt or knit", () => {
+  const withShirt =
+    "Navy wool blazer, white oxford shirt, charcoal trousers, chestnut derbies";
+  assert.equal(sanitizeLookDescription(withShirt), withShirt);
+  const withKnit =
+    "Navy unstructured blazer, teal merino crewneck, greige chinos, loafers";
+  assert.equal(sanitizeLookDescription(withKnit), withKnit);
+});
+
+test("sanitizeLookDescription puts a shirt under a coat with no base layer", () => {
+  const out = sanitizeLookDescription(
+    "Charcoal tailored overcoat, navy trousers, black oxfords",
+  );
+  assert.match(out, /overcoat/i);
+  assert.match(out, /plain collared shirt/i);
+  assert.doesNotMatch(out, /plain collared shirt.*plain collared shirt/i);
+});
+
+test("dinner slot 0 names a shirt or knit under the blazer", () => {
+  const brief = composeLookBrief(BRIEF, {
+    occasionId: "dinner",
+    lookIndex: 0,
+    looksCount: 3,
+  });
+  assert.match(brief, /shirt|knit/i);
+  assert.match(brief, /bare/i);
+});
+
 const WORK_TOTE_LOOK =
   "Navy wool blazer, white oxford shirt, charcoal trousers, chestnut derbies, dusty rose canvas tote bag";
 
@@ -469,4 +587,39 @@ test("sanitizeLookItems rewrites a crewneck slot when the look also has a tie", 
     { garment: "knitted tie", color: "seafoam" },
     { garment: "trousers", color: "navy" },
   ]);
+});
+
+test("formal and wedding briefs state the dress-code exception; work does not", () => {
+  const formal = composeLookBrief("Sharp and occasion-appropriate.", { occasionId: "formal", boldness: "moderate" });
+  assert.match(formal, /dress code .* beats colour analysis/i);
+  assert.match(formal, /black or dark-brown dress shoes/i);
+  assert.match(formal, /tailored overcoat/i);
+  assert.match(formal, /keep black off the shirt/i);
+  const wedding = composeLookBrief("Celebratory.", { occasionId: "wedding_guest", boldness: "moderate" });
+  assert.match(wedding, /tailored overcoat/i);
+  const work = composeLookBrief("Office.", { occasionId: "work", boldness: "moderate" });
+  assert.doesNotMatch(work, /tailored overcoat/i);
+  // Omitting occasion leaves the brief untouched by the formal note.
+  assert.doesNotMatch(composeLookBrief("Plain."), /dress code/i);
+});
+
+test("dinner sets rotate an evening layer: blazer, textured jacket, then an evening top", () => {
+  const b0 = composeLookBrief("Dinner.", { occasionId: "dinner", boldness: "moderate", lookIndex: 0, looksCount: 3 });
+  const b1 = composeLookBrief("Dinner.", { occasionId: "dinner", boldness: "moderate", lookIndex: 1, looksCount: 3 });
+  const b2 = composeLookBrief("Dinner.", { occasionId: "dinner", boldness: "moderate", lookIndex: 2, looksCount: 3 });
+  assert.match(b0, /unstructured blazer or sport coat/i);
+  assert.match(b1, /overshirt|knitted blazer|chore jacket/i);
+  assert.match(b1, /Do NOT use a classic blazer/);
+  assert.match(b2, /may go jacket-free/i);
+  // A single extra look (no set index) and other occasions get no dinner rotation.
+  assert.doesNotMatch(composeLookBrief("Dinner.", { occasionId: "dinner", boldness: "moderate" }), /Evening layer for THIS look/);
+  assert.doesNotMatch(composeLookBrief("Work.", { occasionId: "work", lookIndex: 0, looksCount: 3 }), /Evening layer/);
+});
+
+test("dinnerLayerMatchesSlot demands a jacket-class layer on slots 0 and 1 only", () => {
+  assert.equal(dinnerLayerMatchesSlot("Soft teal merino crewneck, navy chinos, loafers", 0), false);
+  assert.equal(dinnerLayerMatchesSlot("Navy unstructured blazer, teal knit, chinos", 0), true);
+  assert.equal(dinnerLayerMatchesSlot("Suede overshirt, slate shirt, charcoal trousers", 1), true);
+  assert.equal(dinnerLayerMatchesSlot("Slate blue shirt, charcoal chinos, plum loafers", 1), false);
+  assert.equal(dinnerLayerMatchesSlot("Fine merino polo, greige trousers, loafers", 2), true);
 });

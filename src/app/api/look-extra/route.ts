@@ -168,6 +168,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not store look" }, { status: 500 });
   }
 
+  // The look is generated in English (matching + image prompts); translate the
+  // display strings for a non-English report, keep `items` English.
+  const display =
+    language !== "en"
+      ? (await translateReportParts({ looks: [look] }, language)).looks?.[0]
+      : null;
   const lookRow: {
     report_id: string;
     user_id: string;
@@ -182,9 +188,9 @@ export async function POST(request: Request) {
     report_id: reportId,
     user_id: user.id,
     idx: newIndex,
-    context: look.context,
-    title: look.title,
-    description: look.description,
+    context: display?.context ?? look.context,
+    title: display?.title ?? look.title,
+    description: display?.description ?? look.description,
     palette: look.palette,
     image_path: imagePath,
   };

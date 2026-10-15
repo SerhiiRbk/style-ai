@@ -24,8 +24,8 @@ export default function PrivacyPage() {
             intro={PRIVACY_INTRO}
             lastUpdated={LEGAL.lastUpdated}
             sections={PRIVACY_SECTIONS}
-            relatedHref="/terms"
-            relatedLabel="Terms of Service"
+            relatedHref="/trust"
+            relatedLabel="How we treat your photos"
           />
         </section>
       </main>

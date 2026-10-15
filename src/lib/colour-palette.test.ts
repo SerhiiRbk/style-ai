@@ -4,6 +4,7 @@ import {
   assessHexTrust,
   SUBSEASON_PALETTES,
   bestColorsForSubseason,
+  whyForBestSwatch,
   avoidColorsForSubseason,
   reportPalette,
   buildPaletteFromColouring,
@@ -474,6 +475,34 @@ test("warm-tint still personalises hexes, weaker than full mix", () => {
     gentle.map((s) => s.hex),
     other.map((s) => s.hex),
     "two tinted faces in the same subseason must not share hexes",
+  );
+});
+
+test("soft-summer why copy is family-specific and does not call a chromatic swatch a neutral", () => {
+  const curated = SUBSEASON_PALETTES["soft-summer"];
+  const whys = curated.map((sw) =>
+    whyForBestSwatch(sw, {
+      undertone: "cool",
+      contrast: "medium",
+      label: "Soft Summer",
+    }),
+  );
+  const unique = new Set(whys);
+  assert.ok(
+    unique.size >= 6,
+    `expected ≥ 6 distinct why phrases, got ${unique.size}: ${[...unique].join(" | ")}`,
+  );
+  const teal = curated.find((s) => /teal/i.test(s.name))!;
+  assert.equal(
+    /neutral/i.test(
+      whyForBestSwatch(teal, {
+        undertone: "cool",
+        contrast: "medium",
+        label: "Soft Summer",
+      }),
+    ),
+    false,
+    "soft teal must not be called a neutral",
   );
 });
 

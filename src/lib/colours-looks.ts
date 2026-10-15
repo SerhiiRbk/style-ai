@@ -1,7 +1,7 @@
 import "server-only";
 import type { StyleProfile, SubseasonId } from "@/lib/style-profile";
 import { neutralMatchProfile } from "@/lib/data/match-profile";
-import { seasonForSubseason, type PaletteSwatch } from "@/lib/colour-palette";
+import { lightingForTrust, seasonForSubseason, type PaletteSwatch } from "@/lib/colour-palette";
 import type { LookGarment } from "@/lib/style-extras";
 import type { CatalogCategory } from "@/lib/catalog-categories";
 import type { Geo } from "@/lib/geo";
@@ -142,7 +142,7 @@ export function buildAnonProfile(
       skinHex: person?.skinHex ?? undefined,
       hairHex: person?.hairHex ?? undefined,
       eyeHex: person?.eyeHex ?? undefined,
-      lighting: person?.lighting ?? base.physical.lighting,
+      lighting: person?.lighting ?? lightingForTrust(base.physical) ?? undefined,
     },
     currency: geo.currency ?? "EUR",
     colorSeason: seasonForSubseason(subseason),

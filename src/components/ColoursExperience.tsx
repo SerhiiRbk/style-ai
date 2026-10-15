@@ -14,6 +14,10 @@ import {
   type QuizAnswers,
 } from "@/lib/colour-quiz";
 import type { ColourAnalysisResult } from "@/lib/colour-palette";
+import { getAnonId, trackEvent } from "@/lib/client/track-event";
+import { COLOURS_CTA, FREE_PAID_BOUNDARY } from "@/lib/launch-copy";
+import { COLOURS_FREE_SHOWS_SHOP } from "@/lib/colours-feature";
+import { COLOURS_SOCIAL_FORMATS } from "@/lib/og/formats";
 
 type Phase =
   | "idle"
@@ -67,27 +71,6 @@ type RecSlot = {
   candidates: RecCandidate[];
 };
 
-/** Fire-and-forget funnel event (uses sendBeacon so it survives navigation). */
-function trackEvent(name: string, props?: Record<string, unknown>) {
-  try {
-    const body = JSON.stringify({ name, anonId: getAnonId(), props });
-    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-      navigator.sendBeacon(
-        "/api/events",
-        new Blob([body], { type: "application/json" }),
-      );
-    } else {
-      void fetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        keepalive: true,
-      });
-    }
-  } catch {
-    /* analytics must never break the UI */
-  }
-}
 
 // --- Local session persistence: survive a page refresh ----------------------
 // Keep the palette, the uploaded photo preview and the matched products on the
@@ -207,29 +190,6 @@ function ColourQuiz({
   );
 }
 
-/** Stable anonymous id for soft per-visitor limits + funnel stitching (A0/A1). */
-function getAnonId(): string {
-  try {
-    const KEY = "valetti_anon";
-    // Prefer the server-set cookie (proxy bootstrap) so client + server agree —
-    // that shared id is what lets registration stitch the anon funnel (§5.2 п.7).
-    const cookie = document.cookie.match(/(?:^|;\s*)valetti_anon=([^;]+)/);
-    if (cookie) {
-      const id = decodeURIComponent(cookie[1]);
-      localStorage.setItem(KEY, id);
-      return id;
-    }
-    let id = localStorage.getItem(KEY);
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem(KEY, id);
-    }
-    document.cookie = `valetti_anon=${id}; path=/; max-age=31536000; samesite=lax`;
-    return id;
-  } catch {
-    return "";
-  }
-}
 
 /**
  * Soft email capture — shown after a result ("email my palette") and behind the
@@ -320,15 +280,7 @@ async function toDataUrl(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.85);
 }
 
-export const COLOURS_SOCIAL_FORMATS = [
-  { format: "story", label: "Stories · 9:16", filenameSuffix: "story" },
-  { format: "pin", label: "Pinterest · 2:3", filenameSuffix: "pin" },
-  {
-    format: "feed",
-    label: "Facebook / Instagram · 4:5",
-    filenameSuffix: "feed",
-  },
-] as const;
+export { COLOURS_SOCIAL_FORMATS } from "@/lib/og/formats";
 
 export function ColoursExperience() {
   const [phase, setPhase] = useState<Phase>("idle");
@@ -434,6 +386,10 @@ export function ColoursExperience() {
     setBudgetId(DEFAULT_BUDGET);
     setRecs(null);
     setFetchedKey(null);
+    trackEvent("colours_result", {
+      subseason: computed.subseason,
+      source: "quiz",
+    });
   }
 
   async function handleFile(file: File) {
@@ -657,7 +613,11 @@ export function ColoursExperience() {
             </p>
           </div>
           <p className="mt-6 text-xs text-stone-soft">
-            We analyse your photo to read your colours and don&apos;t keep it.
+            We analyse your photo to read your colours and don&apos;t keep it.{" "}
+            <a href="/trust" className="underline underline-offset-2 hover:text-ink">
+              How we treat photos
+            </a>
+            .
           </p>
           <p className="mt-4 text-sm text-stone">
             Prefer not to share a photo?{" "}
@@ -811,7 +771,20 @@ export function ColoursExperience() {
               </div>
             </blockquote>
 
-            {/* Shop your colours — anonymous palette-based recommendations (§5). */}
+            {!COLOURS_FREE_SHOWS_SHOP ? (
+              <div className="mt-8 rounded-xl border hairline bg-cream/40 p-4 sm:p-5">
+                <p className="font-display text-lg text-ink">{COLOURS_CTA}</p>
+                <p className="mt-1 text-sm text-stone">{FREE_PAID_BOUNDARY}</p>
+                <div className="mt-3">
+                  <ButtonLink
+                    href="/start"
+                    onClick={() => trackEvent("tryon_gate_click")}
+                  >
+                    {COLOURS_CTA} →
+                  </ButtonLink>
+                </div>
+              </div>
+            ) : (
             <div className="mt-8 border-t hairline pt-7">
               <div className="flex items-baseline justify-between gap-3">
                 <h3 className="font-display text-2xl text-ink">
@@ -988,6 +961,7 @@ export function ColoursExperience() {
                 </div>
               </div>
             </div>
+            )}
 
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <button
@@ -1048,6 +1022,7 @@ export function ColoursExperience() {
               ) : null}
             </div>
 
+            {COLOURS_FREE_SHOWS_SHOP ? (
             <div className="mt-6 rounded-xl border hairline bg-cream/40 p-4 sm:p-5">
               <p className="text-sm text-ink">
                 Want your palette as a PDF? We&apos;ll email it.
@@ -1056,12 +1031,12 @@ export function ColoursExperience() {
                 <LeadForm source="colours_result" subseason={result.subseason} />
               </div>
             </div>
+            ) : null}
 
             <p className="mt-6 text-xs text-stone-soft">
               We analysed your photo to read your colours and didn&apos;t keep
-              it. The full report adds your wardrobe, shopping list,
-              photorealistic looks, try-on and a PDF — new accounts get 6 free
-              credits.
+              it. {FREE_PAID_BOUNDARY} New accounts get 6 credits for a Starter
+              Report and one try-on.
             </p>
           </div>
         </div>

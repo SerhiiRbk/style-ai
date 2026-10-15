@@ -3,12 +3,14 @@
  * pick colours and roles first, then shop. Category-nearest-neighbour
  * shopping is what produced sage-on-sage dinner suits.
  */
-import { hexToHsl } from "./colour-palette";
+import { hexToHsl, hueDist } from "@/lib/colour-palette";
+import { isTailoredJacketSafeName } from "@/lib/colour-rules";
 
 export type CapsuleSwatch = { name: string; hex: string };
 
 export type CapsuleWardrobeRole =
   | "jacket"
+  | "coat"
   | "casualOuter"
   | "darkTrouser"
   | "casualTrouser"
@@ -27,21 +29,86 @@ export type CapsuleWardrobeSlot = {
   query: string;
 };
 
+export type LeatherTargets = {
+  dress: CapsuleSwatch;
+  smart: CapsuleSwatch;
+  everyday: CapsuleSwatch;
+};
+
 export type CapsuleRecipeOpts = {
   outdoorJeans?: boolean;
   polished?: boolean;
+  /** Temperate / cold climate: add a wool overcoat slot. */
+  coat?: boolean;
   cool?: boolean;
+  /** Warm undertone: cream / ecru is the right white, optic white is not. */
+  warm?: boolean;
+  /** Footwear-system colours — dress / loafer / sneaker / belt follow this. */
+  leather?: LeatherTargets;
 };
+
+const CLASSIC_DRESS_LEATHER: CapsuleSwatch[] = [
+  { name: "Burgundy", hex: "#5A2A2E" },
+  { name: "Dark brown", hex: "#4A3526" },
+  { name: "Black", hex: "#1C1C1E" },
+];
+
+const EVERYDAY_SNEAKER_LEATHER: CapsuleSwatch[] = [
+  { name: "White / off-white", hex: "#ECEAE3" },
+  { name: "Greige", hex: "#DAD3C6" },
+  { name: "Light grey", hex: "#C3C3C3" },
+  { name: "Soft white", hex: "#F5F5F5" },
+];
+
+function sameSwatch(a: CapsuleSwatch, b: CapsuleSwatch): boolean {
+  if (a.hex.toLowerCase() === b.hex.toLowerCase()) return true;
+  return a.name.toLowerCase() === b.name.toLowerCase();
+}
+
+/**
+ * Catalogue fallbacks when the footwear-system colour is missing.
+ * Dress / belt stay in classic business leather (burgundy → brown → black).
+ * Everyday sneakers never fall to jet black when that is off the palette.
+ */
+export function leatherFallbacks(
+  role: "dress" | "smart" | "everyday" | "belt",
+  target: CapsuleSwatch,
+  opts?: { avoidJetBlackSneakers?: boolean },
+): CapsuleSwatch[] {
+  if (role === "everyday") {
+    const out: CapsuleSwatch[] = [target];
+    for (const sw of EVERYDAY_SNEAKER_LEATHER) {
+      if (sameSwatch(sw, target)) continue;
+      if (opts?.avoidJetBlackSneakers && /^black$/i.test(sw.name)) continue;
+      out.push(sw);
+    }
+    return out;
+  }
+  const classic = [...CLASSIC_DRESS_LEATHER];
+  const hit = classic.findIndex((sw) => sameSwatch(sw, target));
+  if (hit > 0) {
+    const [preferred] = classic.splice(hit, 1);
+    classic.unshift(preferred!);
+  } else if (hit < 0) {
+    classic.unshift(target);
+  }
+  if (role === "smart") {
+    const navy = { name: "Muted navy", hex: "#3E4C63" };
+    if (!classic.some((sw) => sameSwatch(sw, navy) || sameSwatch(sw, target))) {
+      classic.splice(1, 0, navy);
+    }
+    if (!sameSwatch(classic[0]!, target)) classic.unshift(target);
+  }
+  return classic.filter(
+    (sw, i, arr) => arr.findIndex((x) => sameSwatch(x, sw)) === i,
+  );
+}
 
 function parseHex(raw: string): string | null {
   const m = raw.trim().match(/^#?([0-9a-f]{6})$/i);
   return m ? `#${m[1]!.toLowerCase()}` : null;
 }
 
-function hueDist(a: number, b: number): number {
-  const d = Math.abs(a - b) % 360;
-  return d > 180 ? 360 - d : d;
-}
 
 function isDark(sw: CapsuleSwatch): boolean {
   const hex = parseHex(sw.hex);
@@ -138,9 +205,9 @@ export function capsuleWardrobeSlots(
   );
 
   const jacket =
-    pick(heroes, (c) => !/yellow|olive|mustard/i.test(c.name)) ??
-    heroes[0] ??
-    rest[0] ??
+    pick(heroes, (c) => isTailoredJacketSafeName(c.name) && !/olive/i.test(c.name)) ??
+    pick(darks, (c) => /navy|charcoal|ink|slate/i.test(c.name)) ??
+    pick(rest, (c) => isTailoredJacketSafeName(c.name)) ??
     darks[0] ??
     pool[0]!;
 
@@ -157,11 +224,12 @@ export function capsuleWardrobeSlots(
     ? { name: "Blue-grey indigo", hex: "#5A6B7A" }
     : casualPool[0] ?? lights[0] ?? { name: "Dove grey", hex: "#AEB3B6" };
 
+  // Cream / ivory drain a cool complexion but are the right white on a warm one.
+  const shirtExclude = opts?.warm
+    ? /\b(yellow|lime|pistachio|mint|olive|mustard|maize|butter)\b/i
+    : /\b(yellow|lime|pistachio|mint|olive|mustard|cream|ivory|maize|butter)\b/i;
   const shirtPool = [...lights, ...rest].filter(
-    (c) =>
-      !/\b(yellow|lime|pistachio|mint|olive|mustard|cream|ivory|maize|butter)\b/i.test(
-        c.name,
-      ) && !blockedByAvoid(c, avoid),
+    (c) => !shirtExclude.test(c.name) && !blockedByAvoid(c, avoid),
   );
   const shirtA = shirtPool[0] ?? { name: "Dove grey", hex: "#AEB3B6" };
   const shirtB =
@@ -172,9 +240,23 @@ export function capsuleWardrobeSlots(
     ) ??
     (opts?.cool
       ? { name: "White", hex: "#F5F5F5" }
-      : { name: "Greige", hex: "#DAD3C6" });
+      : opts?.warm
+        ? { name: "Cream", hex: "#DCCBB4" }
+        : { name: "Greige", hex: "#DAD3C6" });
 
+  // The knit is the capsule's second accent top: a palette hero that is not the
+  // jacket's colour. With one accent shirt and a grey jumper the outfit matrix
+  // has nothing else to reach for, and the same pink shirt lands on every
+  // neutral outfit. Palettes with a single hero fall back to a dark anchor.
+  // (`clones` against the dark trouser is too strict here: slate blue over
+  // navy is a tonal pairing with a real value step, not a clone.)
   const knit =
+    pick(
+      heroes,
+      (c) =>
+        !clones(c, jacket) &&
+        c.hex.toLowerCase() !== darkTrouser.hex.toLowerCase(),
+    ) ??
     pick(darks, (c) => c.hex.toLowerCase() !== darkTrouser.hex.toLowerCase()) ??
     pick(rest, (c) => /charcoal|slate|grey|gray|navy/i.test(c.name)) ??
     darkTrouser;
@@ -184,11 +266,17 @@ export function capsuleWardrobeSlots(
     lights[0] ??
     { name: "Fog grey", hex: "#C3C3C3" };
 
-  const dressShoe = darkTrouser;
+  const dressShoe = opts?.leather?.dress ?? darkTrouser;
   const loafer =
+    opts?.leather?.smart ??
     pick(darks, (c) => c.hex.toLowerCase() !== dressShoe.hex.toLowerCase()) ??
     darkTrouser;
-  const sneaker = lights[0] ?? { name: "Grey", hex: "#8B8B8B" };
+  const sneaker =
+    opts?.leather?.everyday ?? lights[0] ?? { name: "Grey", hex: "#8B8B8B" };
+
+  const shirtWhiteRule = opts?.warm
+    ? "cream, ecru or off-white welcome, not optic white"
+    : "not cream, not ivory";
 
   const slots: CapsuleWardrobeSlot[] = [
     {
@@ -199,6 +287,18 @@ export function capsuleWardrobeSlots(
         `Men's ${jacket.name} unstructured blazer or sport coat — tailored, single-breasted, ` +
         `not a bomber unless no blazer exists. Colour ${jacket.name} ${jacket.hex}.`,
     },
+    ...(opts?.coat
+      ? [
+          {
+            category: "Outerwear",
+            role: "coat" as const,
+            color: jacket,
+            query:
+              `Men's ${jacket.name} wool overcoat or topcoat — tailored, knee-length, ` +
+              `not a puffer, not a parka, not a bomber. Colour ${jacket.name} ${jacket.hex}.`,
+          },
+        ]
+      : []),
     {
       category: "Outerwear",
       role: "casualOuter",
@@ -230,7 +330,7 @@ export function capsuleWardrobeSlots(
       color: shirtA,
       query:
         `Men's long-sleeve ${shirtA.name} oxford or poplin button-down shirt — not short-sleeve, ` +
-        `not light green, not lime, not yellow, not cream, not ivory, not V-neck. Colour ${shirtA.name} ${shirtA.hex}.`,
+        `not light green, not lime, not yellow, ${shirtWhiteRule}, not V-neck. Colour ${shirtA.name} ${shirtA.hex}.`,
     },
     {
       category: "Shirts",
@@ -238,7 +338,7 @@ export function capsuleWardrobeSlots(
       color: shirtB,
       query:
         `Men's long-sleeve ${shirtB.name} oxford or poplin button-down shirt — a second shirt, ` +
-        `not light green, not lime, not yellow, not cream, not ivory. Colour ${shirtB.name} ${shirtB.hex}.`,
+        `not light green, not lime, not yellow, ${shirtWhiteRule}. Colour ${shirtB.name} ${shirtB.hex}.`,
     },
     {
       category: "Knitwear",
@@ -252,19 +352,13 @@ export function capsuleWardrobeSlots(
       category: "Footwear",
       role: "dressShoe",
       color: dressShoe,
-      query:
-        `Men's ${dressShoe.name} leather derbies or oxfords — closed-toe, not loafers, not sneakers` +
-        (opts?.cool ? ", not brown, not cognac, not tan" : "") +
-        ".",
+      query: `Men's ${dressShoe.name} leather derbies or oxfords — closed-toe, not loafers, not sneakers.`,
     },
     {
       category: "Footwear",
       role: "loafer",
       color: loafer,
-      query:
-        `Men's ${loafer.name} leather loafers — not derbies, not sneakers, not sandals` +
-        (opts?.cool ? ", not brown, not cognac, not tan" : "") +
-        ".",
+      query: `Men's ${loafer.name} leather loafers — not derbies, not sneakers, not sandals.`,
     },
     {
       category: "Footwear",
@@ -284,8 +378,8 @@ export function capsuleWardrobeSlots(
     slots.push({
       category: "Accessories",
       role: "bag",
-      color: darkTrouser,
-      query: `Men's slim leather briefcase or messenger bag — not a tote, not sunglasses.`,
+      color: dressShoe,
+      query: `Men's slim ${dressShoe.name} leather briefcase or messenger bag matching the dress shoes — not a tote, not sunglasses.`,
     });
   } else {
     slots.push({

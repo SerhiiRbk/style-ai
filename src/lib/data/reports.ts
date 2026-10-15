@@ -1,4 +1,5 @@
 import "server-only";
+import { nearFaceSwatchFromItems } from "@/lib/look-near-face";
 import { cache } from "react";
 import { after } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
@@ -19,6 +20,7 @@ import {
   sendReportReadyEmail,
   // sendReportFailedEmail, // PAUSED: "generation failed" email is disabled.
 } from "@/lib/email/send";
+import { logEvent } from "@/lib/events";
 import {
   parseGarmentsJson,
   type SavedOutfitTryOn,
@@ -35,6 +37,7 @@ import {
   PREMIUM_EYEWEAR_GEN_LIMIT,
   PREMIUM_FACIAL_HAIR_GEN_LIMIT,
   hairGenerationPending,
+  hairImagesPending,
   premiumGroomingPending,
   isMockShopping,
   isStaleShoppingCopy,
@@ -79,6 +82,7 @@ import {
   buildExtras,
   watchGuideFor,
   shoeGuideFor,
+  leatherTargetsFromGuide,
   FORMAL_CONTEXTS,
   capsuleImageDirectives,
   lookItemsFromCell,
@@ -297,12 +301,39 @@ async function latestPhotoUrlsForUser(
     }
   }
 
+  return signReportPhotos(
+    admin,
+    [...byRole.entries()].map(([role, path]) => ({ role, path })),
+  );
+}
+
+/**
+ * Signed URLs for the report's photos, each with its upload time so the
+ * measurement can tell one shoot from two (a portrait reused from an earlier
+ * upload next to a fresh full-length photo is not one light).
+ */
+async function signReportPhotos(
+  admin: ReturnType<typeof createAdminSupabase>,
+  entries: { role: string; path: string }[],
+): Promise<PhotoInput[]> {
+  if (!entries.length) return [];
+  const uploadedAt = new Map<string, string>();
+  const { data: rows } = await admin
+    .from("photos")
+    .select("storage_path, created_at")
+    .in("storage_path", entries.map((e) => e.path));
+  for (const r of rows ?? []) {
+    const path = r.storage_path as string;
+    const at = r.created_at as string;
+    const prev = uploadedAt.get(path);
+    if (!prev || at < prev) uploadedAt.set(path, at);
+  }
   const photos: PhotoInput[] = [];
-  for (const [role, path] of byRole.entries()) {
-    const { data } = await admin.storage
-      .from("photos")
-      .createSignedUrl(path, 600);
-    if (data?.signedUrl) photos.push({ role, url: data.signedUrl });
+  for (const { role, path } of entries) {
+    const { data } = await admin.storage.from("photos").createSignedUrl(path, 600);
+    if (!data?.signedUrl) continue;
+    const at = uploadedAt.get(path);
+    photos.push({ role, url: data.signedUrl, ...(at ? { uploadedAt: at } : {}) });
   }
   return photos;
 }
@@ -394,11 +425,19 @@ async function generateHairImages(input: ImageJobInput) {
   const admin = createAdminSupabase();
   const { reportId, userId, tier, profile, content, photos } = input;
 
+  // Headshots need the face: the portrait carries identity and hairline detail,
+  // the full-length shot only a small, differently-lit head. Same order as the
+  // facial-hair / eyewear previews.
   const referenceImageUrl =
-    photos.find((p) => p.role === "full")?.url ?? photos[0]?.url;
+    photos.find((p) => p.role === "face")?.url ??
+    photos.find((p) => p.role === "profile")?.url ??
+    photos.find((p) => p.role === "full")?.url ??
+    photos[0]?.url;
   if (!referenceImageUrl) return;
 
   const dualAngle = tier === "lookbook" || tier === "premium";
+  // Plain deep on-palette top for every headshot (not the selfie's hoodie).
+  const portraitOutfit = nearFaceDeepSwatch(content.colors?.best ?? []);
   const recommendLimit = hairRecommendGenLimit(tier);
   const avoidLimit = HAIR_AVOID_GEN_LIMIT;
 
@@ -445,6 +484,7 @@ async function generateHairImages(input: ImageJobInput) {
         recommend: list === "recommend",
         referenceImageUrl,
         angle,
+        outfit: portraitOutfit,
       });
       if (!img) return null;
       const ext = img.mediaType.includes("jpeg") ? "jpg" : "png";
@@ -638,17 +678,31 @@ async function generatePremiumGroomingImages(input: ImageJobInput) {
     );
   }
 
+  const portraitOutfit = nearFaceDeepSwatch(input.content.colors?.best ?? []);
+  const paletteNames = (input.content.colors?.best ?? [])
+    .map((c) => c.name)
+    .filter(Boolean);
   await generateColumn(facialHair, "facial_hair", "facial-hair", (item) =>
-    generateFacialHairImage({ profile, style: item, referenceImageUrl }),
+    generateFacialHairImage({
+      profile,
+      style: item,
+      referenceImageUrl,
+      outfit: portraitOutfit,
+    }),
   );
   await generateColumn(eyewear, "eyewear", "eyewear", (item) =>
-    generateEyewearImage({ profile, frame: item, referenceImageUrl }),
+    generateEyewearImage({
+      profile,
+      frame: item,
+      referenceImageUrl,
+      outfit: portraitOutfit,
+    }),
   );
   await generateColumn(accessories, "accessories", "accessory", (item) =>
-    generateAccessoryImage({ profile, accessory: item, referenceImageUrl }),
+    generateAccessoryImage({ profile, accessory: item, referenceImageUrl, paletteNames }),
   );
   await generateColumn(headwear, "headwear", "headwear", (item) =>
-    generateHeadwearImage({ profile, headwear: item, referenceImageUrl }),
+    generateHeadwearImage({ profile, headwear: item, referenceImageUrl, paletteNames }),
   );
 }
 
@@ -719,7 +773,11 @@ async function generateWatchImageJob(input: ImageJobInput) {
     .single();
   if (existing?.watch_image) return;
 
-  const guide = watchGuideFor(profile, content.colors?.best ?? []);
+  const guide = watchGuideFor(profile, content.colors?.best ?? [], {
+    dressLeather: leatherTargetsFromGuide(
+      shoeGuideFor(profile, content.colors?.best ?? [], content.colors?.avoid ?? []),
+    ).dress,
+  });
   const img = await generateWatchBoardImage({
     palette: (content.colors?.best ?? []).map((c) => c.name).filter(Boolean),
     variants: guide.variants.map((v) => ({
@@ -827,6 +885,11 @@ async function notifyReportReady(
       .select("id, headline")
       .maybeSingle();
     if (!claimed) return; // already sent by another run
+    await logEvent({
+      name: "report_ready",
+      userId,
+      props: { report_id: reportId },
+    });
     const ok = await sendReportReadyEmail(email, {
       reportId,
       headline: (claimed.headline as string | null) ?? null,
@@ -873,12 +936,25 @@ async function notifyReportReady(
 //   }
 // }
 
+/** Per-stage wall-clock log so a ten-minute generation is attributable. */
+function stageTimer(label: string) {
+  return async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+    const t0 = Date.now();
+    try {
+      return await fn();
+    } finally {
+      console.log(`[timing] ${label} ${name} ${Date.now() - t0}ms`);
+    }
+  };
+}
+
 async function generateReportImages(input: ImageJobInput) {
-  await generateHairImages(input);
-  await generatePremiumGroomingImages(input);
-  await generateCoverImageJob(input);
-  await generateWatchImageJob(input);
-  await generateShoeImageJob(input);
+  // Value-first order: the cover and the looks ARE the product, so they render
+  // first and the client is told the report is ready as soon as they (and the
+  // hair pages) exist. Grooming previews, the watch / shoe boards and the
+  // capsule matrix then trickle in behind pending placeholders.
+  const stage = stageTimer(`images ${input.reportId}`);
+  await stage("cover", () => generateCoverImageJob(input));
 
   const admin = createAdminSupabase();
   const { reportId, userId, tier, profile, photos, shopping, content } = input;
@@ -977,12 +1053,28 @@ async function generateReportImages(input: ImageJobInput) {
   // generate the rest in parallel. Each row is an independent update, so writes
   // are persisted immediately without racing. The storage index is the look's
   // own `idx`, which keeps images aligned with look_items (also keyed by idx).
-  const { data: lookRows } = await admin
+  const lookRowsFirst = await admin
     .from("looks")
-    .select("id, idx, image_path, context, title, description, palette")
+    .select("id, idx, image_path, context, title, description, palette, items")
     .eq("report_id", reportId)
     .order("idx", { ascending: true })
     .order("created_at", { ascending: true });
+  const lookRows =
+    lookRowsFirst.error && /items/.test(lookRowsFirst.error.message)
+      ? (
+          await admin
+            .from("looks")
+            .select("id, idx, image_path, context, title, description, palette")
+            .eq("report_id", reportId)
+            .order("idx", { ascending: true })
+            .order("created_at", { ascending: true })
+        ).data
+      : lookRowsFirst.data;
+  // Stored descriptions may be the display language; image prompts want the
+  // English content generated with this job (resume falls back to the row).
+  const englishLookByIdx = new Map(
+    content.looks.map((l, i) => [i, l] as const),
+  );
 
   // Near-face depth for EVERY look, kept varied: each look's own primary palette
   // tone is deepened ON-HUE (plum→deep plum, teal→deep teal) so the garment at the
@@ -1037,23 +1129,31 @@ async function generateReportImages(input: ImageJobInput) {
     return hex ? deepenNearFaceHex(hex) : undefined;
   };
 
-  await mapPool(lookTasks, IMAGE_CONCURRENCY, async ({ row, index }) => {
+  await stage("looks", () => mapPool(lookTasks, IMAGE_CONCURRENCY, async ({ row, index }) => {
+    const english = englishLookByIdx.get(index);
+    const description =
+      english?.description ?? (row.description as string | null) ?? "";
     const rowPalette = (row.palette as string[] | null) ?? [];
+    // Near-face tone: the structured items name the layer at the face exactly;
+    // the description/palette index guess is only the fallback for legacy rows.
+    const fromItems = nearFaceSwatchFromItems(
+      english?.items ?? lookItemsFromCell((row as { items?: unknown }).items),
+      content.colors?.best ?? [],
+    );
     const ownDeep =
-      nearFacePaletteHex(
-        (row.description as string | null) ?? "",
-        rowPalette,
-      ) ?? nearFaceDeep?.hex;
+      (fromItems ? deepenNearFaceHex(fromItems.hex) : undefined) ??
+      nearFacePaletteHex(description, rowPalette) ??
+      nearFaceDeep?.hex;
     const nearFaceHex =
       index === boldLookIdx && boldAccent ? boldAccent.hex : ownDeep;
     const img = await generateLookImage({
       profile,
       occasionId: lookOccasionIdFromContext(
-        (row.context as string | null) ?? null,
+        english?.context ?? (row.context as string | null) ?? null,
       ),
       look: {
-        title: (row.title as string | null) ?? "",
-        description: (row.description as string | null) ?? "",
+        title: english?.title ?? (row.title as string | null) ?? "",
+        description,
         palette: (row.palette as string[] | null) ?? [],
         ...(footwearColorText
           ? {
@@ -1081,16 +1181,31 @@ async function generateReportImages(input: ImageJobInput) {
         .update({ image_path: path })
         .eq("id", row.id as string);
     }
-  });
+  }));
+
+  // Hair is the second thing the client opens — render it, then say "ready".
+  await stage("hair", () => generateHairImages(input));
+  await notifyReportReady(admin, reportId, userId);
+
+  await stage("grooming", () => generatePremiumGroomingImages(input));
+  await stage("watch-board", () => generateWatchImageJob(input));
+  await stage("shoe-board", () => generateShoeImageJob(input));
 
   if (tier === "lookbook" || tier === "premium") {
     const colorByTitle = new Map(shopping.map((s) => [s.title, s.color]));
+    // Real SKUs for the matrix render: the capsule shows what the client would
+    // actually buy, not the model's idea of "a navy suit jacket".
+    const imageByTitle = new Map(
+      shopping
+        .filter((s) => s.image)
+        .map((s) => [s.title, { url: s.image as string, title: s.title, category: s.category }]),
+    );
     const colorNameByTitle = new Map(
       shopping
         .filter((s) => s.colorName)
         .map((s) => [s.title, s.colorName as string]),
     );
-    const matrix = capsuleMatrix(shopping, profile);
+    const matrix = capsuleMatrix(shopping, profile, content.colors?.best ?? []);
     // Cache-buster: asset URLs are served `immutable`, so a regenerated slot must
     // land on a NEW path or browsers/edge keep serving the previous image.
     const stamp = Date.now().toString(36);
@@ -1142,25 +1257,31 @@ async function generateReportImages(input: ImageJobInput) {
           [footwearColorText.trim(), footwearStyleRule, contrastRule]
             .filter(Boolean)
             .join(" ") || undefined;
+        const capsuleDescription = [
+          capsuleOutfitDescription(combo.pieces, colorByTitle, colorNameByTitle),
+          capsuleImageDirectives(combo.pieces),
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const catalogImages = combo.pieces
+          .map((p) => imageByTitle.get(p))
+          .filter((g): g is { url: string; title: string; category: string } => Boolean(g));
         const img = await generateLookImage({
           profile,
           occasionId: lookOccasionIdFromContext(combo.context),
           look: {
             title: combo.context,
-            description: [
-              capsuleOutfitDescription(
-                combo.pieces,
-                colorByTitle,
-                colorNameByTitle,
-              ),
-              capsuleImageDirectives(combo.pieces),
-            ]
-              .filter(Boolean)
-              .join(" "),
+            description: capsuleDescription,
             palette: combo.pieces
               .map((p) => colorByTitle.get(p))
               .filter((c): c is string => Boolean(c)),
             ...(footwearRule ? { footwearRule } : {}),
+            // Product photos make the render reproduce the actual pieces; the
+            // description stays as the catalogue-context sentence (owned basics
+            // have no photo and are described in words).
+            ...(catalogImages.length
+              ? { catalogContext: `${capsuleDescription} `, catalogImages }
+              : {}),
           },
           referenceImageUrl,
           faceReferenceImageUrl,
@@ -1199,9 +1320,8 @@ async function generateReportImages(input: ImageJobInput) {
   await ensureReportLookSet(admin, { reportId, userId }).catch((err) => {
     console.error("[look-set] promote report looks after images failed", reportId, err);
   });
-
-  // Images are the last stage — this matches the "your report is ready" toast.
-  await notifyReportReady(admin, reportId, userId);
+  // "Ready" was already sent after the looks + hair; the capsule and boards
+  // land behind pending placeholders.
 }
 
 /**
@@ -1469,23 +1589,21 @@ async function executeReportGeneration(
   const language = normalizeLanguage(intake.language);
 
   const lookCount = lookCountForTier(tier);
-  const { profile, content } = await generateReportContent(
-    intake,
-    photos,
-    lookCount,
-    tier,
+  const stage = stageTimer(`report ${reportId}`);
+  const { profile, content } = await stage("content", () =>
+    generateReportContent(intake, photos, lookCount, tier),
   );
   if (content.looks.length > lookCount) {
     content.looks = content.looks.slice(0, lookCount);
   }
   content.hair = clampHairForTier(content.hair, tier);
-  const shopping = await matchShopping(profile, content);
+  const shopping = await stage("shopping", () => matchShopping(profile, content));
   if (isMockShopping(shopping)) {
     console.error(
       "[report] shopping used demo fallback — verify catalog seed, AI keys, and match_products RPC (migration 0005)",
     );
   }
-  const lookItems = await matchLookItems(profile, content);
+  const lookItems = await stage("look-items", () => matchLookItems(profile, content));
 
   // Premium grooming picks — deterministic English templates.
   const premiumGrooming =
@@ -1533,11 +1651,27 @@ async function executeReportGeneration(
   // generated natively in `language`. The colour palette is now deterministic
   // (English), so it joins the other deterministic parts for translation.
   // Skipped entirely for English.
+  // Content is generated in ENGLISH (matching parsers + image prompts need it);
+  // for other languages the narrative is translated here, after matching, and
+  // the translated copy is what gets stored / shown. `content` itself stays
+  // English for the image job below.
   const translated =
     language === "en"
       ? null
       : await translateReportParts(
           {
+            headline: content.headline,
+            summary: content.summary,
+            hair: content.hair,
+            silhouette: content.silhouette,
+            doList: content.doList,
+            dontList: content.dontList,
+            looks: content.looks.map((l) => ({
+              context: l.context,
+              title: l.title,
+              description: l.description,
+              palette: l.palette,
+            })),
             colors: content.colors,
             shopping,
             lookItems,
@@ -1559,14 +1693,14 @@ async function executeReportGeneration(
       status: "ready",
       language,
       profile,
-      headline: content.headline,
-      summary: content.summary,
+      headline: translated?.headline ?? content.headline,
+      summary: translated?.summary ?? content.summary,
       colors: translated?.colors ?? content.colors,
-      hair: content.hair,
-      silhouette: content.silhouette,
+      hair: translated?.hair ?? content.hair,
+      silhouette: translated?.silhouette ?? content.silhouette,
       shopping: translated?.shopping ?? shopping,
-      do_list: content.doList,
-      dont_list: content.dontList,
+      do_list: translated?.doList ?? content.doList,
+      dont_list: translated?.dontList ?? content.dontList,
       extras: translated?.extras ?? null,
       ...(premiumGrooming
         ? {
@@ -1586,13 +1720,15 @@ async function executeReportGeneration(
       .eq("id", reportId);
   }
 
+  // Stored title/description/context are the display language; `items` stay
+  // English on purpose — they are what later rematches parse.
   const lookRows = content.looks.map((l, i) => ({
     report_id: reportId,
     idx: i,
     user_id: userId,
-    context: l.context,
-    title: l.title,
-    description: l.description,
+    context: translated?.looks?.[i]?.context ?? l.context,
+    title: translated?.looks?.[i]?.title ?? l.title,
+    description: translated?.looks?.[i]?.description ?? l.description,
     palette: l.palette,
     image_path: null as string | null,
     ...(l.items?.length ? { items: l.items } : {}),
@@ -1801,13 +1937,7 @@ export async function createAndRunReport(input: CreateInput): Promise<string> {
   );
 
   try {
-    const photos: PhotoInput[] = [];
-    for (const p of input.photoPaths ?? []) {
-      const { data } = await admin.storage
-        .from("photos")
-        .createSignedUrl(p.path, 600);
-      if (data?.signedUrl) photos.push({ role: p.role, url: data.signedUrl });
-    }
+    const photos = await signReportPhotos(admin, input.photoPaths ?? []);
 
     await executeReportGeneration(admin, {
       reportId,
@@ -1944,17 +2074,47 @@ function scheduleMatchRefresh(
   id: string,
   profile: StyleProfile,
   content: ReportContent,
-  opts: { needShopping: boolean; needLookItems: boolean },
+  opts: {
+    needShopping: boolean;
+    needLookItems: boolean;
+    /** Stored capsule photos no longer match the current matrix (view-time check). */
+    needCapsule?: boolean;
+    /** Capsule tiers: stored capsule paths, so a rematch can re-render slots whose outfit changed. */
+    capsule?: { tier: Tier; paths: (string | null)[] };
+  },
 ): void {
-  if (!opts.needShopping && !opts.needLookItems) return;
+  if (!opts.needShopping && !opts.needLookItems && !opts.needCapsule) return;
   after(async () => {
     try {
       const admin = createAdminSupabase();
+      const cap = opts.capsule;
+      const hasCapsule =
+        Boolean(cap) && (cap!.tier === "lookbook" || cap!.tier === "premium");
+      let resumeCapsule = Boolean(opts.needCapsule) && hasCapsule;
       if (opts.needShopping) {
         const matched = await matchShopping(profile, content);
         if (!isMockShopping(matched)) {
           await admin.from("reports").update({ shopping: matched }).eq("id", id);
+          // The capsule photos render real SKUs. If the rematched list changes an
+          // outfit, its stored photo (fingerprinted by pieces) is stale.
+          if (hasCapsule && !resumeCapsule) {
+            resumeCapsule = capsuleMatrix(
+              matched,
+              profile,
+              content.colors?.best ?? [],
+            ).some((combo, i) => {
+              const prev = cap!.paths[i];
+              return !prev || !prev.includes(`-${comboFingerprint(combo)}-`);
+            });
+          }
         }
+      }
+      // Resume the image job: it regenerates only the capsule slots whose
+      // fingerprint no longer matches (see the capsule stage in generateReportImages).
+      if (resumeCapsule) {
+        await resumeReportImages(id).catch((err) =>
+          console.error("[report match refresh] capsule resume", id, err),
+        );
       }
       if (opts.needLookItems) {
         const matchedLooks = await matchLookItems(profile, content);
@@ -2097,7 +2257,7 @@ async function fetchReportView(
   const lookImages = signedAssetProxyUrls(
     (looks ?? []).map((l) => l.image_path as string | null | undefined),
   );
-  const capsuleImages = signedAssetProxyUrls(capsulePaths);
+  let capsuleImages = signedAssetProxyUrls(capsulePaths);
   const coverImage = row.cover_image
     ? signedAssetProxyUrl(row.cover_image)
     : undefined;
@@ -2147,6 +2307,30 @@ async function fetchReportView(
   let lookItems =
     (row.look_items as Record<number, ShoppingItem[]> | null) ?? undefined;
 
+  // Capsule photos are fingerprinted by outfit. When the matrix logic or the
+  // shopping list has moved on, a stored photo no longer shows the pieces listed
+  // under it — hide that slot rather than pair a photo with the wrong outfit;
+  // the owner's view resumes the render below. Legacy paths without a
+  // fingerprint cannot be checked and stay.
+  let capsuleStale = false;
+  if (row.profile && shopping.length && capsulePaths.some(Boolean)) {
+    const matrixNow = capsuleMatrix(
+      shopping,
+      row.profile as StyleProfile,
+      (row.colors as ReportContent["colors"] | null)?.best ?? [],
+    );
+    const checked = capsulePaths.map((path, i) => {
+      if (!path) return path;
+      const fp = /capsule-\d+-([a-z0-9]+)-/.exec(path)?.[1];
+      if (!fp) return path;
+      const combo = matrixNow[i];
+      if (combo && fp === comboFingerprint(combo)) return path;
+      capsuleStale = true;
+      return null;
+    });
+    if (capsuleStale) capsuleImages = signedAssetProxyUrls(checked);
+  }
+
   // Catalogue (re-)matching is the dominant cost when it runs (embeddings +
   // pgvector RPCs). It's normally done once at generation; only re-run when the
   // stored data is stale/mock — and do it OFF the request path so the page
@@ -2160,6 +2344,11 @@ async function fetchReportView(
     scheduleMatchRefresh(id, row.profile, content, {
       needShopping: isMockShopping(shopping) || isStaleShoppingCopy(shopping),
       needLookItems: lookItemsNeedRefresh(lookItems),
+      needCapsule: capsuleStale,
+      capsule: {
+        tier: (row.tier as Tier) ?? "basic",
+        paths: (row.capsule_images as (string | null)[] | null) ?? [],
+      },
     });
   }
 
@@ -2217,10 +2406,13 @@ async function fetchReportView(
       row.profile ??
       (reportIntake ? mockStyleProfile(reportIntake) : mockStyleProfile({} as Intake)),
     generation,
-    personalizedHairPending:
-      hasReferencePhoto &&
-      !(looks ?? []).some((l) => l.image_path) &&
-      hairGenerationPending(rawHair, row.tier as Tier),
+    personalizedHairPending: hairImagesPending({
+      hasReferencePhoto,
+      hair: rawHair,
+      tier: row.tier as Tier,
+      createdAt: row.created_at as string,
+      anyLookImage: (looks ?? []).some((l) => l.image_path),
+    }),
     facialHair: signedFacialHair,
     eyewear: signedEyewear,
     accessories: signedAccessories,

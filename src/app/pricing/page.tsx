@@ -31,6 +31,8 @@ import {
   type Tier,
 } from "@/lib/report";
 import { BRAND } from "@/lib/brand";
+import { FREE_PAID_BOUNDARY } from "@/lib/launch-copy";
+import { logPageEvent } from "@/lib/funnel-context";
 
 export const metadata: Metadata = {
   title: `Pricing — credits, no subscription · ${BRAND.name}`,
@@ -403,7 +405,8 @@ const COMPARISON_ROWS: CompareRow[] = [
   },
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  await logPageEvent("pricing_view");
   return (
     <>
       <Navbar />
@@ -417,9 +420,8 @@ export default function PricingPage() {
               Pay for the work, not a subscription.
             </h1>
             <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-stone">
-              {BRAND.name} runs on credits. Generating a report and each AI
-              render costs credits — buy a pack, spend only what you use. New
-              accounts start with{" "}
+              {FREE_PAID_BOUNDARY} {BRAND.name} runs on credits — buy a pack,
+              spend only what you use. New accounts start with{" "}
               <span className="text-ink">{SIGNUP_BONUS} free credits</span>.
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-3">

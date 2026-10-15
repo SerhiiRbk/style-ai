@@ -558,6 +558,11 @@ export async function POST(request: Request) {
 
   const rendered: RenderedLook[] = [];
   const titlesSoFar: string[] = [];
+  // Looks in one chunk are generated in parallel, so `titlesSoFar` is blind
+  // inside the chunk; claim titles synchronously as each generation resolves
+  // and regenerate a duplicate once before spending on its render.
+  const claimedTitles = new Set<string>();
+  const titleKey = (t: string) => t.trim().toLowerCase();
   const colorRecipes = lookSetColorRecipes(
     bestSwatchesForProfile(profile),
     looksCount,
@@ -581,20 +586,26 @@ export async function POST(request: Request) {
     const results = await Promise.all(
       chunk.map(async (i): Promise<RenderedLook | null> => {
         try {
-          const look = await generateExtraLook({
-            intake,
-            profile,
-            context: ctx.context,
-            brief: ctx.brief,
-            boldness,
-            season,
-            occasionId: ctx.id,
-            lookIndex: i,
-            looksCount,
-            styleId,
-            existingTitles: titlesSoFar,
-            colorRecipe: colorRecipes[i],
-          });
+          const generate = (avoidTitles: string[]) =>
+            generateExtraLook({
+              intake,
+              profile,
+              context: ctx.context,
+              brief: ctx.brief,
+              boldness,
+              season,
+              occasionId: ctx.id,
+              lookIndex: i,
+              looksCount,
+              styleId,
+              existingTitles: avoidTitles,
+              colorRecipe: colorRecipes[i],
+            });
+          let look = await generate(titlesSoFar);
+          if (claimedTitles.has(titleKey(look.title))) {
+            look = await generate([...titlesSoFar, ...claimedTitles]);
+          }
+          claimedTitles.add(titleKey(look.title));
 
           const img = await generateLookImage({
             profile,

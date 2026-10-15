@@ -21,6 +21,11 @@ import { extrasForReport, investmentLevel, itemsForLook, shoeGuideCards } from "
 import { humanizeProductTitle } from "@/lib/product-title";
 import { makeT } from "@/lib/i18n/report";
 import {
+  packedGalleryFits,
+  packedGalleryPageSize,
+  packedGallerySize,
+} from "@/lib/pdf/gallery-layout";
+import {
   buildColoursSwatchSvg,
   COLOURS_SWATCH_ASPECT_RATIO,
 } from "@/components/FabricSwatch";
@@ -697,72 +702,195 @@ class Doc {
   gallerySection(
     title: string,
     items: GalleryItem[],
-    opts: { cols?: number; ratio?: number } = {},
+    opts: { cols?: number; ratio?: number; packRows?: number } = {},
   ) {
     if (!items.length) return;
-    const { firstRowH } = this.galleryMetrics(items, opts);
-    if (this.y - this.subheadBlockHeight() - firstRowH < MARGIN + 8) {
+    const { firstRowH, rowGap, cardW } = this.galleryMetrics(items, opts);
+    const packRows = opts.packRows ?? 0;
+    const headingH = this.subheadBlockHeight();
+    if (packRows > 1) {
+      const capH = Math.max(
+        ...items
+          .slice(0, packedGalleryPageSize(opts.cols ?? 2, packRows))
+          .map((it) => this.captionHeight(it, cardW)),
+        0,
+      );
+      const budget = this.y - headingH - (MARGIN + 8);
+      if (
+        !packedGalleryFits({
+          budget,
+          rows: packRows,
+          captionHeight: capH,
+          rowGap,
+        })
+      ) {
+        this.newPage();
+      }
+    } else if (this.y - headingH - firstRowH < MARGIN + 8) {
       this.newPage();
     }
     this.subhead(title);
     this.gallery(items, opts);
   }
 
+  private drawGalleryRow(
+    row: GalleryItem[],
+    cols: number,
+    colGap: number,
+    rowGap: number,
+    cardW: number,
+    imgH: number,
+    imgW = cardW,
+  ) {
+    const capH = Math.max(...row.map((it) => this.captionHeight(it, imgW)), 0);
+    const topY = this.y;
+    row.forEach((it, j) => {
+      const slotX = MARGIN + j * (cardW + colGap);
+      const x = slotX + (cardW - imgW) / 2;
+      const iy = topY - imgH;
+      if (it.img) {
+        this.page.drawImage(it.img, { x, y: iy, width: imgW, height: imgH });
+      } else {
+        this.page.drawRectangle({ x, y: iy, width: imgW, height: imgH, color: SAND });
+      }
+      this.page.drawRectangle({
+        x,
+        y: iy,
+        width: imgW,
+        height: imgH,
+        borderColor: LINE,
+        borderWidth: 0.5,
+      });
+      if (it.label) {
+        const labelText = it.label.toUpperCase();
+        const padX = 12;
+        const labelH = 16;
+        const textW = this.widthTracked(labelText, this.bold, 6.5, 1.4);
+        const lw = Math.min(imgW, textW + padX);
+        this.page.drawRectangle({
+          x,
+          y: topY - labelH,
+          width: lw,
+          height: labelH,
+          color: CREAM,
+        });
+        this.drawTracked(
+          labelText,
+          x + 6,
+          topY - 11,
+          6.5,
+          this.bold,
+          BRASS,
+          1.4,
+        );
+      }
+      this.drawCaption(it, x, iy - 8, imgW);
+    });
+    this.y = topY - imgH - 8 - capH - rowGap;
+  }
+
+  /** Shrink a packed page of portraits until height, width, and captions agree. */
+  private packedPortraitBox(
+    chunk: GalleryItem[],
+    rows: number,
+    rowGap: number,
+    imgH: number,
+    ratio: number,
+    seedCapH: number,
+  ) {
+    const budget = this.y - (MARGIN + 8);
+    let captionH = seedCapH;
+    let packed = packedGallerySize({
+      budget,
+      rows,
+      captionHeight: captionH,
+      rowGap,
+      naturalHeight: imgH,
+      ratio,
+    });
+    for (let step = 0; step < 3; step++) {
+      const nextCap = Math.max(
+        ...chunk.map((it) => this.captionHeight(it, packed.width)),
+        0,
+      );
+      const next = packedGallerySize({
+        budget,
+        rows,
+        captionHeight: nextCap,
+        rowGap,
+        naturalHeight: imgH,
+        ratio,
+      });
+      if (
+        Math.abs(next.width - packed.width) < 0.5 &&
+        Math.abs(nextCap - captionH) < 0.5
+      ) {
+        return next;
+      }
+      packed = next;
+      captionH = nextCap;
+    }
+    return packed;
+  }
+
   /** A responsive image grid with captions — the magazine workhorse. */
-  gallery(items: GalleryItem[], opts: { cols?: number; ratio?: number } = {}) {
+  gallery(
+    items: GalleryItem[],
+    opts: { cols?: number; ratio?: number; packRows?: number } = {},
+  ) {
     if (!items.length) return;
     const { cols, ratio, colGap, rowGap, cardW, imgH } = this.galleryMetrics(
       items,
       opts,
     );
+    const packRows = opts.packRows ?? 0;
+    if (packRows > 1) {
+      const pageSize = packedGalleryPageSize(cols, packRows);
+      for (let start = 0; start < items.length; start += pageSize) {
+        const chunk = items.slice(start, start + pageSize);
+        const capH = Math.max(
+          ...chunk.map((it) => this.captionHeight(it, cardW)),
+          0,
+        );
+        const rows = Math.ceil(chunk.length / cols);
+        if (
+          !packedGalleryFits({
+            budget: this.y - (MARGIN + 8),
+            rows,
+            captionHeight: capH,
+            rowGap,
+          })
+        ) {
+          this.newPage();
+        }
+        const packed = this.packedPortraitBox(
+          chunk,
+          rows,
+          rowGap,
+          imgH,
+          ratio,
+          capH,
+        );
+        for (let i = 0; i < chunk.length; i += cols) {
+          this.drawGalleryRow(
+            chunk.slice(i, i + cols),
+            cols,
+            colGap,
+            rowGap,
+            cardW,
+            packed.height,
+            packed.width,
+          );
+        }
+      }
+      return;
+    }
 
     for (let i = 0; i < items.length; i += cols) {
       const row = items.slice(i, i + cols);
       const capH = Math.max(...row.map((it) => this.captionHeight(it, cardW)), 0);
       this.ensure(imgH + capH + rowGap);
-      const topY = this.y;
-      row.forEach((it, j) => {
-        const x = MARGIN + j * (cardW + colGap);
-        const iy = topY - imgH;
-        if (it.img) {
-          this.page.drawImage(it.img, { x, y: iy, width: cardW, height: imgH });
-        } else {
-          this.page.drawRectangle({ x, y: iy, width: cardW, height: imgH, color: SAND });
-        }
-        this.page.drawRectangle({
-          x,
-          y: iy,
-          width: cardW,
-          height: imgH,
-          borderColor: LINE,
-          borderWidth: 0.5,
-        });
-        if (it.label) {
-          const labelText = it.label.toUpperCase();
-          const padX = 12;
-          const labelH = 16;
-          const textW = this.widthTracked(labelText, this.bold, 6.5, 1.4);
-          const lw = Math.min(cardW, textW + padX);
-          this.page.drawRectangle({
-            x,
-            y: topY - labelH,
-            width: lw,
-            height: labelH,
-            color: CREAM,
-          });
-          this.drawTracked(
-            labelText,
-            x + 6,
-            topY - 11,
-            6.5,
-            this.bold,
-            BRASS,
-            1.4,
-          );
-        }
-        this.drawCaption(it, x, iy - 8, cardW);
-      });
-      this.y = topY - imgH - 8 - capH - rowGap;
+      this.drawGalleryRow(row, cols, colGap, rowGap, cardW, imgH);
     }
   }
 }
@@ -1140,6 +1268,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     d.gallerySection(tt("Recommended facial hair"), items, {
       cols: 2,
       ratio: PORTRAIT_RATIO,
+      packRows: 2,
     });
   }
 
@@ -1162,6 +1291,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     d.gallerySection(tt("Eyewear for your face"), items, {
       cols: 2,
       ratio: PORTRAIT_RATIO,
+      packRows: 2,
     });
   } else if (report.tier !== "premium") {
     // Static shape guide is a non-premium fallback; Premium always ships
@@ -1192,6 +1322,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     d.gallerySection(tt("Accessory styling"), items, {
       cols: 2,
       ratio: PORTRAIT_RATIO,
+      packRows: 2,
     });
   }
 
@@ -1203,6 +1334,7 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
     d.gallerySection(tt("Headwear"), items, {
       cols: 2,
       ratio: PORTRAIT_RATIO,
+      packRows: 2,
     });
   }
 
@@ -1464,13 +1596,22 @@ export async function buildReportPdf(report: StyleReport): Promise<Uint8Array> {
   }
   d.gap(2);
   d.subhead(tt("Patterns"), { keepWith: 14 });
-  d.text(tt("Solid · Fine stripe · Gingham check · Tartan"), { color: STONE });
+  d.text(
+    extras.patterns?.length
+      ? extras.patterns.map((p) => tt(p.name)).join(" · ")
+      : tt("Solid · Fine stripe"),
+    { color: STONE },
+  );
   d.gap(4);
   d.subhead(tt("Accessories"), { keepWith: 14 });
   d.text(
-    tt(
-      "Field watch (cream dial) · Leather belt matched to shoes · Warm tortoiseshell sunglasses · One minimal chain",
-    ),
+    extras.finishingAccessories?.length
+      ? extras.finishingAccessories
+          .map((a) => `${tt(a.name)} (${tt(a.note)})`)
+          .join(" · ")
+      : extras.watchGuide?.variants?.[1]
+        ? `${tt(extras.watchGuide.variants[1].type)} (${extras.watchGuide.variants[1].dial} ${tt("dial")}) · ${tt("Leather belt matched to shoes")}`
+        : tt("Leather belt matched to shoes"),
     { color: STONE, lineGap: 5 },
   );
   d.gap(4);

@@ -11,7 +11,12 @@ import {
   reasonIsSafe,
   REASON_VERSION,
 } from "@/lib/ai/shopping-reasons";
-import { mockShopping, type ShoppingItem } from "@/lib/report";
+import {
+  climateNeedsCoat,
+  mockShopping,
+  SHOPPING_VERSION,
+  type ShoppingItem,
+} from "@/lib/report";
 import { marketForCurrency } from "@/lib/currency";
 import { catalogGenderAllowed } from "@/lib/catalog-gender";
 import { lookStyleQueryHint } from "@/lib/look-style-fit";
@@ -31,7 +36,9 @@ import {
   isLeatherUpperFootwear,
   isRainUtilityFootwearTitle,
   clauseAsksLinen,
-  workDefaultShirtColor,
+  workShirtSearchColor,
+  workShirtFallbackColors,
+  workShirtClashesJacket,
   prefersChinoTrousers,
   prefersWoolTrousers,
   isNonDressShirtTitle,
@@ -47,6 +54,7 @@ import {
   lookColorCue,
   lookAsksTeal,
   HOUSEHOLD_TEXTILE_RE,
+  LOOK_SHOP_MAX_SLOTS,
   selectLookGarmentSlots,
   resolveLookGarments,
   paletteColorHints,
@@ -54,30 +62,54 @@ import {
   styleIntentPhrase,
   isShortsTitle,
   hitsAvoidPalette,
+  isUnknownSwatchHex,
+  inferSwatchHex,
+  priceOutlierThreshold,
   isWarmYellowNearFace,
-  isWarmCreamNearFace,
+  isCoolPastelNearFace,
+  lookAsksCoolColour,
+  isOpticWhiteNearFace,
+  titleColourOverridesHex,
+  slotColourAdmitted,
   isNearFaceShoppingCategory,
   isUnreliableColorBlockKnit,
   bestPaletteFitScore,
   colorMatchScore,
+  shoeGuideFor,
+  leatherTargetsFromGuide,
+  preferLeatherAnchor,
+  leatherAnchorTone,
   pickShoppingRolePair,
   wantsPolishedFootwear,
   wantsOutdoorJeans,
   isCasualSummerShirtTitle,
+  isOvershirtTitle,
   isJeanTitle,
   isSunglassesTitle,
   isDarkAnchorPiece,
-  isDrawstringTitle,
-  isLoaferTitle,
-  CASUAL_OUTERWEAR_RE,
+  isBagTitle,
+  isBackpackTitle,
+  isSportsBagTitle,
+  lookAsksSportsBag,
+  silhouetteRejectsTrousers,
+  silhouetteRejectsTop,
+  isClassicLeatherColour,
   type LookGarment,
 } from "@/lib/style-extras";
+import { hexToHsl } from "@/lib/colour-palette";
+import {
+  recipePoolRejection,
+  SHORT_SLEEVE_KNIT_RE,
+  type RecipePoolContext,
+} from "@/lib/recipe-pool-rules";
+export { SHORT_SLEEVE_KNIT_RE };
 import {
   LOOK_RERANK_CANDIDATE_LIMIT,
   rerankLookItemSlots,
   type RerankGarmentSlot,
 } from "@/lib/ai/look-item-rerank";
 import type { StyleProfile, ReportContent } from "@/lib/style-profile";
+import { withEffectiveUndertone } from "@/lib/style-profile";
 import {
   BUDGET_ANY_MAX,
   isPriceInBudget,
@@ -98,16 +130,17 @@ import {
   hasStrongColorHit,
   isOfficeWorkRow,
   isTrendForward,
-  pickBestMatch,
+  pickAdmittedMatch,
   rankMatchRows,
   rowColorText,
+  STRONG_COLOR_MATCH,
   tagFitScore,
   topRankedCandidates,
   type LookMatchRow,
   type RankedLookMatch,
 } from "@/lib/look-match-rank";
 import { attachLookItemAlts } from "@/lib/look-item-alts";
-import { capsuleWardrobeSlots } from "@/lib/capsule-wardrobe";
+import { capsuleWardrobeSlots, leatherFallbacks } from "@/lib/capsule-wardrobe";
 
 export { attrFitScore } from "./catalog-attrfit";
 export {
@@ -130,15 +163,6 @@ type RankedMatch = RankedLookMatch;
 
 const HEX_RE = /^#?[0-9a-f]{6}$/i;
 
-/**
- * Short-sleeve pieces mis-filed under "Knitwear" (e.g. a "Short Sleeve
- * Sweatshirt") read as a t-shirt when layered over a long-sleeve shirt — the
- * cuffs poke out awkwardly. A layering knit needs long sleeves, so the knit slot
- * drops these unless nothing else matches.
- */
-export const SHORT_SLEEVE_KNIT_RE =
-  /\b(short[- ]?sleeve|sleeveless|t-?shirts?|tees?|tank|vest\s*tops?)\b/i;
-
 /** Roll-neck / turtleneck — worn instead of a shirt, never with one. */
 export const TURTLENECK_KNIT_RE =
   /\b(turtlenecks?|turtle\s*necks?|roll[- ]?necks?|rollnecks?|polo\s*necks?)\b/i;
@@ -154,6 +178,26 @@ function swatchHex(row: { color_hex?: string | null; color?: string | null }): s
   const raw = row.color?.trim();
   if (raw && HEX_RE.test(raw)) return raw.startsWith("#") ? raw : `#${raw}`;
   return "#CCCCCC";
+}
+
+/**
+ * Swatch with the title's colour word trusted over a contradicting feed hex —
+ * "Brown Genuine Leather Oxford" stored as #111111 renders brown, not black.
+ */
+function trustedSwatchHex(row: {
+  brand?: string | null;
+  title: string;
+  color_hex?: string | null;
+  color?: string | null;
+}): string {
+  const base = swatchHex(row);
+  return (
+    titleColourOverridesHex(
+      formatCatalogProductTitle(row.brand ?? null, row.title),
+      base,
+      row.color,
+    ) ?? base
+  );
 }
 
 /** Placeholder / non-shoppable deeplink hosts that must never reach a report. */
@@ -421,17 +465,17 @@ async function supplementWorkLookRows(
         );
       });
       if (!hasMessenger) {
-        const { data } = await sb
-          .from("products")
-          .select(PRODUCT_MATCH_COLS)
-          .eq("category", "Accessories")
-          .or("hidden.eq.false,hidden.is.null")
-          .or("in_stock.eq.true,in_stock.is.null")
-          .or(
-            "title.ilike.%messenger%,title.ilike.%satchel%,title.ilike.%briefcase%",
-          )
-          .limit(12);
-        extra.push(...((data as MatchRow[]) ?? []));
+        for (const needle of ["%briefcase%", "%messenger%"] as const) {
+          const { data } = await sb
+            .from("products")
+            .select(PRODUCT_MATCH_COLS)
+            .eq("category", "Accessories")
+            .or("hidden.eq.false,hidden.is.null")
+            .or("in_stock.eq.true,in_stock.is.null")
+            .ilike("title", needle)
+            .limit(8);
+          extra.push(...((data as MatchRow[]) ?? []));
+        }
       }
     }
     if (lookOccasionAppliesToShirt(g.garment)) {
@@ -765,10 +809,17 @@ async function matchShoppingByRecipe(
   const avoid = content.colors.avoid ?? [];
   const polished = wantsPolishedFootwear(profile);
   const outdoorJeans = wantsOutdoorJeans(profile);
+  const toneProfile = withEffectiveUndertone(profile);
+  const leather = leatherTargetsFromGuide(
+    shoeGuideFor(toneProfile, best, avoid),
+  );
   const recipe = capsuleWardrobeSlots(best, avoid, {
     outdoorJeans,
     polished,
-    cool: profile.physical.undertone === "cool",
+    coat: climateNeedsCoat(profile.demographics.climate),
+    cool: toneProfile.physical.undertone === "cool",
+    warm: toneProfile.physical.undertone === "warm",
+    leather,
   });
   if (!recipe.length) return [];
 
@@ -781,13 +832,136 @@ async function matchShoppingByRecipe(
   const avoidText = avoid.map((c) => c.name).filter(Boolean).join(", ");
   const items: ShoppingItem[] = [];
   const seen = new Set<string>();
+  const poolCtx: RecipePoolContext = {
+    undertone: toneProfile.physical.undertone,
+    best,
+    bodyType: profile.physical.bodyType,
+    outdoorJeans,
+    avoid,
+  };
+  const leatherRoleOf = (
+    role: (typeof recipe)[number]["role"],
+  ): "dress" | "smart" | "everyday" | "belt" | null => {
+    if (role === "dressShoe") return "dress";
+    if (role === "loafer") return "smart";
+    if (role === "sneaker") return "everyday";
+    if (role === "belt" || role === "bag") return "belt";
+    return null;
+  };
+
+  const rankRecipePool = (
+    slot: (typeof recipe)[number],
+    colorName: string,
+    pool: Awaited<ReturnType<typeof loadMatchPool>>,
+  ) => {
+    const rejections = new Map<string, number>();
+    let ranked = pool
+      .map((p) => {
+        const title = formatCatalogProductTitle(p.brand, p.title);
+        const hex = inferSwatchHex(title, trustedSwatchHex(p));
+        const hay = `${title} ${p.color ?? ""}`;
+        const unknown =
+          isUnknownSwatchHex(swatchHex(p)) && hex === "#CCCCCC";
+        // A warm palette's white is cream: optic white at the face ranks behind
+        // any softer candidate, but still stands when the catalogue has nothing else.
+        const opticWhite =
+          profile.physical.undertone === "warm" &&
+          isNearFaceShoppingCategory(slot.category) &&
+          isOpticWhiteNearFace(hay, hex);
+        return {
+          p,
+          title,
+          hex,
+          hay,
+          unknown,
+          score:
+            (p.similarity ?? 0) +
+            styleFitScore(title, profile.boldness) +
+            tagFitScore(p, profile.boldness) +
+            colorMatchScore(colorName, hex, title) * 0.4 -
+            (unknown ? 0.15 : 0) -
+            (opticWhite ? 0.35 : 0),
+        };
+      })
+      .filter((r) => {
+        const why = recipePoolRejection(
+          slot,
+          {
+            title: r.title,
+            hay: r.hay,
+            hex: r.hex,
+            materialFamily: r.p.material_family,
+            description: r.p.description,
+          },
+          poolCtx,
+        );
+        if (why) rejections.set(why, (rejections.get(why) ?? 0) + 1);
+        return why === null;
+      })
+      .sort((a, b) => b.score - a.score);
+    // An empty slot is a fallback chain about to run; say which rules emptied it.
+    if (!ranked.length && pool.length) {
+      console.warn("[shopping] every row rejected for a capsule slot", {
+        role: slot.role,
+        colour: colorName,
+        rows: pool.length,
+        reasons: Object.fromEntries(rejections),
+      });
+    }
+
+    // Near-face pieces and the jacket (the capsule's hero) must have a known
+    // colour — a feed with no swatch was how a beige blazer became the hero of
+    // a cool palette, reasoned about as "light grey".
+    if (isNearFaceShoppingCategory(slot.category) || slot.role === "jacket") {
+      const known = ranked.filter((r) => !r.unknown);
+      if (known.length) ranked = known;
+    }
+    return ranked;
+  };
+
+  const unusedFrom = (
+    ranked: ReturnType<typeof rankRecipePool>,
+  ) =>
+    ranked.find((r) => {
+      const titleKey = r.title.toLowerCase().replace(/\s+/g, " ").trim();
+      return !seen.has(r.p.id) && !seen.has(titleKey);
+    });
+
+  type RecipePick = ReturnType<typeof rankRecipePool>[number];
+  const toItem = (
+    slot: (typeof recipe)[number],
+    pick: RecipePick,
+    similarPick: boolean,
+    sameCategoryBefore: number,
+  ): ShoppingItem => ({
+    category: slot.category,
+    title: pick.title,
+    why: shoppingReason(slot.category, sameCategoryBefore, profile, goal),
+    priceEur: Number(pick.p.price_eur ?? 0),
+    priceNative:
+      pick.p.price_native != null ? Number(pick.p.price_native) : undefined,
+    currency: pick.p.currency ?? undefined,
+    retailer: pick.p.brand ?? pick.p.source ?? "",
+    url: pick.p.deeplink ?? "#",
+    color: pick.hex,
+    ...(pick.p.color?.trim() ? { colorName: pick.p.color.trim() } : {}),
+    image: pick.p.image_url ?? undefined,
+    productId: pick.p.id,
+    shoppingVersion: SHOPPING_VERSION,
+    ...(similarPick ? { similarPick: true } : {}),
+  });
+  // Ranked candidates behind each pick — the price-outlier pass below swaps a
+  // far-too-dear piece for the next in-band candidate of the same slot.
+  const rankedByItem: { slot: (typeof recipe)[number]; ranked: RecipePick[] }[] =
+    [];
+  let beltCtx: { slot: (typeof recipe)[number]; poolArgs: Record<string, unknown> } | null = null;
 
   for (const slot of recipe) {
     const query =
       `${slot.query} ${profile.colorSeason} palette.` +
       (avoidText ? ` Never ${avoidText}.` : "");
     const { embedding } = await embed({ model: env.embedModel, value: query });
-    const pool = await loadMatchPool(sb, {
+    const poolArgs = {
       query_embedding: embedding,
       match_count: 12,
       filter_category: slot.category,
@@ -796,143 +970,139 @@ async function matchShoppingByRecipe(
       currency,
       market,
       gender_filter: gender,
+    };
+    if (slot.role === "belt") beltCtx = { slot, poolArgs };
+    let pool = await loadMatchPool(sb, {
+      ...poolArgs,
       color: slot.color.name,
     });
-    let ranked = pool
-      .map((p) => {
-        const title = formatCatalogProductTitle(p.brand, p.title);
-        const hex = swatchHex(p);
-        const hay = `${title} ${p.color ?? ""}`;
-        return {
-          p,
-          title,
-          hex,
-          hay,
-          score:
-            (p.similarity ?? 0) +
-            styleFitScore(title, profile.boldness) +
-            tagFitScore(p, profile.boldness) +
-            colorMatchScore(slot.color.name, hex, title) * 0.4,
-        };
-      })
-      .filter((r) => {
-        if (hitsAvoidPalette(r.hay, r.hex, avoid)) return false;
-        if (
-          isNearFaceShoppingCategory(slot.category) &&
-          (isWarmYellowNearFace(r.hay, r.hex) ||
-            (profile.physical.undertone === "cool" &&
-              slot.role === "shirt" &&
-              isWarmCreamNearFace(r.hay, r.hex)))
-        ) {
-          return false;
-        }
-        if (slot.category === "Knitwear" && isUnreliableColorBlockKnit(r.title)) {
-          return false;
-        }
-        if (slot.category === "Knitwear" && SHORT_SLEEVE_KNIT_RE.test(r.title)) {
-          return false;
-        }
-        if (slot.category === "Shirts" && isCasualSummerShirtTitle(r.title)) {
-          return false;
-        }
-        if (
-          slot.role === "shirt" &&
-          /\b(polo|pale\s+green|light\s+green)\b/i.test(r.hay)
-        ) {
-          return false;
-        }
-        if (slot.role === "darkTrouser") {
-          if (isShortsTitle(r.title) || isDrawstringTitle(r.title)) return false;
-          if (!isDarkAnchorPiece(r.title, new Map([[r.title, r.hex]]))) {
-            return false;
-          }
-        }
-        if (slot.role === "casualTrouser") {
-          if (isShortsTitle(r.title)) return false;
-          if (outdoorJeans && !isJeanTitle(r.title)) return false;
-        }
-        if (
-          (slot.role === "dressShoe" || slot.role === "loafer") &&
-          /\b(green|olive|yellow|apricot|lime)\b/i.test(r.hay) &&
-          /\b(navy|charcoal|grey|gray)\b/i.test(slot.color.name)
-        ) {
-          return false;
-        }
-        if (
-          (slot.role === "dressShoe" || slot.role === "loafer") &&
-          profile.physical.undertone === "cool" &&
-          /\b(brown|cognac|tan|camel|tobacco|chocolate)\b/i.test(r.title) &&
-          !/\b(grey|gray|navy|charcoal|black|blue)\b/i.test(r.title)
-        ) {
-          return false;
-        }
-        if (slot.role === "jacket" && CASUAL_OUTERWEAR_RE.test(r.title)) {
-          return false;
-        }
-        if (slot.role === "casualOuter" && !CASUAL_OUTERWEAR_RE.test(r.title)) {
-          return false;
-        }
-        if (slot.role === "dressShoe") {
-          if (
-            CASUAL_FOOTWEAR_RE.test(r.title) ||
-            SNEAKER_RE_LOCAL.test(r.title) ||
-            isLoaferTitle(r.title)
-          ) {
-            return false;
-          }
-          if (
-            !/\b(derb(?:y|ies)|oxfords?|brogues?|monk\s+straps?|cap-?toe|wholecuts?)\b/i.test(
-              r.title,
-            ) ||
-            /\bshirt\b/i.test(r.title)
-          ) {
-            return false;
-          }
-        }
-        if (slot.role === "loafer" && !/\bloafers?\b/i.test(r.title)) return false;
-        if (slot.role === "sneaker" && !/\b(sneakers?|trainers?)\b/i.test(r.title)) {
-          return false;
-        }
-        if (slot.role === "belt" && !/\bbelts?\b/i.test(r.title)) return false;
-        if (
-          slot.role === "bag" &&
-          !/\b(briefcase|messenger|bag)\b/i.test(r.title)
-        ) {
-          return false;
-        }
-        return true;
-      })
-      .sort((a, b) => b.score - a.score);
+    // The construction check on dress shoes reads the copy ("thick sole",
+    // "crepe"); RPC rows omit it.
+    if (slot.role === "dressShoe") pool = await hydrateProductDescriptions(pool);
+    let ranked = rankRecipePool(slot, slot.color.name, pool);
+    let pick = unusedFrom(ranked);
+    let similarPick = false;
 
-    const pick = ranked.find((r) => {
-      const titleKey = r.title.toLowerCase().replace(/\s+/g, " ").trim();
-      return !seen.has(r.p.id) && !seen.has(titleKey);
-    });
+    const leatherRole = leatherRoleOf(slot.role);
+    if (!pick && leatherRole) {
+      const avoidJetBlackSneakers =
+        leatherRole === "everyday" &&
+        avoid.some((c) => /pure black|\bblack\b/i.test(c.name || ""));
+      for (const fb of leatherFallbacks(leatherRole, slot.color, {
+        avoidJetBlackSneakers,
+      }).slice(1)) {
+        ranked = rankRecipePool(slot, fb.name, pool);
+        pick = unusedFrom(ranked);
+        if (pick) {
+          similarPick = true;
+          break;
+        }
+        let fbPool = await loadMatchPool(sb, {
+          ...poolArgs,
+          color: fb.name,
+        });
+        if (slot.role === "dressShoe") fbPool = await hydrateProductDescriptions(fbPool);
+        ranked = rankRecipePool(slot, fb.name, fbPool);
+        pick = unusedFrom(ranked);
+        if (pick) {
+          similarPick = true;
+          break;
+        }
+      }
+    }
+
     if (!pick) continue;
     const titleKey = pick.title.toLowerCase().replace(/\s+/g, " ").trim();
     seen.add(pick.p.id);
     seen.add(titleKey);
-    items.push({
-      category: slot.category,
-      title: pick.title,
-      why: shoppingReason(slot.category, items.filter((i) => i.category === slot.category).length, profile, goal),
-      priceEur: Number(pick.p.price_eur ?? 0),
-      priceNative:
-        pick.p.price_native != null ? Number(pick.p.price_native) : undefined,
-      currency: pick.p.currency ?? undefined,
-      retailer: pick.p.brand ?? pick.p.source ?? "",
-      url: pick.p.deeplink ?? "#",
-      color: pick.hex,
-      ...(pick.p.color?.trim() ? { colorName: pick.p.color.trim() } : {}),
-      image: pick.p.image_url ?? undefined,
-      productId: pick.p.id,
-    });
+    items.push(
+      toItem(
+        slot,
+        pick,
+        similarPick,
+        items.filter((i) => i.category === slot.category).length,
+      ),
+    );
+    rankedByItem.push({ slot, ranked });
   }
 
-  return items.length ? await applyShoppingReasons(items, profile) : [];
+  // The belt follows the dress shoe that was actually matched, not the slot
+  // colour it was planned against: brown belt under black oxfords (or under
+  // green ones, before the leather gate) is the mismatch clients notice first.
+  const shoeIdx = rankedByItem.findIndex((e) => e.slot.role === "dressShoe");
+  const beltIdx = rankedByItem.findIndex((e) => e.slot.role === "belt");
+  if (shoeIdx >= 0 && beltIdx >= 0 && beltCtx) {
+    const shoe = items[shoeIdx]!;
+    const belt = items[beltIdx]!;
+    const shoeTone = leatherTone(`${shoe.title} ${shoe.colorName ?? ""}`, shoe.color);
+    const beltTone = leatherTone(`${belt.title} ${belt.colorName ?? ""}`, belt.color);
+    if (shoeTone && shoeTone !== beltTone) {
+      const colourName = shoeTone === "black" ? "Black" : "Dark brown";
+      const pool = await loadMatchPool(sb, { ...beltCtx.poolArgs, color: colourName } as Parameters<typeof loadMatchPool>[1]);
+      const ranked = rankRecipePool(beltCtx.slot, colourName, pool).filter(
+        (r) => leatherTone(`${r.title} ${r.p.color ?? ""}`, r.hex) === shoeTone,
+      );
+      const alt = ranked.find((r) => {
+        const key = r.title.toLowerCase().replace(/\s+/g, " ").trim();
+        return r.p.id !== belt.productId && !seen.has(r.p.id) && !seen.has(key);
+      });
+      if (alt) {
+        seen.add(alt.p.id);
+        seen.add(alt.title.toLowerCase().replace(/\s+/g, " ").trim());
+        items[beltIdx] = toItem(
+          beltCtx.slot,
+          alt,
+          Boolean(belt.similarPick),
+          items.slice(0, beltIdx).filter((x) => x.category === beltCtx!.slot.category).length,
+        );
+        rankedByItem[beltIdx] = { slot: beltCtx.slot, ranked };
+      }
+    }
+  }
+
+  // A €356 sneaker in a list whose median is €42 is a data accident, not a
+  // recommendation — swap it for the next in-band candidate of its slot when
+  // one exists (same rule the look matcher applies).
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]!;
+    const others = items.filter((_, j) => j !== i).map((x) => Number(x.priceEur ?? 0));
+    const threshold = priceOutlierThreshold(others);
+    if (!(Number(item.priceEur ?? 0) > threshold)) continue;
+    const entry = rankedByItem[i];
+    if (!entry) continue;
+    const alt = entry.ranked.find((r) => {
+      const key = r.title.toLowerCase().replace(/\s+/g, " ").trim();
+      return (
+        r.p.id !== item.productId &&
+        !seen.has(r.p.id) &&
+        !seen.has(key) &&
+        Number(r.p.price_eur ?? 0) > 0 &&
+        Number(r.p.price_eur ?? 0) <= threshold
+      );
+    });
+    if (!alt) continue;
+    seen.add(alt.p.id);
+    seen.add(alt.title.toLowerCase().replace(/\s+/g, " ").trim());
+    items[i] = toItem(
+      entry.slot,
+      alt,
+      Boolean(item.similarPick),
+      items.slice(0, i).filter((x) => x.category === entry.slot.category).length,
+    );
+  }
+
+  return items.length ? await applyShoppingReasons(items, profile, avoid) : [];
 }
 
-const SNEAKER_RE_LOCAL = /\b(sneakers?|trainers?|plimsolls?|runners?)\b/i;
+
+/** Black or brown leather tone of a shoe / belt: colour words first, then the swatch. */
+function leatherTone(hay: string, hex?: string | null): "black" | "brown" | null {
+  const byWord = leatherToneFamily(hay);
+  if (byWord) return byWord;
+  if (!hex || !isClassicLeatherColour("", hex)) return null;
+  const { l } = hexToHsl(hex);
+  return l < 0.14 ? "black" : "brown";
+}
 
 /**
  * Semantic shopping list: for each category, embed a query built from the
@@ -954,6 +1124,9 @@ export async function matchShopping(
     const palette = content.colors.best.map((c) => c.name).join(", ");
     const avoid = content.colors.avoid ?? [];
     const avoidText = avoid.map((c) => c.name).filter(Boolean).join(", ");
+    const leatherHint = leatherTargetsFromGuide(
+      shoeGuideFor(profile, content.colors.best ?? [], avoid),
+    );
     const goal = profile.goals[0]?.toLowerCase() ?? "your goals";
     const market = marketForCurrency(profile.currency);
     const country = profile.demographics.country;
@@ -969,9 +1142,9 @@ export async function matchShopping(
       const polishedFeet = wantsPolishedFootwear(profile);
       const footwearBias = isFootwear
         ? polishedFeet
-          ? " One pair of leather derbies or oxfords, one pair of loafers, and one pair of clean leather sneakers — three different silhouettes, not two of the same shoe, not sandals, clogs, slides or flip-flops."
+          ? ` One pair of ${leatherHint.dress.name} leather derbies or oxfords, one pair of ${leatherHint.smart.name} loafers, and one pair of ${leatherHint.everyday.name} clean leather sneakers — three different silhouettes, not two of the same shoe, not sandals, clogs, slides or flip-flops.`
           : !isTrendForward(profile.boldness)
-            ? " Leather dress shoes: derbies, oxfords, loafers, monk straps or chelsea boots — not sandals, clogs, slides or flip-flops."
+            ? ` Leather dress shoes in ${leatherHint.dress.name}: derbies, oxfords, loafers, monk straps or chelsea boots — not sandals, clogs, slides or flip-flops.`
             : ""
         : "";
       // Steer the "Shirts" pool toward proper button-down shirts — the category
@@ -1002,8 +1175,8 @@ export async function matchShopping(
       const accessoryBias =
         category === "Accessories"
           ? polishedFeet
-            ? " A leather belt that matches dress shoes and a slim briefcase or messenger bag — not sunglasses, not novelty scarves."
-            : " A leather belt or a quiet tie — not two pairs of sunglasses."
+            ? ` A leather belt matching ${leatherHint.dress.name} dress shoes and a slim briefcase or messenger bag — not sunglasses, not novelty scarves.`
+            : ` A leather belt matching ${leatherHint.dress.name} dress shoes or a quiet tie — not two pairs of sunglasses.`
           : "";
       const query =
         `${category} in ${palette}; ${profile.colorSeason} palette; ` +
@@ -1130,12 +1303,14 @@ export async function matchShopping(
       // Never put an avoid-palette colour on a report, especially a knit or
       // shirt next to the face. Near-face slots skip rather than fall back.
       const onPalette = ranked.filter((r) => {
-        const hex = swatchHex(r.p);
+        const hex = inferSwatchHex(r.title, trustedSwatchHex(r.p));
         const colorHay = `${r.title} ${r.p.color ?? ""}`;
-        if (hitsAvoidPalette(colorHay, hex, avoid)) return false;
+        if (hitsAvoidPalette(colorHay, hex, avoid, { category })) return false;
         if (
           isNearFaceShoppingCategory(category) &&
-          isWarmYellowNearFace(colorHay, hex)
+          (isWarmYellowNearFace(colorHay, hex) ||
+            (profile.physical.undertone === "warm" &&
+              isCoolPastelNearFace(colorHay, hex)))
         ) {
           return false;
         }
@@ -1181,8 +1356,9 @@ export async function matchShopping(
               isJeanTitle(r.title) &&
               !hitsAvoidPalette(
                 `${r.title} ${r.p.color ?? ""}`,
-                swatchHex(r.p),
+                inferSwatchHex(r.title, swatchHex(r.p)),
                 avoid,
+                { category: "Trousers" },
               ),
           );
         const classic = jeans.filter(
@@ -1227,7 +1403,9 @@ export async function matchShopping(
             .filter((r) => {
               const hex = swatchHex(r.p);
               const hay = `${r.title} ${r.p.color ?? ""}`;
-              if (hitsAvoidPalette(hay, hex, avoid)) return false;
+              if (hitsAvoidPalette(hay, hex, avoid, { category: "Trousers" })) {
+                return false;
+              }
               return isDarkAnchorPiece(
                 r.title,
                 new Map([[r.title, hex]]),
@@ -1289,13 +1467,16 @@ export async function matchShopping(
           ...(p.color?.trim() ? { colorName: p.color.trim() } : {}),
           image: p.image_url ?? undefined,
           productId: p.id,
+          shoppingVersion: SHOPPING_VERSION,
         });
       }
     }
 
     // One batched LLM pass rewrites the template "why" copy into item-aware
     // reasons (guarded + never throws; template copy stays on any fallback).
-    return items.length ? await applyShoppingReasons(items, profile) : mockShopping();
+    return items.length
+      ? await applyShoppingReasons(items, profile, avoid)
+      : mockShopping();
   } catch {
     return mockShopping();
   }
@@ -1493,6 +1674,156 @@ function resolveShirtTrouserClash(
   return items;
 }
 
+function applyWorkShirtSearchColors(
+  garments: LookGarment[],
+  occasionId?: string | null,
+): void {
+  if (!lookOccasionIsTailored(occasionId)) return;
+  const trousers = garments.find((g) => g.category === "Trousers");
+  for (const g of garments) {
+    if (!lookOccasionAppliesToShirt(g.garment)) continue;
+    const shirt = workShirtSearchColor(g.color, trousers?.color);
+    if (shirt === (g.color ?? "").trim()) continue;
+    g.color = shirt;
+    g.clause = `${shirt} ${g.clause}`.trim();
+  }
+}
+
+function workShirtExtraSearchColors(garments: LookGarment[]): {
+  garment: LookGarment;
+  colors: string[];
+}[] {
+  const jacket = garments.find((g) => g.category === "Outerwear");
+  const extras: { garment: LookGarment; colors: string[] }[] = [];
+  for (const g of garments) {
+    if (!lookOccasionAppliesToShirt(g.garment)) continue;
+    const colors = [...workShirtFallbackColors(g.color, jacket?.color)];
+    if (
+      jacket &&
+      workShirtClashesJacket(g.color, jacket.color) &&
+      !colors.includes("white")
+    ) {
+      colors.push("white");
+    }
+    if (colors.length) extras.push({ garment: g, colors });
+  }
+  return extras;
+}
+
+function applyWorkShirtPoolFallback(
+  g: LookGarment,
+  garments: LookGarment[],
+  matchByKey: Map<string, MatchRow[]>,
+  matchKeyFor: (garment: LookGarment) => string,
+  occasionId?: string | null,
+): void {
+  if (!lookOccasionIsTailored(occasionId)) return;
+  if (!lookOccasionAppliesToShirt(g.garment)) return;
+  const jacket = garments.find((x) => x.category === "Outerwear");
+  const tryColor = (color: string): boolean => {
+    const prevColor = g.color;
+    const prevClause = g.clause;
+    g.color = color;
+    g.clause = `${color} ${prevClause}`.trim();
+    const admitted = (matchByKey.get(matchKeyFor(g)) ?? []).some((r) =>
+      namedSlotKeepsRow(g, r),
+    );
+    if (admitted) return true;
+    g.color = prevColor;
+    g.clause = prevClause;
+    return false;
+  };
+  const poolAdmitted = (matchByKey.get(matchKeyFor(g)) ?? []).some((r) =>
+    namedSlotKeepsRow(g, r),
+  );
+  if (!poolAdmitted) {
+    for (const color of workShirtFallbackColors(g.color, jacket?.color)) {
+      if (tryColor(color)) return;
+    }
+  }
+  if (jacket && workShirtClashesJacket(g.color, jacket.color)) {
+    tryColor("white");
+  }
+}
+
+function resolveShirtJacketClash(
+  items: ShoppingItem[],
+  matchSlots: GarmentMatchSlot[],
+  matchByKey: Map<string, MatchRow[]>,
+  profile: StyleProfile,
+  goal: string,
+  styleId?: string | null,
+  occasionId?: string | null,
+  lockedIds?: Set<string>,
+): ShoppingItem[] {
+  if (!lookOccasionIsTailored(occasionId)) return items;
+  const shirtIdx = items.findIndex((i) => i.category === "Shirts");
+  const jacketIdx = items.findIndex((i) => i.category === "Outerwear");
+  if (shirtIdx < 0 || jacketIdx < 0) return items;
+
+  const shirt = items[shirtIdx]!;
+  const jacket = items[jacketIdx]!;
+  const jacketPiece = {
+    color: jacket.colorName,
+    hex: jacket.color,
+    title: jacket.title,
+  };
+  if (
+    !workShirtClashesJacket(
+      { color: shirt.colorName, hex: shirt.color, title: shirt.title },
+      jacketPiece,
+    )
+  ) {
+    return items;
+  }
+  if (isLockedProduct(shirt.productId, lockedIds)) return items;
+
+  const shirtSlot = matchSlots.find((s) => s.garment.category === "Shirts");
+  if (shirtSlot) {
+    const usedIds = new Set(
+      items
+        .map((i) => i.productId)
+        .filter((id): id is string => Boolean(id) && id !== shirt.productId),
+    );
+    const alt = rankMatchRows(
+      matchByKey.get(shirtSlot.matchKey) ?? [],
+      shirtSlot.garment.color,
+      shirtSlot.garment.garment,
+      profile.boldness,
+      shirtSlot.garment.clause,
+      styleId,
+      occasionId,
+    )
+      .sort((a, b) => b.score - a.score)
+      .find((r) => {
+        if (usedIds.has(r.row.id)) return false;
+        if (r.garmentScore < 0.5 && r.colorScore < 0.45) return false;
+        if (!namedSlotKeepsRow(shirtSlot.garment, r.row)) return false;
+        return !workShirtClashesJacket(
+          {
+            color: r.row.color,
+            hex: swatchHex(r.row),
+            title: formatCatalogProductTitle(r.row.brand, r.row.title),
+          },
+          jacketPiece,
+        );
+      });
+    if (alt) {
+      const next = [...items];
+      next[shirtIdx] = shoppingItemFromMatch(
+        alt.row,
+        shirtSlot.garment,
+        profile,
+        goal,
+        alt.similarPick,
+      );
+      return next;
+    }
+  }
+
+  return items.filter((_, i) => i !== shirtIdx);
+}
+
 function isLeatherHarmonyItem(item: ShoppingItem): boolean {
   if (item.category === "Footwear") return true;
   if (item.category !== "Accessories") return false;
@@ -1510,6 +1841,7 @@ function resolveLeatherToneClash(
   styleId?: string | null,
   occasionId?: string | null,
   lockedIds?: Set<string>,
+  leatherWant?: "black" | "brown" | null,
 ): ShoppingItem[] {
   const trouserIdx = items.findIndex((i) => i.category === "Trousers");
   if (trouserIdx < 0) return items;
@@ -1526,7 +1858,7 @@ function resolveLeatherToneClash(
   ): RankedMatch | undefined => {
     const skip = usedIds();
     if (skipId) skip.delete(skipId);
-    return rankMatchRows(
+    const candidates = rankMatchRows(
       matchByKey.get(slot.matchKey) ?? [],
       slot.garment.color,
       slot.garment.garment,
@@ -1535,12 +1867,21 @@ function resolveLeatherToneClash(
       styleId,
       occasionId,
     )
-      .sort((a, b) => b.score - a.score)
-      .find((r) => {
+      .filter((r) => {
         if (skip.has(r.row.id)) return false;
         if (r.garmentScore < 0.5 && r.colorScore < 0.45) return false;
-        return leatherToneFamily(rowColorText(r.row)) === want;
-      });
+        return true;
+      })
+      .sort((a, b) => b.score - a.score);
+    const matching = candidates.filter(
+      (r) => leatherToneFamily(rowColorText(r.row)) === want,
+    );
+    const pool = matching.length ? matching : candidates;
+    return preferLeatherAnchor(
+      pool,
+      (r) => leatherToneFamily(rowColorText(r.row)),
+      leatherWant ?? want,
+    )[0];
   };
 
   const trousersLocked = isLockedProduct(next[trouserIdx]?.productId, lockedIds);
@@ -1665,11 +2006,12 @@ function shoppingItemFromMatch(
     currency: row.currency ?? undefined,
     retailer: row.brand ?? row.source ?? "",
     url: row.deeplink ?? "#",
-    color: swatchHex(row),
+    color: trustedSwatchHex(row),
     ...(row.color?.trim() ? { colorName: row.color.trim() } : {}),
     image: row.image_url ?? undefined,
     productId: row.id,
     similarPick,
+    garment: g.garment,
     ...(outsideBudget ? { outsideBudget: true } : {}),
     matchVersion: LOOK_MATCH_VERSION,
     rerankVersion: LOOK_RERANK_VERSION,
@@ -1700,6 +2042,194 @@ function withLookItemAlternatives(
   });
 }
 
+/** Drop a named-colour slot only when the colour family is wrong. */
+function namedSlotKeepsRow(g: LookGarment, row: MatchRow): boolean {
+  return slotColourAdmitted(
+    g.color,
+    formatCatalogProductTitle(row.brand, row.title),
+    {
+      productColor: row.color,
+      productHex: swatchHex(row),
+      clause: g.clause,
+      category: g.category,
+    },
+  );
+}
+
+/** Prefer Sonnet's pick; if colour rejects it, walk the rest of that slot. */
+function firstAdmittedSlotRow(
+  matchSlot: GarmentMatchSlot,
+  seen: Set<string>,
+  preferredIndex?: number,
+): MatchRow | undefined {
+  if (preferredIndex != null) {
+    const preferred = matchSlot.rows[preferredIndex];
+    if (
+      preferred &&
+      !seen.has(preferred.id) &&
+      namedSlotKeepsRow(matchSlot.garment, preferred)
+    ) {
+      return preferred;
+    }
+  }
+  return matchSlot.rows.find(
+    (row) => !seen.has(row.id) && namedSlotKeepsRow(matchSlot.garment, row),
+  );
+}
+
+/** Colour-only similarity check, independent of the reranker's judgement. */
+function heuristicSimilarPick(row: MatchRow, g: LookGarment): boolean {
+  const cue = lookColorCue(g.color, g.clause);
+  if (!cue) return false;
+  const swatch = swatchHex(row);
+  if (isUnknownSwatchHex(swatch) && !row.color?.trim()) return true;
+  const title = formatCatalogProductTitle(row.brand, row.title);
+  return (
+    colorMatchScore(cue, row.color, title, { productHex: row.color_hex }) <
+    STRONG_COLOR_MATCH
+  );
+}
+
+/**
+ * Replace a piece priced far above the rest of the look with the next-best
+ * candidate of the same type inside the band. Locked (user-chosen) pieces are
+ * never touched; when no in-band alternative exists the pick stays.
+ */
+function resolvePriceOutliers(
+  items: ShoppingItem[],
+  matchSlots: GarmentMatchSlot[],
+  matchByKey: Map<string, MatchRow[]>,
+  profile: StyleProfile,
+  goal: string,
+  styleId?: string | null,
+  occasionId?: string | null,
+  lockedIds?: Set<string>,
+): ShoppingItem[] {
+  if (items.length < 3) return items;
+  const next = [...items];
+  for (let i = 0; i < next.length; i++) {
+    const item = next[i]!;
+    if (isLockedProduct(item.productId, lockedIds)) continue;
+    const others = next.filter((_, j) => j !== i).map((x) => Number(x.priceEur ?? 0));
+    const threshold = priceOutlierThreshold(others);
+    if (!(Number(item.priceEur ?? 0) > threshold)) continue;
+    const slot = matchSlots.find((s) => s.rows.some((r) => r.id === item.productId));
+    if (!slot) continue;
+    const used = new Set(
+      next.map((x) => x.productId).filter((id): id is string => Boolean(id) && id !== item.productId),
+    );
+    const alt = rankMatchRows(
+      matchByKey.get(slot.matchKey) ?? [],
+      slot.garment.color,
+      slot.garment.garment,
+      profile.boldness,
+      slot.garment.clause,
+      styleId,
+      occasionId,
+    )
+      .sort((a, b) => b.score - a.score)
+      .find(
+        (r) =>
+          !used.has(r.row.id) &&
+          r.garmentScore >= 0.5 &&
+          Number(r.row.price_eur ?? 0) > 0 &&
+          Number(r.row.price_eur ?? 0) <= threshold,
+      );
+    if (!alt) continue;
+    next[i] = shoppingItemFromMatch(
+      alt.row,
+      slot.garment,
+      profile,
+      goal,
+      alt.similarPick || alt.colorScore < STRONG_COLOR_MATCH,
+    );
+  }
+  return next;
+}
+
+/**
+ * Overshirt / messenger vector hits are usually blazers and totes. Work already
+ * SQL-fills those slots; Smart casual and Weekend never ran that path, so the
+ * shop left those slots empty. Pull the typed titles for every occasion.
+ */
+async function supplementTypedLookRows(
+  garments: LookGarment[],
+  matchByKey: Map<string, MatchRow[]>,
+  matchKeyFor: (g: LookGarment) => string,
+  gender?: string | null,
+): Promise<void> {
+  if (!hasSupabaseAdmin) return;
+  const sb = createAdminSupabase();
+  for (const g of garments) {
+    const key = matchKeyFor(g);
+    const pool = matchByKey.get(key) ?? [];
+    const extra: MatchRow[] = [];
+    const cue = lookColorCue(g.color, g.clause);
+    const hay = `${g.garment} ${g.clause}`;
+
+    if (/\b(overshirts?|shackets?)\b/i.test(hay)) {
+      let q = sb
+        .from("products")
+        .select(PRODUCT_MATCH_COLS)
+        .eq("category", "Outerwear")
+        .eq("garment_subtype", "overshirt")
+        .or("hidden.eq.false,hidden.is.null")
+        .or("in_stock.eq.true,in_stock.is.null");
+      if (lookAsksTeal(cue)) {
+        q = q.or(
+          "color.ilike.%teal%,color.ilike.%blue%,color.ilike.%navy%,color.ilike.%chambray%,color.ilike.%slate%",
+        );
+      }
+      const { data, error } = await q.limit(16);
+      if (error) {
+        console.warn("[look-match] overshirt supplement failed", error.message);
+      }
+      extra.push(...((data as MatchRow[]) ?? []));
+    }
+
+    if (lookOccasionAppliesToBag(g.garment) && /\bmessenger\b/i.test(hay)) {
+      const hasWearable = pool.some((r) => {
+        const title = formatCatalogProductTitle(r.brand, r.title);
+        return (
+          /\b(messenger|satchel|briefcase)\b/i.test(title) &&
+          !/\bcrossbod/i.test(title) &&
+          namedSlotKeepsRow(g, r)
+        );
+      });
+      if (!hasWearable) {
+        // Briefcases are stored with a null subtype — one ilike each, not an OR
+        // (the three-way title OR times out on products).
+        for (const needle of ["%briefcase%", "%messenger%"] as const) {
+          const { data, error } = await sb
+            .from("products")
+            .select(PRODUCT_MATCH_COLS)
+            .eq("category", "Accessories")
+            .or("hidden.eq.false,hidden.is.null")
+            .or("in_stock.eq.true,in_stock.is.null")
+            .ilike("title", needle)
+            .limit(8);
+          if (error) {
+            console.warn("[look-match] messenger supplement failed", error.message);
+            continue;
+          }
+          extra.push(...((data as MatchRow[]) ?? []));
+        }
+      }
+    }
+
+    if (!extra.length) continue;
+    const seen = new Set(pool.map((r) => r.id));
+    const merged = [...pool];
+    for (const raw of extra) {
+      if (seen.has(raw.id)) continue;
+      if (!catalogGenderAllowed(raw.gender, gender ?? null)) continue;
+      seen.add(raw.id);
+      merged.push({ ...raw, similarity: COLOR_SUPPLEMENT_SIMILARITY });
+    }
+    if (merged.length) matchByKey.set(key, merged);
+  }
+}
+
 async function matchItemsForLook(
   lookTitle: string,
   lookDescription: string,
@@ -1711,9 +2241,16 @@ async function matchItemsForLook(
   goal: string,
   styleId?: string | null,
   occasionId?: string | null,
+  leatherWant?: "black" | "brown" | null,
 ): Promise<ShoppingItem[]> {
   const matchSlots: GarmentMatchSlot[] = [];
   let slot = 0;
+  await supplementTypedLookRows(
+    garments,
+    matchByKey,
+    matchKeyFor,
+    genderFilterFor(profile.demographics.genderPresentation),
+  );
   await dropCasualWorkShirts(
     garments,
     matchByKey,
@@ -1722,7 +2259,8 @@ async function matchItemsForLook(
     genderFilterFor(profile.demographics.genderPresentation),
   );
 
-  for (const g of selectLookGarmentSlots(garments, 6)) {
+  for (const g of selectLookGarmentSlots(garments, LOOK_SHOP_MAX_SLOTS)) {
+    applyWorkShirtPoolFallback(g, garments, matchByKey, matchKeyFor, occasionId);
     const matchKey = matchKeyFor(g);
     // Knitwear is a layering piece — drop short-sleeve knits/sweatshirts so a
     // short-sleeve knit never gets layered over a long-sleeve shirt (mirrors
@@ -1741,7 +2279,30 @@ async function matchItemsForLook(
         matchByKey.set(matchKey, longSleeve);
       }
     }
-    const rows = topRankedCandidates(
+    {
+      const pool = matchByKey.get(matchKey) ?? [];
+      const bodyType = profile.physical.bodyType;
+      const kept = pool.filter((r) => {
+        const title = formatCatalogProductTitle(r.brand, r.title);
+        if (g.category === "Trousers" && silhouetteRejectsTrousers(bodyType, title)) return false;
+        if (
+          (g.category === "Knitwear" || g.category === "Shirts" || g.category === "Outerwear") &&
+          silhouetteRejectsTop(bodyType, title)
+        ) {
+          return false;
+        }
+        if (
+          (isBagTitle(title) || isBackpackTitle(title)) &&
+          isSportsBagTitle(title) &&
+          !lookAsksSportsBag(g.clause)
+        ) {
+          return false;
+        }
+        return true;
+      });
+      if (kept.length && kept.length !== pool.length) matchByKey.set(matchKey, kept);
+    }
+    let rows = topRankedCandidates(
       matchByKey.get(matchKey) ?? [],
       g.color,
       g.garment,
@@ -1750,6 +2311,21 @@ async function matchItemsForLook(
       styleId,
       occasionId,
     );
+    // A warm palette never gets a cool pastel at the face as a "Similar" stand-in
+    // — unless the look itself asked for that colour (a light-blue work shirt).
+    if (
+      isNearFaceShoppingCategory(g.category) &&
+      profile.physical.undertone === "warm" &&
+      !lookAsksCoolColour(g.color, g.clause)
+    ) {
+      rows = rows.filter(
+        (r) =>
+          !isCoolPastelNearFace(
+            `${formatCatalogProductTitle(r.brand, r.title)} ${r.color ?? ""}`,
+            inferSwatchHex(formatCatalogProductTitle(r.brand, r.title), swatchHex(r)),
+          ),
+      );
+    }
     if (!rows.length) continue;
     matchSlots.push({ slot, garment: g, matchKey, rows });
     slot += 1;
@@ -1782,12 +2358,12 @@ async function matchItemsForLook(
     const slotByIndex = new Map(matchSlots.map((s) => [s.slot, s]));
     const filled = new Set<number>();
     for (const pick of rerankPicks) {
-      if (items.length >= 6) break;
+      if (items.length >= LOOK_SHOP_MAX_SLOTS) break;
       if (pick.candidateIndex < 0) continue;
       const matchSlot = slotByIndex.get(pick.slot);
       if (!matchSlot) continue;
-      const row = matchSlot.rows[pick.candidateIndex];
-      if (!row || seen.has(row.id)) continue;
+      const row = firstAdmittedSlotRow(matchSlot, seen, pick.candidateIndex);
+      if (!row) continue;
       seen.add(row.id);
       filled.add(pick.slot);
       items.push(
@@ -1796,15 +2372,17 @@ async function matchItemsForLook(
           matchSlot.garment,
           profile,
           goal,
-          pick.similarPick,
+          // The reranker's own flag OR the deterministic colour check: a sage
+          // Aran for "soft teal merino" must read "Similar", whatever Sonnet said.
+          pick.similarPick || heuristicSimilarPick(row, matchSlot.garment),
           pick.why,
         ),
       );
     }
     for (const matchSlot of matchSlots) {
-      if (items.length >= 6) break;
+      if (items.length >= LOOK_SHOP_MAX_SLOTS) break;
       if (filled.has(matchSlot.slot)) continue;
-      const picked = pickBestMatch(
+      const picked = pickAdmittedMatch(
         matchByKey.get(matchSlot.matchKey) ?? [],
         matchSlot.garment.color,
         matchSlot.garment.garment,
@@ -1812,8 +2390,9 @@ async function matchItemsForLook(
         matchSlot.garment.clause,
         styleId,
         occasionId,
+        (row) => !seen.has(row.id) && namedSlotKeepsRow(matchSlot.garment, row),
       );
-      if (!picked || seen.has(picked.row.id)) continue;
+      if (!picked) continue;
       seen.add(picked.row.id);
       items.push(
         shoppingItemFromMatch(
@@ -1828,8 +2407,16 @@ async function matchItemsForLook(
     if (items.length) {
       return withLookItemAlternatives(
         resolveLeatherToneClash(
-          resolveShirtTrouserClash(
-            items,
+          resolveShirtJacketClash(
+            resolveShirtTrouserClash(
+              resolvePriceOutliers(dropOffColourNamedSlots(items, matchSlots), matchSlots, matchByKey, profile, goal, styleId, occasionId),
+              matchSlots,
+              matchByKey,
+              profile,
+              goal,
+              styleId,
+              occasionId,
+            ),
             matchSlots,
             matchByKey,
             profile,
@@ -1843,6 +2430,8 @@ async function matchItemsForLook(
           goal,
           styleId,
           occasionId,
+          undefined,
+          leatherWant,
         ),
         matchSlots,
         profile,
@@ -1852,8 +2441,8 @@ async function matchItemsForLook(
   }
 
   for (const matchSlot of matchSlots) {
-    if (items.length >= 6) break;
-    const picked = pickBestMatch(
+    if (items.length >= LOOK_SHOP_MAX_SLOTS) break;
+    const picked = pickAdmittedMatch(
       matchByKey.get(matchSlot.matchKey) ?? [],
       matchSlot.garment.color,
       matchSlot.garment.garment,
@@ -1861,8 +2450,9 @@ async function matchItemsForLook(
       matchSlot.garment.clause,
       styleId,
       occasionId,
+      (row) => !seen.has(row.id) && namedSlotKeepsRow(matchSlot.garment, row),
     );
-    if (!picked || seen.has(picked.row.id)) continue;
+    if (!picked) continue;
     seen.add(picked.row.id);
     items.push(
       shoppingItemFromMatch(
@@ -1877,8 +2467,16 @@ async function matchItemsForLook(
 
   return withLookItemAlternatives(
     resolveLeatherToneClash(
-      resolveShirtTrouserClash(
-        items,
+      resolveShirtJacketClash(
+        resolveShirtTrouserClash(
+          resolvePriceOutliers(dropOffColourNamedSlots(items, matchSlots), matchSlots, matchByKey, profile, goal, styleId, occasionId),
+          matchSlots,
+          matchByKey,
+          profile,
+          goal,
+          styleId,
+          occasionId,
+        ),
         matchSlots,
         matchByKey,
         profile,
@@ -1892,11 +2490,36 @@ async function matchItemsForLook(
       goal,
       styleId,
       occasionId,
+      undefined,
+      leatherWant,
     ),
     matchSlots,
     profile,
     goal,
   );
+}
+
+/**
+ * A named look colour matches or the slot stays empty. Same-family neutrals
+ * (grey for charcoal) may wear a Similar badge; a cream polo for cool-white
+ * still drops.
+ */
+function dropOffColourNamedSlots(
+  items: ShoppingItem[],
+  matchSlots: GarmentMatchSlot[],
+): ShoppingItem[] {
+  return items.filter((it) => {
+    const slot =
+      matchSlots.find((s) => it.garment && s.garment.garment === it.garment) ??
+      matchSlots.find((s) => s.rows.some((r) => r.id === it.productId));
+    if (!slot) return true;
+    return slotColourAdmitted(slot.garment.color, it.title, {
+      productColor: it.colorName,
+      productHex: it.color,
+      clause: slot.garment.clause,
+      category: slot.garment.category,
+    });
+  });
 }
 
 /** Per-look matched products, keyed by the look's index in content.looks. */
@@ -1927,6 +2550,15 @@ export async function matchLookItems(
     const currency = profile.currency;
     const gender = genderFilterFor(profile.demographics.genderPresentation);
     const styleId = opts?.styleId ?? null;
+    const leatherWant = leatherAnchorTone(
+      leatherTargetsFromGuide(
+        shoeGuideFor(
+          profile,
+          content.colors.best ?? [],
+          content.colors.avoid ?? [],
+        ),
+      ).dress.name,
+    );
 
     const perLook = content.looks.map((l) => {
       const paletteHints = paletteColorHints(
@@ -1939,16 +2571,7 @@ export async function matchLookItems(
       // unknown noun) falls back to prose. Legacy looks have no items → same
       // decomposeLook path as before — no LOOK_MATCH_VERSION bump.
       const garments = resolveLookGarments(l.items, description);
-      if (lookOccasionIsTailored(occasionId)) {
-        const trousers = garments.find((g) => g.category === "Trousers");
-        for (const g of garments) {
-          if (!lookOccasionAppliesToShirt(g.garment)) continue;
-          if (lookColorCue(g.color, g.clause)) continue;
-          const shirt = workDefaultShirtColor(trousers?.color);
-          g.color = shirt;
-          g.clause = `${shirt} ${g.clause}`.trim();
-        }
-      }
+      applyWorkShirtSearchColors(garments, occasionId);
       return {
         title: l.title,
         description: l.description ?? "",
@@ -1975,26 +2598,44 @@ export async function matchLookItems(
       text: string;
     };
     const queryByKey = new Map<string, Query>();
+    const enqueueQuery = (
+      g: LookGarment,
+      title: string,
+      occasionId: string | null | undefined,
+      paletteHints: string,
+      color: string | null = g.color,
+    ) => {
+      const clause =
+        color && color !== g.color ? `${color} ${g.clause}`.trim() : g.clause;
+      const text = garmentQueryText(g.garment, color, g.category, {
+        lookTitle: title,
+        clause,
+        paletteHints,
+        colorSeason: profile.colorSeason,
+        gender,
+        styleId,
+        occasionId,
+      });
+      const key = keyFor(g.category, g.garment, color, title, occasionId);
+      if (!queryByKey.has(key))
+        queryByKey.set(key, {
+          key,
+          category: g.category,
+          garment: g.garment,
+          color,
+          text,
+        });
+    };
     for (const { title, garments, paletteHints, occasionId } of perLook) {
       for (const g of garments) {
-        const text = garmentQueryText(g.garment, g.color, g.category, {
-          lookTitle: title,
-          clause: g.clause,
-          paletteHints,
-          colorSeason: profile.colorSeason,
-          gender,
-          styleId,
-          occasionId,
-        });
-        const key = keyFor(g.category, g.garment, g.color, title, occasionId);
-        if (!queryByKey.has(key))
-          queryByKey.set(key, {
-            key,
-            category: g.category,
-            garment: g.garment,
-            color: g.color,
-            text,
-          });
+        enqueueQuery(g, title, occasionId, paletteHints);
+      }
+      if (lookOccasionIsTailored(occasionId)) {
+        for (const { garment: g, colors } of workShirtExtraSearchColors(garments)) {
+          for (const color of colors) {
+            enqueueQuery(g, title, occasionId, paletteHints, color);
+          }
+        }
       }
     }
     const queries = [...queryByKey.values()];
@@ -2037,6 +2678,7 @@ export async function matchLookItems(
           goal,
           styleId,
           occasionId,
+          leatherWant,
         );
         return { idx, items };
       }),
@@ -2046,7 +2688,8 @@ export async function matchLookItems(
     }
 
     return result;
-  } catch {
+  } catch (err) {
+    console.error("[look-items] match failed", err);
     return {};
   }
 }
@@ -2091,26 +2734,36 @@ export async function matchLookAroundAnchors(
     const paletteHints = paletteColorHints([], []);
 
     const garments = fills.map((g) => ({ ...g }));
+    applyWorkShirtSearchColors(garments, occasionId);
     const description = composeCompleteLookDescription(anchors);
 
-    const keyFor = (g: LookGarment) =>
-      `${title}::${g.category}::${g.garment}::${g.color ?? ""}::${styleId ?? ""}::${occasionId}`;
+    const keyFor = (g: LookGarment, color: string | null = g.color) =>
+      `${title}::${g.category}::${g.garment}::${color ?? ""}::${styleId ?? ""}::${occasionId}`;
 
-    const queries = garments.map((g) => ({
-      key: keyFor(g),
+    const queryFrom = (g: LookGarment, color: string | null = g.color) => ({
+      key: keyFor(g, color),
       category: g.category,
       garment: g.garment,
-      color: g.color,
-      text: garmentQueryText(g.garment, g.color, g.category, {
+      color,
+      text: garmentQueryText(g.garment, color, g.category, {
         lookTitle: title,
-        clause: g.clause,
+        clause:
+          color && color !== g.color ? `${color} ${g.clause}`.trim() : g.clause,
         paletteHints,
         colorSeason: profile.colorSeason,
         gender,
         styleId,
         occasionId,
       }),
-    }));
+    });
+    const queries = [
+      ...garments.map((g) => queryFrom(g)),
+      ...workShirtExtraSearchColors(garments).flatMap(({ garment: g, colors }) =>
+        colors.map((color) => queryFrom(g, color)),
+      ),
+    ].filter(
+      (q, i, all) => all.findIndex((other) => other.key === q.key) === i,
+    );
 
     const { embeddings } = await embedMany({
       model: env.embedModel,
@@ -2184,8 +2837,17 @@ export async function matchLookAroundAnchors(
     const items = restoreLockedAnchors(
       anchors,
       resolveLeatherToneClash(
-        resolveShirtTrouserClash(
-          merged,
+        resolveShirtJacketClash(
+          resolveShirtTrouserClash(
+            merged,
+            matchSlots,
+            matchByKey,
+            profile,
+            goal,
+            styleId,
+            occasionId,
+            lockedIds,
+          ),
           matchSlots,
           matchByKey,
           profile,

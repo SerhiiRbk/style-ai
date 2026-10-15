@@ -607,18 +607,24 @@ export function fabricPromptDirective(description: string): string {
   );
 }
 
+/** Tailored sleeve — image models otherwise draw a bomber's elastic cuff. */
+const BLAZER_CUFF_RULE =
+  `The sleeve ends in a tailored OPEN cuff with two to four buttons — ` +
+  `never elastic, gathered, ribbed or cinched at the wrist (that is a bomber or windbreaker). `;
+
 /** Prompt override so a listed blazer cut is not swapped for another. */
 export function blazerTypePromptDirective(description: string): string {
   if (!/\bblazer\b|\bsport\s+coat\b/i.test(description)) return "";
   const kind = canonicalBlazerType(description);
-  if (!kind) return "";
   const cut =
     kind === "double"
       ? `It is DOUBLE-BREASTED — overlapping fronts and two columns of buttons, not a single-breasted jacket. `
       : kind === "unstructured"
         ? `It is UNSTRUCTURED — soft shoulders, no heavy padding or canvas, a relaxed casual blazer. `
-        : `It is SINGLE-BREASTED — one column of buttons, not double-breasted. `;
-  return `CRITICAL blazer: ${cut}`;
+        : kind === "single"
+          ? `It is SINGLE-BREASTED — one column of buttons, not double-breasted. `
+          : "";
+  return `CRITICAL blazer: ${cut}${BLAZER_CUFF_RULE}`;
 }
 
 /** Prompt override so shoes keep the named leather / suede / nubuck finish. */
